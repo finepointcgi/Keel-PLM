@@ -1,0 +1,72 @@
+{{- $hook := eq .Values.migration.mode "hook" }}
+{{- if $hook }}
+# Hook resources are created before the release's own resources: the job gets its own ServiceAccount (no API token) as a hook too.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "keel.fullname" . }}-migrate
+  labels: {{- include "keel.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+automountServiceAccountToken: false
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ if $hook }}{{ include "keel.fullname" . }}-migrate{{ else }}{{ include "keel.fullname" . }}-migrate-{{ .Release.Revision }}{{ end }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  {{- if $hook }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  {{- end }}
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {{- include "keel.migrateLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ if $hook }}{{ include "keel.fullname" . }}-migrate{{ else }}{{ include "keel.serviceAccountName" . }}{{ end }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "keel.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--migrate"]
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - { name: ASPNETCORE_ENVIRONMENT, value: Production }
+            - { name: KEEL_SECRETS_DIR, value: /run/secrets/keel }
+            {{- if .Values.tls.caBundle.existingConfigMap }}
+            - { name: SSL_CERT_FILE, value: /etc/keel/ca/{{ .Values.tls.caBundle.key }} }
+            {{- end }}
+          resources: {{- toYaml .Values.migration.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: secrets, mountPath: /run/secrets/keel, readOnly: true }
+            {{- include "keel.caMount" . | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+        - name: secrets
+          secret: { secretName: {{ include "keel.migratorSecret" . }}, defaultMode: 0440 }
+        {{- include "keel.caVolume" . | nindent 8 }}

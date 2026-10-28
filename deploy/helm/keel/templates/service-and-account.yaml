@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "keel.fullname" . }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector: {{- include "keel.selectorLabels" . | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.service.port }}, targetPort: http, protocol: TCP }
+{{- if and .Values.ingress.enabled .Values.ingress.blockMetrics }}
+---
+# No selector, no endpoints: the ingress answers 503 for /metrics instead of forwarding it to the application.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "keel.fullname" . }}-metrics-blocked
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  ports:
+    - { name: http, port: 80, targetPort: 80 }
+{{- end }}
+{{- if .Values.serviceAccount.create }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "keel.serviceAccountName" . }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: false
+{{- end }}
+{{- if and .Values.dataProtection.persistence.enabled (not .Values.dataProtection.persistence.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "keel.dpClaim" . }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep      # the key ring outlives the release: deleting it invalidates every session
+spec:
+  accessModes: [{{ .Values.dataProtection.persistence.accessMode }}]
+  {{- with .Values.dataProtection.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests: { storage: {{ .Values.dataProtection.persistence.size }} }
+{{- end }}
+{{- if .Values.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "keel.fullname" . }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "keel.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if .Values.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "keel.fullname" . }}
+  labels:
+    {{- include "keel.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  selector:
+    matchLabels: {{- include "keel.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - { port: http, path: /metrics, interval: {{ .Values.serviceMonitor.interval }} }
+{{- end }}

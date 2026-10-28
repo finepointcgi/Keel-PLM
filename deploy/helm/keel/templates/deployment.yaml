@@ -1,0 +1,100 @@
+{{- if and (gt (int .Values.replicaCount) 1) .Values.dataProtection.persistence.enabled (not .Values.dataProtection.persistence.existingClaim) (eq .Values.dataProtection.persistence.accessMode "ReadWriteOnce") }}
+{{- fail "replicaCount > 1 needs a shared Data Protection key ring: set dataProtection.persistence.accessMode=ReadWriteMany (or an existingClaim)" }}
+{{- end }}
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.dataProtection.persistence.enabled) }}
+{{- fail "replicaCount > 1 requires dataProtection.persistence.enabled=true: sessions and antiforgery tokens must be valid on every replica" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "keel.fullname" . }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "keel.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "keel.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}{{ toYaml . | nindent 8 }}{{ end }}
+      annotations:
+        checksum/values: {{ toYaml .Values.config | sha256sum }}
+        {{- with .Values.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      serviceAccountName: {{ include "keel.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      enableServiceLinks: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq .Values.antiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels: {{- include "keel.selectorLabels" . | nindent 18 }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: {{- include "keel.selectorLabels" . | nindent 20 }}
+          {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: keel
+          image: {{ include "keel.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - { name: http, containerPort: 8080, protocol: TCP }
+          env: {{- include "keel.env" . | nindent 12 }}
+          startupProbe:
+            httpGet: { path: /health/live, port: http }
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: dataprotection, mountPath: /var/lib/keel/dataprotection }
+            - { name: secrets, mountPath: /run/secrets/keel, readOnly: true }
+            {{- include "keel.caMount" . | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 2Gi }
+        - name: dataprotection
+          {{- if .Values.dataProtection.persistence.enabled }}
+          persistentVolumeClaim: { claimName: {{ include "keel.dpClaim" . }} }
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: secrets
+          secret: { secretName: {{ include "keel.appSecret" . }}, defaultMode: 0440 }
+        {{- include "keel.caVolume" . | nindent 8 }}

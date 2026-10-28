@@ -6,3 +6,8 @@ obj/
 deploy/compose/secrets/
 TestResults/
 .claude/worktrees/
+deploy/compose/prod-example/certs/
+deploy/compose/prod-example/secrets/
+deploy/compose/prod-example/test/verify.env
+deploy/offline/out/
+*.env.local

@@ -1,0 +1,146 @@
+{{- if .Values.dev.enabled }}
+{{- $name := include "keel.fullname" . }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (printf "%s-dev" $name) }}
+{{- $appPw := "" }}{{ $migPw := "" }}{{ $vaultAccess := "keeldev" }}{{ $vaultSecret := "" }}{{ $signing := "" }}{{ $clientSecret := "" }}
+{{- if $existing }}
+{{- $migSecret := lookup "v1" "Secret" .Release.Namespace (printf "%s-dev-migrator" $name) }}
+{{- $appPw = index $existing.data "dev-app-password" | b64dec }}
+{{- $migPw = index $existing.data "dev-migrator-password" | b64dec }}
+{{- $vaultSecret = index $existing.data "Keel__Vault__SecretKey" | b64dec }}
+{{- $signing = index $existing.data "audit_checkpoint_key.pem" | b64dec }}
+{{- $clientSecret = index $existing.data "Keel__Auth__WebClientSecret" | b64dec }}
+{{- else }}
+{{- $appPw = randAlphaNum 24 }}{{ $migPw = randAlphaNum 24 }}{{ $vaultSecret = randAlphaNum 32 }}{{ $signing = genPrivateKey "ecdsa" }}{{ $clientSecret = randAlphaNum 32 }}
+{{- end }}
+# TEST ONLY (kind/minikube): in-cluster PostgreSQL and S3 store with generated throwaway credentials, no TLS, no persistence.
+# Production uses external, hardened, encrypted, replicated services (docs/ops/kubernetes.md).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}-dev
+  labels: {{- include "keel.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  dev-app-password: {{ $appPw | quote }}
+  dev-migrator-password: {{ $migPw | quote }}
+  Keel__Database__AppConnectionString: {{ printf "Host=%s-dev-postgres;Port=5432;Database=keel;Username=keel_app;Password=%s;SSL Mode=Disable" $name $appPw | quote }}
+  Keel__Auth__WebClientSecret: {{ $clientSecret | quote }}
+  Keel__Vault__AccessKey: {{ $vaultAccess | quote }}
+  Keel__Vault__SecretKey: {{ $vaultSecret | quote }}
+  audit_checkpoint_key.pem: |
+    {{- $signing | nindent 4 }}
+  s3.json: {{ dict "identities" (list (dict "name" "keel-app" "credentials" (list (dict "accessKey" $vaultAccess "secretKey" $vaultSecret)) "actions" (list "Read:keel-vault" "Write:keel-vault" "List:keel-vault" "Tagging:keel-vault"))) | toJson | quote }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}-dev-migrator
+  labels: {{- include "keel.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  Keel__Database__MigratorConnectionString: {{ printf "Host=%s-dev-postgres;Port=5432;Database=keel;Username=keel_migrator;Password=%s;SSL Mode=Disable" $name $migPw | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-dev-postgres-init
+  labels: {{- include "keel.labels" . | nindent 4 }}
+data:
+  00-roles.sh: |
+    #!/bin/sh
+    set -eu
+    psql -v ON_ERROR_STOP=1 --username postgres --dbname postgres -v migrator_pw="$KEEL_MIGRATOR_PW" -v app_pw="$KEEL_APP_PW" <<'SQL'
+    CREATE ROLE keel_migrator LOGIN PASSWORD :'migrator_pw';
+    CREATE ROLE keel_app      LOGIN PASSWORD :'app_pw';
+    CREATE DATABASE keel OWNER keel_migrator;
+    REVOKE ALL ON DATABASE keel FROM PUBLIC;
+    GRANT CONNECT ON DATABASE keel TO keel_app;
+    \connect keel
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+    ALTER SCHEMA public OWNER TO keel_migrator;
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-dev-postgres
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-postgres }
+  ports: [{ name: pg, port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}-dev-postgres
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $name }}-dev-postgres
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-postgres }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-postgres }
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: {{ .Values.dev.postgresImage }}
+          env:
+            - { name: POSTGRES_PASSWORD, value: {{ randAlphaNum 24 | quote }} }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: KEEL_APP_PW
+              valueFrom: { secretKeyRef: { name: {{ $name }}-dev, key: dev-app-password } }
+            - name: KEEL_MIGRATOR_PW
+              valueFrom: { secretKeyRef: { name: {{ $name }}-dev, key: dev-migrator-password } }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe: { exec: { command: ["pg_isready", "-U", "postgres"] }, periodSeconds: 5 }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true }
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: init
+          configMap: { name: {{ $name }}-dev-postgres-init, defaultMode: 0555 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-dev-vault
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-vault }
+  ports: [{ name: s3, port: 8333, targetPort: 8333 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-dev-vault
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-vault }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-vault }
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: vault
+          image: {{ .Values.dev.vaultImage }}
+          args: [mini, -dir=/data, -s3.config=/etc/seaweedfs/s3.json, -bucket=keel-vault, -admin.ui=false, -webdav=false, -master.telemetry=false, -master.volumeSizeLimitMB=256]
+          ports: [{ containerPort: 8333 }]
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: s3, mountPath: /etc/seaweedfs, readOnly: true }
+      volumes:
+        - name: data
+          emptyDir: { medium: Memory, sizeLimit: 1Gi }
+        - name: s3
+          secret:
+            secretName: {{ $name }}-dev
+            items: [{ key: s3.json, path: s3.json }]
+{{- end }}
