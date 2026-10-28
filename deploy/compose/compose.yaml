@@ -32,7 +32,7 @@ services:
     # point at any S3-compatible store. Dev-only credentials live in seaweedfs/s3.json.
     image: chrislusf/seaweedfs:4.47
     command: ["mini", "-dir=/data", "-s3.config=/etc/seaweedfs/s3.json", "-bucket=keel-vault", "-admin.ui=false",
-              "-master.volumeSizeLimitMB=256"]
+              "-master.volumeSizeLimitMB=256", "-master.telemetry=false"]
     ports: ["127.0.0.1:${KEEL_VAULT_PORT:-18333}:8333"]
     volumes:
       - vaultdata:/data

@@ -1,0 +1,45 @@
+# TLS-terminating reverse proxy for the Keel compose production example (docs/ops/compose-example.md).
+# Certificates come from the site's internal CA and are mounted from files; nothing is fetched from the network, so
+# automatic HTTPS (ACME) is switched off.
+{
+	auto_https off
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+:8443 {
+	tls /certs/proxy.crt /certs/proxy.key {
+		protocols tls1.2 tls1.3
+		ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+		curves secp256r1 secp384r1
+	}
+
+	# Prometheus scrapes the application directly on the internal network; the metrics endpoint is not published.
+	@metrics path /metrics /metrics/*
+	respond @metrics 404
+
+	# Large uploads stream through; the application enforces Keel:Vault:MaxUploadBytes.
+	request_body {
+		max_size 5GB
+	}
+
+	reverse_proxy app:8080 {
+		# Blazor Server keeps a circuit per browser tab on one replica (ADR-0014): with several app replicas add
+		# `lb_policy cookie keel_affinity` so a browser stays on the replica that holds its circuit.
+		# One replica (this example) needs no policy.
+		health_uri /health/live
+		health_interval 10s
+		flush_interval -1
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

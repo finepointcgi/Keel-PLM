@@ -1,0 +1,34 @@
+# kind / minikube test values: deploys throwaway in-cluster PostgreSQL and S3 store next to Keel. NOT for real data.
+#
+#   docker image load -i keel-api.tar            # or: kind load docker-image keel/api:1.7.0 / minikube image load ...
+#   helm install keel deploy/helm/keel -f deploy/helm/keel/values-dev.yaml --set config.auth.authority=http://host.minikube.internal:18080/realms/keel
+#
+# The IdP stays external even here: point config.auth.authority at any OIDC issuer the cluster can reach (for example the
+# Keycloak of the compose dev stack through the host gateway). Credentials are generated at install time (random, kept across upgrades).
+dev:
+  enabled: true
+replicaCount: 1
+image:
+  pullPolicy: IfNotPresent
+config:
+  auth:
+    authority: http://host.minikube.internal:18080/realms/keel
+    requireHttpsMetadata: false
+  security:
+    requireFips: false
+  vault:
+    serviceUrl: http://keel-dev-vault:8333
+    serverSideEncryption: false
+migration:
+  mode: job                    # the in-cluster database does not exist before a pre-install hook would run; the job retries until it does
+  backoffLimit: 30
+dataProtection:
+  persistence:
+    accessMode: ReadWriteOnce  # single replica
+ingress:
+  host: keel.localtest.me
+  tlsSecretName: keel-dev-tls  # create with: kubectl create secret tls keel-dev-tls --cert=... --key=...
+networkPolicy:
+  enabled: false               # kind's default CNI does not enforce NetworkPolicies
+podDisruptionBudget:
+  enabled: false

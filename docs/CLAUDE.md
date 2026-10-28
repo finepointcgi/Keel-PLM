@@ -4,8 +4,8 @@ Keel is an on-prem, air-gapped PLM platform replacing Teamcenter/Windchill for `
 Read this file, then [assumptions.md](assumptions.md) and [adr/README.md](adr/README.md), before changing code.
 
 ## Status
-- **Phase 1:** 1.1 Foundations, 1.2 Parts, 1.3 Documents and vault, 1.4 BOM, 1.5 Workflow/e-signature and 1.6 Change management are merged (2026-10-28). Remaining: 1.7 seed data, E2E, demo script, containers.
-- Per-increment notes (delivered, tests, decisions, deferred): [1.3](increments/1.3-documents.md), [1.4](increments/1.4-bom.md), [1.5](increments/1.5-workflow.md), [1.6](increments/1.6-change.md).
+- **Phase 1:** 1.1 Foundations, 1.2 Parts, 1.3 Documents and vault, 1.4 BOM, **Phase 1 is complete (2026-10-28)**: 1.1-1.7 merged (foundations, parts, documents/vault, BOM, workflow/e-signature, change management, seed data + E2E + demo script, container image/Helm/offline bundle). Next: Phase 2 (configuration management: effectivity, baselines, EBOM/MBOM, admin UI, classification).
+- Per-increment notes (delivered, tests, decisions, deferred): [1.3](increments/1.3-documents.md), [1.4](increments/1.4-bom.md), [1.5](increments/1.5-workflow.md), [1.6](increments/1.6-change.md), [1.7 demo](increments/1.7-demo.md), [1.7 packaging](increments/1.7-packaging.md). Demo walkthrough: [demo-script.md](demo-script.md). Operations: [docs/ops](ops/).
 - Phase plan: 1.1 Foundations → 1.2 Parts → 1.3 Documents and vault → 1.4 BOM → 1.5 Review and release → 1.6 Change → 1.7 Demo-ready.
   Later phases: 2 Configuration management, 3 Migration, 4 Integrations, 5 Production operations.
 
@@ -124,3 +124,10 @@ Built in parallel by three agents in separate worktrees, merged into `main`. Rec
 - BOM virtualization uses a small JS shim because Blazor `Virtualize` writes inline `style` attributes that the CSP blocks; CSP is intentionally not relaxed.
 - Dev Docker VM disk was ~99% full at merge time (two orphaned PostgreSQL volumes from other work, ~26 GB). SeaweedFS (vault) cannot create volumes in that state and uploads hang; automated tests use tmpfs and are unaffected. Free Docker disk before using the dev vault.
 - Known gaps: API upload does not time out when the vault cannot write (hang instead of a fast 503) - add a vault write timeout; dev CLI password-grant tokens have no `auth_time`, so REST e-signature smoke tests need an authorization-code token.
+
+### Phase 1 completion notes (2026-10-28)
+- Final merge state: 233 unit, 177 integration tests, 7 Playwright E2E (KEEL_E2E=1, `scripts/e2e.sh`; not part of `scripts/test.sh`), packaging scripts (`verify-compose-example.sh`, `verify-helm.sh`, `verify-offline.sh`, `backup-restore-test.sh`) run by the packaging agent against throwaway containers.
+- NOT verified: the UBI image build itself (Docker VM disk), the FIPS-enabled path on a real FIPS host, Helm install on a cluster, image SBOMs (only .NET SBOMs), the demo script by hand in a headed browser.
+- Seeder and tools never default to the dev database (`--use-dev-stack` is explicit) after a scale run once wrote to it.
+- Dev vault telemetry disabled (`-master.telemetry=false`), matching the air-gap requirement.
+- Open compliance gaps (docs/ops/nist-800-171-mapping.md): idle session lock (3.1.10), malware scanning hook, vault GC, SIEM forwarding.

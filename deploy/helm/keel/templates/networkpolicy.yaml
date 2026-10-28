@@ -1,0 +1,75 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy }}
+{{- if not .Values.dev.enabled }}
+{{- range $name := list "postgres" "vault" "idp" }}
+{{- if not (index $np.egress $name).to }}
+{{- fail (printf "networkPolicy.egress.%s.to is required with networkPolicy.enabled (egress is default-deny; name the %s peers)" $name $name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+# Default deny for the web pods, then exactly what the application needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "keel.fullname" . }}-web
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "keel.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # The ingress controller (users) and the monitoring namespace (scrapes /metrics). Layer 4 cannot tell the paths apart:
+    # the ingress blocks /metrics (ingress.blockMetrics), and only these two namespaces can reach the pod port at all.
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ $np.ingressNamespace }} } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ $np.monitoringNamespace }} } }
+      ports:
+        - { port: 8080, protocol: TCP }
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ $np.dnsNamespace }} } }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    {{- if .Values.dev.enabled }}
+    - to:
+        - podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-postgres } }
+      ports: [{ port: 5432, protocol: TCP }]
+    - to:
+        - podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-vault } }
+      ports: [{ port: 8333, protocol: TCP }]
+    {{- end }}
+    {{- range $name := list "postgres" "vault" "idp" }}
+    {{- $peer := index $np.egress $name }}
+    {{- if $peer.to }}
+    - to: {{- toYaml $peer.to | nindent 8 }}
+      ports: [{ port: {{ $peer.port }}, protocol: TCP }]
+    {{- end }}
+    {{- end }}
+---
+# The migration job needs the database and DNS, nothing else, and accepts no connections.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "keel.fullname" . }}-migrate
+  labels: {{- include "keel.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "keel.migrateLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ $np.dnsNamespace }} } }
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    {{- if .Values.dev.enabled }}
+    - to:
+        - podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: dev-postgres } }
+      ports: [{ port: 5432, protocol: TCP }]
+    {{- end }}
+    {{- if $np.egress.postgres.to }}
+    - to: {{- toYaml $np.egress.postgres.to | nindent 8 }}
+      ports: [{ port: {{ $np.egress.postgres.port }}, protocol: TCP }]
+    {{- end }}
+{{- end }}

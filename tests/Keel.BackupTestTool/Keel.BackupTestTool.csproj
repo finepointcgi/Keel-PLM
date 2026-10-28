@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Populates a migrated database with synthetic parts, audit events and a signed checkpoint, and prints per-table row counts.
+       Used only by scripts/backup-restore-test.sh (docs/ops/backup-restore.md). Synthetic data only. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1515;CA2000;CA1812</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+    <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
+  </ItemGroup>
+</Project>

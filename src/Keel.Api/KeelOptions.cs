@@ -8,6 +8,8 @@ public sealed class KeelOptions
     public AuthOptions Auth { get; set; } = new();
     public AuditOptions Audit { get; set; } = new();
     public SecurityOptions Security { get; set; } = new();
+    public DataProtectionOptions DataProtection { get; set; } = new();
+    public ProxyOptions Proxy { get; set; } = new();
 
     public sealed class DatabaseOptions
     {
@@ -43,5 +45,26 @@ public sealed class KeelOptions
     {
         /// <summary>Refuse to start unless the OS crypto module runs in FIPS mode (ADR-0008). Set true in production.</summary>
         public bool RequireFips { get; set; }
+    }
+
+    public sealed class DataProtectionOptions
+    {
+        /// <summary>
+        /// Directory that holds the ASP.NET Data Protection key ring (cookie sessions, antiforgery, Blazor circuit state).
+        /// Required in Production so keys survive restarts and are shared by all replicas (ReadWriteMany volume or one
+        /// replica). The directory must be on an encrypted volume and writable only by the service account.
+        /// </summary>
+        public string KeyDirectory { get; set; } = "";
+    }
+
+    public sealed class ProxyOptions
+    {
+        /// <summary>
+        /// Honour X-Forwarded-For/-Proto/-Host from a TLS-terminating reverse proxy or ingress. Required behind one: without
+        /// it the OIDC redirect URI and the cookie scheme would be computed as plain http.
+        /// </summary>
+        public bool Enabled { get; set; }
+        /// <summary>CIDR ranges of the proxies whose forwarding headers are trusted, e.g. "10.0.0.0/8". Required when <see cref="Enabled"/>.</summary>
+        public string[] KnownNetworks { get; set; } = [];
     }
 }

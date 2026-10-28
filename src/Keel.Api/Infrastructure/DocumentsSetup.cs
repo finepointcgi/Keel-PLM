@@ -1,6 +1,7 @@
 using Amazon.S3;
 using Keel.Documents;
 using Keel.Documents.Vault;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Keel.Api.Infrastructure;
@@ -35,9 +36,29 @@ public sealed class VaultHealthCheck(IServiceProvider services) : IHealthCheck
         {
             return HealthCheckResult.Unhealthy("Vault is not configured: " + ex.Message);
         }
-        catch (Exception ex) when (ex is AmazonS3Exception or HttpRequestException or Amazon.Runtime.AmazonClientException or TaskCanceledException)
+        catch (Exception ex) when (ex is AmazonS3Exception or VaultUnavailableException or HttpRequestException or Amazon.Runtime.AmazonClientException or TaskCanceledException)
         {
             return HealthCheckResult.Unhealthy("Vault unreachable.", ex);
         }
+    }
+}
+
+/// <summary>
+/// A vault that times out or cannot be reached is a temporary condition of the service, not a server fault of this
+/// request: answer 503 with Retry-After so clients and proxies retry instead of hanging.
+/// </summary>
+public sealed class VaultUnavailableExceptionHandler(IProblemDetailsService problems, ILogger<VaultUnavailableExceptionHandler> logger) : IExceptionHandler
+{
+    public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
+    {
+        if (exception is not VaultUnavailableException) return false;
+        logger.LogError(exception, "Vault unavailable for {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
+        httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        httpContext.Response.Headers.RetryAfter = "5";
+        return await problems.TryWriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = httpContext,
+            ProblemDetails = { Status = StatusCodes.Status503ServiceUnavailable, Title = "Document vault unavailable", Detail = "The document store did not answer. Nothing was changed; try again shortly." },
+        });
     }
 }

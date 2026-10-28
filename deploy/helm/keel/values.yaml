@@ -1,0 +1,165 @@
+# Keel PLM chart values. No secret belongs in this file: credentials live in Kubernetes Secrets that you create
+# (secrets.app.existingSecret / secrets.migrator.existingSecret; see docs/ops/configuration.md and docs/ops/kubernetes.md).
+# Required values (the chart refuses to render without them): config.auth.authority, config.vault.serviceUrl,
+# secrets.app.existingSecret, secrets.migrator.existingSecret, and, with networkPolicy.enabled, the three egress targets.
+# PostgreSQL, the S3 vault and the identity provider are EXTERNAL dependencies; `dev.enabled` is for kind/minikube only.
+
+image:
+  repository: keel/api
+  # Use the digest in production (immutable); tag defaults to the chart appVersion.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicaCount: 2
+
+config:
+  auth:
+    authority: ""                  # OIDC issuer URL of the site IdP, e.g. https://idp.example.mil/realms/keel
+    audience: keel-api
+    webClientId: keel-web
+    requireHttpsMetadata: true
+  security:
+    requireFips: true              # refuse to start unless the node kernel runs in FIPS mode (ADR-0008)
+  vault:
+    serviceUrl: ""                 # https://vault.example.mil:8333  (S3 API, path style)
+    bucket: keel-vault
+    region: us-east-1
+    serverSideEncryption: true
+    maxUploadBytes: 2147483648
+    partSizeBytes: 16777216
+    maxPdfStampBytes: 268435456
+    requestTimeoutSeconds: 30
+  audit:
+    checkpointInterval: "00:15:00"
+  workflow:
+    stepUpMaxAgeSeconds: 300
+    directoryRefreshSeconds: 300
+  # Proxies whose X-Forwarded-* headers are trusted: the ingress controller's pod network. Narrow this to the controller's pod CIDR.
+  proxy:
+    knownNetworks: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  extraEnv: {}                     # additional plain (non-secret) environment variables
+
+secrets:
+  # Secret holding the application credentials as files named like the settings (see docs/ops/kubernetes.md):
+  #   Keel__Database__AppConnectionString, Keel__Auth__WebClientSecret, Keel__Vault__AccessKey, Keel__Vault__SecretKey,
+  #   audit_checkpoint_key.pem (ECDSA P-256, PKCS#8) and audit_checkpoint_key.pub.pem
+  app:
+    existingSecret: ""
+  # Secret with ONLY Keel__Database__MigratorConnectionString. Mounted by the migration job, never by the application pods.
+  migrator:
+    existingSecret: ""
+
+tls:
+  # ConfigMap with the site's internal CA bundle (PEM). Mounted read-only and exported as SSL_CERT_FILE so .NET trusts it for
+  # PostgreSQL (verify-full), the vault and the IdP. Leave empty only when those certificates chain to the image's trust store.
+  caBundle:
+    existingConfigMap: ""
+    key: ca.crt
+
+dataProtection:
+  # ASP.NET Data Protection key ring (cookie sessions, antiforgery, Blazor circuit state). All replicas must share it and it must
+  # survive restarts. With replicaCount > 1 use a ReadWriteMany class (NFS/CephFS on an encrypted backend) or an existingClaim.
+  persistence:
+    enabled: true
+    existingClaim: ""
+    accessMode: ReadWriteMany
+    size: 100Mi
+    storageClassName: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ""                         # keel.example.mil
+  tlsSecretName: ""                # kubernetes.io/tls Secret from the internal CA (cert-manager or manual)
+  # ingress-nginx style. Blazor Server circuits are pinned to one pod, so the cookie affinity annotations are not optional with
+  # replicaCount > 1. Replace the whole map for another controller.
+  annotations:
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/affinity-mode: persistent
+    nginx.ingress.kubernetes.io/session-cookie-name: keel-affinity
+    nginx.ingress.kubernetes.io/session-cookie-secure: "true"
+    nginx.ingress.kubernetes.io/session-cookie-samesite: Lax
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "28800"
+    nginx.ingress.kubernetes.io/proxy-body-size: 5g
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  # The metrics endpoint must not be reachable through the ingress: /metrics is routed to a Service without endpoints.
+  blockMetrics: true
+
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress-nginx          # namespace of the ingress controller (matched on kubernetes.io/metadata.name)
+  monitoringNamespace: monitoring          # namespace allowed to scrape /metrics
+  dnsNamespace: kube-system
+  # Egress peers: standard NetworkPolicyPeer lists (podSelector / namespaceSelector / ipBlock). Required, no defaults on purpose.
+  egress:
+    postgres: { to: [], port: 5432 }
+    vault: { to: [], port: 8333 }
+    idp: { to: [], port: 443 }
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: false                   # needs the Prometheus Operator CRDs
+  interval: 30s
+  labels: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits: { cpu: "2", memory: 2Gi }
+
+probes:
+  startup: { failureThreshold: 30, periodSeconds: 2 }
+  liveness: { periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+  readiness: { periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 0
+  fsGroup: 0
+  seccompProfile: { type: RuntimeDefault }
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }
+
+# Soft anti-affinity spreads replicas over nodes; set "hard" to require it.
+antiAffinity: soft
+topologySpreadConstraints: []
+nodeSelector: {}
+tolerations: []
+podAnnotations: {}
+podLabels: {}
+terminationGracePeriodSeconds: 60
+
+migration:
+  # hook: Helm pre-install/pre-upgrade hook (default; the release fails and rolls nothing out if migration fails).
+  # job: plain Job named per revision (kind/minikube with in-cluster dependencies that do not exist before the hook runs).
+  mode: hook
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+
+# Test-only in-cluster PostgreSQL and S3 store for kind/minikube (values-dev.yaml). Never enable for real data: no TLS, dev passwords.
+dev:
+  enabled: false
+  postgresImage: postgres:17-alpine
+  vaultImage: chrislusf/seaweedfs:4.47

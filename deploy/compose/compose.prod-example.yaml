@@ -1,0 +1,175 @@
+# Keel PLM production-like example for SMALL SITES: one host, Docker Compose, TLS everywhere, secrets as files, external IdP.
+# The development stack is compose.yaml; this file is not it. Read docs/ops/compose-example.md first.
+#
+#   cd deploy/compose
+#   prod-example/gen-test-pki.sh            # TEST ONLY: a real site brings certificates from its internal CA
+#   KEEL_OIDC_CLIENT_SECRET=... prod-example/gen-secrets.sh
+#   cp prod-example/env.example .env        # edit; then
+#   docker compose --env-file ../images.env --env-file .env -f compose.prod-example.yaml up -d
+#
+# Topology: browser --TLS--> proxy --http--> app ; app --TLS(verify-full)--> postgres, vault ; app --TLS--> site IdP.
+# `backend` is an internal network (no route out); only `edge` can reach the site IdP and the proxy's published port.
+name: keel
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  ulimits: { core: 0 }                            # no core dumps of export-controlled process memory
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+x-app-env: &app-env
+  ASPNETCORE_ENVIRONMENT: Production
+  KEEL_SECRETS_DIR: /run/secrets
+  SSL_CERT_FILE: /etc/keel/ca/ca.crt            # trust only the site's internal CA for Postgres, vault and IdP
+  Keel__Auth__Authority: ${KEEL_OIDC_AUTHORITY:?set KEEL_OIDC_AUTHORITY in .env}
+  Keel__Auth__Audience: ${KEEL_OIDC_AUDIENCE:-keel-api}
+  Keel__Auth__WebClientId: ${KEEL_OIDC_CLIENT_ID:-keel-web}
+  Keel__Auth__RequireHttpsMetadata: "true"
+  Keel__Security__RequireFips: ${KEEL_REQUIRE_FIPS:-true}
+  Keel__Vault__ServiceUrl: https://vault:8334
+  Keel__Vault__Bucket: keel-vault
+  Keel__Vault__ServerSideEncryption: "true"
+  Keel__Audit__CheckpointPrivateKeyPath: /run/secrets/audit_checkpoint_key
+  Keel__Audit__CheckpointPublicKeyPaths__0: /run/secrets/audit_checkpoint_key_pub
+  Keel__Proxy__Enabled: "true"
+  Keel__Proxy__KnownNetworks__0: 172.28.40.0/24   # the `edge` network below: only the proxy is on it with the app
+
+services:
+  proxy:
+    <<: *hardened
+    image: ${KEEL_PROXY_IMAGE:?source deploy/images.env (see the header of this file)}
+    user: "65532:0"
+    cap_add: [NET_BIND_SERVICE]                   # the Caddy binary carries file capabilities
+    ports: ["${KEEL_HTTPS_PORT:-8443}:8443"]
+    tmpfs: ["/data", "/config", "/tmp"]
+    volumes:
+      - ./prod-example/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./prod-example/certs/proxy.crt:/certs/proxy.crt:ro
+      - ./prod-example/certs/proxy.key:/certs/proxy.key:ro
+    networks: [edge]
+    depends_on:
+      app: { condition: service_healthy }
+
+  app:
+    <<: *hardened
+    image: ${KEEL_APP_IMAGE:?set KEEL_APP_IMAGE (the image loaded from the offline bundle)}
+    user: "1001:0"
+    environment: *app-env
+    tmpfs: ["/tmp"]
+    volumes:
+      - dpkeys:/var/lib/keel/dataprotection        # ASP.NET Data Protection key ring: persist it; back it up with the database
+      - ./prod-example/certs/ca.crt:/etc/keel/ca/ca.crt:ro
+    secrets:
+      - { source: db_app_connection, target: Keel__Database__AppConnectionString }
+      - { source: oidc_client_secret, target: Keel__Auth__WebClientSecret }
+      - { source: vault_access_key, target: Keel__Vault__AccessKey }
+      - { source: vault_secret_key, target: Keel__Vault__SecretKey }
+      - { source: audit_checkpoint_key, target: audit_checkpoint_key }
+      - { source: audit_checkpoint_key_pub, target: audit_checkpoint_key_pub }
+    networks: [edge, backend]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      vault: { condition: service_started }
+
+  migrate:
+    # One-shot job: applies db/migrations as the schema owner, then exits. Forward-only, hash-checked (docs/ops/upgrade.md).
+    image: ${KEEL_APP_IMAGE}
+    user: "1001:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    command: ["--migrate"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      KEEL_SECRETS_DIR: /run/secrets
+      SSL_CERT_FILE: /etc/keel/ca/ca.crt
+    tmpfs: ["/tmp"]
+    volumes:
+      - ./prod-example/certs/ca.crt:/etc/keel/ca/ca.crt:ro
+    secrets:
+      - { source: db_migrator_connection, target: Keel__Database__MigratorConnectionString }
+    networks: [backend]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres:
+    <<: *hardened
+    image: ${KEEL_POSTGRES_IMAGE:?source deploy/images.env (see the header of this file)}
+    # RHEL-based PostgreSQL (rhel9/postgresql-16 or a vendor FIPS build) replaces this image where the accreditation needs a
+    # FIPS-validated OpenSSL in the database process; the chart and the application are unchanged (docs/ops/hardening.md).
+    entrypoint: ["/entrypoint/postgres-entrypoint.sh"]
+    user: "0:0"                                    # the entrypoint installs the TLS key, then the stock image drops to postgres
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_superuser_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    tmpfs: ["/tmp", "/var/run/postgresql", "/var/lib/postgresql/tls"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prod-example/postgres-entrypoint.sh:/entrypoint/postgres-entrypoint.sh:ro
+      - ./prod-example/initdb/00-roles.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro
+      - ./prod-example/certs/postgres.crt:/run/certs/postgres.crt:ro
+      - ./prod-example/certs/postgres.key:/run/certs/postgres.key:ro
+    secrets: [pg_superuser_password, pg_migrator_password, pg_app_password]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "keel"]
+      interval: 5s
+      retries: 30
+
+  vault:
+    <<: *hardened
+    # S3-compatible object store, same as the dev stack (ADR-0015). Any S3 store works: point Keel__Vault__ServiceUrl at it.
+    image: ${KEEL_VAULT_IMAGE:?source deploy/images.env (see the header of this file)}
+    read_only: false                               # the store writes its metadata under /data only; see docs/ops/hardening.md
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]   # the image entrypoint fixes /data ownership, then drops to uid 1000
+    command:
+      - mini
+      - -dir=/data
+      - -ip=vault
+      - -s3.config=/run/secrets/vault_s3
+      - -s3.port.https=8334
+      - -s3.cert.file=/certs/vault.crt
+      - -s3.key.file=/certs/vault.key
+      - -bucket=keel-vault
+      - -admin.ui=false
+      - -webdav=false
+      - -master.telemetry=false                    # air-gapped: never report statistics
+      - -master.volumeSizeLimitMB=${KEEL_VAULT_VOLUME_MB:-1024}
+    volumes:
+      - vaultdata:/data
+      - ./prod-example/certs/vault.crt:/certs/vault.crt:ro
+      - ./prod-example/certs/vault.key:/certs/vault.key:ro
+    secrets:
+      - { source: vault_s3, target: vault_s3 }
+    networks: [backend]
+
+networks:
+  edge:
+    ipam:
+      config: [{ subnet: 172.28.40.0/24 }]
+  backend:
+    internal: true
+
+volumes:
+  pgdata:
+  vaultdata:
+  dpkeys:
+
+secrets:
+  db_app_connection: { file: ./prod-example/secrets/Keel__Database__AppConnectionString }
+  db_migrator_connection: { file: ./prod-example/secrets/Keel__Database__MigratorConnectionString }
+  oidc_client_secret: { file: ./prod-example/secrets/Keel__Auth__WebClientSecret }
+  vault_access_key: { file: ./prod-example/secrets/Keel__Vault__AccessKey }
+  vault_secret_key: { file: ./prod-example/secrets/Keel__Vault__SecretKey }
+  vault_s3: { file: ./prod-example/secrets/vault_s3.json }
+  audit_checkpoint_key: { file: ./prod-example/secrets/audit_checkpoint_key.pem }
+  audit_checkpoint_key_pub: { file: ./prod-example/secrets/audit_checkpoint_key.pub.pem }
+  pg_superuser_password: { file: ./prod-example/secrets/pg_superuser_password }
+  pg_migrator_password: { file: ./prod-example/secrets/pg_migrator_password }
+  pg_app_password: { file: ./prod-example/secrets/pg_app_password }

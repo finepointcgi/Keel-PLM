@@ -1,0 +1,30 @@
+# Example production values with every required setting filled in, used by `helm lint` and `helm template` in
+# scripts/verify-helm.sh. Hostnames and secret names are placeholders for a site to replace.
+replicaCount: 3
+image:
+  repository: registry.example.mil/keel/api
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+config:
+  auth:
+    authority: https://idp.example.mil/realms/keel
+  vault:
+    serviceUrl: https://vault.example.mil:8333
+  proxy:
+    knownNetworks: ["10.244.0.0/16"]
+secrets:
+  app: { existingSecret: keel-app }
+  migrator: { existingSecret: keel-migrator }
+tls:
+  caBundle: { existingConfigMap: keel-internal-ca }
+dataProtection:
+  persistence: { accessMode: ReadWriteMany, storageClassName: cephfs-encrypted }
+ingress:
+  host: keel.example.mil
+  tlsSecretName: keel-tls
+networkPolicy:
+  egress:
+    postgres: { to: [{ ipBlock: { cidr: 10.20.30.40/32 } }], port: 5432 }
+    vault: { to: [{ ipBlock: { cidr: 10.20.30.50/32 } }], port: 8333 }
+    idp: { to: [{ ipBlock: { cidr: 10.20.30.60/32 } }], port: 443 }
+serviceMonitor:
+  enabled: true

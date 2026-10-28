@@ -10,10 +10,38 @@ using Keel.Web.Components;
 using Keel.Web.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 using Prometheus;
+
+// A fatal startup error (bad configuration, FIPS required but not active) must end the process with a message and exit code 1. The
+// runtime's default is to abort, which asks the kernel for a core dump of the whole process: slow, large and pointless on a
+// read-only container whose disk may be nearly full.
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    Console.Error.WriteLine($"FATAL: {e.ExceptionObject}");
+    Environment.Exit(1);
+};
+
+// Container HEALTHCHECK without curl or a shell (ADR-0020): `Keel.Api.dll --healthcheck [url]` exits 0 when /health/live answers 200.
+if (args.Contains("--healthcheck"))
+{
+    var url = args.SkipWhile(a => a != "--healthcheck").Skip(1).FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? "http://127.0.0.1:8080/health/live";
+    try
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        using var response = await http.GetAsync(url);
+        Environment.ExitCode = response.IsSuccessStatusCode ? 0 : 1;
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        Console.Error.WriteLine($"health check failed: {ex.Message}");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +52,22 @@ builder.Logging.AddJsonConsole(o =>
     o.UseUtcTimestamp = true;
     o.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
 });
+
+// Secrets as files (ADR-0020): every file named Keel__Section__Key in KEEL_SECRETS_DIR becomes the setting Keel:Section:Key. This is the
+// shape of a Docker/Compose secrets directory and of a mounted Kubernetes Secret, so no secret needs to appear in an environment
+// variable (visible in `docker inspect` and the pod spec) or in an image.
+var secretsDirectory = builder.Configuration["KEEL_SECRETS_DIR"];
+if (!string.IsNullOrWhiteSpace(secretsDirectory))
+{
+    if (!Directory.Exists(secretsDirectory))
+        throw new InvalidOperationException($"KEEL_SECRETS_DIR '{secretsDirectory}' does not exist.");
+    builder.Configuration.AddKeyPerFile(o =>
+    {
+        o.FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(secretsDirectory);
+        o.Optional = false;
+        o.IgnoreCondition = name => !name.StartsWith("Keel__", StringComparison.Ordinal);
+    });
+}
 
 var options = builder.Configuration.GetSection(KeelOptions.Section).Get<KeelOptions>() ?? new KeelOptions();
 builder.Services.AddSingleton(options);
@@ -36,6 +80,28 @@ if (args.Contains("--migrate"))
     var applied = await migrator.MigrateAsync();
     Console.WriteLine($"Migrations applied: {applied}");
     return;
+}
+
+if (builder.Environment.IsProduction() && string.IsNullOrWhiteSpace(options.DataProtection.KeyDirectory))
+    throw new InvalidOperationException("Keel:DataProtection:KeyDirectory is required in Production: sessions and antiforgery tokens need a persistent, shared key ring.");
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("Keel");
+if (!string.IsNullOrWhiteSpace(options.DataProtection.KeyDirectory))
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(options.DataProtection.KeyDirectory));
+if (options.Proxy.Enabled)
+{
+    var networks = options.Proxy.KnownNetworks
+        .Select(n => System.Net.IPNetwork.TryParse(n, out var parsed) ? parsed : throw new InvalidOperationException($"Keel:Proxy:KnownNetworks entry '{n}' is not a CIDR range."))
+        .ToList();
+    if (networks.Count == 0)
+        throw new InvalidOperationException("Keel:Proxy:KnownNetworks must list the proxy networks when Keel:Proxy:Enabled is true.");
+    builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(o =>
+    {
+        o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost;
+        o.KnownIPNetworks.Clear();
+        o.KnownProxies.Clear();
+        foreach (var n in networks) o.KnownIPNetworks.Add(n);
+        o.ForwardLimit = 1;
+    });
 }
 
 var fips = FipsStatus.Detect();
@@ -76,6 +142,7 @@ builder.Services.AddSingleton(new TrustedCheckpointKeys(publicKeys));
 
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<VaultUnavailableExceptionHandler>();
 
 // Two ways in (ADR-0014): browsers use the OIDC cookie session; API clients use JWT bearer. The "keel" policy scheme
 // routes /api/* and any request carrying a bearer token to JWT, everything else to the cookie (whose challenge
@@ -126,6 +193,7 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+if (options.Proxy.Enabled) app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 if (!app.Environment.IsDevelopment()) app.UseHsts();

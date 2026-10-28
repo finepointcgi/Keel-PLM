@@ -22,6 +22,13 @@ public sealed class VaultOptions
     public int PartSizeBytes { get; set; } = 16 * 1024 * 1024;
     /// <summary>PDFs up to this size are stamped in memory; larger ones are delivered in a marked ZIP instead.</summary>
     public long MaxPdfStampBytes { get; set; } = 256L * 1024 * 1024;
+    /// <summary>
+    /// Upper bound for one vault request (and for each read of a streaming download). A store that does not answer within
+    /// this time makes the API answer 503 instead of hanging the request.
+    /// </summary>
+    public int RequestTimeoutSeconds { get; set; } = 30;
+
+    public TimeSpan RequestTimeout => TimeSpan.FromSeconds(RequestTimeoutSeconds);
 
     public IReadOnlyList<string> Validate()
     {
@@ -33,6 +40,7 @@ public sealed class VaultOptions
         if (MaxUploadBytes < 1 || MaxUploadBytes > MaxSupportedUploadBytes) errors.Add($"Keel:Vault:MaxUploadBytes must be between 1 and {MaxSupportedUploadBytes}.");
         // S3 requires every part but the last to be at least 5 MiB.
         if (PartSizeBytes < 5 * 1024 * 1024 || PartSizeBytes > 512 * 1024 * 1024) errors.Add("Keel:Vault:PartSizeBytes must be between 5 MiB and 512 MiB.");
+        if (RequestTimeoutSeconds is < 1 or > 600) errors.Add("Keel:Vault:RequestTimeoutSeconds must be between 1 and 600.");
         if (MaxPdfStampBytes < 0) errors.Add("Keel:Vault:MaxPdfStampBytes must not be negative.");
         return errors;
     }

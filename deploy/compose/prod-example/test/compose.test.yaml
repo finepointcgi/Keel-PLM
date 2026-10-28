@@ -1,0 +1,36 @@
+# Test overlay used by scripts/verify-compose-example.sh ONLY. It adds a stub IdP (static discovery document over TLS, no
+# login; paths are relative to deploy/compose, the project directory) so the example can be started and probed without a site IdP, and keeps the vault's and the database's data in memory so a throwaway
+# test never depends on free disk (and leaves no volumes behind). A production site never uses this file.
+services:
+  idp:
+    image: ${KEEL_PROXY_IMAGE}
+    user: "65532:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    tmpfs: ["/data", "/config", "/tmp"]
+    volumes:
+      - ./prod-example/test/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./prod-example/certs/idp.crt:/certs/idp.crt:ro
+      - ./prod-example/certs/idp.key:/certs/idp.key:ro
+      - ./prod-example/test/idp:/srv:ro
+    networks:
+      edge:
+        aliases: [idp.test]
+  vault:
+    volumes: !override
+      - type: tmpfs
+        target: /data
+      - ./prod-example/certs/vault.crt:/certs/vault.crt:ro
+      - ./prod-example/certs/vault.key:/certs/vault.key:ro
+  postgres:
+    volumes: !override
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+      - ./prod-example/postgres-entrypoint.sh:/entrypoint/postgres-entrypoint.sh:ro
+      - ./prod-example/initdb/00-roles.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro
+      - ./prod-example/certs/postgres.crt:/run/certs/postgres.crt:ro
+      - ./prod-example/certs/postgres.key:/run/certs/postgres.key:ro
+  app:
+    depends_on:
+      idp: { condition: service_started }

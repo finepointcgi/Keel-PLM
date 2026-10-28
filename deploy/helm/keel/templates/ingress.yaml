@@ -1,0 +1,29 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "keel.fullname" . }}
+  labels: {{- include "keel.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  tls:
+    - hosts: [{{ required "ingress.host is required when ingress.enabled" .Values.ingress.host | quote }}]
+      secretName: {{ required "ingress.tlsSecretName is required: Keel is served over TLS only" .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- if .Values.ingress.blockMetrics }}
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "keel.fullname" . }}-metrics-blocked, port: { number: 80 } }
+          {{- end }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "keel.fullname" . }}, port: { name: http } }
+{{- end }}

@@ -16,6 +16,13 @@ public sealed class UploadTooLargeException(long limit) : Exception($"The file e
     public long Limit { get; } = limit;
 }
 
+/// <summary>
+/// The store did not answer in time (<see cref="VaultOptions.RequestTimeoutSeconds"/>) or could not be reached. The API
+/// maps it to 503 with a Retry-After header; nothing is lost, the request can be repeated.
+/// </summary>
+public sealed class VaultUnavailableException(string detail, Exception? inner = null)
+    : Exception("The document vault is unavailable: " + detail, inner);
+
 /// <summary>A stored object does not match the SHA-256 or size recorded for it: corruption or tampering (ADR-0015).</summary>
 public sealed class VaultIntegrityException(string sha256, string detail)
     : Exception($"Vault object {sha256} failed integrity verification: {detail}. The file was not delivered.")
@@ -60,13 +67,38 @@ public sealed class ObjectVault : IDisposable
             RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
             ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
             MaxErrorRetry = 2,
+            // The SDK's own Timeout would also cut long streaming downloads, so every call is bounded by CallAsync instead
+            // (retries included) and each read of a download by VerifyingStream.
         });
 
     public static string KeyFor(string sha256) => sha256;
 
     /// <summary>Readiness probe: the bucket is reachable with the configured credentials.</summary>
     public async Task PingAsync(CancellationToken ct = default) =>
-        await _s3.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _options.Bucket, MaxKeys = 1 }, ct);
+        await CallAsync(t => _s3.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _options.Bucket, MaxKeys = 1 }, t), ct);
+
+    /// <summary>
+    /// Runs one store request under <see cref="VaultOptions.RequestTimeout"/> (retries included). A timeout or a
+    /// connection failure becomes <see cref="VaultUnavailableException"/>; cancellation by the caller stays a cancellation.
+    /// </summary>
+    private async Task<T> CallAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(_options.RequestTimeout);
+        try
+        {
+            return await operation(timeout.Token);
+        }
+        catch (OperationCanceledException e) when (!ct.IsCancellationRequested)
+        {
+            throw new VaultUnavailableException($"no answer within {_options.RequestTimeoutSeconds} s", e);
+        }
+        catch (Exception e) when (e is HttpRequestException or AmazonClientException
+            || (e is AmazonServiceException s && (int)s.StatusCode >= 500))
+        {
+            throw new VaultUnavailableException("the store could not be reached or failed", e);
+        }
+    }
 
     /// <summary>Streams <paramref name="content"/> into the vault and returns its SHA-256 and size.</summary>
     public async Task<StoredContent> PutAsync(Stream content, CancellationToken ct = default)
@@ -88,11 +120,15 @@ public sealed class ObjectVault : IDisposable
                 if (!await ExistsAsync(sha, total, ct))
                 {
                     using var body = new MemoryStream(buffer, 0, filled, writable: false);
-                    await _s3.PutObjectAsync(Encrypt(new PutObjectRequest
+                    await CallAsync(t =>
                     {
-                        BucketName = _options.Bucket, Key = KeyFor(sha), InputStream = body, AutoCloseStream = false,
-                        ContentType = "application/octet-stream",
-                    }), ct);
+                        body.Position = 0; // a retry after a timeout resends the whole (small) body
+                        return _s3.PutObjectAsync(Encrypt(new PutObjectRequest
+                        {
+                            BucketName = _options.Bucket, Key = KeyFor(sha), InputStream = body, AutoCloseStream = false,
+                            ContentType = "application/octet-stream",
+                        }), t);
+                    }, ct);
                 }
                 return new StoredContent(sha, total);
             }
@@ -111,10 +147,10 @@ public sealed class ObjectVault : IDisposable
     private async Task<StoredContent> PutLargeAsync(Stream content, byte[] buffer, int filled, long total, IncrementalHash hash, CancellationToken ct)
     {
         var staging = StagingPrefix + Guid.CreateVersion7().ToString("N");
-        var init = await _s3.InitiateMultipartUploadAsync(Encrypt(new InitiateMultipartUploadRequest
+        var init = await CallAsync(t => _s3.InitiateMultipartUploadAsync(Encrypt(new InitiateMultipartUploadRequest
         {
             BucketName = _options.Bucket, Key = staging, ContentType = "application/octet-stream",
-        }), ct);
+        }), t), ct);
         var completed = false;
         try
         {
@@ -123,10 +159,15 @@ public sealed class ObjectVault : IDisposable
             {
                 using (var body = new MemoryStream(buffer, 0, filled, writable: false))
                 {
-                    var part = await _s3.UploadPartAsync(new UploadPartRequest
+                    var size = filled;
+                    var part = await CallAsync(t =>
                     {
-                        BucketName = _options.Bucket, Key = staging, UploadId = init.UploadId, PartNumber = partNumber,
-                        InputStream = body, PartSize = filled,
+                        body.Position = 0;
+                        return _s3.UploadPartAsync(new UploadPartRequest
+                        {
+                            BucketName = _options.Bucket, Key = staging, UploadId = init.UploadId, PartNumber = partNumber,
+                            InputStream = body, PartSize = size,
+                        }, t);
                     }, ct);
                     parts.Add(new PartETag(partNumber, part.ETag));
                 }
@@ -135,28 +176,35 @@ public sealed class ObjectVault : IDisposable
                 if (total > _options.MaxUploadBytes) throw new UploadTooLargeException(_options.MaxUploadBytes);
                 hash.AppendData(buffer, 0, filled);
             }
-            await _s3.CompleteMultipartUploadAsync(new CompleteMultipartUploadRequest
+            await CallAsync(t => _s3.CompleteMultipartUploadAsync(new CompleteMultipartUploadRequest
             {
                 BucketName = _options.Bucket, Key = staging, UploadId = init.UploadId, PartETags = parts,
-            }, ct);
+            }, t), ct);
             completed = true;
 
             var sha = Convert.ToHexStringLower(hash.GetHashAndReset());
             if (!await ExistsAsync(sha, total, ct))
             {
-                await _s3.CopyObjectAsync(Encrypt(new CopyObjectRequest
+                await CallAsync(t => _s3.CopyObjectAsync(Encrypt(new CopyObjectRequest
                 {
                     SourceBucket = _options.Bucket, SourceKey = staging, DestinationBucket = _options.Bucket, DestinationKey = KeyFor(sha),
                     ContentType = "application/octet-stream",
-                }), ct);
+                }), t), ct);
             }
             return new StoredContent(sha, total);
         }
         finally
         {
             // Staging objects never outlive the upload, whether it succeeded or not.
-            if (completed) await _s3.DeleteObjectAsync(_options.Bucket, staging, CancellationToken.None);
-            else await _s3.AbortMultipartUploadAsync(_options.Bucket, staging, init.UploadId, CancellationToken.None);
+            // Bounded like every other call; when the store is down the leftover staging object is all that remains.
+            try
+            {
+                if (completed) await CallAsync(t => _s3.DeleteObjectAsync(_options.Bucket, staging, t), CancellationToken.None);
+                else await CallAsync(t => _s3.AbortMultipartUploadAsync(_options.Bucket, staging, init.UploadId, t), CancellationToken.None);
+            }
+            catch (VaultUnavailableException)
+            {
+            }
         }
     }
 
@@ -165,7 +213,7 @@ public sealed class ObjectVault : IDisposable
     {
         try
         {
-            var head = await _s3.GetObjectMetadataAsync(_options.Bucket, KeyFor(sha256), ct);
+            var head = await CallAsync(t => _s3.GetObjectMetadataAsync(_options.Bucket, KeyFor(sha256), t), ct);
             // A different size means the stored object is damaged; rewriting it with the bytes its key names repairs it.
             return head.ContentLength == sizeBytes;
         }
@@ -184,13 +232,13 @@ public sealed class ObjectVault : IDisposable
         GetObjectResponse response;
         try
         {
-            response = await _s3.GetObjectAsync(_options.Bucket, KeyFor(sha256), ct);
+            response = await CallAsync(t => _s3.GetObjectAsync(_options.Bucket, KeyFor(sha256), t), ct);
         }
         catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound)
         {
             throw new VaultIntegrityException(sha256, "the object is missing from the vault");
         }
-        return new VerifyingStream(response.ResponseStream, response, sha256, sizeBytes);
+        return new VerifyingStream(response.ResponseStream, response, sha256, sizeBytes, _options.RequestTimeout);
     }
 
     /// <summary>Reads the whole object once, verifying it, without keeping it in memory.</summary>
@@ -253,7 +301,7 @@ public sealed class ObjectVault : IDisposable
 
     public void Dispose() => _s3.Dispose();
 
-    private sealed class VerifyingStream(Stream inner, IDisposable owner, string sha256, long expectedSize) : Stream
+    private sealed class VerifyingStream(Stream inner, IDisposable owner, string sha256, long expectedSize, TimeSpan readTimeout) : Stream
     {
         private readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         private long _read;
@@ -269,7 +317,22 @@ public sealed class ObjectVault : IDisposable
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            var n = await inner.ReadAsync(buffer, cancellationToken);
+            // Each read is bounded: a store that stalls mid-download must not hold the request open forever.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(readTimeout);
+            int n;
+            try
+            {
+                n = await inner.ReadAsync(buffer, timeout.Token);
+            }
+            catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new VaultUnavailableException("the store stopped sending data", e);
+            }
+            catch (Exception e) when (e is IOException or HttpRequestException)
+            {
+                throw new VaultUnavailableException("the connection to the store failed", e);
+            }
             return Account(buffer.Span, n);
         }
 
