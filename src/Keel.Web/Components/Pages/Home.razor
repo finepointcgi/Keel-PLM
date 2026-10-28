@@ -1,0 +1,10 @@
+@page "/"
+@inject NavigationManager Nav
+
+<PageFrame Banner="@UiText.Unclassified" Title="Keel PLM">
+    <p>Opening parts…</p>
+</PageFrame>
+
+@code {
+    protected override void OnInitialized() => Nav.NavigateTo("parts", replace: true);
+}

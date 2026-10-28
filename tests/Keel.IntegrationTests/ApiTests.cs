@@ -141,13 +141,4 @@ public sealed class ApiTests(PostgresFixture pg)
         Assert.True(v.RootElement.GetProperty("valid").GetBoolean());
         Assert.Equal(1, v.RootElement.GetProperty("checkpointsChecked").GetInt32());
     }
-
-    [Fact]
-    public async Task Client_config_is_public_and_contains_no_secrets()
-    {
-        await using var api = await ApiFactory.CreateAsync(pg);
-        var config = await api.CreateClient().GetFromJsonAsync<JsonElement>("/api/v1/config");
-        Assert.Equal(ApiFactory.Issuer, config.GetProperty("authority").GetString());
-        Assert.Equal(3, config.EnumerateObject().Count());
-    }
 }

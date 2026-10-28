@@ -1,0 +1,68 @@
+@page "/audit"
+@attribute [Authorize(Policy = Policies.Auditor)]
+@inject CurrentUser Users
+@inject AuditLogService AuditLog
+
+@* ASSUMPTION(A20): audit records reveal who accessed export-controlled data, so the audit view is marked CUI. *@
+<PageFrame Banner="CUI" Title="Audit log">
+    <div class="toolbar">
+        <button type="button" @onclick="Verify" disabled="@busy">Verify chain</button>
+        <button type="button" class="secondary" @onclick="Load" disabled="@busy">Refresh</button>
+    </div>
+    @if (verification is not null)
+    {
+        <div class="@(verification.Valid ? "permit" : "deny")" role="status">
+            @(verification.Valid
+                ? $"Chain valid: {verification.EventsChecked} events, {verification.CheckpointsChecked} signed checkpoints."
+                : $"Chain INVALID: {string.Join("; ", verification.Failures)}")
+        </div>
+    }
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (events is not null)
+    {
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Seq</th><th scope="col">Time (UTC)</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Object</th><th scope="col">Outcome</th><th scope="col">Hash</th></tr></thead>
+            <tbody>
+                @foreach (var e in events)
+                {
+                    <tr>
+                        <td>@e.Seq</td>
+                        <td>@UiText.Utc(e.OccurredAt)</td>
+                        <td title="@e.Actor">@(AuditLogService.ActorName(e) ?? e.Actor)</td>
+                        <td>@e.Action</td>
+                        <td>@e.ObjectType @e.ObjectId</td>
+                        <td class="outcome-@e.Outcome.ToString().ToLowerInvariant()">@e.Outcome</td>
+                        <td><code title="@Convert.ToHexStringLower(e.Hash)">@Convert.ToHexStringLower(e.Hash)[..12]</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 200;
+    private IReadOnlyList<AuditRecord>? events;
+    private VerificationResult? verification;
+    private string? error;
+    private bool busy;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        busy = true;
+        var outcome = await AuditLog.ListAsync(await Users.GetAsync(), new AuditQuery(Limit: PageSize, NewestFirst: true), CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) events = outcome.Value;
+        else error = UiText.Message(outcome);
+        busy = false;
+    }
+
+    private async Task Verify()
+    {
+        busy = true;
+        var outcome = await AuditLog.VerifyAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) verification = outcome.Value; else error = UiText.Message(outcome);
+        busy = false;
+    }
+}

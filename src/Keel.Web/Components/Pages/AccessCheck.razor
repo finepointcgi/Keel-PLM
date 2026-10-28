@@ -1,0 +1,53 @@
+@page "/access"
+@inject CurrentUser Users
+
+<PageFrame Banner="@UiText.Unclassified" Title="Access check">
+    <p class="muted">See how a set of markings would apply to you. Nothing is saved.</p>
+    <EditForm Model="markings" OnSubmit="Evaluate" FormName="access-check" class="grid-form">
+        <MarkingsFields Value="markings" />
+        <label>
+            Action
+            <InputSelect @bind-Value="action">
+                @foreach (var a in Enum.GetValues<PlmAction>())
+                {
+                    <option value="@a">@a</option>
+                }
+            </InputSelect>
+        </label>
+        <div class="actions"><button type="submit">Check access</button></div>
+    </EditForm>
+
+    @if (errors is not null)
+    {
+        <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+    }
+    @if (decision is not null)
+    {
+        <div class="result" aria-live="polite">
+            <MarkingBanner Text="@banner" Position="top" />
+            <p class="@(decision.Permitted ? "permit" : "deny")">@(decision.Permitted ? "You would be permitted." : "You would be denied.")</p>
+            @if (decision.Reasons.Length > 0)
+            {
+                <ul>@foreach (var r in decision.Reasons) { <li>@UiText.Reason(r)</li> }</ul>
+            }
+        </div>
+    }
+</PageFrame>
+
+@code {
+    private readonly MarkingsInput markings = new();
+    private PlmAction action = PlmAction.Read;
+    private AccessDecision? decision;
+    private string banner = "";
+    private IReadOnlyList<string>? errors;
+
+    private async Task Evaluate()
+    {
+        var m = markings.Effective().ToMarkings();
+        decision = null;
+        errors = m.IsSuccess ? null : m.Errors;
+        if (!m.IsSuccess) return;
+        decision = AccessPolicy.Evaluate(await Users.GetAsync(), m.Value, action);
+        banner = m.Value.BannerText();
+    }
+}

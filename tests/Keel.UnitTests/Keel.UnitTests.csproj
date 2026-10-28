@@ -7,11 +7,13 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <PackageReference Include="xunit.v3" />
+    <PackageReference Include="bunit" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
     <ProjectReference Include="..\..\src\Keel.Security\Keel.Security.csproj" />
     <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Web\Keel.Web.csproj" />
   </ItemGroup>
 </Project>

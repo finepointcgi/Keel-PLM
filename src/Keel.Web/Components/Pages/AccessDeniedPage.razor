@@ -1,0 +1,5 @@
+@page "/access-denied"
+@attribute [AllowAnonymous]
+
+@* Target of the cookie handler's AccessDeniedPath. The HTTP authorization middleware has already audited the denial. *@
+<AccessDenied RecordDenial="false" />

@@ -1,9 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <!-- The Blazor components live in Keel.Web; the host must still publish the framework script (blazor.web.js). -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Keel.Core\Keel.Core.csproj" />
     <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
     <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\Keel.Parts\Keel.Parts.csproj" />
+    <ProjectReference Include="..\Keel.Web\Keel.Web.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="prometheus-net.AspNetCore" />
   </ItemGroup>

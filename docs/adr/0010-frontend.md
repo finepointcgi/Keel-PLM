@@ -1,6 +1,6 @@
 # ADR-0010: React SPA and large-tree rendering
 
-**Status:** Accepted · 2026-10-27
+**Status:** Superseded by [ADR-0014](0014-blazor-server-ui.md) · 2026-10-27
 
 ## Decision
 - React 19 + TypeScript (strict) + Vite, TanStack Query for server state, React Router.

@@ -12,6 +12,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Security"] = ["Keel.Core"],
         ["Keel.Audit"] = ["Keel.Core"],
         ["Keel.Parts"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts"],
     };
 
     [Fact]
@@ -49,6 +50,22 @@ public sealed partial class ArchitectureTests
             }
         }
         Assert.True(offenders.Count == 0, "Unfiltered list queries over marked tables:\n" + string.Join("\n", offenders));
+    }
+
+    /// <summary>ADR-0014: every routable page renders through PageFrame, which requires a marking banner.</summary>
+    [Fact]
+    public void Every_page_renders_through_page_frame()
+    {
+        var root = FindRepoRoot();
+        var pages = Directory.EnumerateFiles(Path.Combine(root, "src", "Keel.Web"), "*.razor", SearchOption.AllDirectories)
+            .Where(f => File.ReadAllText(f).Contains("@page \"", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(pages);
+        var offenders = pages.Where(f =>
+        {
+            var text = File.ReadAllText(f);
+            return !text.Contains("<PageFrame", StringComparison.Ordinal) && !text.Contains("<AccessDenied", StringComparison.Ordinal);
+        }).Select(f => Path.GetRelativePath(root, f)).ToList();
+        Assert.True(offenders.Count == 0, "Pages without PageFrame: " + string.Join(", ", offenders));
     }
 
     [GeneratedRegex(@"FROM\s+plm\.part_master\b[^\n]*", RegexOptions.IgnoreCase)]

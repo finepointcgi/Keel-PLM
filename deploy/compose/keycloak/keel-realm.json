@@ -34,21 +34,21 @@
   "clients": [
     {
       "clientId": "keel-web",
-      "name": "Keel web app",
-      "publicClient": true,
+      "name": "Keel web app (Blazor, server-side)",
+      "publicClient": false,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "fullScopeAllowed": true,
       "redirectUris": [
-        "http://localhost:5173/*"
+        "http://localhost:5080/signin-oidc"
       ],
       "webOrigins": [
-        "http://localhost:5173"
+        "http://localhost:5080"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:5173/*"
+        "post.logout.redirect.uris": "http://localhost:5080/signout-callback-oidc"
       },
       "protocolMappers": [
         {
@@ -164,7 +164,9 @@
             "id.token.claim": "false"
           }
         }
-      ]
+      ],
+      "clientAuthenticatorType": "client-secret",
+      "secret": "keel-web-dev-secret"
     },
     {
       "clientId": "keel-dev-cli",
@@ -327,7 +329,8 @@
       "realmRoles": [
         "plm-viewer",
         "plm-author"
-      ]
+      ],
+      "id": "d0f8df8c-51d0-5241-8c4f-f39864b95d21"
     },
     {
       "username": "bob",
@@ -365,7 +368,8 @@
       "realmRoles": [
         "plm-viewer",
         "plm-approver"
-      ]
+      ],
+      "id": "8c9e66a4-8f68-53a8-a31c-b63659bd1606"
     },
     {
       "username": "carmen",
@@ -400,7 +404,8 @@
       "realmRoles": [
         "plm-viewer",
         "plm-author"
-      ]
+      ],
+      "id": "d71e1cde-74f4-5fff-9fd7-019234d1a179"
     },
     {
       "username": "farid",
@@ -439,7 +444,8 @@
       "realmRoles": [
         "plm-viewer",
         "plm-author"
-      ]
+      ],
+      "id": "aa095f99-acae-5eb3-9bd2-63be9979225d"
     },
     {
       "username": "lena",
@@ -475,7 +481,8 @@
       ],
       "realmRoles": [
         "plm-viewer"
-      ]
+      ],
+      "id": "af861d49-91c6-598d-a63a-de2132f61634"
     },
     {
       "username": "audrey",
@@ -510,7 +517,8 @@
       ],
       "realmRoles": [
         "plm-auditor"
-      ]
+      ],
+      "id": "1e86fd8c-422a-548a-8c00-b5a61310c7f4"
     },
     {
       "username": "ada",
@@ -548,7 +556,8 @@
       "realmRoles": [
         "plm-admin",
         "plm-viewer"
-      ]
+      ],
+      "id": "6309dde6-88f6-5e28-82cf-84c97d4fa14b"
     }
   ],
   "components": {

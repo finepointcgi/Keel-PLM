@@ -23,11 +23,14 @@ public static class CorrelationId
             await next(context);
     });
 
-    /// <summary>OWASP-recommended response headers. CSP allows only same-origin resources (air-gapped, no CDNs).</summary>
-    public static IApplicationBuilder UseSecurityHeaders(this IApplicationBuilder app) => app.Use(async (context, next) =>
+    /// <summary>
+    /// OWASP-recommended response headers. CSP allows only same-origin resources (air-gapped, no CDNs); form-action also
+    /// allows the IdP origin because sign-out POSTs redirect there, and CSP applies form-action to redirects.
+    /// </summary>
+    public static IApplicationBuilder UseSecurityHeaders(this IApplicationBuilder app, string? identityProviderOrigin) => app.Use(async (context, next) =>
     {
         var h = context.Response.Headers;
-        h["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+        h["Content-Security-Policy"] = $"default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'{(identityProviderOrigin is null ? "" : " " + identityProviderOrigin)}";
         h["X-Content-Type-Options"] = "nosniff";
         h["Referrer-Policy"] = "no-referrer";
         h["Cross-Origin-Opener-Policy"] = "same-origin";

@@ -1,0 +1,50 @@
+@foreach (var d in Definitions)
+{
+    var label = LabelFor(d);
+    if (d.DataType == "boolean")
+    {
+        <label class="checkbox">
+            <input type="checkbox" checked="@(Get(d.Name) == "true")" @onchange="e => SetFlag(d.Name, e.Value)" />
+            @label
+        </label>
+    }
+    else if (d.DataType == "enum")
+    {
+        <label>
+            @label
+            <select value="@Get(d.Name)" @onchange="e => Set(d.Name, e.Value as string)">
+                <option value="">Not set</option>
+                @foreach (var v in d.EnumValues!)
+                {
+                    <option value="@v">@v</option>
+                }
+            </select>
+        </label>
+    }
+    else
+    {
+        <label>
+            @label
+            <input value="@Get(d.Name)" maxlength="@(d.MaxLength ?? 4000)" inputmode="@(d.DataType == "number" ? "decimal" : "text")"
+                   @onchange="e => Set(d.Name, e.Value as string)" />
+        </label>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<AttributeDefinition> Definitions { get; set; }
+    [Parameter, EditorRequired] public required AttributeInput Value { get; set; }
+
+    private static string LabelFor(AttributeDefinition d) =>
+        d.Label + (d.Unit is null ? "" : " (" + d.Unit + ")") + (d.Required ? " *" : "");
+
+    private string Get(string name) => Value.Values.TryGetValue(name, out var v) ? v : "";
+
+    private void SetFlag(string name, object? value) => Set(name, Equals(value, true) ? "true" : null);
+
+    private void Set(string name, string? v)
+    {
+        if (string.IsNullOrEmpty(v)) Value.Values.Remove(name);
+        else Value.Values[name] = v;
+    }
+}

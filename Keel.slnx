@@ -6,6 +6,7 @@
     <Project Path="src/Keel.Core/Keel.Core.csproj" />
     <Project Path="src/Keel.Parts/Keel.Parts.csproj" />
     <Project Path="src/Keel.Security/Keel.Security.csproj" />
+    <Project Path="src/Keel.Web/Keel.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Keel.IntegrationTests/Keel.IntegrationTests.csproj" />
