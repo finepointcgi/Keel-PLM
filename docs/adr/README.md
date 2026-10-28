@@ -23,3 +23,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0016](0016-part-document-links.md) | Part-document link semantics (iteration-owned) | Accepted |
 | [0017](0017-bom-structure-and-explosion.md) | BOM structure, explosion and redaction | Accepted |
 | [0018](0018-workflow-and-esignature.md) | Workflow engine and e-signature | Accepted |
+| [0019](0019-change-management.md) | Change management (PR/ECR/ECN/CT, revise-in-change) | Accepted |

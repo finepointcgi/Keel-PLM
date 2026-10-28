@@ -35,4 +35,4 @@ assumption is confirmed or overturned.
 | A26 | Separation of duties | The submitter of a review cannot be a participant, cannot sign, and cannot be a reassignment target. (Workflow notes call this A51.) | ADR-0018 |
 | A27 | BOM assumptions | BOM-1..BOM-16 (Assembly-only parents, 5,000 children per iteration, designators unique per parent, caps, summary defaults, find-number path addressing) are listed in `docs/increments/1.4-bom.md` and ADR-0017. | ADR-0017 |
 | A28 | Review entry | Under Review is entered and left only through the workflow engine; administrators can override with a reason (audited as `part.set_state`). | ADR-0018 |
-
+| A29 | Change management | CHG-1..CHG-17 (single change table, revision created when a part is added to an ECN, marking dominance, Class I/II rules, ECR implemented when last ECN releases) are in `docs/increments/1.6-change.md` and ADR-0019. | ADR-0019 |
