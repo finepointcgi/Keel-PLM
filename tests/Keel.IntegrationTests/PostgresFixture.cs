@@ -19,6 +19,10 @@ public sealed class PostgresFixture : IAsyncLifetime
         .WithTmpfsMount("/var/lib/postgresql/data")
         .Build();
     private int _counter;
+    // Test databases live in the container's tmpfs (memory). The suite is serial (one collection), so only the newest few are ever in use;
+    // older ones are dropped as new ones are created, keeping the footprint flat however many tests there are.
+    private const int DatabasesToKeep = 12;
+    private readonly Queue<string> _created = new();
 
     public static string MigrationsDirectory => Path.Combine(RepoRoot, "db/migrations");
 
@@ -59,6 +63,17 @@ public sealed class PostgresFixture : IAsyncLifetime
         await using (var conn = new NpgsqlConnection(SuperuserConnectionString("postgres")))
         {
             await conn.OpenAsync();
+            string? stale = null;
+            lock (_created)
+            {
+                _created.Enqueue(name);
+                if (_created.Count > DatabasesToKeep) stale = _created.Dequeue();
+            }
+            if (stale is not null)
+            {
+                await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS {stale} WITH (FORCE)", conn);
+                await drop.ExecuteNonQueryAsync();
+            }
             await using var cmd = new NpgsqlCommand($"CREATE DATABASE {name} OWNER keel_migrator; GRANT CONNECT ON DATABASE {name} TO keel_app; REVOKE ALL ON DATABASE {name} FROM PUBLIC;", conn);
             await cmd.ExecuteNonQueryAsync();
         }

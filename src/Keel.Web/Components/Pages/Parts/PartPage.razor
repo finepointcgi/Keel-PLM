@@ -5,7 +5,7 @@
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
 
-<PageFrame Banner="@(bomBanner ?? part?.Banner ?? UiText.Unclassified)" Title="Part">
+<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner)" Title="Part">
     @if (notFound)
     {
         <p class="error" role="alert">Part @Number was not found, or you are not authorized to see it.</p>
@@ -108,6 +108,11 @@
             <PartReviewPanel Number="@p.Number" State="@p.Revision.State" Latest="@p.Revision.IsLatest" CheckedOut="@(p.Checkout is not null)"
                              CanModify="@p.Permissions.CanModify" OnChanged="Refresh" />
 
+            @* --- Changes panel (increment 1.6): open changes listing this part and the notice a revision belongs to --- *@
+            <Keel.Web.Components.Pages.Change.PartChangesPanel Number="@p.Number" Revision="@p.Revision.Revision" State="@p.Revision.State" Latest="@p.Revision.IsLatest"
+                                                               CanModify="@p.Permissions.CanModify" OnBanner="b => changesBanner = b" />
+            @* --- end changes panel --- *@
+
             <section class="panel">
                 <h3>Iteration @p.Iteration.Label</h3>
                 <p>@(string.IsNullOrEmpty(p.Iteration.Description) ? "No description" : p.Iteration.Description)</p>
@@ -190,6 +195,7 @@
     private AttributeInput? workingAttributes;
     private MarkingsInput? editMarkings;
     private string? bomBanner; // 1.4: aggregate banner reported by the BOM section
+    private string? changesBanner; // 1.6: aggregate banner reported by the changes panel
 
     private static string Corr() => CurrentUser.NewCorrelationId();
 
@@ -198,6 +204,7 @@
     protected override async Task OnParametersSetAsync()
     {
         bomBanner = null; // 1.4: the BOM section republishes its aggregate banner after it reloads
+        changesBanner = null; // 1.6: likewise the changes panel
         await using (var conn = await Db.OpenConnectionAsync())
         {
             defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);

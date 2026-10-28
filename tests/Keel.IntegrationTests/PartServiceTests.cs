@@ -58,9 +58,11 @@ public sealed class PartServiceTests(PostgresFixture pg)
         Assert.Equal("CUI//EXPT · ITAR USML XI(d) · DISTRIBUTION D · PROGRAM ORCA", p.Banner);
         Assert.Equal("alice", p.CreatedBy);
         Assert.True(p.Permissions.CanModify);
-        var transition = Assert.Single(p.Transitions);
+        var transition = Assert.Single(p.Transitions, t => t.To == "UnderReview");
         // Review states belong to the workflow engine since 1.5: the manual path no longer enters Under Review.
         Assert.Equal(("UnderReview", false), (transition.To, transition.Allowed));
+        // 1.6: a revision a change abandons becomes Obsolete through the change process only.
+        Assert.Contains(p.Transitions, t => t.To == "Obsolete" && t.Via == "change" && !t.Allowed);
 
         var e = Assert.Single(await Audit(ds));
         Assert.Equal(("part.create", AuditOutcome.Success, "P-000001", "corr-1"), (e.Action, e.Outcome, e.ObjectId, e.CorrelationId));
@@ -143,7 +145,7 @@ public sealed class PartServiceTests(PostgresFixture pg)
 
         var co = (await svc.CheckOutAsync(Alice, "P-000001", null)).Value!;
         Assert.True(co.Checkout!.IsMine);
-        Assert.False(co.Transitions.Single().Allowed);
+        Assert.False(co.Transitions.Single(t => t.To == "UnderReview").Allowed);
 
         Assert.Equal(OutcomeKind.Conflict, (await svc.CheckOutAsync(Bob, "P-000001", null)).Kind);
         var bobView = (await svc.GetAsync(Bob, "P-000001", null, null)).Value!;

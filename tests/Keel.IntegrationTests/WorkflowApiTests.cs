@@ -184,8 +184,10 @@ public sealed class WorkflowApiTests(PostgresFixture pg)
         var admin = api.ClientFor(Token("ada", ["plm-admin", "plm-viewer"]));
 
         var listed = await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates");
-        Assert.Equal("part-release-review", listed[0].GetProperty("id").GetString());
-        Assert.Equal(2, listed[0].GetProperty("slots").GetArrayLength());
+        var part = listed.EnumerateArray().Single(t => t.GetProperty("objectType").GetString() == "part");
+        Assert.Equal("part-release-review", part.GetProperty("id").GetString());
+        Assert.Equal(2, part.GetProperty("slots").GetArrayLength());
+        Assert.Equal(["ecn", "ecr", "part"], listed.EnumerateArray().Select(t => t.GetProperty("objectType").GetString()!).Order()); // 1.6 seeds ECR and ECN templates
 
         var invalid = await admin.PostAsJsonAsync("/api/v1/workflow/templates", new { id = "orphans", name = "O", objectType = "part", start = "flow",
             nodes = new object[] { new { id = "flow", type = "Serial", steps = new[] { "done" } }, new { id = "done", type = "End", outcome = "Release" }, new { id = "lost", type = "End", outcome = "Release" } } });
@@ -203,8 +205,9 @@ public sealed class WorkflowApiTests(PostgresFixture pg)
             """).RootElement);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.Equal(2, (await Json(created)).GetProperty("version").GetInt32());
-        Assert.Equal("Part release review, any approver", (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates"))[0].GetProperty("name").GetString());
-        Assert.Equal(2, (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates?all=true")).GetArrayLength());
+        var active = (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates")).EnumerateArray().Single(t => t.GetProperty("id").GetString() == "part-release-review");
+        Assert.Equal("Part release review, any approver", active.GetProperty("name").GetString());
+        Assert.Equal(4, (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates?all=true")).GetArrayLength()); // two part versions, ECR, ECN
     }
 
     [Fact]

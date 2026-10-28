@@ -71,6 +71,40 @@ internal sealed class BomParticipant : IPartIterationParticipant
         await ins.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>
+    /// A change notice created the next revision: its first iteration starts with the structure of the revision it replaces (ADR-0019).
+    /// Same children, so no cycle can appear; the structure guards still apply (the new revision is unlocked).
+    /// </summary>
+    public async Task OnReviseAsync(DbTransaction tx, Guid fromIterationId, Guid newIterationId, CancellationToken ct)
+    {
+        var (conn, t) = Unwrap(tx);
+        await using var ins = new NpgsqlCommand(
+            """
+            INSERT INTO plm.bom_usage (id, parent_iteration_id, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by)
+            SELECT gen_random_uuid(), @to, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by
+            FROM plm.bom_usage WHERE parent_iteration_id = @from
+            """, conn, t);
+        ins.Parameters.AddWithValue("to", newIterationId);
+        ins.Parameters.AddWithValue("from", fromIterationId);
+        await ins.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>The usage lines of an iteration as stable text, for the content fingerprint a change notice's signatures cover.</summary>
+    public async Task<string?> DescribeContentAsync(DbTransaction tx, Guid iterationId, CancellationToken ct)
+    {
+        var (conn, t) = Unwrap(tx);
+        var lines = new List<string>();
+        await using var cmd = new NpgsqlCommand(
+            """
+            SELECT concat_ws('|', find_number::text, child_master_id::text, quantity::text, unit, array_to_string(reference_designators, ','), COALESCE(notes, ''))
+            FROM plm.bom_usage WHERE parent_iteration_id = @it ORDER BY find_number
+            """, conn, t);
+        cmd.Parameters.AddWithValue("it", iterationId);
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct)) lines.Add(r.GetString(0));
+        return lines.Count == 0 ? null : "bom:" + string.Join(';', lines);
+    }
+
     private static (NpgsqlConnection, NpgsqlTransaction) Unwrap(DbTransaction tx) =>
         tx is NpgsqlTransaction t && t.Connection is { } c
             ? (c, t)

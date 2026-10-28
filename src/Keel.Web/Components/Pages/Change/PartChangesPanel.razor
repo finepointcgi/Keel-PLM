@@ -1,0 +1,60 @@
+@inject CurrentUser Users
+@inject ChangeService Changes
+
+@* "Changes affecting this part" for the part page (increment 1.6): open requests and notices, the notice a revision belongs to, and the Request change button. *@
+@if (changes is not null)
+{
+    <section class="panel" aria-labelledby="part-changes-heading">
+        <h3 id="part-changes-heading">Changes affecting this part</h3>
+        @if (changes.BoundTo is { } bound)
+        {
+            <p>Revision @Revision was created by change notice <a href="@ChangeUi.Href(bound.Number)">@bound.Number</a> (@bound.StateLabel) and is released with it.</p>
+        }
+        else if (changes.BoundToHidden)
+        {
+            <p>Revision @Revision was created by a change notice you are not authorized to see and is released with it.</p>
+        }
+        @if (changes.Open.Count == 0)
+        {
+            <p class="muted">No open change request or notice lists this part.</p>
+        }
+        else
+        {
+            <ul class="plain">
+                @foreach (var c in changes.Open)
+                {
+                    <li><a href="@ChangeUi.Href(c.Number)">@c.Number</a> @c.Title <span class="badge @ChangeUi.StateClass(c.State)">@c.StateLabel</span></li>
+                }
+            </ul>
+        }
+        @if (CanRequest)
+        {
+            <a class="button" href="@($"{ChangeUi.NewHref(ChangeTypes.Ecn)}?part={Uri.EscapeDataString(Number)}")">Request change</a>
+            <span class="muted small">Opens a change notice that revises this released revision.</span>
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>Revision label shown on the page.</summary>
+    [Parameter, EditorRequired] public required string Revision { get; set; }
+    /// <summary>Lifecycle state key of the revision shown.</summary>
+    [Parameter, EditorRequired] public required string State { get; set; }
+    [Parameter] public bool Latest { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    /// <summary>Raised with the aggregate banner of the part and the changes shown, so the page banner covers them.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    private ObjectChanges? changes;
+
+    private bool CanRequest => State == "Released" && Latest && CanModify && changes?.BoundTo is null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var outcome = await Changes.ChangesForObjectAsync(await Users.GetAsync(), "part", Number, Revision, CurrentUser.NewCorrelationId());
+        changes = outcome.IsOk ? outcome.Value : null;
+        // Only changes that are shown can raise the banner; with none listed the page keeps the part's own banner.
+        await OnBanner.InvokeAsync(changes is { Open.Count: > 0 } ? changes.PageBanner : UiText.Unclassified);
+    }
+}

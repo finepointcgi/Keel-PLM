@@ -1,0 +1,145 @@
+@inject CurrentUser Users
+@inject ImpactAnalysisService Impact
+
+<section class="panel" aria-labelledby="impact-heading">
+    <h3 id="impact-heading">Impact analysis</h3>
+    <p class="muted small">Where the affected parts are used, other open changes that touch them, the documents that describe them and, for revised assemblies, how their structure changed. Parents and documents you may not see are shown as placeholders.</p>
+    <div class="toolbar">
+        <label class="inline">Levels
+            <select aria-label="Where-used levels" @bind="levels">
+                @foreach (var l in new[] { 1, 2, 3, 5, 10 }) { <option value="@l">@l</option> }
+            </select>
+        </label>
+        <button type="button" disabled="@busy" @onclick="Run">@(report is null ? "Run impact analysis" : "Run again")</button>
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (report is { } r)
+    {
+        var s = r.Summary;
+        <ul class="plain" aria-label="Summary">
+            <li>@s.AffectedObjects affected object@(s.AffectedObjects == 1 ? "" : "s")@(s.HiddenObjects > 0 ? $" ({s.HiddenObjects} hidden from you)" : "")</li>
+            <li>@s.WhereUsedParents place@(s.WhereUsedParents == 1 ? "" : "s") used@(s.RedactedParents > 0 ? $", plus {s.RedactedParents} restricted" : "")</li>
+            <li>@s.Documents linked document@(s.Documents == 1 ? "" : "s")@(s.RedactedDocuments > 0 ? $", plus {s.RedactedDocuments} restricted" : "")</li>
+            <li>@s.StructureChanges structure change@(s.StructureChanges == 1 ? "" : "s") in revised assemblies</li>
+            <li class="@(s.OpenConflicts > 0 ? "error" : null)">@s.OpenConflicts other open change@(s.OpenConflicts == 1 ? "" : "s") touching the same parts or their parents</li>
+        </ul>
+
+        @if (r.Conflicts.Count > 0)
+        {
+            <h4>Conflicts</h4>
+            <div class="table-wrap"><table class="data">
+                <thead><tr><th scope="col">Change</th><th scope="col">Title</th><th scope="col">State</th><th scope="col">Why</th><th scope="col">Part</th></tr></thead>
+                <tbody>
+                    @foreach (var c in r.Conflicts)
+                    {
+                        <tr>
+                            <td><a href="@ChangeUi.Href(c.ChangeNumber)">@c.ChangeNumber</a></td>
+                            <td>@c.Title</td>
+                            <td>@c.StateLabel</td>
+                            <td>@c.Kind</td>
+                            <td>@c.ObjectKey</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        }
+
+        @foreach (var o in r.Objects)
+        {
+            <article class="stack">
+                @if (o.Redacted)
+                {
+                    <h4><span class="redacted">Restricted object</span> · @ChangeUi.ActionLabel(o.Action)</h4>
+                    <p class="muted">You are not authorized to see this object, so nothing about its use is shown.</p>
+                }
+                else
+                {
+                    <h4><a href="@ChangeUi.PartHref(o.Key!)">@o.Key</a> @o.Name · revision @o.Revision · @ChangeUi.ActionLabel(o.Action)</h4>
+                    <h5>Where used</h5>
+                    @if (o.WhereUsed.Count == 0) { <p class="muted">Not used in any structure you can see.</p> }
+                    else
+                    {
+                        <div class="table-wrap"><table class="data">
+                            <thead><tr><th scope="col">Level</th><th scope="col">Used in</th><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Find</th><th scope="col">Qty</th></tr></thead>
+                            <tbody>
+                                @foreach (var w in o.WhereUsed)
+                                {
+                                    <tr>
+                                        <td>@w.Level</td>
+                                        @if (w.Redacted)
+                                        {
+                                            <td colspan="3"><span class="redacted" title="You are not authorized to see this assembly">Restricted assembly</span></td>
+                                        }
+                                        else
+                                        {
+                                            <td><a href="@ChangeUi.PartHref(w.ParentKey!)">@w.ParentKey</a> @w.ParentName</td>
+                                            <td>@w.ParentRevision</td>
+                                            <td>@w.ParentState</td>
+                                        }
+                                        <td>@w.FindNumber</td>
+                                        <td>@w.Quantity @w.Unit</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table></div>
+                    }
+                    <h5>Linked documents</h5>
+                    @if (o.Documents.Count == 0) { <p class="muted">No linked documents.</p> }
+                    else
+                    {
+                        <ul class="plain">
+                            @foreach (var d in o.Documents)
+                            {
+                                <li>
+                                    @if (d.Redacted) { <span class="redacted">Restricted document</span> }
+                                    else { <a href="documents/@Uri.EscapeDataString(d.Number!)">@d.Number</a> <span>@d.Name (@d.DocumentType, revision @d.Revision)</span> }
+                                    · @d.LinkType
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (o.Compare is { } c)
+                    {
+                        <h5>Structure change, @c.From to @c.To</h5>
+                        @if (c.Changes.Count == 0) { <p class="muted">@o.CompareNote</p> }
+                        else
+                        {
+                            <ul class="plain">
+                                @foreach (var d in c.Changes)
+                                {
+                                    <li>@d.Kind: @(d.Redacted ? "restricted part" : $"{d.Key} {d.Name}") <span class="muted">@d.Summary</span></li>
+                                }
+                            </ul>
+                        }
+                    }
+                    else if (o.CompareNote is not null) { <p class="muted">@o.CompareNote</p> }
+                }
+            </article>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>Raised with the analysis' markings so the page banner covers what the panel adds to the page.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    private int levels = 5;
+    private bool busy;
+    private string? error;
+    private ImpactReport? report;
+
+    private async Task Run()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Impact.AnalyzeAsync(await Users.GetAsync(), Number, levels, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk)
+        {
+            report = outcome.Value;
+            await OnShown.InvokeAsync(report!.Shown);
+        }
+        else error = ChangeUi.Message(outcome);
+    }
+}

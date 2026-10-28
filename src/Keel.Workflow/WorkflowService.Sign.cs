@@ -134,7 +134,7 @@ public sealed partial class WorkflowService
             var released = outcome == InstanceOutcome.Approved;
             var step = released
                 ? await gateway.CompleteReleaseAsync(conn, tx, obj, inst.IterationId, subject, now, ct)
-                : await gateway.ReturnToInWorkAsync(conn, tx, obj, subject, now, ct);
+                : await gateway.CompleteRejectionAsync(conn, tx, obj, subject, now, ct); // 1.6: an ECR has a distinct Rejected state
             if (!step.IsOk)
             {
                 await tx.RollbackAsync(ct);

@@ -10,8 +10,11 @@ namespace Keel.Parts;
 /// run in the engine's transaction. State changes honour the lifecycle data of 0002: each transition used here must exist
 /// and be tagged <c>workflow</c>, so release stays impossible through any other path.
 /// </summary>
-public sealed class PartWorkflowGateway : IWorkflowObjectGateway
+public sealed class PartWorkflowGateway(IEnumerable<IChangeBindingGuard>? bindingGuards = null) : IWorkflowObjectGateway
 {
+    // 1.6: a revision created by an open change notice is released only through that notice (ADR-0019).
+    private readonly IChangeBindingGuard[] _bindingGuards = bindingGuards?.ToArray() ?? [];
+
     private const string InWork = "InWork";
     private const string UnderReview = "UnderReview";
     private const string Released = "Released";
@@ -74,6 +77,9 @@ public sealed class PartWorkflowGateway : IWorkflowObjectGateway
         if (!obj.IsLatestRevision) return GatewayResult.Fail($"Revision {obj.Revision} is not the latest revision.");
         if (obj.State != InWork) return GatewayResult.Fail($"Revision {obj.Revision} is {obj.StateLabel}; only parts In Work can be submitted for review.");
         if (obj.CheckedOutBy is not null) return GatewayResult.Fail($"Checked out by {obj.CheckedOutBy}; check in or undo the check-out first.");
+        foreach (var guard in _bindingGuards)
+            if (await guard.BoundChangeAsync(conn, tx, ObjectType, obj.RevisionId, ct) is { } change)
+                return GatewayResult.Fail($"Revision {obj.Revision} belongs to change notice {change} and is released only with it. Submit {change} for review instead.");
         return await TransitionAsync(conn, tx, obj, InWork, UnderReview, actor, now, ct);
     }
 

@@ -1,0 +1,104 @@
+@inject CurrentUser Users
+@inject ChangeService Changes
+@inject WorkflowService Flow
+
+<section class="panel" aria-labelledby="tasks-heading">
+    <h3 id="tasks-heading">Change tasks</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Detail.Tasks.Count == 0)
+    {
+        <p class="muted">No change tasks.</p>
+    }
+    else
+    {
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Task</th><th scope="col">Title</th><th scope="col">Assignee</th><th scope="col">Due</th><th scope="col">State</th><th scope="col">Note</th><th scope="col"></th></tr></thead>
+            <tbody>
+                @foreach (var t in Detail.Tasks)
+                {
+                    <tr>
+                        <td>@t.Number</td>
+                        <td>@t.Title@if (t.Description.Length > 0) { <br /><span class="muted small">@t.Description</span> }</td>
+                        <td>@t.AssigneeName (@t.AssigneeUsername)</td>
+                        <td class="@(t.Overdue ? "error" : null)">@ChangeUi.DueText(t.DueDate, t.Overdue)</td>
+                        <td>@t.StateLabel</td>
+                        <td>@(t.CompletionNote ?? t.CancelReason)</td>
+                        <td>
+                            @if (t.CanStart) { <button type="button" class="secondary" disabled="@busy" @onclick="() => Start(t)">Start</button> }
+                            @if (t.CanComplete || t.CanCancel)
+                            {
+                                <input aria-label="Note for @t.Number" placeholder="@(t.CanComplete ? "Completion note or cancel reason" : "Cancel reason")" @bind="notes[t.Number]" />
+                                @if (t.CanComplete) { <button type="button" disabled="@busy" @onclick="() => Complete(t)">Complete</button> }
+                                @if (t.CanCancel) { <button type="button" class="secondary" disabled="@busy" @onclick="() => Cancel(t)">Cancel task</button> }
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    }
+
+    @if (Detail.Permissions.CanModify && !Detail.IsFinal)
+    {
+        <h4>New task</h4>
+        <div class="grid-form">
+            <label>Title * <input maxlength="200" @bind="title" /></label>
+            <label>Due date <input type="date" @bind="due" /></label>
+            <label>
+                Assignee *
+                <input list="assignee-options" placeholder="Name or login" @bind="assignee" @bind:event="oninput" @bind:after="FindUsers" />
+                <datalist id="assignee-options">
+                    @foreach (var u in candidates) { <option value="@u.Username">@u.DisplayName</option> }
+                </datalist>
+            </label>
+            <label class="wide">Description <input maxlength="4000" @bind="description" /></label>
+        </div>
+        <div class="toolbar"><button type="button" disabled="@(busy || title.Trim().Length == 0 || assignee.Trim().Length == 0)" @onclick="Create">Create task</button></div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required ChangeDetail Detail { get; set; }
+    [Parameter] public EventCallback<ChangeDetail> OnUpdated { get; set; }
+
+    private readonly Dictionary<string, string> notes = new(StringComparer.Ordinal);
+    private string title = "", description = "", assignee = "";
+    private DateTime? due;
+    private IReadOnlyList<DirectoryUserView> candidates = [];
+    private bool busy;
+    private string? error;
+
+    protected override void OnParametersSet()
+    {
+        foreach (var t in Detail.Tasks) notes.TryAdd(t.Number, "");
+    }
+
+    private async Task FindUsers()
+    {
+        if (assignee.Trim().Length < 2) { candidates = []; return; }
+        var found = await Flow.SearchUsersAsync(await Users.GetAsync(), assignee, null, "ecn", Detail.Number, 10, CurrentUser.NewCorrelationId());
+        candidates = found.IsOk ? found.Value! : [];
+    }
+
+    private Task Create() => Run(async s =>
+    {
+        var outcome = await Changes.CreateTaskAsync(s, Detail.Number,
+            new CreateTaskCommand(title, description, assignee.Trim(), due is { } d ? DateOnly.FromDateTime(d) : null), CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) (title, description, assignee, due) = ("", "", "", null);
+        return outcome;
+    });
+
+    private Task Start(TaskView t) => Run(s => Changes.StartTaskAsync(s, t.Number, CurrentUser.NewCorrelationId()));
+    private Task Complete(TaskView t) => Run(s => Changes.CompleteTaskAsync(s, t.Number, notes[t.Number], CurrentUser.NewCorrelationId()));
+    private Task Cancel(TaskView t) => Run(s => Changes.CancelTaskAsync(s, t.Number, notes[t.Number], CurrentUser.NewCorrelationId()));
+
+    private async Task Run(Func<Subject, Task<Outcome<ChangeDetail>>> op)
+    {
+        busy = true;
+        error = null;
+        var outcome = await op(await Users.GetAsync());
+        busy = false;
+        if (outcome.IsOk) await OnUpdated.InvokeAsync(outcome.Value);
+        else error = ChangeUi.Message(outcome);
+    }
+}

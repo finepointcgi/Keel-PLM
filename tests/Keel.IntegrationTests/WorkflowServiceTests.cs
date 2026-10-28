@@ -344,7 +344,10 @@ public sealed class WorkflowServiceTests(PostgresFixture pg)
     public async Task Templates_list_and_admins_upload_validated_new_versions()
     {
         var env = await CreateAsync(pg);
-        var seeded = Assert.Single(await env.Flow.ListTemplatesAsync(Alice, true, null));
+        // 1.6 seeds the ECR CCB and ECN release templates next to the part template.
+        var seededTemplates = await env.Flow.ListTemplatesAsync(Alice, true, null);
+        Assert.Equal(["ecn", "ecr", "part"], seededTemplates.Select(t => t.ObjectType).Order());
+        var seeded = Assert.Single(seededTemplates, t => t.ObjectType == "part");
         Assert.Equal(("part-release-review", 1, true), (seeded.Id, seeded.Version, seeded.IsActive));
         Assert.Equal(["reviewer", "approvers"], seeded.Slots.Select(s => s.Name));
 
@@ -362,9 +365,9 @@ public sealed class WorkflowServiceTests(PostgresFixture pg)
         // Replacing the seeded template creates version 2 and retires version 1.
         var replacement = (await env.Flow.UploadTemplateAsync(Ada, SeededWithName("Part release review (v2)"), null)).Value!;
         Assert.Equal(2, replacement.Version);
-        var active = await env.Flow.ListTemplatesAsync(Alice, true, null);
+        var active = (await env.Flow.ListTemplatesAsync(Alice, true, null)).Where(t => t.ObjectType == "part").ToList();
         Assert.Equal(["Any approver releases", "Part release review (v2)"], active.Select(t => t.Name).Order());
-        var all = await env.Flow.ListTemplatesAsync(Alice, false, null);
+        var all = (await env.Flow.ListTemplatesAsync(Alice, false, null)).Where(t => t.ObjectType == "part").ToList();
         Assert.Equal(3, all.Count);
         Assert.False(all.Single(t => t.Id == "part-release-review" && t.Version == 1).IsActive);
 

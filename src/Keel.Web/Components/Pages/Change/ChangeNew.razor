@@ -1,0 +1,134 @@
+@page "/changes/new/{Type}"
+@inject CurrentUser Users
+@inject ChangeService Changes
+@inject NavigationManager Nav
+
+@* A blank form shows no controlled data; the markings being entered appear on the created change. *@
+<PageFrame Banner="@UiText.Unclassified" Title="@Title">
+    @if (kind is null)
+    {
+        <p class="error" role="alert">Unknown change type '@Type'. Choose problem report, change request or change notice from the Changes page.</p>
+    }
+    else
+    {
+        <EditForm Model="this" OnSubmit="Create" FormName="new-change" class="stack">
+            <fieldset class="grid-form">
+                <legend>@ChangeUi.TypeName(kind)</legend>
+                <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
+                <label>
+                    Priority
+                    <InputSelect @bind-Value="priority">@foreach (var p in ChangePriorities.All) { <option value="@p">@p</option> }</InputSelect>
+                </label>
+                @if (kind == ChangeTypes.Ecr)
+                {
+                    <label>
+                        Class
+                        <InputSelect @bind-Value="changeClass">
+                            <option value="">Not classified yet</option>
+                            <option value="I">Class I (needs CCB approval)</option>
+                            <option value="II">Class II</option>
+                        </InputSelect>
+                    </label>
+                }
+                @if (kind == ChangeTypes.Ecn)
+                {
+                    <p class="muted wide">Class II. A Class I change starts as a change request, which the CCB approves; open its notice from the approved request.</p>
+                }
+                <label class="wide">Description <InputTextArea @bind-Value="description" rows="4" maxlength="8000" /></label>
+                <label class="wide">Reason <InputTextArea @bind-Value="reason" rows="2" maxlength="4000" /></label>
+            </fieldset>
+            <fieldset class="grid-form">
+                <legend>Security markings</legend>
+                <p class="muted wide small">The markings of a change must cover every object it lists. Choose them to match the most restrictive object.</p>
+                <MarkingsFields Value="markings" />
+            </fieldset>
+            <fieldset class="stack">
+                <legend>Affected objects</legend>
+                @if (picked.Count > 0)
+                {
+                    <ul class="picked" aria-label="Chosen objects">
+                        @foreach (var p in picked)
+                        {
+                            <li>@p.Key: @ChangeUi.ActionLabel(p.Action) <button type="button" class="link" aria-label="Remove @p.Key" @onclick="() => picked.Remove(p)">Remove</button></li>
+                        }
+                    </ul>
+                }
+                <AffectedPicker OnAdd="Pick" AllowRevision="@(kind != ChangeTypes.Pr)" />
+            </fieldset>
+            @if (errors is not null)
+            {
+                <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+            }
+            @if (createdNumber is not null)
+            {
+                <p class="notice">@createdNumber was created. <a href="@ChangeUi.Href(createdNumber)">Open it</a> to fix what failed.</p>
+            }
+            <div class="toolbar">
+                <button type="submit" disabled="@busy">Create @ChangeUi.TypeName(kind).ToLowerInvariant()</button>
+                <a class="button secondary" href="changes">Cancel</a>
+            </div>
+        </EditForm>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Type { get; set; }
+    /// <summary>A part to start with (the "Request change" button of the part page).</summary>
+    [SupplyParameterFromQuery(Name = "part")] public string? Part { get; set; }
+
+    private sealed record PickedObject(string Key, string Action);
+
+    private string? kind;
+    private string title = "", description = "", reason = "", priority = "Medium", changeClass = "";
+    private readonly MarkingsInput markings = new();
+    private readonly List<PickedObject> picked = [];
+    private IReadOnlyList<string>? errors;
+    private string? createdNumber;
+    private bool busy;
+
+    private string Title => kind is null ? "New change" : $"New {ChangeUi.TypeName(kind).ToLowerInvariant()}";
+
+    protected override void OnParametersSet()
+    {
+        kind = Type.ToUpperInvariant() is var t && ChangeTypes.All.Contains(t) ? t : null;
+        if (Part is not null && picked.All(p => p.Key != Part) && kind is not null)
+            picked.Add(new PickedObject(Part, kind == ChangeTypes.Pr ? ChangeActions.None : ChangeActions.Revise));
+    }
+
+    private Task Pick(string key, string action, bool raise)
+    {
+        if (picked.All(p => p.Key != key)) picked.Add(new PickedObject(key, action));
+        return Task.CompletedTask;
+    }
+
+    private async Task Create()
+    {
+        errors = null;
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        busy = true;
+        var subject = await Users.GetAsync();
+        var cls = kind == ChangeTypes.Ecn ? ChangeClasses.II : changeClass == "" ? null : changeClass;
+        var outcome = await Changes.CreateAsync(subject, new CreateChangeCommand(kind!, title, description, priority, reason, m.Value, cls), CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk)
+        {
+            busy = false;
+            errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+            return;
+        }
+        var number = outcome.Value!.Number;
+        var failures = new List<string>();
+        foreach (var p in picked)
+        {
+            var added = await Changes.AddAffectedAsync(subject, number, new AddAffectedCommand("part", p.Key, p.Action), CurrentUser.NewCorrelationId());
+            if (!added.IsOk) failures.Add($"{p.Key}: {UiText.Message(added)}");
+        }
+        busy = false;
+        if (failures.Count == 0) Nav.NavigateTo(ChangeUi.Href(number));
+        else
+        {
+            createdNumber = number;
+            errors = failures;
+        }
+    }
+}
