@@ -26,3 +26,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0019](0019-change-management.md) | Change management (PR/ECR/ECN/CT, revise-in-change) | Accepted |
 | [0020](0020-container-images-and-offline-bundle.md) | Container images and offline bundle | Accepted |
 | [0023](0023-migration-importers.md) | Migration importers (PLMXML, Windchill extract, canonical package) | Accepted |
+| [0021](0021-baselines-and-effectivity.md) | Baselines and effectivity | Accepted |
