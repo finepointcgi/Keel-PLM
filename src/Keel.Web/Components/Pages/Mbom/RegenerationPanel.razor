@@ -1,0 +1,95 @@
+@* Update the MBOM from an EBOM that moved on (ADR-0024): compare, then accept the proposed changes line by line or all at once. The result is a NEW iteration; manufacturing
+   edits (declared adjustments, MBOM-only lines, manual lines) are never overwritten, review items are only reported. *@
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+<section class="panel stack" aria-labelledby="regen-heading">
+    <h3 id="regen-heading">Update from the EBOM</h3>
+    <p class="muted small">Compares this MBOM with the EBOM you choose and proposes what to change. Nothing is applied until you accept.</p>
+    <form class="toolbar" @onsubmit="Propose" aria-label="Compare with the EBOM">
+        <EbomSpecFields Value="specForm" Label="Update from: " />
+        <button type="submit" disabled="@busy">Compare</button>
+    </form>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    @if (proposal is { } p)
+    {
+        <p aria-live="polite">
+            @if (p.EbomChanged) { <text>The EBOM moved from @p.FromDerived to @p.ToEbom.</text> } else { <text>The MBOM is already derived from @p.ToEbom.</text> }
+            @p.RelinkedLines link@(p.RelinkedLines == 1 ? "" : "s") carried over, @p.PreservedManualLines manufacturing-only or manual line@(p.PreservedManualLines == 1 ? "" : "s") kept.
+        </p>
+        @if (p.Items.Count == 0) { <p class="muted">No line changes are proposed.@(p.EbomChanged ? " Accepting records the new EBOM version as the source." : "")</p> }
+        else
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Proposed changes</caption>
+                <thead><tr><th scope="col">Accept</th><th scope="col">Change</th><th scope="col">MBOM line</th><th scope="col">EBOM line</th><th scope="col">Part</th><th scope="col">What</th></tr></thead>
+                <tbody>
+                @foreach (var i in p.Items)
+                {
+                    <tr class="@(i.Actionable ? null : "muted-row")">
+                        <td>@if (i.Actionable) { <input type="checkbox" aria-label="Accept: @i.Summary" checked="@accepted.Contains(i.Id)" @onchange="e => Toggle(i.Id, e.Value is true)" /> }</td>
+                        <td>@MbomUiText.ProposalKind(i.Kind)</td><td>@i.MbomFind</td><td>@i.EbomFind</td>
+                        <td>@if (i.ChildNumber is not null) { <a href="parts/@Uri.EscapeDataString(i.ChildNumber)">@i.ChildNumber</a> @i.ChildName }</td>
+                        <td>@i.Summary</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+        @if (Detail.Permissions.CanModify)
+        {
+            <div class="toolbar">
+                <button type="button" disabled="@busy" @onclick="() => Apply(all: false)">Accept selected (@accepted.Count)</button>
+                <button type="button" class="secondary" disabled="@busy" @onclick="() => Apply(all: true)">Accept all proposed changes</button>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required MbomDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private readonly Keel.Web.Services.EbomSpecForm specForm = new();
+    private RegenerationProposal? proposal;
+    private readonly HashSet<string> accepted = new(StringComparer.Ordinal);
+    private string? error, message;
+    private bool busy;
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    private async Task Propose()
+    {
+        (error, message) = (null, null);
+        var (spec, problem) = specForm.ToSpec();
+        if (spec is null) { error = problem; return; }
+        var outcome = await Mbom.ProposeRegenerationAsync(await Users.GetAsync(), Detail.Summary.Number, spec, Corr());
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); proposal = null; return; }
+        proposal = outcome.Value;
+        accepted.Clear();
+        foreach (var i in proposal!.Items.Where(i => i.Actionable)) accepted.Add(i.Id);
+    }
+
+    private void Toggle(string id, bool on)
+    {
+        if (on) accepted.Add(id); else accepted.Remove(id);
+    }
+
+    private async Task Apply(bool all)
+    {
+        (error, message) = (null, null);
+        var (spec, problem) = specForm.ToSpec();
+        if (spec is null) { error = problem; return; }
+        busy = true;
+        var outcome = await Mbom.ApplyRegenerationAsync(await Users.GetAsync(), Detail.Summary.Number, spec, all ? null : new HashSet<string>(accepted, StringComparer.Ordinal), Corr());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        var r = outcome.Value!;
+        message = r.CreatedIteration
+            ? $"Created version {r.Label}: {r.Applied} change{(r.Applied == 1 ? "" : "s")} applied, {r.Skipped} left for you. {string.Join(" ", r.Notices)}"
+            : string.Join(" ", r.Notices);
+        proposal = null;
+        await OnChanged.InvokeAsync();
+    }
+}

@@ -1,0 +1,71 @@
+@page "/mboms/{Number}/compare"
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+@* Compare two versions (iterations) of one MBOM line by line (ADR-0024). The banner covers the MBOM and every readable part shown. *@
+<PageFrame Banner="@(comparison?.Banner ?? detail?.Summary.Banner ?? UiText.Unclassified)" Title="Compare MBOM versions">
+    <p><a href="@MbomUiText.Href(Number)">Back to @Number</a></p>
+    @if (detail is not null)
+    {
+        <form class="toolbar" @onsubmit="Run" aria-label="Choose the versions">
+            <label class="inline-check">From
+                <select aria-label="From version" @bind="from">@foreach (var i in versions) { <option value="@i">@i</option> }</select>
+            </label>
+            <label class="inline-check">To
+                <select aria-label="To version" @bind="to">@foreach (var i in versions) { <option value="@i">@i</option> }</select>
+            </label>
+            <button type="submit">Compare</button>
+        </form>
+    }
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (comparison is { } c)
+    {
+        <p class="muted" aria-live="polite">@c.From to @c.To: @c.Lines.Count change@(c.Lines.Count == 1 ? "" : "s"), @c.Unchanged unchanged</p>
+        @if (c.Lines.Count > 0)
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Differences between the versions</caption>
+                <thead><tr><th scope="col">Change</th><th scope="col">Part</th><th scope="col">Find</th><th scope="col">What</th></tr></thead>
+                <tbody>
+                @foreach (var l in c.Lines)
+                {
+                    <tr class="@("diff-" + l.Kind.ToString().ToLowerInvariant()) @(l.Redacted ? "restricted" : null)">
+                        <td>@ConfigurationText.ChangeKind(l.Kind)</td>
+                        <td>@if (l.Redacted) { <span class="restricted-label">Restricted item</span> } else { @($"{l.Number} {l.Name}") }</td>
+                        <td>@(l.FromFind == l.ToFind || l.FromFind is null ? l.ToFind : l.FromFind)</td>
+                        <td>@string.Join("; ", l.Changes)</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private MbomDetail? detail;
+    private MbomComparison? comparison;
+    private IReadOnlyList<string> versions = [];
+    private string from = "", to = "";
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var outcome = await Mbom.GetAsync(await Users.GetAsync(), Number, null, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        detail = outcome.Value;
+        // Iterations of the latest revision, newest first.
+        versions = [.. detail!.Iterations.Select(i => i.Label)];
+        if (versions.Count > 0 && to == "") (to, from) = (versions[0], versions.Count > 1 ? versions[1] : versions[0]);
+    }
+
+    private async Task Run()
+    {
+        error = null;
+        var outcome = await Mbom.CompareAsync(await Users.GetAsync(), Number, from, to, CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) comparison = outcome.Value;
+        else { comparison = null; error = UiText.Message(outcome); }
+    }
+}

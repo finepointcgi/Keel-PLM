@@ -1,0 +1,138 @@
+@* Multi-level structure of the MBOM in its plant (ADR-0024): a lazily expanded tree in the shared virtualized grid, or the purchasing summary with net and gross
+   quantities (scrap compounded through the levels). "As of" a serial, lot or date shows only the lines that apply to the unit. Same filter and redaction as the EBOM. *@
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+<section class="panel stack" aria-labelledby="mbom-structure-heading">
+    <h3 id="mbom-structure-heading">Structure in plant @Detail.Summary.Plant</h3>
+    <div class="toolbar bom-controls">
+        <label class="inline-check">Levels
+            <select aria-label="Levels shown" @bind="levels" @bind:after="Reload">
+                @for (var i = 1; i <= BomLimits.MaxDepth; i++) { <option value="@i">@i</option> }
+                <option value="0">All</option>
+            </select>
+        </label>
+        <label class="inline-check"><input type="checkbox" checked="@asOf" @onchange="e => SetAsOf(e.Value is true)" /> As of a unit</label>
+        @if (asOf)
+        {
+            <UnitFields Value="unitForm" Label="As of: " />
+            <button type="button" class="secondary" @onclick="Reload">Show</button>
+        }
+        <label class="inline-check"><input type="checkbox" checked="@latestChildren" @onchange="e => SetLatest(e.Value is true)" /> Include sub-assembly MBOMs still in work</label>
+        <label class="inline-check"><input type="radio" name="mbom-view" checked="@(!summaryView)" @onchange="() => SetView(false)" /> Tree</label>
+        <label class="inline-check"><input type="radio" name="mbom-view" checked="@summaryView" @onchange="() => SetView(true)" /> Purchasing summary</label>
+        <a class="button secondary" download data-enhance-nav="false" href="@ExportUrl()">Export CSV</a>
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (explosion is not null && !summaryView)
+    {
+        <p class="muted small" aria-live="polite">
+            @(explosion.Lines.Count == 0 ? "No lines." : $"{rowsShown} line{(rowsShown == 1 ? "" : "s")} shown")
+            @if (explosion.RedactedCount > 0) { <text> · @explosion.RedactedCount restricted item@(explosion.RedactedCount == 1 ? "" : "s") you cannot see</text> }
+            @if (explosion.Configuration is not null) { <text> · @explosion.Configuration</text> }
+        </p>
+        @if (explosion.Lines.Count > 0)
+        {
+            <BomTreeGrid Lines="gridLines" LoadChildren="LoadChildren" OnVisibleChanged="OnVisible" AriaLabel="Manufacturing BOM structure" />
+        }
+    }
+    @if (summary is not null && summaryView)
+    {
+        <label class="inline-check"><input type="checkbox" checked="@leavesOnly" @onchange="e => SetLeaves(e.Value is true)" /> Leaf parts only</label>
+        <div class="table-wrap"><table class="data">
+            <caption class="sr-only">Purchasing summary: net and gross quantities per part, unit and supply type</caption>
+            <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Supply</th><th scope="col">Unit</th><th scope="col">Net quantity</th><th scope="col">Gross with scrap</th><th scope="col">Used on</th><th scope="col">Markings</th></tr></thead>
+            <tbody>
+            @foreach (var l in summary.Lines)
+            {
+                <tr class="@(l.Redacted ? "restricted" : "")">
+                    <td>@if (l.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="parts/@Uri.EscapeDataString(l.Number!)">@l.Number</a> }</td>
+                    <td>@l.Name</td><td>@l.SupplyType</td><td>@l.Unit</td>
+                    <td>@MbomUiText.Qty(l.NetQuantity)</td><td>@MbomUiText.Qty(l.GrossQuantity)</td>
+                    <td>@(l.Redacted ? $"line {l.Path}" : $"{l.Occurrences} line{(l.Occurrences == 1 ? "" : "s")}")</td>
+                    <td>@if (l.Banner is not null) { <MarkingChip Text="@l.Banner" /> }</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required MbomDetail Detail { get; set; }
+    /// <summary>Raised with the banner of the rows shown, so the page banner covers them.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnMarkings { get; set; }
+
+    private readonly Keel.Web.Services.UnitForm unitForm = new();
+    private int levels = 1;
+    private bool summaryView, leavesOnly = true, asOf, latestChildren;
+    private MbomExplosion? explosion;
+    private IReadOnlyList<BomLine> gridLines = [];
+    private MbomSummaryResult? summary;
+    private string? error, loadedFor;
+    private int rowsShown;
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Detail.Summary.Number}:{Detail.Displayed.Revision}.{Detail.Iteration.Iteration}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        await Reload();
+    }
+
+    private MbomQuery Query(int? depth, string? parentLine = null)
+    {
+        var unit = asOf ? unitForm.ToRequest().Request : null;
+        return new MbomQuery(Detail.Summary.Number, Detail.Displayed.Revision, Detail.Iteration.Iteration, latestChildren, depth, parentLine, unit);
+    }
+
+    private string ExportUrl() =>
+        $"ui/mboms/{Uri.EscapeDataString(Detail.Summary.Number)}/explosion.csv?revision={Uri.EscapeDataString(Detail.Displayed.Revision)}&iteration={Detail.Iteration.Iteration}&latestChildren={latestChildren.ToString().ToLowerInvariant()}{(levels > 0 ? $"&depth={levels}" : "")}"
+        + (asOf ? "&" + unitForm.Query() : "");
+
+    private async Task Reload()
+    {
+        error = null;
+        if (asOf && unitForm.ToRequest().Error is { } problem) { error = problem; return; }
+        var subject = await Users.GetAsync();
+        if (summaryView)
+        {
+            var s = await Mbom.SummaryAsync(subject, Query(levels == 0 ? null : levels), leavesOnly, Corr());
+            if (s.IsOk) { summary = s.Value; await OnMarkings.InvokeAsync([.. s.Value!.Lines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()]); }
+            else error = UiText.Message(s);
+        }
+        else
+        {
+            var e = await Mbom.ExplodeAsync(subject, Query(levels == 0 ? null : levels), Corr());
+            if (e.IsOk)
+            {
+                explosion = e.Value;
+                gridLines = [.. e.Value!.Lines.Select(l => l.ToGridLine())];
+                rowsShown = gridLines.Count;
+                await OnMarkings.InvokeAsync([.. gridLines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()]);
+            }
+            else error = UiText.Message(e);
+        }
+    }
+
+    private async Task SetView(bool toSummary) { summaryView = toSummary; await Reload(); }
+    private async Task SetLeaves(bool value) { leavesOnly = value; await Reload(); }
+    private async Task SetAsOf(bool value) { asOf = value; if (!value) await Reload(); }
+    private async Task SetLatest(bool value) { latestChildren = value; await Reload(); }
+
+    private async Task<IReadOnlyList<BomLine>> LoadChildren(BomLine line)
+    {
+        var outcome = await Mbom.ExplodeAsync(await Users.GetAsync(), Query(1, line.Path), Corr());
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return []; }
+        error = null;
+        return [.. outcome.Value!.Lines.Select(l => l.ToGridLine())];
+    }
+
+    private async Task OnVisible(IReadOnlyList<BomLine> rows)
+    {
+        rowsShown = rows.Count;
+        await OnMarkings.InvokeAsync([.. rows.Where(r => r.Markings is not null).Select(r => r.Markings!).Distinct()]);
+    }
+}

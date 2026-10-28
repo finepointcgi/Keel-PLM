@@ -1,0 +1,119 @@
+@page "/mboms"
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+@* Manufacturing BOMs the signed-in user may read, with the plant selector. The page banner is the aggregate of the rows shown (ADR-0014, ADR-0024). *@
+<PageFrame Banner="@(page?.PageBanner ?? UiText.Unclassified)" Title="Manufacturing BOMs">
+    <form class="toolbar" @onsubmit="Search" aria-label="Search manufacturing BOMs">
+        <input aria-label="Search text" placeholder="MBOM number, part number or name" class="grow" @bind="text" />
+        <label class="inline-check">Plant
+            <select aria-label="Plant" @bind="plant">
+                <option value="">All plants</option>
+                @foreach (var p in plants) { <option value="@p.Code">@p.Code · @p.Name</option> }
+            </select>
+        </label>
+        <select aria-label="State" @bind="state">
+            <option value="">Any state</option>
+            <option value="InWork">In Work</option>
+            <option value="UnderReview">Under Review</option>
+            <option value="Released">Released</option>
+            <option value="Obsolete">Obsolete</option>
+        </select>
+        <button type="submit">Search</button>
+        <a class="button" href="mboms/generate">Generate from EBOM</a>
+    </form>
+
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (page is not null)
+    {
+        <p class="muted" aria-live="polite">@(page.Total == 0 ? "No manufacturing BOMs match." : $"{page.Total} manufacturing BOM{(page.Total == 1 ? "" : "s")}")</p>
+        @if (page.Items.Count > 0)
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Manufacturing BOMs</caption>
+                <thead><tr><th scope="col">MBOM</th><th scope="col">Part</th><th scope="col">Plant</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Derived from EBOM</th><th scope="col">Reconciliation</th><th scope="col">Markings</th></tr></thead>
+                <tbody>
+                @foreach (var m in page.Items)
+                {
+                    <tr>
+                        <td><a href="@MbomUiText.Href(m.Number)">@m.Number</a></td>
+                        <td><a href="parts/@Uri.EscapeDataString(m.PartNumber)">@m.PartNumber</a> @m.PartName</td>
+                        <td>@m.Plant</td>
+                        <td>@m.Revision.@m.Iteration</td>
+                        <td><span class="badge @MbomUiText.StateClass(m.State)">@m.StateLabel</span>@(m.CheckedOutBy is null ? "" : $" (checked out by {m.CheckedOutBy})")</td>
+                        <td>@(m.DerivedFrom ?? "none")</td>
+                        <td>@if (m.ReconciliationStatus is { } s) { <span class="badge @MbomUiText.StatusClass(s)">@ReconcileStatuses.Label(s)</span> } else { <span class="muted">Not run</span> }</td>
+                        <td><MarkingChip Text="@m.Banner" /></td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+
+    <AuthorizeView Policy="@Policies.Admin">
+        <section class="panel stack" aria-labelledby="plants-heading">
+            <h3 id="plants-heading">Plants</h3>
+            <p class="muted small">Plants are administrator data. A plant that does not allow warnings releases an MBOM only when its reconciliation has none. Plants are retired, never deleted.</p>
+            @if (plantError is not null) { <p class="error" role="alert">@plantError</p> }
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Plants</caption>
+                <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Active</th><th scope="col">Release allows warnings</th><th scope="col">Actions</th></tr></thead>
+                <tbody>
+                @foreach (var p in allPlants)
+                {
+                    <tr>
+                        <td>@p.Code</td><td>@p.Name</td><td>@(p.IsActive ? "Yes" : "Retired")</td><td>@(p.ReleaseAllowsWarnings ? "Yes" : "No")</td>
+                        <td><button type="button" class="secondary" @onclick="() => EditPlant(p)">Edit @p.Code</button></td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+            <form class="grid-form" @onsubmit="SavePlant" aria-label="Save a plant">
+                <label>Code * <input @bind="pCode" maxlength="20" required /></label>
+                <label>Name * <input @bind="pName" maxlength="120" required /></label>
+                <label class="inline-check"><input type="checkbox" @bind="pActive" /> Active</label>
+                <label class="inline-check"><input type="checkbox" @bind="pWarn" /> Release allows warnings</label>
+                <div class="actions"><button type="submit">Save plant</button></div>
+            </form>
+        </section>
+    </AuthorizeView>
+</PageFrame>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? QueryText { get; set; }
+
+    private MbomSearchResult? page;
+    private IReadOnlyList<PlantInfo> plants = [], allPlants = [];
+    private string text = "", plant = "", state = "", pCode = "", pName = "";
+    private bool pActive = true, pWarn = true;
+    private string? error, plantError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        plants = await Mbom.ListPlantsAsync();
+        allPlants = await Mbom.ListPlantsAsync(true);
+        if (QueryText is { Length: > 0 }) text = QueryText;
+        await Search();
+    }
+
+    private async Task Search()
+    {
+        error = null;
+        var outcome = await Mbom.SearchAsync(await Users.GetAsync(), new MbomSearch(text, plant == "" ? null : plant, state == "" ? null : state), CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) page = outcome.Value;
+        else error = UiText.Message(outcome);
+    }
+
+    private void EditPlant(PlantInfo p) => (pCode, pName, pActive, pWarn) = (p.Code, p.Name, p.IsActive, p.ReleaseAllowsWarnings);
+
+    private async Task SavePlant()
+    {
+        plantError = null;
+        var outcome = await Mbom.SavePlantAsync(await Users.GetAsync(), new SavePlantCommand(pCode, pName, pActive, pWarn), CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { plantError = UiText.Message(outcome); return; }
+        (pCode, pName, pActive, pWarn) = ("", "", true, true);
+        plants = await Mbom.ListPlantsAsync();
+        allPlants = await Mbom.ListPlantsAsync(true);
+    }
+}

@@ -1,0 +1,114 @@
+@* The lines of one MBOM iteration, virtualized (fixed 32 px rows). Keyboard: Up/Down/Home/End move between rows. Lines the reader may not see are placeholders (A4).
+   The EBOM column shows which EBOM lines a line implements, so unlinked lines stand out. Blazor's Virtualize writes inline styles, which the CSP blocks:
+   the shim of the BOM tree grid mirrors them through the CSSOM. *@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+<div class="bom-grid mbom-grid" @ref="gridRoot" role="grid" aria-label="@AriaLabel" aria-rowcount="@(Lines.Count + 1)">
+    <div class="bom-row mbom-row bom-head" role="row" aria-rowindex="1">
+        <span role="columnheader">Find</span>
+        <span role="columnheader">Part</span>
+        <span role="columnheader">Name</span>
+        <span role="columnheader" class="num">Qty</span>
+        <span role="columnheader">Unit</span>
+        <span role="columnheader" class="num">Scrap</span>
+        <span role="columnheader">Supply</span>
+        <span role="columnheader">Operation</span>
+        <span role="columnheader">EBOM</span>
+        <span role="columnheader">Effectivity</span>
+        <span role="columnheader">Markings</span>
+    </div>
+    <div class="bom-body mbom-body" tabindex="-1">
+        <Virtualize TItem="MbomLineView" Items="items" ItemSize="32" OverscanCount="8" Context="line">
+            @{ var index = IndexOf(line); }
+            <div class="bom-row mbom-row @(line.Redacted ? "restricted" : null)" role="row" @key="line.Id" aria-rowindex="@(index + 2)"
+                 tabindex="@(line.Id == focused || (focused is null && index == 0) ? 0 : -1)"
+                 @ref="rowRefs[line.Id]" @onkeydown="e => OnKey(e, line)" @onfocus="() => focused = line.Id">
+                <span role="gridcell" class="num-left">@line.FindNumber@(line.Alt > 0 ? $"~{line.Alt}" : "")</span>
+                <span role="gridcell">
+                    @if (line.Redacted) { <span class="restricted-label">Restricted item</span> }
+                    else { <a href="parts/@Uri.EscapeDataString(line.ChildNumber!)" tabindex="-1">@line.ChildNumber</a> }
+                </span>
+                <span role="gridcell" class="cell-name">@line.ChildName</span>
+                <span role="gridcell" class="num">@MbomUiText.Qty(line.Quantity)</span>
+                <span role="gridcell">@line.Unit</span>
+                <span role="gridcell" class="num">@MbomUiText.Percent(line.ScrapFactor)</span>
+                <span role="gridcell">@line.SupplyType@(line.Phantom ? " · phantom" : "")</span>
+                <span role="gridcell">@line.OperationReference</span>
+                <span role="gridcell" class="cell-ebom">
+                    @if (line.Redacted) { }
+                    else if (line.MbomOnly) { <span class="badge">MBOM only</span> }
+                    else if (line.Links.Count == 0) { <span class="flag" title="No EBOM line is implemented by this line">Unlinked</span> }
+                    else { <span title="@string.Join("; ", line.Links.Select(MbomUiText.LinkText))">@string.Join(", ", line.Links.Select(l => $"{l.EbomFindNumber}{(l.Status == LinkStatuses.Matched ? "" : "*")}"))</span> }
+                </span>
+                <span role="gridcell" class="cell-eff" title="@line.EffectivityText">@line.EffectivityText</span>
+                <span role="gridcell">@if (line.Banner is not null) { <MarkingChip Text="@line.Banner" /> }</span>
+            </div>
+        </Virtualize>
+    </div>
+</div>
+
+@code {
+    private readonly Dictionary<Guid, ElementReference> rowRefs = [];
+    private Dictionary<Guid, int> indexById = [];
+    private Guid? focused, pendingFocus;
+    private ElementReference gridRoot;
+    private IJSObjectReference? shim;
+    private IReadOnlyList<MbomLineView>? last;
+    private List<MbomLineView> items = [];
+
+    [Parameter, EditorRequired] public required IReadOnlyList<MbomLineView> Lines { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Manufacturing BOM lines";
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(last, Lines)) return;
+        last = Lines;
+        items = [.. Lines];
+        indexById = new Dictionary<Guid, int>(Lines.Count);
+        for (var i = 0; i < Lines.Count; i++) indexById[Lines[i].Id] = i;
+        foreach (var stale in rowRefs.Keys.Where(k => !indexById.ContainsKey(k)).ToList()) rowRefs.Remove(stale);
+    }
+
+    private int IndexOf(MbomLineView line) => indexById.TryGetValue(line.Id, out var i) ? i : 0;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            shim = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Keel.Web/Components/Pages/Bom/BomTreeGrid.razor.js");
+            await shim.InvokeVoidAsync("enable", gridRoot);
+        }
+        if (pendingFocus is { } id && rowRefs.TryGetValue(id, out var element))
+        {
+            pendingFocus = null;
+            try { await element.FocusAsync(); } catch (Exception e) when (e is InvalidOperationException or JSException) { /* the row left the rendered window */ }
+        }
+    }
+
+    private void OnKey(KeyboardEventArgs e, MbomLineView line)
+    {
+        var index = IndexOf(line);
+        var target = e.Key switch
+        {
+            "ArrowDown" when index + 1 < Lines.Count => Lines[index + 1],
+            "ArrowUp" when index > 0 => Lines[index - 1],
+            "Home" => Lines[0],
+            "End" => Lines[^1],
+            _ => null,
+        };
+        if (target is null) return;
+        focused = pendingFocus = target.Id;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (shim is null) return;
+        try
+        {
+            await shim.InvokeVoidAsync("disable", gridRoot);
+            await shim.DisposeAsync();
+        }
+        catch (Exception e) when (e is JSDisconnectedException or InvalidOperationException) { /* the circuit is already gone */ }
+    }
+}

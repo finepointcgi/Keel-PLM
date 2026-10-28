@@ -1,0 +1,94 @@
+@* "Manufacturing BOMs" section of the part page (ADR-0024): the MBOM of this assembly in each plant, a way to generate one, and the MBOMs that use this part. The page banner
+   follows the rows shown. *@
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+<section class="panel stack" aria-labelledby="mbom-section-heading">
+    <div class="bom-heading">
+        <h3 id="mbom-section-heading">Manufacturing BOMs</h3>
+        <nav class="toolbar" aria-label="Manufacturing BOM views">
+            <a href="mboms?q=@Uri.EscapeDataString(Part.Number)">All MBOMs of this part</a>
+            @if (Part.PartType == "Assembly" && Part.Permissions.CanModify)
+            {
+                <a href="mboms/generate?part=@Uri.EscapeDataString(Part.Number)">Generate from this EBOM</a>
+            }
+        </nav>
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Part.PartType == "Assembly")
+    {
+        @if (own is null || own.Items.Count == 0) { <p class="muted">No manufacturing BOM exists for this assembly yet.</p> }
+        else
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Manufacturing BOMs of this assembly by plant</caption>
+                <thead><tr><th scope="col">Plant</th><th scope="col">MBOM</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Derived from EBOM</th><th scope="col">Reconciliation</th></tr></thead>
+                <tbody>
+                @foreach (var m in own.Items.OrderBy(m => m.Plant, StringComparer.Ordinal))
+                {
+                    <tr>
+                        <td>@m.Plant</td>
+                        <td><a href="@MbomUiText.Href(m.Number)">@m.Number</a></td>
+                        <td>@m.Revision.@m.Iteration</td>
+                        <td><span class="badge @MbomUiText.StateClass(m.State)">@m.StateLabel</span></td>
+                        <td>@(m.DerivedFrom ?? "none")@(m.DerivedFrom is not null && m.DerivedFrom != CurrentEbom ? " (EBOM is now " + CurrentEbom + ")" : "")</td>
+                        <td>@if (m.ReconciliationStatus is { } s) { <span class="badge @MbomUiText.StatusClass(s)">@ReconcileStatuses.Label(s)</span> } else { <span class="muted">Not run</span> }</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+    @if (used is { Rows.Count: > 0 })
+    {
+        <details>
+            <summary>Used in @used.Rows.Count manufacturing BOM line@(used.Rows.Count == 1 ? "" : "s")</summary>
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Manufacturing BOMs that use this part</caption>
+                <thead><tr><th scope="col">Plant</th><th scope="col">MBOM</th><th scope="col">Assembly</th><th scope="col">State</th><th scope="col">Find</th><th scope="col">Qty</th><th scope="col">Supply</th></tr></thead>
+                <tbody>
+                @foreach (var r in used.Rows)
+                {
+                    <tr class="@(r.Redacted ? "restricted" : null)">
+                        <td>@r.Plant</td>
+                        <td>@if (r.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="@MbomUiText.Href(r.MbomNumber!)">@r.MbomNumber</a> }</td>
+                        <td>@r.PartNumber @r.PartName</td><td>@r.StateLabel</td><td>@r.FindNumber</td><td>@MbomUiText.Qty(r.Quantity) @r.Unit</td><td>@r.SupplyType</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        </details>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required PartDetail Part { get; set; }
+    /// <summary>Raised with the banner of the rows shown, so the page banner covers them.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    private MbomSearchResult? own;
+    private MbomWhereUsedResult? used;
+    private string? error, loadedFor;
+
+    private string CurrentEbom => $"{Part.Revision.Revision}.{Part.Revision.LatestIteration}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Part.Id}:{Part.Revision.Revision}:{Part.Iteration.Iteration}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        var subject = await Users.GetAsync();
+        var shown = new List<Markings>();
+        if (Part.PartType == "Assembly")
+        {
+            var found = await Mbom.SearchAsync(subject, new MbomSearch(PartNumber: Part.Number, Limit: 100), CurrentUser.NewCorrelationId());
+            own = found.IsOk ? found.Value : null;
+            error = found.IsOk ? null : UiText.Message(found);
+            if (own is not null) shown.AddRange(own.Items.Select(i => i.Markings));
+        }
+        var w = await Mbom.WhereUsedAsync(subject, Part.Number, null, CurrentUser.NewCorrelationId());
+        used = w.IsOk ? w.Value : null;
+        if (used is not null) shown.AddRange(used.Rows.Where(r => r.Markings is not null).Select(r => r.Markings!));
+        await OnBanner.InvokeAsync(shown.Count == 0 ? UiText.Unclassified : Markings.AggregateBanner(shown));
+    }
+}

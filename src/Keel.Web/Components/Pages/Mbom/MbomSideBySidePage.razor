@@ -1,0 +1,67 @@
+@page "/mboms/{Number}/side-by-side"
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+@* The EBOM lines next to the MBOM lines that implement them (ADR-0024): one row per group of lines joined by links, then EBOM lines nobody implements and MBOM lines without a source.
+   Parts the reader may not see are placeholders. The banner is the aggregate of the parts shown. *@
+<PageFrame Banner="@(view?.Banner ?? UiText.Unclassified)" Title="EBOM and MBOM side by side">
+    <p><a href="@MbomUiText.Href(Number)">Back to @Number</a></p>
+    <form class="toolbar" @onsubmit="Load" aria-label="Choose the EBOM">
+        <EbomSpecFields Value="specForm" Label="Compare with: " AllowDefault="true" />
+        <button type="submit">Show</button>
+    </form>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (view is { } v)
+    {
+        <p class="muted" aria-live="polite">MBOM @v.Number version @v.MbomLabel against EBOM: @v.EbomSource</p>
+        <div class="table-wrap"><table class="data side-by-side">
+            <caption class="sr-only">EBOM lines and the MBOM lines that implement them</caption>
+            <thead><tr><th scope="col">EBOM line</th><th scope="col">Relationship</th><th scope="col">MBOM line</th></tr></thead>
+            <tbody>
+            @foreach (var row in v.Rows)
+            {
+                <tr class="@RowClass(row)">
+                    <td>
+                        @foreach (var e in row.Ebom) { <div id="ebom-@e.FindNumber">@Cell(e)</div> }
+                        @if (row.Ebom.Count == 0) { <span class="muted">none</span> }
+                    </td>
+                    <td>
+                        @MbomUiText.RowState(row.State)
+                        @if (row.LinkStatus is { } ls && ls != LinkStatuses.Matched) { <div><span class="badge">@ls.Replace('_', ' ')</span> @row.Reason</div> }
+                    </td>
+                    <td>
+                        @foreach (var m in row.Mbom) { <div>@Cell(m)@(m.Detail is { Length: > 0 } ? $" · {m.Detail}" : "")</div> }
+                        @if (row.Mbom.Count == 0) { <span class="muted">none</span> }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private readonly Keel.Web.Services.EbomSpecForm specForm = new() { Kind = "" };
+    private SideBySide? view;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private static string RowClass(SideBySideRow r) => r.State switch { "ebom_only" or "unexplained" => "diff-removed", "mbom_only" => "diff-changed", _ => "" };
+
+    private static string Cell(SideLine l) =>
+        l.Redacted ? $"{l.FindNumber} Restricted item, {MbomUiText.Qty(l.Quantity)} {l.Unit}"
+                   : $"{l.FindNumber} {l.Number} {l.Name}, {MbomUiText.Qty(l.Quantity)} {l.Unit}{(l.EffectivityText is null ? "" : $", {l.EffectivityText}")}";
+
+    private async Task Load()
+    {
+        error = null;
+        var (spec, problem) = specForm.ToSpec();
+        if (problem is not null) { error = problem; return; }
+        var outcome = await Mbom.SideBySideAsync(await Users.GetAsync(), Number, spec, CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) view = outcome.Value;
+        else { view = null; error = UiText.Message(outcome); }
+    }
+}

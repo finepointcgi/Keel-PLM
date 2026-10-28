@@ -1,0 +1,302 @@
+@* Edits the signed-in user's working copy of an MBOM (ADR-0024): add, change and remove lines, choose the EBOM the MBOM is derived from, and link lines to the EBOM
+   lines they implement. Every rule is the service's; this component shows its messages next to the form. The working copy becomes the next iteration at check-in. *@
+@inject CurrentUser Users
+@inject MbomService Mbom
+@inject IReferenceData Refs
+
+<section class="panel stack" aria-labelledby="mbom-edit-heading">
+    <div>
+        <h3 id="mbom-edit-heading">Edit lines</h3>
+        <p class="muted small">You hold the check-out. These lines and links are your private working copy.
+            @if (working?.DerivedFrom is { } d) { <text>Derived from EBOM @d.</text> } else { <text>No EBOM source is chosen yet; pick one below to link lines.</text> }
+        </p>
+    </div>
+
+    @if (errors.Count > 0) { <ul class="error form-errors" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
+
+    <form class="toolbar" @onsubmit="SetSource" aria-label="Choose the EBOM source">
+        <EbomSpecFields Value="sourceForm" Label="Source: " />
+        <button type="submit" class="secondary" disabled="@busy">Use as EBOM source</button>
+    </form>
+
+    <form class="grid-form" @onsubmit="Add" aria-label="Add a line">
+        <label>Child part number * <input @bind="addChild" maxlength="40" required autocomplete="off" /></label>
+        <label>Quantity * <input @bind="addQty" inputmode="decimal" required /></label>
+        <label>Unit <select @bind="addUnit"><option value="">Part default</option>@foreach (var u in units) { <option value="@u">@u</option> }</select></label>
+        <label>Find number <input @bind="addFind" inputmode="numeric" placeholder="Next free" /></label>
+        <label>Scrap factor <input @bind="addScrap" inputmode="decimal" placeholder="0.05 = 5 %" /></label>
+        <label>Supply type <select @bind="addSupply"><option value="">By part type</option>@foreach (var s in supplyTypes) { <option value="@s.Code">@s.Label</option> }</select></label>
+        <label>Operation reference <input @bind="addOp" maxlength="60" placeholder="ERP routing operation key" /></label>
+        <label class="inline-check"><input type="checkbox" @bind="addPhantom" /> Phantom</label>
+        <label class="inline-check"><input type="checkbox" @bind="addOnly" /> MBOM-only item (no EBOM source)</label>
+        <label class="wide">Reference designators <input @bind="addRefs" placeholder="R1 R2 R3" /></label>
+        <label class="wide">Notes <input @bind="addNotes" maxlength="1000" /></label>
+        <div class="wide"><span class="muted small">Effectivity: </span><EffectivityFields Value="addEff" Label="New line: " /></div>
+        <div class="actions"><button type="submit" disabled="@busy">Add line</button></div>
+    </form>
+
+    @if (working is not null)
+    {
+        @if (working.Lines.Count == 0) { <p class="muted">The working copy has no lines yet.</p> }
+        else
+        {
+            <div class="table-wrap"><table class="data bom-edit">
+                <caption class="sr-only">Working copy lines</caption>
+                <thead><tr><th scope="col">Find</th><th scope="col">Part</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Scrap</th><th scope="col">Supply</th><th scope="col">Operation</th><th scope="col">EBOM links</th><th scope="col">Effectivity</th><th scope="col">Actions</th></tr></thead>
+                <tbody>
+                @foreach (var l in working.Lines)
+                {
+                    @if (editingId == l.Id)
+                    {
+                        <tr class="editing">
+                            <td><input aria-label="Find number" @bind="eFind" inputmode="numeric" size="6" /></td>
+                            <td>@(l.ChildNumber ?? "Restricted item") @l.ChildName</td>
+                            <td><input aria-label="Quantity" @bind="eQty" inputmode="decimal" size="8" /></td>
+                            <td><select aria-label="Unit" @bind="eUnit">@foreach (var u in units) { <option value="@u">@u</option> }</select></td>
+                            <td><input aria-label="Scrap factor" @bind="eScrap" inputmode="decimal" size="6" /></td>
+                            <td><select aria-label="Supply type" @bind="eSupply">@foreach (var s in supplyTypes) { <option value="@s.Code">@s.Label</option> }</select>
+                                <label class="inline-check"><input type="checkbox" @bind="ePhantom" /> Phantom</label></td>
+                            <td><input aria-label="Operation reference" @bind="eOp" maxlength="60" size="10" /></td>
+                            <td><label class="inline-check"><input type="checkbox" @bind="eOnly" /> MBOM only</label></td>
+                            <td><EffectivityFields Value="eEff" Label="Edit line: " /></td>
+                            <td>
+                                <button type="button" disabled="@busy" @onclick="() => SaveEdit(l)">Save</button>
+                                <button type="button" class="secondary" @onclick="() => editingId = null">Cancel</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr class="@(l.Redacted ? "restricted" : null)">
+                            <td>@l.FindNumber@(l.Alt > 0 ? $"~{l.Alt}" : "")</td>
+                            <td>@if (l.Redacted) { <span class="restricted-label">Restricted item</span> } else { @($"{l.ChildNumber} {l.ChildName}") }</td>
+                            <td>@MbomUiText.Qty(l.Quantity)</td><td>@l.Unit</td><td>@MbomUiText.Percent(l.ScrapFactor)</td>
+                            <td>@l.SupplyType@(l.Phantom ? " · phantom" : "")</td><td>@l.OperationReference</td>
+                            <td>
+                                @if (l.MbomOnly) { <span class="badge">MBOM only</span> }
+                                else if (l.Links.Count == 0) { <span class="flag">Unlinked</span> }
+                                else { @string.Join("; ", l.Links.Select(MbomUiText.LinkText)) }
+                            </td>
+                            <td>@l.EffectivityText</td>
+                            <td>
+                                @if (!l.Redacted)
+                                {
+                                    <button type="button" class="secondary" @onclick="() => StartEdit(l)" aria-label="Edit line @l.FindNumber">Edit</button>
+                                    @if (!l.MbomOnly) { <button type="button" class="secondary" @onclick="() => OpenLinks(l)" aria-label="Links of line @l.FindNumber">Links</button> }
+                                }
+                                <button type="button" class="secondary" disabled="@busy" @onclick="() => Remove(l)" aria-label="Remove line @l.FindNumber">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+
+    @if (linkLine is { } ll)
+    {
+        <section class="stack" aria-labelledby="links-heading">
+            <h4 id="links-heading">EBOM lines implemented by line @ll.FindNumber @ll.ChildNumber</h4>
+            @if (choices is null || choices.Lines.Count == 0) { <p class="muted">No EBOM lines to link: choose an EBOM source first.</p> }
+            else
+            {
+                <p class="muted small">Source: @choices.Source. A matched link joins the same part; declare a quantity adjustment or a substitution with a reason.</p>
+                <div class="table-wrap"><table class="data">
+                    <caption class="sr-only">EBOM lines</caption>
+                    <thead><tr><th scope="col">Link</th><th scope="col">EBOM find</th><th scope="col">Part</th><th scope="col">Qty</th><th scope="col">Implemented by</th><th scope="col">Status</th><th scope="col">Reason</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in choices.Lines)
+                    {
+                        var pick = picks.TryGetValue(c.UsageId, out var p) ? p : null;
+                        <tr class="@(c.Redacted ? "restricted" : null)">
+                            <td><input type="checkbox" aria-label="Link EBOM line @c.FindNumber" checked="@(pick is not null)" @onchange="e => TogglePick(c, e.Value is true)" /></td>
+                            <td>@c.FindNumber</td>
+                            <td>@(c.Redacted ? "Restricted item" : $"{c.ChildNumber} {c.ChildName}")</td>
+                            <td>@MbomUiText.Qty(c.Quantity) @c.Unit</td>
+                            <td>@c.LinkedBy line@(c.LinkedBy == 1 ? "" : "s")</td>
+                            <td>@if (pick is not null)
+                                {
+                                    <select aria-label="Status of the link to EBOM line @c.FindNumber" @bind="pick.Status">
+                                        @foreach (var s in LinkStatuses.All) { <option value="@s">@s.Replace('_', ' ')</option> }
+                                    </select>
+                                }</td>
+                            <td>@if (pick is not null && pick.Status != LinkStatuses.Matched) { <input aria-label="Reason for the link to EBOM line @c.FindNumber" @bind="pick.Reason" maxlength="500" /> }</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table></div>
+            }
+            <div class="toolbar">
+                <button type="button" disabled="@busy" @onclick="SaveLinks">Save links</button>
+                <button type="button" class="secondary" @onclick="() => linkLine = null">Close</button>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    private sealed class Pick { public string Status { get; set; } = LinkStatuses.Matched; public string Reason { get; set; } = ""; }
+
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>The working copy changed (lines or source); the page reloads what it shows.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+    /// <summary>Raised with the distinct markings of the displayed working lines, so the page banner covers what the editor shows.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnMarkings { get; set; }
+
+    private MbomLines? working;
+    private IReadOnlyList<string> units = [];
+    private IReadOnlyList<SupplyTypeInfo> supplyTypes = [];
+    private readonly List<string> errors = [];
+    private bool busy;
+    private string addChild = "", addQty = "1", addUnit = "", addFind = "", addScrap = "", addSupply = "", addOp = "", addRefs = "", addNotes = "";
+    private bool addPhantom, addOnly;
+    private readonly Keel.Web.Services.EffectivityForm addEff = new(), eEff = new();
+    private readonly Keel.Web.Services.EbomSpecForm sourceForm = new();
+    private Guid? editingId;
+    private string eQty = "", eUnit = "EA", eFind = "", eScrap = "", eSupply = "Make", eOp = "";
+    private bool ePhantom, eOnly;
+    private MbomLineView? linkLine;
+    private EbomLineChoices? choices;
+    private readonly Dictionary<Guid, Pick> picks = [];
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    protected override async Task OnInitializedAsync()
+    {
+        units = await Refs.CodesAsync(RefLists.Unit);
+        supplyTypes = await Mbom.ListSupplyTypesAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        var outcome = await Mbom.GetWorkingAsync(await Users.GetAsync(), Number, Corr());
+        if (outcome.IsOk)
+        {
+            working = outcome.Value;
+            await OnMarkings.InvokeAsync([.. working!.Lines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()]);
+        }
+        else Fail(outcome);
+    }
+
+    private void Fail<T>(Outcome<T> outcome)
+    {
+        errors.Clear();
+        if (outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict) errors.AddRange(outcome.Errors);
+        else errors.Add(UiText.Message(outcome));
+    }
+
+    private static string[] SplitRefs(string text) => text.Split([' ', ',', ';', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private bool TryNumber(string text, string what, out decimal value, bool optional = false)
+    {
+        value = 0;
+        if (optional && string.IsNullOrWhiteSpace(text)) return true;
+        if (decimal.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out value)) return true;
+        errors.Clear();
+        errors.Add($"{what} must be a number.");
+        return false;
+    }
+
+    private bool TryFind(string text, out int? find)
+    {
+        find = null;
+        if (string.IsNullOrWhiteSpace(text)) return true;
+        if (int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var f)) { find = f; return true; }
+        errors.Clear();
+        errors.Add("Find number must be a whole number.");
+        return false;
+    }
+
+    private static decimal? Scrap(string text, decimal parsed) => string.IsNullOrWhiteSpace(text) ? null : parsed;
+
+    private async Task Changed()
+    {
+        await Reload();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task SetSource()
+    {
+        var (spec, error) = sourceForm.ToSpec();
+        if (spec is null) { errors.Clear(); errors.Add(error!); return; }
+        busy = true;
+        var outcome = await Mbom.SetDerivationAsync(await Users.GetAsync(), Number, spec, Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); await Changed(); } else Fail(outcome);
+    }
+
+    private async Task Add()
+    {
+        if (!TryNumber(addQty, "Quantity", out var qty) || !TryFind(addFind, out var find) || !TryNumber(addScrap, "Scrap factor", out var scrap, optional: true)) return;
+        busy = true;
+        var outcome = await Mbom.AddLineAsync(await Users.GetAsync(), Number, new AddMbomLineCommand(addChild, qty, addUnit == "" ? null : addUnit, find, SplitRefs(addRefs), Scrap(addScrap, scrap),
+            addPhantom, addSupply == "" ? null : addSupply, string.IsNullOrWhiteSpace(addOp) ? null : addOp, addOnly, addNotes, addEff.ToInput()), Corr());
+        busy = false;
+        if (outcome.IsOk)
+        {
+            errors.Clear();
+            (addChild, addQty, addFind, addScrap, addOp, addRefs, addNotes, addUnit, addSupply) = ("", "1", "", "", "", "", "", "", "");
+            (addPhantom, addOnly) = (false, false);
+            (addEff.Kind, addEff.Context, addEff.From, addEff.To) = ("", "", "", "");
+            await Changed();
+        }
+        else Fail(outcome);
+    }
+
+    private void StartEdit(MbomLineView l)
+    {
+        editingId = l.Id;
+        (eQty, eUnit, eFind) = (MbomUiText.Qty(l.Quantity), l.Unit, l.FindNumber.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        (eScrap, eSupply, eOp) = (l.ScrapFactor is { } s ? MbomUiText.Qty(s) : "", l.SupplyType ?? "Make", l.OperationReference ?? "");
+        (ePhantom, eOnly) = (l.Phantom, l.MbomOnly);
+        var current = Keel.Web.Services.EffectivityForm.FromRange(l.Effectivity);
+        (eEff.Kind, eEff.Context, eEff.From, eEff.To) = (current.Kind, current.Context, current.From, current.To);
+    }
+
+    private async Task SaveEdit(MbomLineView l)
+    {
+        if (!TryNumber(eQty, "Quantity", out var qty) || !TryNumber(eScrap, "Scrap factor", out var scrap, optional: true)) return;
+        if (!int.TryParse(eFind, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var find)) { errors.Clear(); errors.Add("Find number must be a whole number."); return; }
+        busy = true;
+        var outcome = await Mbom.UpdateLineAsync(await Users.GetAsync(), Number, l.Id, new UpdateMbomLineCommand(qty, eUnit, find, l.ReferenceDesignators, Scrap(eScrap, scrap), ePhantom, eSupply,
+            string.IsNullOrWhiteSpace(eOp) ? null : eOp, eOnly, l.Notes, eEff.ToInput(), ClearEffectivity: eEff.IsBlank), Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); editingId = null; await Changed(); } else Fail(outcome);
+    }
+
+    private async Task Remove(MbomLineView l)
+    {
+        busy = true;
+        var outcome = await Mbom.RemoveLineAsync(await Users.GetAsync(), Number, l.Id, Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); if (linkLine?.Id == l.Id) linkLine = null; await Changed(); } else Fail(outcome);
+    }
+
+    private async Task OpenLinks(MbomLineView l)
+    {
+        linkLine = l;
+        picks.Clear();
+        foreach (var k in l.Links) picks[k.EbomUsageId] = new Pick { Status = k.Status, Reason = k.Reason ?? "" };
+        var outcome = await Mbom.GetEbomLineChoicesAsync(await Users.GetAsync(), Number, Corr());
+        if (outcome.IsOk) { choices = outcome.Value; errors.Clear(); }
+        else { choices = null; Fail(outcome); }
+    }
+
+    private void TogglePick(EbomLineChoice c, bool on)
+    {
+        if (on) picks.TryAdd(c.UsageId, new Pick());
+        else picks.Remove(c.UsageId);
+    }
+
+    private async Task SaveLinks()
+    {
+        if (linkLine is null) return;
+        busy = true;
+        var outcome = await Mbom.SetLinksAsync(await Users.GetAsync(), Number, linkLine.Id,
+            [.. picks.Select(p => new LinkInput(p.Key, p.Value.Status, string.IsNullOrWhiteSpace(p.Value.Reason) ? null : p.Value.Reason))], Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); linkLine = null; await Changed(); } else Fail(outcome);
+    }
+}

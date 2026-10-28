@@ -294,7 +294,8 @@ public sealed partial class MbomService
         ReadAsync<SideBySide>(subject, number, null, "mbom.side_by_side", correlationId, async (conn, tx, head) =>
         {
             var part = (await MbomStore.LoadPartAsync(conn, tx, head.PartMasterId, ct))!;
-            var chosen = spec ?? EbomSpec.Released;
+            var previous = spec is null ? await LatestRunAsync(conn, tx, head.IterationId, ct) : null;
+            var chosen = spec ?? (previous is null ? EbomSpec.Released : SpecOf(previous));
             var (resolved, error) = await MbomStore.ResolveEbomAsync(conn, tx, subject, part, chosen, ct);
             if (resolved is null) return (Outcome<SideBySide>.Invalid([error!]), []);
             var ebom = await LoadEbomCopyLinesAsync(conn, tx, resolved.IterationId, chosen.Kind == EbomSpecKind.Effectivity ? chosen.Unit : null, ct);
