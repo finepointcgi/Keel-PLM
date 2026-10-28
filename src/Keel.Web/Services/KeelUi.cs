@@ -37,6 +37,13 @@ public static class KeelUi
     public const string SessionExpiresClaim = "keel_session_expires";
     /// <summary>Identifies one sign-in (kept across a step-up): the key of the idle lock, shared by every tab of the session (ADR-0026).</summary>
     public const string SessionIdClaim = "keel_session_id";
+
+    /// <summary>
+    /// A cookie that authenticates but carries no session id was issued before the idle lock existed (or by another build). The lock
+    /// registry cannot track it, so it is refused and the user signs in again, instead of every circuit failing on it.
+    /// </summary>
+    internal static bool IsStaleSession(ClaimsPrincipal? principal) =>
+        principal?.Identity?.IsAuthenticated == true && !principal.HasClaim(c => c.Type == SessionIdClaim && c.Value.Length > 0);
     /// <summary>Added to the circuit's principal while its session is locked.</summary>
     public const string LockedClaim = "keel_session_locked";
     public const string SessionEndedPath = "/account/session-ended";
@@ -70,7 +77,7 @@ public static class KeelUi
             o.Events.OnValidatePrincipal = async ctx =>
             {
                 var registry = ctx.HttpContext.RequestServices.GetService<SessionLockRegistry>();
-                if (registry is { Enabled: true } && ctx.Principal?.FindFirst(SessionIdClaim)?.Value is { } id && registry.IsTerminated(id))
+                if (registry is { Enabled: true } && (IsStaleSession(ctx.Principal) || (ctx.Principal?.FindFirst(SessionIdClaim)?.Value is { } id && registry.IsTerminated(id))))
                 {
                     ctx.RejectPrincipal();
                     await ctx.HttpContext.SignOutAsync(CookieScheme);

@@ -124,6 +124,17 @@ public sealed class WebServicesTests
     }
 
     [Fact]
+    public void A_cookie_without_a_session_id_is_stale_and_refused_so_the_user_signs_in_again()
+    {
+        static ClaimsPrincipal P(params Claim[] claims) => new(new ClaimsIdentity(claims, "test"));
+        Assert.True(KeelUi.IsStaleSession(P(new Claim("sub", "u1"))));                                         // issued before the lock feature
+        Assert.True(KeelUi.IsStaleSession(P(new Claim("sub", "u1"), new Claim(KeelUi.SessionIdClaim, ""))));  // empty id
+        Assert.False(KeelUi.IsStaleSession(P(new Claim("sub", "u1"), new Claim(KeelUi.SessionIdClaim, "abc"))));
+        Assert.False(KeelUi.IsStaleSession(new ClaimsPrincipal(new ClaimsIdentity())));                        // anonymous is not "stale", just unauthenticated
+        Assert.False(KeelUi.IsStaleSession(null));
+    }
+
+    [Fact]
     public void Reason_codes_are_explained()
     {
         Assert.Equal("With the new markings: You are not a member of the object's program.", UiText.Reason("new_markings:program.not_member"));
