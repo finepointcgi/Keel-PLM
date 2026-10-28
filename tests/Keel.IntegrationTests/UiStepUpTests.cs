@@ -49,6 +49,8 @@ public sealed class UiStepUpTests(PostgresFixture pg)
     [
         new Claim("sub", sub), new Claim("preferred_username", name), new Claim("name", name + " Example"), new Claim("roles", "plm-viewer"),
         new Claim("us_person", "true"), new Claim(Web.Services.KeelUi.SessionExpiresClaim, sessionExpires.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+        // Every real session carries an id since the idle lock; a cookie without one is refused as stale.
+        new Claim(Web.Services.KeelUi.SessionIdClaim, "test-session-" + sub),
     ], "Cookies"));
 
     private static string MintCookie(WebApplicationFactory<Program> f, ClaimsPrincipal principal)
