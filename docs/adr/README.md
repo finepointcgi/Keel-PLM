@@ -28,3 +28,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0023](0023-migration-importers.md) | Migration importers (PLMXML, Windchill extract, canonical package) | Accepted |
 | [0021](0021-baselines-and-effectivity.md) | Baselines and effectivity | Accepted |
 | [0022](0022-admin-configuration-and-classification.md) | Admin configuration and classification | Accepted |
+| [0024](0024-ebom-mbom.md) | EBOM, MBOM and reconciliation | Accepted |

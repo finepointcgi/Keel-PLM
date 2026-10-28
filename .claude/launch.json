@@ -4,7 +4,22 @@
     {
       "name": "keel",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "src/Keel.Api", "--launch-profile", "Keel.Api"],
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/Keel.Api",
+        "--launch-profile",
+        "Keel.Api"
+      ],
+      "port": 5080
+    },
+    {
+      "name": "keel-demo",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "exec env Keel__Database__AppConnectionString='Host=localhost;Port=55432;Database=keel_demo;Username=keel_app;Password=keel_app_dev' Keel__Vault__ServiceUrl=http://localhost:18334 Keel__Vault__AccessKey=keel_vault_dev Keel__Vault__SecretKey=keel_vault_dev_secret Keel__Vault__Bucket=keel-vault ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/Keel.Api --launch-profile Keel.Api"
+      ],
       "port": 5080
     }
   ]
