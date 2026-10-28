@@ -1,0 +1,177 @@
+@* Virtualized tree grid over a flat, server-flattened list (ADR-0014). Fixed row height; children load lazily one level at a time.
+   Keyboard: Up/Down move between rows, Right expands, Left collapses (or moves to the parent), Enter toggles. *@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+<div class="bom-grid" @ref="gridRoot" role="treegrid" aria-label="@AriaLabel" aria-rowcount="@(rows.Count + 1)">
+    <div class="bom-row bom-head" role="row" aria-rowindex="1">
+        <span role="columnheader">Find</span>
+        <span role="columnheader">Number</span>
+        <span role="columnheader">Name</span>
+        <span role="columnheader">Rev</span>
+        <span role="columnheader" class="num">Qty</span>
+        <span role="columnheader">Unit</span>
+        <span role="columnheader" class="num">Ext qty</span>
+        <span role="columnheader">State</span>
+        <span role="columnheader">Markings</span>
+    </div>
+    <div class="bom-body" tabindex="-1">
+        <Virtualize TItem="BomLine" Items="rows" ItemSize="BomTreeModel.RowHeight" OverscanCount="8" Context="line">
+            @{ var index = IndexOf(line); }
+            <div class="bom-row @RowClass(line)" role="row" @key="line.Path" data-path="@line.Path"
+                 aria-level="@line.Level" aria-rowindex="@(index + 2)"
+                 aria-expanded="@(BomTreeModel.CanExpand(line) ? (BomTreeModel.IsExpanded(rows, index) ? "true" : "false") : null)"
+                 tabindex="@(line.Path == focusedPath || (focusedPath is null && index == 0) ? 0 : -1)"
+                 @ref="rowRefs[line.Path]" @onkeydown="e => OnKey(e, line)" @onfocus="() => focusedPath = line.Path">
+                <span role="gridcell" class="num-left">@line.FindNumber</span>
+                <span role="gridcell" class="cell-part" data-indent="@Math.Min(line.Level - 1, 9)">
+                    @if (BomTreeModel.CanExpand(line))
+                    {
+                        var expanded = BomTreeModel.IsExpanded(rows, index);
+                        <button type="button" class="twisty" tabindex="-1" aria-label="@((expanded ? "Collapse " : "Expand ") + (line.Number ?? line.Path))"
+                                @onclick="() => Toggle(line)">@(expanded ? "−" : "+")</button>
+                    }
+                    else { <span class="twisty-gap" aria-hidden="true"></span> }
+                    @if (line.Redacted)
+                    {
+                        <span class="restricted-label">Restricted item</span>
+                    }
+                    else
+                    {
+                        <a href="parts/@Uri.EscapeDataString(line.Number!)" tabindex="-1">@line.Number</a>
+                    }
+                </span>
+                <span role="gridcell" class="cell-name">@line.Name</span>
+                <span role="gridcell">
+                    @if (line.Redacted) { }
+                    else if (line.Unresolved) { <span class="flag" title="No released revision exists; the line is kept, not dropped">No released revision</span> }
+                    else { @($"{line.Revision}.{line.Iteration}") }
+                </span>
+                <span role="gridcell" class="num">@FormatQty(line.Quantity)</span>
+                <span role="gridcell">@line.Unit</span>
+                <span role="gridcell" class="num">@FormatQty(line.ExtendedQuantity)</span>
+                <span role="gridcell">
+                    @if (line.Circular) { <span class="flag">Circular reference</span> }
+                    else { @line.StateLabel }
+                </span>
+                <span role="gridcell">@if (line.Banner is not null) { <MarkingChip Text="@line.Banner" /> }</span>
+            </div>
+        </Virtualize>
+    </div>
+</div>
+
+@code {
+    private List<BomLine> rows = [];
+    private readonly Dictionary<string, ElementReference> rowRefs = new(StringComparer.Ordinal);
+    private string? focusedPath;
+    private string? pendingFocus;
+    private Dictionary<string, int> indexByPath = new(StringComparer.Ordinal);
+
+    [Parameter, EditorRequired] public required IReadOnlyList<BomLine> Lines { get; set; }
+    /// <summary>Loads the direct children of a line (one level, absolute levels and paths).</summary>
+    [Parameter] public Func<BomLine, Task<IReadOnlyList<BomLine>>>? LoadChildren { get; set; }
+    /// <summary>Raised with the currently displayed rows whenever they change, so the page banner can follow them.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<BomLine>> OnVisibleChanged { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Bill of materials";
+
+    private IReadOnlyList<BomLine>? lastLines;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(lastLines, Lines))
+        {
+            lastLines = Lines;
+            await SetRows([.. Lines]);
+        }
+    }
+
+    private ElementReference gridRoot;
+    private IJSObjectReference? shim;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // CSP workaround for Virtualize's inline spacer styles; see BomTreeGrid.razor.js.
+            shim = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Keel.Web/Components/Pages/Bom/BomTreeGrid.razor.js");
+            await shim.InvokeVoidAsync("enable", gridRoot);
+        }
+        if (pendingFocus is { } path && rowRefs.TryGetValue(path, out var element))
+        {
+            pendingFocus = null;
+            try { await element.FocusAsync(); } catch (Exception e) when (e is InvalidOperationException or Microsoft.JSInterop.JSException) { /* row left the rendered window; focus stays on the grid */ }
+        }
+    }
+
+    private async Task SetRows(List<BomLine> next)
+    {
+        rows = next;
+        indexByPath = new Dictionary<string, int>(next.Count, StringComparer.Ordinal);
+        for (var i = 0; i < next.Count; i++) indexByPath[next[i].Path] = i;
+        // Drop element references of rows that no longer exist.
+        foreach (var stale in rowRefs.Keys.Where(k => !indexByPath.ContainsKey(k)).ToList()) rowRefs.Remove(stale);
+        await OnVisibleChanged.InvokeAsync(next);
+    }
+
+    private int IndexOf(BomLine line) => indexByPath.TryGetValue(line.Path, out var i) ? i : 0;
+
+    private async Task Toggle(BomLine line)
+    {
+        var index = IndexOf(line);
+        if (!BomTreeModel.CanExpand(line)) return;
+        if (BomTreeModel.IsExpanded(rows, index))
+        {
+            await SetRows(BomTreeModel.Collapse(rows, index));
+        }
+        else if (LoadChildren is not null)
+        {
+            var children = await LoadChildren(line);
+            await SetRows(BomTreeModel.Expand(rows, index, children));
+        }
+        pendingFocus = line.Path;
+    }
+
+    private async Task OnKey(KeyboardEventArgs e, BomLine line)
+    {
+        var index = IndexOf(line);
+        switch (e.Key)
+        {
+            case "ArrowDown" when index + 1 < rows.Count: Focus(rows[index + 1]); break;
+            case "ArrowUp" when index > 0: Focus(rows[index - 1]); break;
+            case "Home": Focus(rows[0]); break;
+            case "End": Focus(rows[^1]); break;
+            case "ArrowRight" when BomTreeModel.CanExpand(line) && !BomTreeModel.IsExpanded(rows, index): await Toggle(line); break;
+            case "ArrowRight" when BomTreeModel.IsExpanded(rows, index): Focus(rows[index + 1]); break;
+            case "ArrowLeft" when BomTreeModel.IsExpanded(rows, index): await Toggle(line); break;
+            case "ArrowLeft" when line.Level > 1: FocusParent(line); break;
+            case "Enter" or " ": await Toggle(line); break;
+        }
+    }
+
+    private void Focus(BomLine line)
+    {
+        focusedPath = line.Path;
+        pendingFocus = line.Path;
+    }
+
+    private void FocusParent(BomLine line)
+    {
+        var cut = line.Path.LastIndexOf('.');
+        if (cut > 0 && indexByPath.TryGetValue(line.Path[..cut], out var p)) Focus(rows[p]);
+    }
+
+    private static string RowClass(BomLine l) => l.Redacted ? "restricted" : l.Unresolved ? "unresolved" : l.Circular ? "circular" : "";
+
+    private static string FormatQty(decimal d) => d.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (shim is null) return;
+        try
+        {
+            await shim.InvokeVoidAsync("disable", gridRoot);
+            await shim.DisposeAsync();
+        }
+        catch (Exception e) when (e is Microsoft.JSInterop.JSDisconnectedException or InvalidOperationException) { /* the circuit is already gone */ }
+    }
+}

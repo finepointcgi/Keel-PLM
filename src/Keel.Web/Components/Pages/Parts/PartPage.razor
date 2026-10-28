@@ -4,7 +4,7 @@
 @inject NpgsqlDataSource Db
 @using Npgsql
 
-<PageFrame Banner="@(part?.Banner ?? UiText.Unclassified)" Title="Part">
+<PageFrame Banner="@(bomBanner ?? part?.Banner ?? UiText.Unclassified)" Title="Part">
     @if (notFound)
     {
         <p class="error" role="alert">Part @Number was not found, or you are not authorized to see it.</p>
@@ -115,6 +115,10 @@
                 </dl>
             </section>
 
+            @* --- BOM section (increment 1.4): the page banner then aggregates the part and every displayed BOM row --- *@
+            <Keel.Web.Components.Pages.Bom.BomSection Part="p" OnBanner="b => bomBanner = b" />
+            @* --- end BOM section --- *@
+
             <section class="panel">
                 <h3>Security markings</h3>
                 @if (editMarkings is null)
@@ -177,11 +181,13 @@
     private string workingDescription = "", comment = "", overrideState = "", overrideReason = "", markingsReason = "";
     private AttributeInput? workingAttributes;
     private MarkingsInput? editMarkings;
+    private string? bomBanner; // 1.4: aggregate banner reported by the BOM section
 
     private static string Corr() => CurrentUser.NewCorrelationId();
 
     protected override async Task OnParametersSetAsync()
     {
+        bomBanner = null; // 1.4: the BOM section republishes its aggregate banner after it reloads
         await using (var conn = await Db.OpenConnectionAsync())
         {
             defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);

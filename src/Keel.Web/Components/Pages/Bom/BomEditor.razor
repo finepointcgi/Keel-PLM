@@ -1,0 +1,212 @@
+@inject CurrentUser Users
+@inject BomService Bom
+
+<section class="panel stack" aria-labelledby="bom-edit-heading">
+    <div>
+        <h3 id="bom-edit-heading">Edit structure</h3>
+        <p class="muted small">You hold the check-out. These lines are your private working copy; they become the next iteration when you check in.
+            At most @working?.MaxChildren direct children per assembly.</p>
+    </div>
+
+    @if (errors.Count > 0)
+    {
+        <ul class="error form-errors" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+    }
+
+    <form class="grid-form" @onsubmit="Add" aria-label="Add a line">
+        <label>Child part number * <input @bind="addChild" maxlength="40" required autocomplete="off" /></label>
+        <label>Quantity * <input @bind="addQty" inputmode="decimal" required /></label>
+        <label>
+            Unit
+            <select @bind="addUnit">
+                <option value="">Part default</option>
+                @foreach (var u in UnitsOfMeasure.All) { <option value="@u">@u</option> }
+            </select>
+        </label>
+        <label>Find number <input @bind="addFind" inputmode="numeric" placeholder="Next free" /></label>
+        <label class="wide">Reference designators <input @bind="addRefs" placeholder="R1 R2 R3 (EA lines: count must equal the quantity)" /></label>
+        <label class="wide">Notes <input @bind="addNotes" maxlength="1000" /></label>
+        <div class="actions"><button type="submit" disabled="@busy">Add line</button></div>
+    </form>
+
+    @if (working is not null)
+    {
+        @if (working.Lines.Count == 0) { <p class="muted">The working copy has no lines yet.</p> }
+        else
+        {
+            <div class="table-wrap"><table class="data bom-edit">
+                <caption class="sr-only">Working copy lines</caption>
+                <thead><tr><th scope="col">Find</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Designators</th><th scope="col">Notes</th><th scope="col">Actions</th></tr></thead>
+                <tbody>
+                @foreach (var l in working.Lines)
+                {
+                    @if (editingId == l.Id)
+                    {
+                        <tr class="editing">
+                            <td><input aria-label="Find number" @bind="editFind" inputmode="numeric" size="6" /></td>
+                            <td>@(l.ChildNumber ?? "Restricted item")</td><td>@l.ChildName</td>
+                            <td><input aria-label="Quantity" @bind="editQty" inputmode="decimal" size="8" /></td>
+                            <td><select aria-label="Unit" @bind="editUnit">@foreach (var u in UnitsOfMeasure.All) { <option value="@u">@u</option> }</select></td>
+                            <td><input aria-label="Reference designators" @bind="editRefs" /></td>
+                            <td><input aria-label="Notes" @bind="editNotes" maxlength="1000" /></td>
+                            <td>
+                                <button type="button" disabled="@busy" @onclick="() => SaveEdit(l)">Save</button>
+                                <button type="button" class="secondary" @onclick="() => editingId = null">Cancel</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr class="@(l.Redacted ? "restricted" : "")">
+                            <td>@l.FindNumber</td>
+                            <td>@(l.Redacted ? "Restricted item" : l.ChildNumber)</td>
+                            <td>@l.ChildName</td>
+                            <td>@l.Quantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)</td>
+                            <td>@l.Unit</td>
+                            <td>@string.Join(' ', l.ReferenceDesignators)</td>
+                            <td>@l.Notes</td>
+                            <td>
+                                <button type="button" class="secondary" disabled="@(busy || l.Redacted)" @onclick="() => StartEdit(l)">Edit</button>
+                                <button type="button" class="secondary" disabled="@busy" @onclick="() => Remove(l)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table></div>
+        }
+
+        <div class="toolbar">
+            <button type="button" class="secondary" disabled="@(busy || working.Lines.Count == 0)" @onclick="Renumber">Renumber 10, 20, 30…</button>
+            <input aria-label="Copy structure from" class="grow" placeholder="Copy latest structure from part number" @bind="copySource" />
+            <label class="inline-check"><input type="checkbox" @bind="copyReplace" /> Replace existing lines</label>
+            <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(copySource))" @onclick="Copy">Copy</button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required PartDetail Part { get; set; }
+    /// <summary>Raised with the distinct markings of the displayed working lines, so the page banner covers what the editor shows.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnMarkings { get; set; }
+
+    private WorkingBom? working;
+    private readonly List<string> errors = [];
+    private bool busy;
+    private string addChild = "", addQty = "1", addUnit = "", addFind = "", addRefs = "", addNotes = "", copySource = "";
+    private bool copyReplace;
+    private Guid? editingId;
+    private string editQty = "", editUnit = "EA", editFind = "", editRefs = "", editNotes = "";
+    private string? loadedFor;
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Part.Id}:{Part.Revision.Revision}:{Part.Checkout?.CheckedOutAt:O}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        var outcome = await Bom.GetWorkingAsync(await Users.GetAsync(), Part.Number, Corr());
+        if (outcome.IsOk)
+        {
+            working = outcome.Value;
+            await OnMarkings.InvokeAsync([.. working!.Lines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()]);
+        }
+        else Fail(outcome);
+    }
+
+    private void Fail<T>(Outcome<T> outcome)
+    {
+        errors.Clear();
+        if (outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict) errors.AddRange(outcome.Errors);
+        else errors.Add(UiText.Message(outcome));
+    }
+
+    private static string[] SplitRefs(string text) =>
+        text.Split([' ', ',', ';', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private bool TryQty(string text, out decimal qty)
+    {
+        if (decimal.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out qty)) return true;
+        errors.Clear();
+        errors.Add("Quantity must be a number.");
+        return false;
+    }
+
+    private bool TryFind(string text, out int? find)
+    {
+        find = null;
+        if (string.IsNullOrWhiteSpace(text)) return true;
+        if (int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var f)) { find = f; return true; }
+        errors.Clear();
+        errors.Add("Find number must be a whole number.");
+        return false;
+    }
+
+    private async Task Add()
+    {
+        if (!TryQty(addQty, out var qty) || !TryFind(addFind, out var find)) return;
+        busy = true;
+        var outcome = await Bom.AddUsageAsync(await Users.GetAsync(), Part.Number,
+            new AddUsageCommand(addChild, qty, string.IsNullOrEmpty(addUnit) ? null : addUnit, find, SplitRefs(addRefs), addNotes), Corr());
+        busy = false;
+        if (outcome.IsOk)
+        {
+            errors.Clear();
+            addChild = addFind = addRefs = addNotes = "";
+            addQty = "1";
+            await Reload();
+        }
+        else Fail(outcome);
+    }
+
+    private void StartEdit(WorkingBomLine l)
+    {
+        editingId = l.Id;
+        (editQty, editUnit, editFind) = (l.Quantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture), l.Unit, l.FindNumber.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        (editRefs, editNotes) = (string.Join(' ', l.ReferenceDesignators), l.Notes ?? "");
+    }
+
+    private async Task SaveEdit(WorkingBomLine l)
+    {
+        if (!TryQty(editQty, out var qty) || !TryFind(editFind, out var find)) return;
+        if (find is null) { errors.Clear(); errors.Add("Find number is required."); return; }
+        busy = true;
+        var outcome = await Bom.UpdateUsageAsync(await Users.GetAsync(), Part.Number, l.Id, new UpdateUsageCommand(qty, editUnit, find.Value, SplitRefs(editRefs), editNotes), Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); editingId = null; await Reload(); }
+        else Fail(outcome);
+    }
+
+    private async Task Remove(WorkingBomLine l)
+    {
+        busy = true;
+        var outcome = await Bom.RemoveUsageAsync(await Users.GetAsync(), Part.Number, l.Id, Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); await Reload(); }
+        else Fail(outcome);
+    }
+
+    private async Task Renumber()
+    {
+        busy = true;
+        var outcome = await Bom.RenumberAsync(await Users.GetAsync(), Part.Number, 10, 10, Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); await Reload(); }
+        else Fail(outcome);
+    }
+
+    private async Task Copy()
+    {
+        busy = true;
+        var outcome = await Bom.CopyStructureAsync(await Users.GetAsync(), Part.Number, copySource, copyReplace, Corr());
+        busy = false;
+        if (outcome.IsOk) { errors.Clear(); copySource = ""; await Reload(); }
+        else Fail(outcome);
+    }
+}

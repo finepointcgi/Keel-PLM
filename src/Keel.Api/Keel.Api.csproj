@@ -8,6 +8,7 @@
     <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
     <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\Keel.Parts\Keel.Parts.csproj" />
+    <ProjectReference Include="..\Keel.Bom\Keel.Bom.csproj" />
     <ProjectReference Include="..\Keel.Web\Keel.Web.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="prometheus-net.AspNetCore" />
