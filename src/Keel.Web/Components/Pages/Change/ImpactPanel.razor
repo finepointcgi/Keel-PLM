@@ -21,6 +21,7 @@
             <li>@s.WhereUsedParents place@(s.WhereUsedParents == 1 ? "" : "s") used@(s.RedactedParents > 0 ? $", plus {s.RedactedParents} restricted" : "")</li>
             <li>@s.Documents linked document@(s.Documents == 1 ? "" : "s")@(s.RedactedDocuments > 0 ? $", plus {s.RedactedDocuments} restricted" : "")</li>
             <li>@s.StructureChanges structure change@(s.StructureChanges == 1 ? "" : "s") in revised assemblies</li>
+            <li class="@(s.StaleMboms > 0 ? "error" : null)">@s.StaleMboms manufacturing BOM@(s.StaleMboms == 1 ? "" : "s") derived from a revised EBOM</li>
             <li class="@(s.OpenConflicts > 0 ? "error" : null)">@s.OpenConflicts other open change@(s.OpenConflicts == 1 ? "" : "s") touching the same parts or their parents</li>
         </ul>
 
@@ -98,6 +99,20 @@
                             }
                         </ul>
                     }
+                    @* --- 2.3: manufacturing BOMs that become stale (ADR-0024) --- *@
+                    @if (o.StaleMboms is { Count: > 0 } stale)
+                    {
+                        <h5>Manufacturing BOMs that become stale</h5>
+                        <ul class="plain">
+                            @foreach (var m in stale)
+                            {
+                                <li><a href="mboms/@Uri.EscapeDataString(m.MbomNumber)">@m.MbomNumber</a> · plant @m.Plant · @m.Revision.@m.Iteration (@m.StateLabel) · derived from EBOM @m.DerivedFrom
+                                    @(m.StaleNow ? $", the EBOM is now at {m.CurrentEbom}" : ", will be stale once the revision exists")</li>
+                            }
+                        </ul>
+                        @if (o.HiddenMboms > 0) { <p class="muted small">Plus @o.HiddenMboms more you are not authorized to see.</p> }
+                    }
+                    @* --- end 2.3 --- *@
                     @if (o.Compare is { } c)
                     {
                         <h5>Structure change, @c.From to @c.To</h5>

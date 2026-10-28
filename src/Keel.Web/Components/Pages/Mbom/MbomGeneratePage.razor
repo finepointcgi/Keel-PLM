@@ -1,0 +1,98 @@
+@page "/mboms/generate"
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+@* Generate the MBOM of an assembly for a plant from its EBOM (ADR-0024). If one already exists the wizard points at its "Update from the EBOM" proposal instead,
+   which compares and lets the engineer accept changes line by line. The banner is the markings of the result (or UNCLASSIFIED until something is shown). *@
+<PageFrame Banner="@(result is null ? UiText.Unclassified : BannerOf(result))" Title="Generate a manufacturing BOM">
+    <form class="grid-form" @onsubmit="Generate" aria-label="Generate an MBOM from an EBOM">
+        <fieldset class="wide stack">
+            <legend>1. Part and plant</legend>
+            <label>Assembly part number * <input @bind="part" maxlength="40" required autocomplete="off" /></label>
+            <label>Plant *
+                <select aria-label="Plant" @bind="plant">
+                    @foreach (var p in plants) { <option value="@p.Code">@p.Code · @p.Name</option> }
+                </select>
+            </label>
+        </fieldset>
+        <fieldset class="wide stack">
+            <legend>2. Which EBOM</legend>
+            <EbomSpecFields Value="specForm" Label="Generate from: " />
+        </fieldset>
+        <fieldset class="wide stack">
+            <legend>3. Options</legend>
+            <label class="inline-check"><input type="checkbox" @bind="multiLevel" /> Also generate an MBOM for each Make sub-assembly (an MBOM that exists for the plant is kept)</label>
+            <label class="inline-check"><input type="checkbox" @bind="confirmRaise" /> Raise the markings to cover the part when needed</label>
+        </fieldset>
+        <div class="actions"><button type="submit" disabled="@busy">Generate</button></div>
+    </form>
+
+    @if (errors.Count > 0) { <ul class="error form-errors" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
+    @if (existing is not null)
+    {
+        <p role="status">An MBOM already exists for this part and plant: <a href="@MbomUiText.Href(existing.Number)">@existing.Number</a>. Open it and use "Update from the EBOM" to compare and accept changes without losing manufacturing edits.</p>
+    }
+    @if (result is not null)
+    {
+        <section class="panel stack" aria-live="polite">
+            <h3>Result</h3>
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Generated manufacturing BOMs</caption>
+                <thead><tr><th scope="col">MBOM</th><th scope="col">Part</th><th scope="col">Plant</th><th scope="col">Derived from</th><th scope="col">Lines</th><th scope="col">Note</th></tr></thead>
+                <tbody>
+                @foreach (var i in result.Items)
+                {
+                    <tr><td><a href="@MbomUiText.Href(i.MbomNumber)">@i.MbomNumber</a></td><td>@i.PartNumber</td><td>@i.Plant</td><td>@i.DerivedFrom</td><td>@i.Lines</td><td>@(i.Created ? "Created" : i.Note)</td></tr>
+                }
+                </tbody>
+            </table></div>
+            @foreach (var n in result.Notices) { <p class="muted">@n</p> }
+            <p>Next: open the MBOM, review the lines, run a reconciliation and submit it for release.</p>
+        </section>
+    }
+</PageFrame>
+
+@code {
+    [SupplyParameterFromQuery(Name = "part")] public string? PartQuery { get; set; }
+
+    private IReadOnlyList<PlantInfo> plants = [];
+    private readonly Keel.Web.Services.EbomSpecForm specForm = new();
+    private string part = "", plant = "";
+    private bool multiLevel, confirmRaise, busy;
+    private readonly List<string> errors = [];
+    private GenerateResult? result;
+    private MbomSummary? existing;
+    private readonly List<Markings> shown = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        plants = await Mbom.ListPlantsAsync();
+        plant = plants.FirstOrDefault()?.Code ?? "";
+        if (PartQuery is { Length: > 0 }) part = PartQuery;
+    }
+
+    private string BannerOf(GenerateResult r) => shown.Count == 0 ? UiText.Unclassified : Markings.AggregateBanner(shown);
+
+    private async Task Generate()
+    {
+        errors.Clear();
+        (result, existing) = (null, null);
+        var (spec, problem) = specForm.ToSpec();
+        if (spec is null) { errors.Add(problem!); return; }
+        busy = true;
+        var subject = await Users.GetAsync();
+        var outcome = await Mbom.GenerateAsync(subject, new GenerateMbomCommand(part.Trim(), plant, spec, multiLevel, null, confirmRaise), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk)
+        {
+            result = outcome.Value;
+            shown.Clear();
+            foreach (var i in result!.Items)
+                if ((await Mbom.GetAsync(subject, i.MbomNumber, null, CurrentUser.NewCorrelationId())).Value is { } d) shown.Add(d.Summary.Markings);
+            return;
+        }
+        errors.AddRange(outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? outcome.Errors : [UiText.Message(outcome)]);
+        if (outcome.Kind == OutcomeKind.Conflict)
+            existing = (await Mbom.SearchAsync(subject, new MbomSearch(PartNumber: part.Trim(), Plant: plant), CurrentUser.NewCorrelationId())).Value?.Items.FirstOrDefault();
+    }
+}

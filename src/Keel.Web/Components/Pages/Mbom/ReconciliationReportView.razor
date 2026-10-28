@@ -1,0 +1,61 @@
+@* One reconciliation run as the reader may see it: status, coverage, findings grouped by severity, and the EBOM changes since the MBOM was derived. Findings about parts the
+   reader may not see keep their code, find numbers and quantities, and show a placeholder instead of the part (A4). Presentation only (ADR-0014). *@
+@{
+    var run = Report.Run;
+}
+<div class="stack" aria-live="polite">
+    <p>
+        <span class="badge @MbomUiText.StatusClass(run.Status)">@run.StatusLabel</span>
+        Version @run.MbomRevision.@run.MbomIteration against EBOM @run.EbomLabel (@run.Spec) · run by @run.RunBy on @UiText.Utc(run.RunAt)
+        @if (!run.IntegrityOk) { <span class="flag"> The stored run does not match its recorded digest.</span> }
+    </p>
+    <ul class="plain" aria-label="Summary">
+        <li>Coverage: @run.CoveredLines of @run.EbomLines EBOM lines implemented (@run.CoveragePct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) %), @run.MbomLines MBOM lines</li>
+        <li class="@(run.Errors > 0 ? "sev-error" : null)">@run.Errors error@(run.Errors == 1 ? "" : "s"), @run.Warnings warning@(run.Warnings == 1 ? "" : "s"), @run.Infos note@(run.Infos == 1 ? "" : "s")</li>
+        @if (run.RedactedFindings > 0) { <li>@run.RedactedFindings finding@(run.RedactedFindings == 1 ? "" : "s") about restricted parts (details hidden)</li> }
+    </ul>
+
+    @foreach (var severity in new[] { FindingSeverities.Error, FindingSeverities.Warning, FindingSeverities.Info })
+    {
+        var group = Report.Findings.Where(f => f.Severity == severity).ToList();
+        if (group.Count == 0) continue;
+        <h4 class="@MbomUiText.SeverityClass(severity)">@MbomUiText.SeverityLabel(severity) (@group.Count)</h4>
+        <div class="table-wrap"><table class="data" data-severity="@severity">
+            <caption class="sr-only">@MbomUiText.SeverityLabel(severity)</caption>
+            <thead><tr><th scope="col">Finding</th><th scope="col">MBOM line</th><th scope="col">EBOM line</th><th scope="col">Part</th><th scope="col">Expected</th><th scope="col">Actual</th><th scope="col">Details</th></tr></thead>
+            <tbody>
+            @foreach (var f in group)
+            {
+                <tr class="@(f.Redacted ? "restricted" : null)">
+                    <td>@f.Title</td>
+                    <td>@f.MbomFind</td>
+                    <td>@if (f.EbomFind is { } ef) { <a href="@($"{MbomUiText.Href(Number)}/side-by-side#ebom-{ef}")">@ef</a> }</td>
+                    <td>@if (f.Redacted) { <span class="restricted-label">Restricted item</span> } else if (f.ChildNumber is not null) { <a href="parts/@Uri.EscapeDataString(f.ChildNumber)">@f.ChildNumber</a> @f.ChildName }</td>
+                    <td>@(f.Expected is { } e ? $"{MbomUiText.Qty(e)} {f.Unit}" : "")</td>
+                    <td>@(f.Actual is { } a ? $"{MbomUiText.Qty(a)} {f.Unit}" : "")</td>
+                    <td>@f.Detail</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+    @if (Report.Findings.Count == 0) { <p class="muted">No findings: every EBOM line is implemented as declared.</p> }
+    @if (Report.FindingsTruncated) { <p class="muted">Only the first findings are shown.</p> }
+
+    @if (Report.EbomChangesSinceDerivation.Count > 0)
+    {
+        <h4>EBOM changes since the MBOM was derived (@(run.DerivedLabel ?? "?") to @run.EbomLabel)</h4>
+        <ul class="plain">
+            @foreach (var c in Report.EbomChangesSinceDerivation)
+            {
+                <li>@ConfigurationText.ChangeKind(c.Kind): @(c.Redacted ? "restricted part" : $"{c.Number} {c.Name}") <span class="muted">@(c.Kind == BomChangeKind.Changed ? string.Join("; ", c.Changes) : "")</span></li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required ReconciliationReport Report { get; set; }
+    /// <summary>The MBOM number, for the links to the side-by-side view.</summary>
+    [Parameter, EditorRequired] public required string Number { get; set; }
+}

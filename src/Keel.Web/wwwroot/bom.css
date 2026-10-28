@@ -41,3 +41,15 @@ table.bom-edit input, table.bom-edit select { max-width: 160px; }
 .state-draft { border-color: var(--border); color: inherit; }
 .state-superseded, .state-archived { color: var(--muted); }
 .cell-eff { font-size: 13px; }
+
+/* Manufacturing BOMs (2.3): the lines grid, finding severities and the side-by-side view. */
+.mbom-row { grid-template-columns: 76px minmax(130px, 1fr) minmax(130px, 1.2fr) 80px 56px 70px 130px 110px 110px minmax(120px, 1fr) minmax(160px, 1.4fr); min-width: 1320px; }
+.mbom-body { min-width: 1320px; }
+.sev-error { color: var(--deny); font-weight: 600; }
+.sev-warning { color: var(--accent); font-weight: 600; }
+.sev-info { color: var(--muted); }
+.muted-row td { color: var(--muted); }
+table.side-by-side td { vertical-align: top; }
+/* Long option texts and fieldsets must not widen a phone-width page. */
+fieldset { min-width: 0; }
+.effectivity-fields select, .effectivity-fields input { max-width: 100%; min-width: 0; }

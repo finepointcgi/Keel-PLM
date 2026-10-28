@@ -228,6 +228,7 @@ app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management
 app.MapConfigurationEndpoints(); // 2.1 baselines and effectivity
 app.MapAdminEndpoints(); // 2.2 administration and classification
+app.MapMbomEndpoints(); // 2.3 EBOM / MBOM and reconciliation
 app.MapKeelUi<App>();
 
 app.Run();

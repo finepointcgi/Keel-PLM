@@ -1,0 +1,30 @@
+@* Which EBOM to derive from or reconcile against: the BOM module's configuration specs plus an explicit version (ADR-0024). The service validates the values. *@
+<span class="effectivity-fields">
+    <select aria-label="@(Label)EBOM selection" @bind="Value.Kind">
+        @if (AllowDefault) { <option value="">Same as the last reconciliation</option> }
+        <option value="@nameof(EbomSpecKind.LatestReleased)">Latest released EBOM</option>
+        <option value="@nameof(EbomSpecKind.Latest)">Latest EBOM (including work in progress)</option>
+        <option value="@nameof(EbomSpecKind.Effectivity)">EBOM as of a serial, lot or date</option>
+        <option value="@nameof(EbomSpecKind.Baseline)">EBOM of a baseline</option>
+        <option value="@nameof(EbomSpecKind.Iteration)">A specific EBOM version</option>
+    </select>
+    @if (Value.SpecKind == EbomSpecKind.Effectivity)
+    {
+        <UnitFields Value="Value.Unit" Label="@(Label + "EBOM as of: ")" />
+    }
+    @if (Value.SpecKind == EbomSpecKind.Baseline)
+    {
+        <input aria-label="@(Label)Baseline number" placeholder="BL-000001" size="12" @bind="Value.Baseline" />
+    }
+    @if (Value.SpecKind == EbomSpecKind.Iteration)
+    {
+        <input aria-label="@(Label)EBOM version" placeholder="B.1" size="6" @bind="Value.Iteration" />
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public required Keel.Web.Services.EbomSpecForm Value { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    /// <summary>Offers "same as the last reconciliation" (no spec is sent).</summary>
+    [Parameter] public bool AllowDefault { get; set; }
+}

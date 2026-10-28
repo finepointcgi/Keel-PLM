@@ -15,7 +15,7 @@ namespace Keel.Change;
 /// </summary>
 public sealed class ImpactAnalysisService(
     NpgsqlDataSource dataSource, IAuditLog audit, IEnumerable<IChangeObjectGateway> gateways,
-    IEnumerable<IStructureImpactProvider> structure, IEnumerable<ILinkedDocumentProvider> documents)
+    IEnumerable<IStructureImpactProvider> structure, IEnumerable<ILinkedDocumentProvider> documents, IEnumerable<IManufacturingImpactProvider>? manufacturing = null)
 {
     public const int DefaultLevels = 10;
 
@@ -50,7 +50,7 @@ public sealed class ImpactAnalysisService(
         var objects = new List<ImpactObject>();
         var affectedMasters = new HashSet<Guid>();
         var parentMasters = new HashSet<Guid>();
-        int parents = 0, redactedParents = 0, docs = 0, redactedDocs = 0, hidden = 0, structureChanges = 0;
+        int parents = 0, redactedParents = 0, docs = 0, redactedDocs = 0, hidden = 0, structureChanges = 0, staleMboms = 0;
 
         foreach (var row in rows)
         {
@@ -107,20 +107,35 @@ public sealed class ImpactAnalysisService(
             }
             else if (row.Action == ChangeActions.Revise) note = "The new revision is created when this request becomes a change notice.";
 
+            // 2.3: manufacturing BOMs derived from this EBOM go stale when it is revised; the plants' engineers are warned (ADR-0024).
+            IReadOnlyList<StaleMbom>? stale = null;
+            var hiddenMboms = 0;
+            if (row.Action == ChangeActions.Revise && manufacturing?.FirstOrDefault(p => p.ObjectType == row.ObjectType) is { } mp)
+            {
+                var m = await mp.StaleMbomsAsync(subject, obj.Key, correlationId, ct);
+                if (m.IsOk)
+                {
+                    stale = m.Value!.Mboms;
+                    hiddenMboms = m.Value.Hidden;
+                    staleMboms += stale.Count;
+                    foreach (var s in stale) shown.Add(s.Markings);
+                }
+            }
+
             objects.Add(new ImpactObject(row.Id, false, row.Action, obj.Key, obj.Name, obj.Revision, obj.Markings.BannerText(), whereUsed,
-                whereUsed.Count(w => w.Redacted), whereUsed.Count == 0 ? 0 : whereUsed.Max(w => w.Level), linked, compare, note));
+                whereUsed.Count(w => w.Redacted), whereUsed.Count == 0 ? 0 : whereUsed.Max(w => w.Level), linked, compare, note, stale, hiddenMboms));
         }
 
         var conflicts = await FindConflictsAsync(conn, tx, subject, head, affectedMasters, parentMasters, ct);
         foreach (var c in conflicts) shown.Add(c.Markings);
 
         var banner = Markings.AggregateBanner(shown);
-        var summary = new ImpactSummary(rows.Count, hidden, parents, redactedParents, docs, redactedDocs, conflicts.Count, structureChanges);
+        var summary = new ImpactSummary(rows.Count, hidden, parents, redactedParents, docs, redactedDocs, conflicts.Count, structureChanges, staleMboms);
         await audit.AppendAsync(tx, ChangeStore.Entry(subject, "change.impact", AuditOutcome.Success, objectType, number, correlationId,
             ("levels", levels.ToString(CultureInfo.InvariantCulture)), ("objects", rows.Count.ToString(CultureInfo.InvariantCulture)), ("hiddenObjects", hidden.ToString(CultureInfo.InvariantCulture)),
             ("parents", parents.ToString(CultureInfo.InvariantCulture)), ("redactedParents", redactedParents.ToString(CultureInfo.InvariantCulture)),
             ("documents", docs.ToString(CultureInfo.InvariantCulture)), ("redactedDocuments", redactedDocs.ToString(CultureInfo.InvariantCulture)),
-            ("conflicts", conflicts.Count.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
+            ("conflicts", conflicts.Count.ToString(CultureInfo.InvariantCulture)), ("staleMboms", staleMboms.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
         await tx.CommitAsync(ct);
         return Outcome<ImpactReport>.Ok(new ImpactReport(number, objects, [.. conflicts.Select(c => c.Conflict)], summary, banner, shown));
     }

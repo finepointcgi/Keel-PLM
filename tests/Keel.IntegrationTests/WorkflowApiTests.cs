@@ -187,7 +187,7 @@ public sealed class WorkflowApiTests(PostgresFixture pg)
         var part = listed.EnumerateArray().Single(t => t.GetProperty("objectType").GetString() == "part");
         Assert.Equal("part-release-review", part.GetProperty("id").GetString());
         Assert.Equal(2, part.GetProperty("slots").GetArrayLength());
-        Assert.Equal(["baseline", "ecn", "ecr", "part"], listed.EnumerateArray().Select(t => t.GetProperty("objectType").GetString()!).Order()); // 1.6 seeds ECR and ECN templates
+        Assert.Equal(["baseline", "ecn", "ecr", "mbom", "part"], listed.EnumerateArray().Select(t => t.GetProperty("objectType").GetString()!).Order()); // 1.6 seeds ECR and ECN templates
 
         var invalid = await admin.PostAsJsonAsync("/api/v1/workflow/templates", new { id = "orphans", name = "O", objectType = "part", start = "flow",
             nodes = new object[] { new { id = "flow", type = "Serial", steps = new[] { "done" } }, new { id = "done", type = "End", outcome = "Release" }, new { id = "lost", type = "End", outcome = "Release" } } });
@@ -207,7 +207,7 @@ public sealed class WorkflowApiTests(PostgresFixture pg)
         Assert.Equal(2, (await Json(created)).GetProperty("version").GetInt32());
         var active = (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates")).EnumerateArray().Single(t => t.GetProperty("id").GetString() == "part-release-review");
         Assert.Equal("Part release review, any approver", active.GetProperty("name").GetString());
-        Assert.Equal(5, (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates?all=true")).GetArrayLength()); // two part versions, ECR, ECN, baseline
+        Assert.Equal(6, (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates?all=true")).GetArrayLength()); // two part versions, ECR, ECN, baseline, MBOM
     }
 
     [Fact]

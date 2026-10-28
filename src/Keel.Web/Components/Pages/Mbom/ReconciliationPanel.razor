@@ -1,0 +1,105 @@
+@* Reconciliation of the MBOM against its EBOM (ADR-0024): run it, read the findings grouped by severity, see what changed in the EBOM since the MBOM was derived,
+   and browse the immutable history of runs. Findings about parts the reader may not see keep their code, find numbers and quantities only. *@
+@inject CurrentUser Users
+@inject MbomService Mbom
+
+<section class="panel stack" aria-labelledby="recon-heading">
+    <div class="bom-heading">
+        <h3 id="recon-heading">Reconciliation with the EBOM</h3>
+        <a href="@($"{MbomUiText.Href(Detail.Summary.Number)}/side-by-side")">EBOM and MBOM side by side</a>
+    </div>
+    @if (Detail.Permissions.CanModify)
+    {
+        <form class="toolbar" @onsubmit="Run" aria-label="Run a reconciliation">
+            <EbomSpecFields Value="specForm" Label="Reconcile against: " AllowDefault="true" />
+            <button type="submit" disabled="@busy">@(report is null ? "Reconcile" : "Reconcile again")</button>
+        </form>
+        <p class="muted small">Latest version @Detail.Summary.Revision.@Detail.Summary.Iteration is reconciled. A release needs a run for this version without errors.</p>
+    }
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Detail.ReleaseBlocker is { } blocker && Detail.Summary.State == "InWork") { <p class="muted" role="status">Not ready for review: @blocker</p> }
+
+    @if (report is not null)
+    {
+        <ReconciliationReportView Report="report" Number="@Detail.Summary.Number" />
+    }
+    else if (loaded) { <p class="muted">This MBOM has not been reconciled yet.</p> }
+
+    @if (history is { Runs.Count: > 0 })
+    {
+        <details>
+            <summary>History of runs (@history.Runs.Count)</summary>
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Reconciliation runs, newest first</caption>
+                <thead><tr><th scope="col">When</th><th scope="col">By</th><th scope="col">MBOM version</th><th scope="col">Against EBOM</th><th scope="col">Result</th><th scope="col">Errors</th><th scope="col">Warnings</th><th scope="col">Coverage</th><th scope="col"></th></tr></thead>
+                <tbody>
+                @foreach (var h in history.Runs)
+                {
+                    <tr>
+                        <td>@UiText.Utc(h.RunAt)</td><td>@h.RunBy</td><td>@h.MbomRevision.@h.MbomIteration</td><td>@h.EbomLabel (@h.Spec)</td>
+                        <td><span class="badge @MbomUiText.StatusClass(h.Status)">@h.StatusLabel</span>@(h.IntegrityOk ? "" : " (digest mismatch)")</td>
+                        <td>@h.Errors</td><td>@h.Warnings</td><td>@h.CoveragePct.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) %</td>
+                        <td><button type="button" class="secondary" @onclick="() => Open(h.Id)" aria-label="Show the run of @UiText.Utc(h.RunAt)">Show</button></td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        </details>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required MbomDetail Detail { get; set; }
+    /// <summary>A run was made: the page reloads the header (status, release blocker).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+    /// <summary>Raised with the banner of the report shown, so the page banner covers it.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    private readonly Keel.Web.Services.EbomSpecForm specForm = new() { Kind = "" };
+    private ReconciliationReport? report;
+    private ReconciliationHistory? history;
+    private string? error, loadedFor;
+    private bool busy, loaded;
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Detail.Summary.Number}:{Detail.Summary.Revision}.{Detail.Summary.Iteration}:{Detail.LastRun?.Id}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var latest = await Mbom.GetReconciliationAsync(subject, Detail.Summary.Number, null, Corr());
+        report = latest.IsOk ? latest.Value : null;
+        loaded = true;
+        var h = await Mbom.GetReconciliationHistoryAsync(subject, Detail.Summary.Number, 25, Corr());
+        history = h.IsOk ? h.Value : null;
+        if (report is not null) await OnBanner.InvokeAsync(report.Banner);
+    }
+
+    private async Task Run()
+    {
+        error = null;
+        var (spec, problem) = specForm.ToSpec();
+        if (problem is not null) { error = problem; return; }
+        busy = true;
+        var outcome = await Mbom.ReconcileAsync(await Users.GetAsync(), Detail.Summary.Number, spec, Corr());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        report = outcome.Value;
+        await OnBanner.InvokeAsync(report!.Banner);
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Open(Guid id)
+    {
+        var outcome = await Mbom.GetReconciliationAsync(await Users.GetAsync(), Detail.Summary.Number, id, Corr());
+        if (outcome.IsOk) { report = outcome.Value; await OnBanner.InvokeAsync(report!.Banner); }
+        else error = UiText.Message(outcome);
+    }
+}
