@@ -15,6 +15,8 @@ public sealed class PostgresFixture : IAsyncLifetime
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
         .WithResourceMapping(new FileInfo(Path.Combine(RepoRoot, "deploy/compose/initdb/00-roles.sql")), "/docker-entrypoint-initdb.d/")
         .WithCommand("-c", "max_connections=300")
+        // Test databases are throwaway: keep them in memory (faster, and independent of free space on the Docker disk).
+        .WithTmpfsMount("/var/lib/postgresql/data")
         .Build();
     private int _counter;
 

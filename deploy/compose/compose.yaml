@@ -27,5 +27,17 @@ services:
     volumes:
       - ./keycloak/keel-realm.json:/opt/keycloak/data/import/keel-realm.json:ro
 
+  vault:
+    # Dev vault: SeaweedFS (Apache-2.0) behind the S3 API (A13, ADR-0015). The API only ever speaks S3, so production can
+    # point at any S3-compatible store. Dev-only credentials live in seaweedfs/s3.json.
+    image: chrislusf/seaweedfs:4.47
+    command: ["mini", "-dir=/data", "-s3.config=/etc/seaweedfs/s3.json", "-bucket=keel-vault", "-admin.ui=false",
+              "-master.volumeSizeLimitMB=256"]
+    ports: ["127.0.0.1:${KEEL_VAULT_PORT:-18333}:8333"]
+    volumes:
+      - vaultdata:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+
 volumes:
   pgdata:
+  vaultdata:

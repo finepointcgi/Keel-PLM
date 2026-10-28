@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Keel.Parts;
+namespace Keel.Core;
 
 /// <summary>
 /// ASME Y14.35 revision letters (A7): A–Y without I, O, Q, S, X, Z; after Y comes AA, AB, … (bijective base 20).

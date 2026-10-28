@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "keel-app",
+      "credentials": [{ "accessKey": "keel_vault_dev", "secretKey": "keel_vault_dev_secret" }],
+      "actions": ["Read:keel-vault", "Write:keel-vault", "List:keel-vault", "Tagging:keel-vault"]
+    }
+  ]
+}

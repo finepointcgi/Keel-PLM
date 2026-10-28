@@ -195,6 +195,16 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             cmd.Parameters.AddWithValue("at", clock.GetUtcNow());
             cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
             await cmd.ExecuteNonQueryAsync(ct);
+            // Document links belong to the iteration (ADR-0016): the working copy starts from the latest iteration's links.
+            await CopyDocumentLinksAsync(conn, tx,
+                """
+                SELECT l.link_type, l.document_master_id, l.document_revision_id, l.created_at, l.created_by
+                FROM plm.part_document_link l JOIN plm.part_iteration i ON i.id = l.part_iteration_id
+                JOIN plm.part_revision r ON r.id = i.revision_id AND i.iteration = r.latest_iteration
+                WHERE r.id = @src
+                """, ctx.RevisionId,
+                "INSERT INTO plm.part_checkout_document_link (id, revision_id, link_type, document_master_id, document_revision_id, created_at, created_by) VALUES (@id, @dst, @t, @m, @r, @at, @by)",
+                ctx.RevisionId, ct);
             return Done(("revision", $"{ctx.Revision}.{ctx.LatestIteration}"));
         }, ct);
 
@@ -220,18 +230,34 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             if (ctx.CheckoutUser != subject.Id) return Fail("Only the user who checked the part out can check it in.");
             if ((comment?.Length ?? 0) > 1000) return Invalid(["Check-in comment must be at most 1000 characters."]);
             var next = ctx.LatestIteration + 1;
-            await using var cmd = new NpgsqlCommand(
+            var iterationId = Guid.CreateVersion7();
+            await using (var ins = new NpgsqlCommand(
                 """
                 INSERT INTO plm.part_iteration (id, revision_id, iteration, description, attributes, comment, created_at, created_by)
-                SELECT @iid, revision_id, @next, description, attributes, @comment, @at, @by FROM plm.part_checkout WHERE revision_id = @rid;
+                SELECT @iid, revision_id, @next, description, attributes, @comment, @at, @by FROM plm.part_checkout WHERE revision_id = @rid
+                """, conn, tx))
+            {
+                ins.Parameters.AddWithValue("iid", iterationId);
+                ins.Parameters.AddWithValue("next", next);
+                ins.Parameters.AddWithValue("comment", string.IsNullOrWhiteSpace(comment) ? DBNull.Value : comment.Trim());
+                ins.Parameters.AddWithValue("at", clock.GetUtcNow());
+                ins.Parameters.AddWithValue("by", DisplayId(subject));
+                ins.Parameters.AddWithValue("rid", ctx.RevisionId);
+                await ins.ExecuteNonQueryAsync(ct);
+            }
+            // The working copy's document links become the new iteration's links (ADR-0016).
+            await CopyDocumentLinksAsync(conn, tx,
+                "SELECT link_type, document_master_id, document_revision_id, created_at, created_by FROM plm.part_checkout_document_link WHERE revision_id = @src",
+                ctx.RevisionId,
+                "INSERT INTO plm.part_document_link (id, part_iteration_id, link_type, document_master_id, document_revision_id, created_at, created_by) VALUES (@id, @dst, @t, @m, @r, @at, @by)",
+                iterationId, ct);
+            // Deleting the check-out cascades to its working links.
+            await using var cmd = new NpgsqlCommand(
+                """
                 UPDATE plm.part_revision SET latest_iteration = @next WHERE id = @rid;
                 DELETE FROM plm.part_checkout WHERE revision_id = @rid;
                 """, conn, tx);
-            cmd.Parameters.AddWithValue("iid", Guid.CreateVersion7());
             cmd.Parameters.AddWithValue("next", next);
-            cmd.Parameters.AddWithValue("comment", string.IsNullOrWhiteSpace(comment) ? DBNull.Value : comment.Trim());
-            cmd.Parameters.AddWithValue("at", clock.GetUtcNow());
-            cmd.Parameters.AddWithValue("by", DisplayId(subject));
             cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
             await cmd.ExecuteNonQueryAsync(ct);
             return Done(("revision", $"{ctx.Revision}.{next}"), ("comment", comment));
@@ -472,6 +498,34 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
 
         return new PartDetail(id, number, name, type, unit, source, lifecycleId, markings, markings.BannerText(), selected, iteration, revisions, history,
             checkout, transitions, new PartPermissions(modify.Permitted, admin.Permitted, modify.Reasons), createdAt, createdBy);
+    }
+
+    /// <summary>
+    /// Copies document link rows (selected by <paramref name="selectSql"/> with <c>@src</c>) to a new owner (<c>@dst</c>),
+    /// each with a fresh time-ordered id. Link creation time and author are carried over unchanged.
+    /// </summary>
+    private static async Task CopyDocumentLinksAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string selectSql, Guid source, string insertSql, Guid destination, CancellationToken ct)
+    {
+        var rows = new List<(string Type, Guid Master, Guid? Revision, DateTime At, string By)>();
+        await using (var sel = new NpgsqlCommand(selectSql, conn, tx))
+        {
+            sel.Parameters.AddWithValue("src", source);
+            await using var r = await sel.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                rows.Add((r.GetString(0), r.GetGuid(1), r.IsDBNull(2) ? null : r.GetGuid(2), r.GetDateTime(3), r.GetString(4)));
+        }
+        foreach (var row in rows)
+        {
+            await using var ins = new NpgsqlCommand(insertSql, conn, tx);
+            ins.Parameters.AddWithValue("id", Guid.CreateVersion7());
+            ins.Parameters.AddWithValue("dst", destination);
+            ins.Parameters.AddWithValue("t", row.Type);
+            ins.Parameters.AddWithValue("m", row.Master);
+            ins.Parameters.AddWithValue("r", row.Revision is { } rev ? rev : DBNull.Value);
+            ins.Parameters.AddWithValue("at", row.At);
+            ins.Parameters.AddWithValue("by", row.By);
+            await ins.ExecuteNonQueryAsync(ct);
+        }
     }
 
     private static string ViaMessage(string via, string targetLabel) => via switch

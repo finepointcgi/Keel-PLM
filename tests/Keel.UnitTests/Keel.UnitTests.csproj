@@ -13,5 +13,6 @@
     <ProjectReference Include="..\..\src\Keel.Security\Keel.Security.csproj" />
     <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Documents\Keel.Documents.csproj" />
   </ItemGroup>
 </Project>
