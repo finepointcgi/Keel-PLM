@@ -31,3 +31,8 @@ assumption is confirmed or overturned.
 | A22 | Distribution statement date | The DoDI 5230.24 "date of determination" is not yet captured with the markings, so stamped statements omit it. Added with the Phase 2 markings model. | `MarkingStatements`, Phase 1.3 |
 | A23 | Reference link resolution | A part's `references` link to a document resolves at read time to the latest Released revision, else the latest revision. `describes` links pin a revision. A simple configuration specification until Phase 2 effectivity/baselines. | ADR-0016 |
 | A24 | Document primary file | A new document may have no primary file; once an iteration has one, later iterations must keep one (replace, not drop). Submitting a document for review requires a primary file. | `DocumentService`, Phase 1.3 |
+| A25 | Participant eligibility (workflow) | Eligibility of reviewers/approvers is evaluated from the user-directory snapshot when picked and re-checked against the live token at signing; a role change at the IdP is enforced at signing, not at assignment. (Workflow notes call this A50.) | ADR-0018 |
+| A26 | Separation of duties | The submitter of a review cannot be a participant, cannot sign, and cannot be a reassignment target. (Workflow notes call this A51.) | ADR-0018 |
+| A27 | BOM assumptions | BOM-1..BOM-16 (Assembly-only parents, 5,000 children per iteration, designators unique per parent, caps, summary defaults, find-number path addressing) are listed in `docs/increments/1.4-bom.md` and ADR-0017. | ADR-0017 |
+| A28 | Review entry | Under Review is entered and left only through the workflow engine; administrators can override with a reason (audited as `part.set_state`). | ADR-0018 |
+

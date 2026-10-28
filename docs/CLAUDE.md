@@ -4,7 +4,8 @@ Keel is an on-prem, air-gapped PLM platform replacing Teamcenter/Windchill for `
 Read this file, then [assumptions.md](assumptions.md) and [adr/README.md](adr/README.md), before changing code.
 
 ## Status
-- **Phase 1:** 1.1 Foundations done, 1.2 Parts done (2026-10-27). Next: **1.3 Documents and vault**.
+- **Phase 1:** 1.1 Foundations, 1.2 Parts, 1.3 Documents and vault, 1.4 BOM, 1.5 Workflow/e-signature are merged (2026-10-28). 1.6 Change management is being built; then 1.7 seed data, E2E, demo script, containers.
+- Per-increment notes (delivered, tests, decisions, deferred): [1.3](increments/1.3-documents.md), [1.4](increments/1.4-bom.md), [1.5](increments/1.5-workflow.md).
 - Phase plan: 1.1 Foundations → 1.2 Parts → 1.3 Documents and vault → 1.4 BOM → 1.5 Review and release → 1.6 Change → 1.7 Demo-ready.
   Later phases: 2 Configuration management, 3 Migration, 4 Integrations, 5 Production operations.
 
@@ -13,6 +14,9 @@ Read this file, then [assumptions.md](assumptions.md) and [adr/README.md](adr/RE
 src/Keel.Core        domain primitives shared by all modules (Subject, Markings, Result types)
 src/Keel.Security    ABAC policy: in-memory evaluator + SQL filter builder (ADR-0004)
 src/Keel.Audit       hash-chained audit log, checkpoints, verifier (ADR-0005)
+src/Keel.Documents   documents, vault (S3), marked downloads, part-document links
+src/Keel.Bom         BOM structure, explosion, where-used, compare, CSV
+src/Keel.Workflow    workflow engine, e-signature with step-up, user directory
 src/Keel.Parts       parts: master/revision/iteration, lifecycle, attributes, check-out/check-in, search
 src/Keel.Api         ASP.NET Core host: REST API + Blazor UI, auth, health, metrics
 src/Keel.Web         Blazor (Interactive Server) UI components and pages (ADR-0014)
@@ -110,3 +114,12 @@ See [setup.md](setup.md).
 - Security fixes found while porting: CSP `form-action` now includes the IdP origin (sign-out redirect), `base-uri 'self'`; logout validates antiforgery explicitly (minimal APIs don't enforce it); forbidden UI navigation lands on `/access-denied` (audited once); dev realm users have fixed IDs.
 - Tests: bUnit component tests (banner placement via sections, attribute/markings fields), web service tests, architecture rule "every page uses PageFrame", UI auth integration tests (IdP redirect with PKCE, API 401 not redirect, framework script served, logout CSRF rejected).
 - Deferred: idle-session lock (NIST 3.1.10) beyond the absolute lifetime; Playwright E2E (1.7).
+
+### Merge of increments 1.3-1.5 (2026-10-28)
+Built in parallel by three agents in separate worktrees, merged into `main`. Reconciliations made by the coordinator:
+- `PartService` check-in now does: insert iteration -> copy document links -> `IPartIterationParticipant` hook (BOM, with veto) -> bump iteration/delete check-out.
+- Under Review is workflow-only (see A28): tests that need a locked part use `SetStateAsync(admin, ..., adminOverride: true)`.
+- Architecture rule for list queries accepts any `*filter.Sql}` interpolation (case-insensitive); `PartWorkflowGateway` is allow-listed (keyed loads; the workflow service evaluates policy).
+- BOM virtualization uses a small JS shim because Blazor `Virtualize` writes inline `style` attributes that the CSP blocks; CSP is intentionally not relaxed.
+- Dev Docker VM disk was ~99% full at merge time (two orphaned PostgreSQL volumes from other work, ~26 GB). SeaweedFS (vault) cannot create volumes in that state and uploads hang; automated tests use tmpfs and are unaffected. Free Docker disk before using the dev vault.
+- Known gaps: API upload does not time out when the vault cannot write (hang instead of a fast 503) - add a vault write timeout; dev CLI password-grant tokens have no `auth_time`, so REST e-signature smoke tests need an authorization-code token.

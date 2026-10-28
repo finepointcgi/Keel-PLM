@@ -19,3 +19,7 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0012](0012-packaging-and-deployment.md) | Packaging, deployment and offline install | Accepted |
 | [0013](0013-testing-strategy.md) | Testing strategy | Accepted |
 | [0014](0014-blazor-server-ui.md) | Blazor (Interactive Server) user interface | Accepted |
+| [0015](0015-vault-object-storage.md) | Vault object storage (S3 API, content-addressed) | Accepted |
+| [0016](0016-part-document-links.md) | Part-document link semantics (iteration-owned) | Accepted |
+| [0017](0017-bom-structure-and-explosion.md) | BOM structure, explosion and redaction | Accepted |
+| [0018](0018-workflow-and-esignature.md) | Workflow engine and e-signature | Accepted |
