@@ -12,7 +12,9 @@ public sealed partial class ArchitectureTests
         ["Keel.Security"] = ["Keel.Core"],
         ["Keel.Audit"] = ["Keel.Core"],
         ["Keel.Parts"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts"],
+        // Documents reads part rows only through key lookups and the marking contract; it never references Keel.Parts.
+        ["Keel.Documents"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents"],
     };
 
     [Fact]
@@ -27,7 +29,7 @@ public sealed partial class ArchitectureTests
     }
 
     /// <summary>
-    /// Any query that lists marked rows (FROM a marked table without a key lookup) must apply AccessPolicy.BuildReadFilter.
+    /// Any query that lists marked rows (FROM or JOIN a marked table without a key lookup) must apply AccessPolicy.BuildReadFilter.
     /// Key lookups ("WHERE m.number = @n", "WHERE id = @id") are allowed because the caller evaluates the single object.
     /// </summary>
     [Fact]
@@ -68,7 +70,7 @@ public sealed partial class ArchitectureTests
         Assert.True(offenders.Count == 0, "Pages without PageFrame: " + string.Join(", ", offenders));
     }
 
-    [GeneratedRegex(@"FROM\s+plm\.part_master\b[^\n]*", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(FROM|JOIN)\s+plm\.(part_master|document_master)\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlFromMarkedTable();
 
     [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id)\s*=\s*@\w+", RegexOptions.IgnoreCase)]

@@ -12,6 +12,7 @@ public static class UiText
         ["org.not_owner"] = "Only the owning organization or program members may modify this object.",
         ["checkout.not_owner"] = "Only the user who checked it out (or an administrator) can do this.",
         ["number.explicit_requires_admin"] = "Only administrators may assign explicit numbers.",
+        ["document.read_denied"] = "You are not authorized to see the linked document.",
     };
 
     public static string Reason(string code)

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
+    <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="PDFsharp" />
+    <!-- Overrides PDFsharp's vulnerable transitive 8.0.1 (see Directory.Packages.props). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- DejaVu Sans (Bitstream Vera license, see Marking/Fonts/DejaVu-LICENSE.txt): no system fonts needed on Linux/macOS. -->
+    <EmbeddedResource Include="Marking\Fonts\DejaVuSans.ttf" LogicalName="Keel.Documents.Fonts.DejaVuSans.ttf" />
+    <EmbeddedResource Include="Marking\Fonts\DejaVuSans-Bold.ttf" LogicalName="Keel.Documents.Fonts.DejaVuSans-Bold.ttf" />
+    <None Include="Marking\Fonts\DejaVu-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" Link="licenses\DejaVu-LICENSE.txt" />
+  </ItemGroup>
+</Project>

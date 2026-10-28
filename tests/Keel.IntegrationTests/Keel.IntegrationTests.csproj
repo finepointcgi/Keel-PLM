@@ -8,6 +8,7 @@
     <Using Include="Xunit" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>
   <ItemGroup>
@@ -16,5 +17,6 @@
     <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\..\src\Keel.Api\Keel.Api.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Documents\Keel.Documents.csproj" />
   </ItemGroup>
 </Project>

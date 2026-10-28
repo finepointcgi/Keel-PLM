@@ -1,0 +1,51 @@
+@using Keel.Documents
+@* Document links of a part iteration (ADR-0016). Links to documents the user may not read are redacted placeholders:
+   only the link type is shown, never the number, name or markings (A4). *@
+@if (Links.Count == 0)
+{
+    <p class="muted">@Empty</p>
+}
+else
+{
+    <div class="table-wrap"><table class="data">
+        <thead><tr><th scope="col">Link</th><th scope="col">Document</th><th scope="col">Name</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Markings</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>
+            @foreach (var l in Links)
+            {
+                <tr data-link-id="@l.LinkId">
+                    <td>@DocumentUi.LinkTypeLabel(l.LinkType)</td>
+                    @if (l.Redacted || l.Document is null)
+                    {
+                        <td colspan="5" class="muted redacted">Restricted document: you are not authorized to see it.</td>
+                    }
+                    else
+                    {
+                        var d = l.Document;
+                        <td><a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a></td>
+                        <td>@d.Name</td>
+                        <td>
+                            @d.Revision.@d.Iteration
+                            @if (l.PinnedRevision is not null) { <span class="muted small"> (pinned)</span> }
+                            @if (l.NewerRevisionAvailable) { <span class="badge">Newer revision available</span> }
+                        </td>
+                        <td>@d.State</td>
+                        <td><MarkingChip Text="@d.Banner" /></td>
+                    }
+                    <td>
+                        @if (OnRemove.HasDelegate)
+                        {
+                            <button type="button" class="secondary" disabled="@Busy" @onclick="() => OnRemove.InvokeAsync(l.LinkId)">Remove</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<PartDocumentLinkView> Links { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemove { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string Empty { get; set; } = "No linked documents.";
+}

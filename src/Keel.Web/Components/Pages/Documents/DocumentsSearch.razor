@@ -1,0 +1,65 @@
+@page "/documents"
+@using Keel.Documents
+@inject CurrentUser Users
+@inject DocumentService Docs
+
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Documents">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search documents" placeholder="Number or name" class="grow" @bind="query" />
+        <select aria-label="Document type" @bind="type" @bind:after="() => Search(0)">
+            <option value="">Any type</option>
+            @foreach (var t in DocumentTypes.All) { <option value="@t">@t</option> }
+        </select>
+        <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
+            <option value="">Any state</option>
+            <option value="InWork">In Work</option>
+            <option value="UnderReview">Under Review</option>
+            <option value="Released">Released</option>
+            <option value="Obsolete">Obsolete</option>
+        </select>
+        <button type="submit">Search</button>
+        <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+            <a class="button secondary" href="documents/new">New document</a>
+        </AuthorizeView>
+    </form>
+
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total document@(result.Total == 1 ? "" : "s") you can access</p>
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
+            <tbody>
+                @foreach (var d in result.Items)
+                {
+                    <tr>
+                        <td><a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a></td>
+                        <td>@d.Name</td>
+                        <td>@d.DocumentType</td>
+                        <td>@d.Revision.@d.Iteration</td>
+                        <td>@d.State</td>
+                        <td><MarkingChip Text="@d.Banner" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        <div class="toolbar">
+            <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Search(Math.Max(0, offset - PageSize))">Previous</button>
+            <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Search(offset + PageSize)">Next</button>
+        </div>
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private string query = "", type = "", state = "";
+    private int offset;
+    private DocumentSearchResult? result;
+
+    protected override Task OnInitializedAsync() => Search(0);
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        result = await Docs.SearchAsync(await Users.GetAsync(), query, type == "" ? null : type, state == "" ? null : state, PageSize, offset, CurrentUser.NewCorrelationId());
+    }
+}

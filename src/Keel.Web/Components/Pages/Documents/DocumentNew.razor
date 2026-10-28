@@ -1,0 +1,67 @@
+@page "/documents/new"
+@using Keel.Documents
+@using Keel.Documents.Vault
+@inject CurrentUser Users
+@inject DocumentService Docs
+@inject VaultOptions Vault
+@inject NavigationManager Nav
+
+@* A blank form shows no controlled data; the markings being entered appear on the created document. *@
+<PageFrame Banner="@UiText.Unclassified" Title="New document">
+    <EditForm Model="this" OnSubmit="Create" FormName="new-document" class="stack">
+        <fieldset class="grid-form">
+            <legend>Document</legend>
+            <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+            <label>
+                Type
+                <InputSelect @bind-Value="documentType">@foreach (var t in DocumentTypes.All) { <option value="@t">@t</option> }</InputSelect>
+            </label>
+            <label class="wide">Description <InputTextArea @bind-Value="description" rows="3" maxlength="4000" /></label>
+            <label class="wide">
+                Primary file (optional, up to @DocumentUi.Size(Vault.MaxUploadBytes))
+                <InputFile OnChange="Pick" />
+            </label>
+        </fieldset>
+        <fieldset class="grid-form">
+            <legend>Security markings</legend>
+            <MarkingsFields Value="markings" />
+        </fieldset>
+        @if (errors is not null)
+        {
+            <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+        }
+        <div class="toolbar">
+            <button type="submit" disabled="@busy">@(busy && file is not null ? "Uploading…" : "Create document")</button>
+            <a class="button secondary" href="documents">Cancel</a>
+        </div>
+    </EditForm>
+</PageFrame>
+
+@code {
+    private string name = "", documentType = "Drawing", description = "";
+    private readonly MarkingsInput markings = new();
+    private IBrowserFile? file;
+    private IReadOnlyList<string>? errors;
+    private bool busy;
+
+    private void Pick(InputFileChangeEventArgs e) => file = e.File;
+
+    private async Task Create()
+    {
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        busy = true;
+        errors = null;
+        Outcome<DocumentDetail> outcome;
+        // The browser streams the file over the circuit straight into the vault; it is never buffered whole.
+        await using (var content = file?.OpenReadStream(Vault.MaxUploadBytes))
+        {
+            var upload = file is null ? null : new FileUpload(file.Name, file.ContentType, content!);
+            outcome = await Docs.CreateAsync(await Users.GetAsync(), new CreateDocumentCommand(name, documentType, m.Value, description), upload,
+                CurrentUser.NewCorrelationId());
+        }
+        busy = false;
+        if (outcome.IsOk) Nav.NavigateTo($"documents/{Uri.EscapeDataString(outcome.Value!.Number)}");
+        else errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+    }
+}

@@ -4,6 +4,7 @@
     <Project Path="src/Keel.Audit/Keel.Audit.csproj" />
     <Project Path="src/Keel.AuditCli/Keel.AuditCli.csproj" />
     <Project Path="src/Keel.Core/Keel.Core.csproj" />
+    <Project Path="src/Keel.Documents/Keel.Documents.csproj" />
     <Project Path="src/Keel.Parts/Keel.Parts.csproj" />
     <Project Path="src/Keel.Security/Keel.Security.csproj" />
     <Project Path="src/Keel.Web/Keel.Web.csproj" />
