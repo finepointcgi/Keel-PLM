@@ -2,6 +2,7 @@
 @inject CurrentUser Users
 @inject ChangeService Changes
 @inject NavigationManager Nav
+@inject IReferenceData Refs
 
 @* A blank form shows no controlled data; the markings being entered appear on the created change. *@
 <PageFrame Banner="@UiText.Unclassified" Title="@Title">
@@ -17,7 +18,7 @@
                 <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
                 <label>
                     Priority
-                    <InputSelect @bind-Value="priority">@foreach (var p in ChangePriorities.All) { <option value="@p">@p</option> }</InputSelect>
+                    <InputSelect @bind-Value="priority">@foreach (var p in priorities) { <option value="@p">@p</option> }</InputSelect>
                 </label>
                 @if (kind == ChangeTypes.Ecr)
                 {
@@ -77,6 +78,10 @@
     [SupplyParameterFromQuery(Name = "part")] public string? Part { get; set; }
 
     private sealed record PickedObject(string Key, string Action);
+
+    private IReadOnlyList<string> priorities = []; // 2.2: administrator data
+
+    protected override async Task OnInitializedAsync() => priorities = await Refs.CodesAsync(RefLists.ChangePriority);
 
     private string? kind;
     private string title = "", description = "", reason = "", priority = "Medium", changeClass = "";

@@ -5,6 +5,7 @@
 @inject DocumentService Docs
 @inject VaultOptions Vault
 @inject NavigationManager Nav
+@inject IReferenceData Refs
 
 @* A blank form shows no controlled data; the markings being entered appear on the created document. *@
 <PageFrame Banner="@UiText.Unclassified" Title="New document">
@@ -14,7 +15,7 @@
             <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
             <label>
                 Type
-                <InputSelect @bind-Value="documentType">@foreach (var t in DocumentTypes.All) { <option value="@t">@t</option> }</InputSelect>
+                <InputSelect @bind-Value="documentType">@foreach (var t in docTypes) { <option value="@t">@t</option> }</InputSelect>
             </label>
             <label class="wide">Description <InputTextArea @bind-Value="description" rows="3" maxlength="4000" /></label>
             <label class="wide">
@@ -39,6 +40,9 @@
 
 @code {
     private string name = "", documentType = "Drawing", description = "";
+    private IReadOnlyList<string> docTypes = []; // 2.2: administrator data
+
+    protected override async Task OnInitializedAsync() => docTypes = await Refs.CodesAsync(RefLists.DocumentType);
     private readonly MarkingsInput markings = new();
     private IBrowserFile? file;
     private IReadOnlyList<string>? errors;

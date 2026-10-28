@@ -19,7 +19,9 @@ public sealed partial class ArchitectureTests
         ["Keel.Change"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Migration (ADR-0023) writes plm/chg/document rows with plain SQL through its own import writer; file bytes go through the Keel.Core IContentStore.
         ["Keel.Migration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration"],
+        // Administration (2.2) reaches workflow templates only through IWorkflowTemplateAdmin in Keel.Core, implemented by Keel.Workflow.
+        ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
@@ -169,6 +171,44 @@ public sealed partial class ArchitectureTests
         }).Select(f => Path.GetRelativePath(root, f)).ToList();
         Assert.True(offenders.Count == 0, "Pages without PageFrame: " + string.Join(", ", offenders));
     }
+
+    /// <summary>Increment 2.2: every page of the Administration section carries the administrator policy (the services check the role again).</summary>
+    [Fact]
+    public void Administration_pages_require_the_administrator_policy()
+    {
+        var root = FindRepoRoot();
+        var pages = Directory.EnumerateFiles(Path.Combine(root, "src", "Keel.Web", "Components", "Pages", "Admin"), "*.razor").ToList();
+        Assert.True(pages.Count >= 9, "The admin pages were not found.");
+        var offenders = pages.Where(f => !File.ReadAllText(f).Contains("@attribute [Authorize(Policy = Policies.Admin)]", StringComparison.Ordinal)).Select(Path.GetFileName).ToList();
+        Assert.True(offenders.Count == 0, "Admin pages without the administrator policy: " + string.Join(", ", offenders));
+        // The admin routes of the API sit in one group with the same policy.
+        var endpoints = File.ReadAllText(Path.Combine(root, "src", "Keel.Api", "Endpoints", "AdminEndpoints.cs"));
+        Assert.Contains("MapGroup(\"/api/v1/admin\").RequireAuthorization(Policies.Admin)", endpoints, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Keel.Admin owns configuration, not part data. It touches the marked part table only to classify a part (key lookups by number and the
+    /// filtered faceted search), to list conflicting parts under the read filter, and to check whether a generated number is taken. It never reads
+    /// workflow instances, change objects or documents as lists. Aggregate counts for lifecycles live in database functions that return no marked columns.
+    /// </summary>
+    [Fact]
+    public void Admin_module_touches_marked_tables_only_where_it_is_expected_to()
+    {
+        var root = FindRepoRoot();
+        var allowed = new[] { "ClassificationService.cs", "ClassificationSearch.cs", "ClassificationAssignment.cs", "NumberingAdmin.cs" };
+        var offenders = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src", "Keel.Admin"), "*.cs", SearchOption.AllDirectories)
+                     .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+        {
+            var text = File.ReadAllText(file);
+            if (WorkflowInstanceOrDocuments().IsMatch(text)) offenders.Add($"{Path.GetFileName(file)} reads workflow instances");
+            if (SqlFromMarkedTable().IsMatch(text) && !allowed.Contains(Path.GetFileName(file))) offenders.Add($"{Path.GetFileName(file)} reads a marked table");
+        }
+        Assert.True(offenders.Count == 0, string.Join("\n", offenders));
+    }
+
+    [GeneratedRegex(@"(FROM|JOIN)\s+(wf\.instance)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex WorkflowInstanceOrDocuments();
 
     [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change|cfg\.baseline)\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlFromMarkedTable();

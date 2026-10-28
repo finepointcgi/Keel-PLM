@@ -30,7 +30,12 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         var errors = new List<string>();
         var name = cmd.Name?.Trim() ?? "";
         if (name.Length is 0 or > 200) errors.Add("Name is required (at most 200 characters).");
-        if (!DocumentTypes.All.Contains(cmd.DocumentType)) errors.Add($"Document type must be one of: {string.Join(", ", DocumentTypes.All)}.");
+        // 2.2: document types are administrator data (cfg.ref_item).
+        await using (var typeConn = await dataSource.OpenConnectionAsync(ct))
+        {
+            var types = await ReferenceChecks.ActiveCodesAsync(typeConn, null, RefLists.DocumentType, ct);
+            if (!types.Contains(cmd.DocumentType)) errors.Add($"Document type must be one of: {string.Join(", ", types)}.");
+        }
         if (cmd.Number is not null && !NumberPattern().IsMatch(cmd.Number)) errors.Add("Explicit document numbers may contain only A-Z, 0-9, '-', '.', '_' (max 40).");
         if ((cmd.Description?.Length ?? 0) > 4000) errors.Add("Description must be at most 4000 characters.");
         string? mediaType = null;
@@ -57,12 +62,12 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
 
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
-        var lifecycle = await Lifecycle.LoadAsync(conn, tx, DefaultLifecycle, ct) ?? throw new InvalidOperationException("Default document lifecycle is missing.");
+        var family = await ReferenceChecks.LifecycleFamilyAsync(conn, tx, RefLists.DocumentType, cmd.DocumentType, DefaultLifecycle, ct);
+        var lifecycle = await Lifecycle.LoadAsync(conn, tx, await Lifecycle.CurrentIdAsync(conn, tx, family, ct), ct) ?? throw new InvalidOperationException("Default document lifecycle is missing.");
         var number = cmd.Number;
         if (number is null)
         {
-            await using var seq = new NpgsqlCommand("SELECT nextval('plm.document_number_seq')", conn, tx);
-            number = "D-" + ((long)(await seq.ExecuteScalarAsync(ct))!).ToString("D6", CultureInfo.InvariantCulture);
+            number = await Numbering.NextAsync(conn, tx, "document", ct); // 2.2: prefix and width are configuration
         }
         else
         {

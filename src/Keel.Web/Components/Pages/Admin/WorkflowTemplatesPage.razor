@@ -1,0 +1,308 @@
+@page "/admin/workflow-templates"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject WorkflowAdminService Workflows
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: workflow templates">
+    <AdminNav />
+    <div class="stack">
+        <p>Review workflows are versioned data. Publishing creates a new version for new reviews; running reviews keep the version they started with. The engine's own rules validate every definition and the messages appear here before anything is stored.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (message is not null) { <p role="status" class="permit">@message</p> }
+
+        <section class="panel">
+            <h3>Templates</h3>
+            <div class="table-wrap"><table class="data">
+                <caption class="visually-hidden">Workflow template versions</caption>
+                <thead><tr><th scope="col">Template</th><th scope="col">Object type</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Published</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var t in versions.OrderBy(t => t.Id, StringComparer.Ordinal).ThenByDescending(t => t.Version))
+                    {
+                        <tr class="@(t.IsActive ? "" : "retired")">
+                            <td>@t.Name <span class="muted">(@t.Id)</span></td><td>@t.ObjectType</td><td>@t.Version</td><td>@(t.IsActive ? "Active" : "Superseded")</td><td>@AdminUi.Utc(t.CreatedAt) by @t.CreatedBy</td>
+                            <td class="actions-cell">
+                                <button type="button" class="secondary" @onclick="() => Open(t)">@(t.IsActive ? "Edit" : "View")</button>
+                                @if (versions.Any(o => o.Id == t.Id && o.Version == t.Version - 1)) { <button type="button" class="secondary" @onclick="() => ShowDiff(t)">Changes since v@(t.Version - 1)</button> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="toolbar"><button type="button" class="secondary" @onclick="NewFromCopy" disabled="@(versions.Count == 0)">New template from a copy</button></div>
+        </section>
+
+        @if (diff is not null)
+        {
+            <section class="panel" aria-label="Differences">
+                <h3>Changes in @diffTitle</h3>
+                @if (diff.Count == 0) { <p class="muted">No differences.</p> }
+                else { <ul>@foreach (var d in diff) { <li>@d</li> } </ul> }
+            </section>
+        }
+
+        @if (draft is not null || jsonText is not null)
+        {
+            <section class="panel" aria-label="Template editor">
+                <h3>@(isNew ? "New template" : $"Editing {draft?.Id ?? openId}") @(viewOnly ? "(read only: superseded version)" : "")</h3>
+                <div class="toolbar" role="tablist" aria-label="Editor view">
+                    <button type="button" role="tab" aria-selected="@(!advanced ? "true" : "false")" class="@(advanced ? "secondary" : "")" @onclick="() => SwitchView(false)">Structured</button>
+                    <button type="button" role="tab" aria-selected="@(advanced ? "true" : "false")" class="@(advanced ? "" : "secondary")" @onclick="() => SwitchView(true)">JSON (advanced)</button>
+                </div>
+
+                @if (advanced)
+                {
+                    <label>Definition <textarea rows="22" class="code" @bind="jsonText" readonly="@viewOnly" spellcheck="false"></textarea></label>
+                }
+                else if (draft is not null)
+                {
+                    <div class="grid-form">
+                        <label>Id * <input @bind="draft.Id" maxlength="63" readonly="@(!isNew)" /></label>
+                        <label>Name * <input @bind="draft.Name" maxlength="200" readonly="@viewOnly" /></label>
+                        <label>Object type <select @bind="draft.ObjectType" disabled="@(!isNew)">@foreach (var o in Workflows.ReviewableObjectTypes) { <option value="@o">@o</option> }</select></label>
+                        <label>Starts at <select @bind="draft.Start" disabled="@viewOnly"><option value="">Choose a node</option>@foreach (var n in draft.Nodes) { <option value="@n.Id">@n.Id</option> }</select></label>
+                        <label class="wide">Description <input @bind="draft.Description" maxlength="500" readonly="@viewOnly" /></label>
+                    </div>
+
+                    <fieldset>
+                        <legend>Participant groups (slots)</legend>
+                        <div class="table-wrap"><table class="data">
+                            <thead><tr><th scope="col">Name</th><th scope="col">Label</th><th scope="col">Role</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+                            <tbody>
+                                @foreach (var s in draft.Slots)
+                                {
+                                    <tr>
+                                        <td><input aria-label="Slot name" @bind="s.Name" maxlength="40" class="narrow" /></td>
+                                        <td><input aria-label="Slot label" @bind="s.Label" maxlength="80" /></td>
+                                        <td><select aria-label="Role of @s.Name" @bind="s.Role">@foreach (var r in AssignableRoles) { <option value="@r">@r</option> }</select></td>
+                                        <td><input aria-label="Minimum of @s.Name" type="number" min="1" class="narrow" @bind="s.Min" /></td>
+                                        <td><input aria-label="Maximum of @s.Name" type="number" min="1" class="narrow" @bind="s.Max" /></td>
+                                        <td><button type="button" class="secondary" disabled="@viewOnly" @onclick="() => draft.Slots.Remove(s)">Remove</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table></div>
+                        <div class="toolbar"><button type="button" class="secondary" disabled="@viewOnly" @onclick="AddSlot">Add group</button></div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Nodes</legend>
+                        @foreach (var n in draft.Nodes)
+                        {
+                            <div class="panel node-card" role="group" aria-label="Node @n.Id">
+                                <div class="grid-form">
+                                    <label>Id <input @bind="n.Id" maxlength="40" /></label>
+                                    <label>Type
+                                        <select @bind="n.Type">
+                                            <option value="Task">Task (one person)</option>
+                                            <option value="Serial">Serial (steps in order)</option>
+                                            <option value="Parallel">Parallel (vote)</option>
+                                            <option value="End">End (release)</option>
+                                        </select>
+                                    </label>
+                                    <label>Name <input @bind="n.Name" maxlength="120" /></label>
+                                    @if (n.Type == "Task")
+                                    {
+                                        <label>Kind <select @bind="n.Kind"><option value="review">Review</option><option value="approval">Approval</option></select></label>
+                                        <label>Assigned to <select @bind="n.AssignmentMode"><option value="Slot">The user picked for a group</option><option value="Role">Any holder of a role</option></select></label>
+                                        @if (n.AssignmentMode == "Role")
+                                        {
+                                            <label>Role <select @bind="n.Role">@foreach (var r in AssignableRoles) { <option value="@r">@r</option> }</select></label>
+                                        }
+                                        else
+                                        {
+                                            <label>Group <select @bind="n.Slot"><option value="">Choose</option>@foreach (var s in draft.Slots) { <option value="@s.Name">@s.Name</option> }</select></label>
+                                        }
+                                        <label>Due in days <input type="number" min="1" @bind="n.DueDays" /></label>
+                                    }
+                                    else if (n.Type == "Serial")
+                                    {
+                                        <label class="wide">Steps, node ids in order (comma separated) <input value="@string.Join(", ", n.Steps)" @onchange="e => n.Steps = Split(e.Value as string)" /></label>
+                                    }
+                                    else if (n.Type == "Parallel")
+                                    {
+                                        <label>Vote rule <select @bind="n.Rule"><option value="All">All must approve</option><option value="Any">Any one approves</option><option value="NofM">N of M approve</option></select></label>
+                                        @if (n.Rule == "NofM") { <label>N <input type="number" min="1" @bind="n.RuleN" /></label> }
+                                        <label>Fan out to group <select @bind="n.FanOutSlot"><option value="">None (fixed branches)</option>@foreach (var s in draft.Slots) { <option value="@s.Name">@s.Name</option> }</select></label>
+                                        @if (!string.IsNullOrEmpty(n.FanOutSlot)) { <label>Each person's task <select @bind="n.FanOutKind"><option value="review">Review</option><option value="approval">Approval</option></select></label> }
+                                        else { <label class="wide">Branch node ids (comma separated) <input value="@string.Join(", ", n.Steps)" @onchange="e => n.Steps = Split(e.Value as string)" /></label> }
+                                        <label>Due in days <input type="number" min="1" @bind="n.DueDays" /></label>
+                                    }
+                                </div>
+                                <div class="toolbar"><button type="button" class="secondary" disabled="@viewOnly" @onclick="() => draft.Nodes.Remove(n)">Remove node</button></div>
+                            </div>
+                        }
+                        <div class="toolbar"><button type="button" class="secondary" disabled="@viewOnly" @onclick="AddNode">Add node</button></div>
+                    </fieldset>
+                }
+
+                <ValidationList Errors="errors" />
+                @if (!viewOnly)
+                {
+                    <div class="toolbar">
+                        <button type="button" class="secondary" disabled="@busy" @onclick="ValidateAsync">Validate</button>
+                        @if (!confirming) { <button type="button" disabled="@busy" @onclick="() => confirming = true">Publish new version</button> }
+                        <button type="button" class="secondary" @onclick="Close">Close editor</button>
+                    </div>
+                    @if (confirming)
+                    {
+                        <div class="confirm" role="group" aria-label="Confirm publish">
+                            <p>Publish as the next version and make it the active one? New reviews use it; running reviews are not affected.</p>
+                            <div class="toolbar">
+                                <button type="button" class="danger" disabled="@busy" @onclick="PublishAsync">Confirm publish</button>
+                                <button type="button" class="secondary" @onclick="() => confirming = false">Back</button>
+                            </div>
+                        </div>
+                    }
+                }
+                else { <div class="toolbar"><button type="button" class="secondary" @onclick="Close">Close</button></div> }
+            </section>
+        }
+
+        <section class="panel">
+            <h3>Which template each object type uses</h3>
+            <p class="muted">When a user chooses "Submit for review" without picking a template, the pinned template is used. Without a pin, the only active template is used, or the user is asked to choose.</p>
+            <div class="table-wrap"><table class="data">
+                <caption class="visually-hidden">Template pins</caption>
+                <thead><tr><th scope="col">Object type</th><th scope="col">Pinned template</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var type in Workflows.ReviewableObjectTypes)
+                    {
+                        <tr>
+                            <td>@type</td>
+                            <td>
+                                <select aria-label="Pinned template for @type" value="@PinOf(type)" @onchange="e => pinChoice[type] = (string)e.Value!">
+                                    <option value="">Not pinned</option>
+                                    @foreach (var t in versions.Where(v => v.IsActive && v.ObjectType == type)) { <option value="@t.Id">@t.Name (@t.Id)</option> }
+                                </select>
+                            </td>
+                            <td><button type="button" class="secondary" disabled="@busy" @onclick="() => SavePin(type)">Save</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private static readonly string[] AssignableRoles = [Roles.Viewer, Roles.Author, Roles.Approver, Roles.Admin];
+
+    private IReadOnlyList<TemplateVersionInfo> versions = [];
+    private IReadOnlyList<TemplatePin> pins = [];
+    private readonly Dictionary<string, string> pinChoice = new(StringComparer.Ordinal);
+    private TemplateDraft? draft;
+    private string? jsonText, openId, diffTitle, error, message;
+    private IReadOnlyList<string>? errors, diff;
+    private bool advanced, isNew, viewOnly, busy, confirming;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var v = await Workflows.ListAsync(subject, true, CurrentUser.NewCorrelationId());
+        error = v.IsOk ? null : UiText.Message(v);
+        versions = v.Value ?? [];
+        var p = await Workflows.ListPinsAsync(subject);
+        pins = p.Value ?? [];
+        pinChoice.Clear();
+    }
+
+    private string PinOf(string type) => pinChoice.TryGetValue(type, out var c) ? c : pins.FirstOrDefault(p => p.ObjectType == type)?.TemplateId ?? "";
+
+    private static List<string> Split(string? s) => [.. (s ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    private void Open(TemplateVersionInfo t)
+    {
+        openId = t.Id;
+        isNew = false;
+        viewOnly = !t.IsActive;
+        Show(t.Definition.ToJsonString());
+    }
+
+    private void NewFromCopy()
+    {
+        var source = versions.First(v => v.IsActive);
+        isNew = true;
+        viewOnly = false;
+        openId = null;
+        Show(source.Definition.ToJsonString());
+        if (draft is not null) { draft.Id = ""; draft.Name = ""; }
+    }
+
+    private void Show(string json)
+    {
+        message = null;
+        errors = null;
+        confirming = false;
+        var (d, why) = TemplateDraft.FromJson(json);
+        draft = d;
+        jsonText = JsonNode.Parse(json)!.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        advanced = d is null; // a definition the structured editor cannot show opens in the JSON view
+        if (why is not null) errors = [why];
+    }
+
+    private void SwitchView(bool toJson)
+    {
+        if (toJson == advanced) return;
+        if (toJson && draft is not null) jsonText = draft.ToJson().ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        else if (!toJson)
+        {
+            var (d, why) = TemplateDraft.FromJson(jsonText ?? "");
+            if (d is null) { errors = [why ?? "The JSON could not be read."]; return; }
+            draft = d;
+        }
+        advanced = toJson;
+        errors = null;
+    }
+
+    private string CurrentJson() => advanced ? jsonText ?? "" : draft!.ToJson().ToJsonString();
+
+    private async Task ValidateAsync()
+    {
+        busy = true;
+        var o = await Workflows.ValidateAsync(await Users.GetAsync(), CurrentJson());
+        busy = false;
+        errors = o.IsOk ? null : o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+        message = o.IsOk ? "The definition is valid." : null;
+    }
+
+    private async Task PublishAsync()
+    {
+        busy = true;
+        var o = await Workflows.PublishAsync(await Users.GetAsync(), CurrentJson(), CurrentUser.NewCorrelationId());
+        busy = false;
+        confirming = false;
+        if (o.IsOk) { message = $"Published {o.Value!.Name} version {o.Value.Version}."; errors = null; Close(); await Load(); }
+        else errors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+    }
+
+    private void AddSlot() => draft!.Slots.Add(new SlotDraft { Name = $"group{draft.Slots.Count + 1}", Label = "Participants" });
+
+    private void AddNode() => draft!.Nodes.Add(new NodeDraft { Id = $"node{draft.Nodes.Count + 1}", Name = "New node" });
+
+    private void Close()
+    {
+        draft = null;
+        jsonText = null;
+        confirming = false;
+    }
+
+    private async Task ShowDiff(TemplateVersionInfo t)
+    {
+        var o = await Workflows.DiffAsync(await Users.GetAsync(), t.Id, t.Version - 1, t.Version);
+        diff = o.Value ?? [];
+        diffTitle = $"{t.Id}: version {t.Version - 1} to {t.Version}";
+        error = o.IsOk ? null : UiText.Message(o);
+    }
+
+    private async Task SavePin(string type)
+    {
+        busy = true;
+        var choice = PinOf(type);
+        var o = await Workflows.PinAsync(await Users.GetAsync(), type, choice == "" ? null : choice, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { message = choice == "" ? $"Removed the pin for {type}." : $"Pinned {choice} for {type}."; error = null; await Load(); }
+        else error = UiText.Message(o);
+    }
+}

@@ -1,0 +1,168 @@
+@page "/admin/lists"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject ReferenceAdminService Lists
+@inject LifecycleAdminService Lifecycles
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: types and lists">
+    <AdminNav />
+    <div class="stack">
+        <p>Lists of choices used by forms and validation. Items are retired, never deleted: existing objects keep a retired value, it is just no longer offered for new ones. <strong>Programs</strong> and <strong>offices</strong> here are only pickers to help users type a value; a user's access to a program still comes from the security attributes the identity provider releases.</p>
+
+        <div class="toolbar" role="tablist" aria-label="Lists">
+            @foreach (var (key, title) in Titles)
+            {
+                <button type="button" role="tab" aria-selected="@(key == list ? "true" : "false")" class="@(key == list ? "" : "secondary")" @onclick="() => Select(key)">@title</button>
+            }
+        </div>
+
+        @if (list is RefLists.ChangeClass) { <p class="notice">Class I and II carry process rules (a Class I change needs a CCB-approved request). Only their labels can be changed.</p> }
+        @if (list is RefLists.Unit) { <p class="notice">EA (each) is referred to by name in BOM rules and cannot be retired.</p> }
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (saved is not null) { <p role="status" class="permit">@saved</p> }
+
+        <div class="table-wrap"><table class="data">
+            <caption class="visually-hidden">@Titles[list]</caption>
+            <thead><tr><th scope="col">Code</th><th scope="col">Label</th><th scope="col">Order</th>@if (BindsLifecycle) { <th scope="col">Lifecycle</th> }<th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+                @foreach (var i in items)
+                {
+                    <tr class="@(i.IsActive ? "" : "retired")">
+                        <td><code>@i.Code</code></td>
+                        <td>@i.Label</td>
+                        <td>@i.SortOrder</td>
+                        @if (BindsLifecycle) { <td>@(i.LifecycleFamily ?? "default")</td> }
+                        <td>@(i.IsActive ? "Active" : "Retired")</td>
+                        <td class="actions-cell">
+                            <button type="button" class="secondary" @onclick="() => Edit(i)">Edit</button>
+                            @if (list != RefLists.ChangeClass)
+                            {
+                                <button type="button" class="secondary" @onclick="() => AskToggle(i)">@(i.IsActive ? "Retire" : "Restore")</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+
+        @if (toggling is not null)
+        {
+            <section class="panel confirm" role="group" aria-label="Confirm">
+                <h3>@(toggling.IsActive ? "Retire" : "Restore") @toggling.Code</h3>
+                <p>@(toggling.IsActive ? "Existing objects keep this value; it is no longer offered for new ones." : "The item is offered again.")</p>
+                <label>Reason * <input @bind="reason" maxlength="500" /></label>
+                <div class="toolbar">
+                    <button type="button" class="danger" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="ConfirmToggle">Confirm</button>
+                    <button type="button" class="secondary" @onclick="() => toggling = null">Cancel</button>
+                </div>
+            </section>
+        }
+
+        <section class="panel">
+            <h3>@(editingCode is null ? "Add an item" : $"Edit {editingCode}")</h3>
+            <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <label>Code * <input @bind="code" maxlength="60" readonly="@(editingCode is not null)" required /></label>
+                <label>Label * <input @bind="label" maxlength="120" required /></label>
+                <label>Sort order <input type="number" @bind="sortOrder" /></label>
+                @if (BindsLifecycle)
+                {
+                    <label>
+                        Lifecycle for new objects of this type
+                        <select @bind="lifecycleFamily">
+                            <option value="">Default lifecycle</option>
+                            @foreach (var f in families) { <option value="@f">@f</option> }
+                        </select>
+                    </label>
+                }
+                <div class="toolbar wide">
+                    <button type="submit" disabled="@busy">@(editingCode is null ? "Add item" : "Save changes")</button>
+                    @if (editingCode is not null) { <button type="button" class="secondary" @onclick="ResetForm">Cancel edit</button> }
+                </div>
+            </form>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private static readonly Dictionary<string, string> Titles = new()
+    {
+        [RefLists.PartType] = "Part types", [RefLists.PartSource] = "Sources", [RefLists.Unit] = "Units of measure", [RefLists.DocumentType] = "Document types",
+        [RefLists.ChangePriority] = "Change priorities", [RefLists.ChangeClass] = "Change classes", [RefLists.Office] = "Controlling offices (picker)", [RefLists.Program] = "Programs (picker)",
+    };
+
+    private string list = RefLists.PartType;
+    private IReadOnlyList<RefItem> items = [];
+    private IReadOnlyList<string> families = [];
+    private string code = "", label = "", lifecycleFamily = "", reason = "";
+    private int sortOrder;
+    private string? editingCode, error, saved;
+    private RefItem? toggling;
+    private bool busy;
+
+    private bool BindsLifecycle => list is RefLists.PartType or RefLists.DocumentType;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Select(string key)
+    {
+        list = key;
+        ResetForm();
+        saved = null;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var outcome = await Lists.ListAsync(subject, list);
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        items = outcome.Value ?? [];
+        if (BindsLifecycle)
+        {
+            var wanted = list == RefLists.PartType ? "part" : "document";
+            var f = await Lifecycles.ListFamiliesAsync(subject);
+            families = f.IsOk ? [.. f.Value!.Where(x => x.ObjectType == wanted).Select(x => x.Family)] : [];
+        }
+    }
+
+    private void Edit(RefItem i)
+    {
+        editingCode = code = i.Code;
+        label = i.Label;
+        sortOrder = i.SortOrder;
+        lifecycleFamily = i.LifecycleFamily ?? "";
+    }
+
+    private void ResetForm()
+    {
+        editingCode = null;
+        code = label = lifecycleFamily = "";
+        sortOrder = 0;
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        saved = null;
+        var outcome = await Lists.SaveAsync(await Users.GetAsync(), new RefItemInput(list, code.Trim(), label, sortOrder, lifecycleFamily == "" ? null : lifecycleFamily), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { saved = $"Saved {outcome.Value!.Code}."; ResetForm(); error = null; await Load(); }
+        else error = UiText.Message(outcome);
+    }
+
+    private void AskToggle(RefItem i)
+    {
+        toggling = i;
+        reason = "";
+    }
+
+    private async Task ConfirmToggle()
+    {
+        if (toggling is null) return;
+        busy = true;
+        var outcome = await Lists.SetActiveAsync(await Users.GetAsync(), list, toggling.Code, !toggling.IsActive, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { saved = $"{(outcome.Value!.IsActive ? "Restored" : "Retired")} {outcome.Value.Code}."; error = null; toggling = null; await Load(); }
+        else error = UiText.Message(outcome);
+    }
+}

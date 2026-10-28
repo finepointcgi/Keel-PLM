@@ -1,0 +1,68 @@
+@* Attribute facets of the selected class: value counts for enums and booleans, an editable range for numbers. Counts come from the server under the access filter. *@
+<form class="facets stack" aria-label="Attribute filters" @onsubmit="Apply" @onsubmit:preventDefault>
+    @if (Facets.Count == 0)
+    {
+        <p class="muted">Choose a class that has attributes to filter by them.</p>
+    }
+    @foreach (var f in Facets)
+    {
+        <fieldset class="facet">
+            <legend>@f.Label@(f.Unit is null ? "" : $" ({f.Unit})")</legend>
+            @if (f.DataType == "number")
+            {
+                <div class="range">
+                    <label>From <input inputmode="decimal" placeholder="@AdminUi.Number(f.Min)" value="@Min(f.Attribute)" @onchange="e => Range(f.Attribute, e.Value as string, null)" /></label>
+                    <label>To <input inputmode="decimal" placeholder="@AdminUi.Number(f.Max)" value="@Max(f.Attribute)" @onchange="e => Range(f.Attribute, null, e.Value as string)" /></label>
+                </div>
+                <p class="muted small">@f.WithValue part@(f.WithValue == 1 ? "" : "s") with a value, @AdminUi.Number(f.Min) to @AdminUi.Number(f.Max)</p>
+            }
+            else if (f.DataType == "boolean")
+            {
+                <label class="checkbox"><input type="radio" name="flag-@f.Attribute" checked="@(!Selection.Flags.ContainsKey(f.Attribute))" @onchange="() => Flag(f.Attribute, null)" /> Any</label>
+                @foreach (var v in f.Values)
+                {
+                    var on = v.Value == "true";
+                    <label class="checkbox"><input type="radio" name="flag-@f.Attribute" checked="@(Selection.Flags.TryGetValue(f.Attribute, out var cur) && cur == on)" @onchange="() => Flag(f.Attribute, on)" /> @(on ? "Yes" : "No") <span class="count">@v.Count</span></label>
+                }
+            }
+            else
+            {
+                @foreach (var v in f.Values)
+                {
+                    <label class="checkbox"><input type="checkbox" checked="@(Selection.Values.TryGetValue(f.Attribute, out var set) && set.Contains(v.Value))" @onchange="e => Toggle(f.Attribute, v.Value, e.Value)" /> @v.Value <span class="count">@v.Count</span></label>
+                }
+            }
+        </fieldset>
+    }
+    <div class="toolbar">
+        <button type="submit">Apply filters</button>
+        <button type="button" class="secondary" disabled="@Selection.IsEmpty" @onclick="Clear">Clear filters</button>
+    </div>
+</form>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<AttributeFacet> Facets { get; set; }
+    [Parameter, EditorRequired] public required FacetSelection Selection { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string Min(string a) => Selection.Ranges.TryGetValue(a, out var r) ? r.Min ?? "" : "";
+    private string Max(string a) => Selection.Ranges.TryGetValue(a, out var r) ? r.Max ?? "" : "";
+
+    private void Range(string attribute, string? min, string? max)
+    {
+        Selection.Ranges.TryGetValue(attribute, out var cur);
+        Selection.SetRange(attribute, min ?? cur.Min, max ?? cur.Max);
+    }
+
+    private void Flag(string attribute, bool? value) => Selection.SetFlag(attribute, value);
+
+    private void Toggle(string attribute, string value, object? on) => Selection.Toggle(attribute, value, Equals(on, true));
+
+    private Task Apply() => OnChanged.InvokeAsync();
+
+    private Task Clear()
+    {
+        Selection.Clear();
+        return OnChanged.InvokeAsync();
+    }
+}

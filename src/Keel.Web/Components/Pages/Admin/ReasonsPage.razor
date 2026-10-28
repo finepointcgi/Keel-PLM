@@ -1,0 +1,157 @@
+@page "/admin/reasons"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject ReasonCodeAdminService Reasons
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: reasons and meanings">
+    <AdminNav />
+    <div class="stack">
+        <p>Signature meanings are what a signer states when signing a review or approval; change reason codes explain rejecting, closing or cancelling a change. Codes are retired, never deleted, because signatures and history refer to them. Every review and approval keeps at least one approving and one rejecting meaning.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (saved is not null) { <p role="status" class="permit">@saved</p> }
+
+        <section class="panel">
+            <h3>Signature meanings</h3>
+            <div class="table-wrap"><table class="data">
+                <caption class="visually-hidden">Signature meanings</caption>
+                <thead><tr><th scope="col">Code</th><th scope="col">Label</th><th scope="col">Decision</th><th scope="col">Comment required</th><th scope="col">Applies to</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var c in all.Where(c => c.Kind == "signature"))
+                    {
+                        <tr class="@(c.IsActive ? "" : "retired")">
+                            <td><code>@c.Code</code></td><td>@c.Label</td><td>@c.Decision</td><td>@(c.RequiresComment == true ? "Yes" : "No")</td><td>@string.Join(", ", c.AppliesTo ?? [])</td><td>@(c.IsActive ? "Active" : "Retired")</td>
+                            <td class="actions-cell"><button type="button" class="secondary" @onclick="() => Edit(c)">Edit</button> <button type="button" class="secondary" @onclick="() => AskToggle(c)">@(c.IsActive ? "Retire" : "Restore")</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+
+        <section class="panel">
+            <h3>Change reason codes</h3>
+            <div class="table-wrap"><table class="data">
+                <caption class="visually-hidden">Change reason codes</caption>
+                <thead><tr><th scope="col">Used for</th><th scope="col">Code</th><th scope="col">Label</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var c in all.Where(c => c.Kind == "change"))
+                    {
+                        <tr class="@(c.IsActive ? "" : "retired")">
+                            <td>@c.Scope</td><td><code>@c.Code</code></td><td>@c.Label</td><td>@(c.IsActive ? "Active" : "Retired")</td>
+                            <td class="actions-cell"><button type="button" class="secondary" @onclick="() => Edit(c)">Edit</button> <button type="button" class="secondary" @onclick="() => AskToggle(c)">@(c.IsActive ? "Retire" : "Restore")</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+
+        @if (toggling is not null)
+        {
+            <section class="panel confirm" role="group" aria-label="Confirm">
+                <h3>@(toggling.IsActive ? "Retire" : "Restore") @toggling.Code</h3>
+                <label>Reason * <input @bind="reason" maxlength="500" /></label>
+                <div class="toolbar">
+                    <button type="button" class="danger" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="ConfirmToggle">Confirm</button>
+                    <button type="button" class="secondary" @onclick="() => toggling = null">Cancel</button>
+                </div>
+            </section>
+        }
+
+        <section class="panel">
+            <h3>@(editing ? $"Edit {code}" : "Add a code")</h3>
+            <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <label>
+                    Kind
+                    <select @bind="kind" disabled="@editing"><option value="signature">Signature meaning</option><option value="change">Change reason</option></select>
+                </label>
+                <label>Code * <input @bind="code" maxlength="41" readonly="@editing" required /></label>
+                <label>Label * <input @bind="label" maxlength="120" required /></label>
+                <label>Sort order <input type="number" @bind="sortOrder" /></label>
+                @if (kind == "signature")
+                {
+                    <label>Decision <select @bind="decision" disabled="@editing"><option value="approve">Approve</option><option value="reject">Reject</option></select></label>
+                    <label class="checkbox"><input type="checkbox" @bind="requiresComment" /> Comment required</label>
+                    <label class="checkbox"><input type="checkbox" @bind="forReview" /> For reviews</label>
+                    <label class="checkbox"><input type="checkbox" @bind="forApproval" /> For approvals</label>
+                }
+                else
+                {
+                    <label>
+                        Used for
+                        <select @bind="scope" disabled="@editing">@foreach (var s in ReasonCodeAdminService.ChangeScopes) { <option value="@s">@s</option> }</select>
+                    </label>
+                }
+                <div class="toolbar wide">
+                    <button type="submit" disabled="@busy">@(editing ? "Save changes" : "Add code")</button>
+                    @if (editing) { <button type="button" class="secondary" @onclick="Reset">Cancel edit</button> }
+                </div>
+            </form>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<ReasonCodeDto> all = [];
+    private string kind = "signature", code = "", label = "", decision = "approve", scope = "pr.reject", reason = "";
+    private int sortOrder;
+    private bool requiresComment, forReview = true, forApproval, editing, busy;
+    private ReasonCodeDto? toggling;
+    private string? error, saved;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await Reasons.ListAsync(await Users.GetAsync());
+        error = o.IsOk ? null : UiText.Message(o);
+        all = o.Value ?? [];
+    }
+
+    private void Edit(ReasonCodeDto c)
+    {
+        editing = true;
+        (kind, code, label, sortOrder) = (c.Kind, c.Code, c.Label, c.SortOrder);
+        scope = c.Scope ?? scope;
+        decision = c.Decision ?? "approve";
+        requiresComment = c.RequiresComment == true;
+        forReview = c.AppliesTo?.Contains("review") == true;
+        forApproval = c.AppliesTo?.Contains("approval") == true;
+    }
+
+    private void Reset()
+    {
+        editing = false;
+        code = label = "";
+        sortOrder = 0;
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        saved = null;
+        var applies = new List<string>();
+        if (forReview) applies.Add("review");
+        if (forApproval) applies.Add("approval");
+        var dto = kind == "signature"
+            ? new ReasonCodeDto("signature", null, code.Trim(), label, decision, requiresComment, applies, sortOrder, true)
+            : new ReasonCodeDto("change", scope, code.Trim(), label, null, null, null, sortOrder, true);
+        var o = await Reasons.SaveAsync(await Users.GetAsync(), dto, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { saved = $"Saved {o.Value!.Code}."; error = null; Reset(); await Load(); }
+        else error = UiText.Message(o);
+    }
+
+    private void AskToggle(ReasonCodeDto c)
+    {
+        toggling = c;
+        reason = "";
+    }
+
+    private async Task ConfirmToggle()
+    {
+        busy = true;
+        var o = await Reasons.SetActiveAsync(await Users.GetAsync(), toggling!.Kind, toggling.Scope, toggling.Code, !toggling.IsActive, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { saved = $"{(o.Value!.IsActive ? "Restored" : "Retired")} {o.Value.Code}."; error = null; toggling = null; await Load(); }
+        else error = UiText.Message(o);
+    }
+}

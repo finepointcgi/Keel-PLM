@@ -1,0 +1,28 @@
+@* Server messages of a validation or a refused change: blocking errors, warnings and what the change would do. *@
+@if (Errors is { Count: > 0 })
+{
+    <div role="alert" class="validation error-box">
+        <strong>@(Errors.Count == 1 ? "1 problem" : $"{Errors.Count} problems")</strong>
+        <ul>@foreach (var e in Errors) { <li>@e</li> }</ul>
+    </div>
+}
+@if (Warnings is { Count: > 0 })
+{
+    <div role="status" class="validation warning-box">
+        <strong>Please note</strong>
+        <ul>@foreach (var w in Warnings) { <li>@w</li> }</ul>
+    </div>
+}
+@if (Effects is { Count: > 0 })
+{
+    <div role="status" class="validation notice">
+        <strong>What publishing would do</strong>
+        <ul>@foreach (var e in Effects) { <li>@e</li> }</ul>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<string>? Errors { get; set; }
+    [Parameter] public IReadOnlyList<string>? Warnings { get; set; }
+    [Parameter] public IReadOnlyList<string>? Effects { get; set; }
+}

@@ -113,11 +113,11 @@ public static class DocumentEndpoints
         parts.MapDelete("/{number}/working-copy/documents/{linkId:guid}", async (string number, Guid linkId, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
             (await svc.RemoveLinkFromWorkingCopyAsync(SubjectFactory.Require(ctx), number, linkId, CorrelationId.Get(ctx), ct)).ToHttp());
 
-        app.MapGet("/api/v1/metadata/documents", async (NpgsqlDataSource db, VaultOptions vault, CancellationToken ct) =>
+        app.MapGet("/api/v1/metadata/documents", async (NpgsqlDataSource db, VaultOptions vault, IReferenceData refs, CancellationToken ct) =>
         {
             await using var conn = await db.OpenConnectionAsync(ct);
-            var lifecycle = await Lifecycle.LoadAsync(conn, null, DocumentService.DefaultLifecycle, ct);
-            return new DocumentMetadata(DocumentTypes.All, FileRoles.All, LinkTypes.All, vault.MaxUploadBytes, lifecycle!);
+            var lifecycle = await Lifecycle.LoadAsync(conn, null, await Lifecycle.CurrentIdAsync(conn, null, DocumentService.DefaultLifecycle, ct), ct);
+            return new DocumentMetadata(await refs.CodesAsync(RefLists.DocumentType, ct), FileRoles.All, LinkTypes.All, vault.MaxUploadBytes, lifecycle!);
         }).RequireAuthorization(Policies.AnyPlmRole);
     }
 

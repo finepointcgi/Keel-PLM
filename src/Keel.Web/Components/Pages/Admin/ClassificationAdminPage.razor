@@ -1,0 +1,241 @@
+@page "/admin/classification"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject ClassificationService Classes
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: classification">
+    <AdminNav />
+    <div class="stack">
+        <p>The class hierarchy with inherited attribute sets: a class has its own attributes plus those of every ancestor. Parts are classified in their check-out; the class and its values are part of the iteration. Moving or retiring a class is checked against the parts already classified.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (message is not null) { <p role="status" class="permit">@message</p> }
+
+        <div class="split">
+            <aside class="panel" aria-label="Class tree">
+                <h3>Classes</h3>
+                @if (tree is not null && rows.Count > 0) { <ClassTreeNav Rows="rows" Selected="selected" OnSelect="Select" /> }
+                else { <p class="muted">No classes yet. Create the first one below, or import a hierarchy.</p> }
+            </aside>
+
+            <div class="stack">
+                @if (detail is not null)
+                {
+                    var node = detail.Node;
+                    <section class="panel">
+                        <h3>@node.Name <span class="muted">@node.Code</span> @if (!node.IsActive) { <span class="badge">Retired</span> }</h3>
+                        <p class="muted">Path <code>@node.Path</code> · @detail.ClassifiedParts classified part(s) in this class and below · @detail.Children.Count subclass(es)</p>
+                        <h4>Effective attributes (inherited first)</h4>
+                        <div class="table-wrap"><table class="data">
+                            <caption class="visually-hidden">Effective attributes of @node.Code</caption>
+                            <thead><tr><th scope="col">Label</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Rules</th><th scope="col">Defined by</th></tr></thead>
+                            <tbody>
+                                @foreach (var e in detail.Effective)
+                                {
+                                    <tr class="@(e.Definition.Retired ? "retired" : "")"><td>@e.Definition.Label@(e.Definition.Required ? " *" : "")</td><td><code>@e.Definition.Name</code></td><td>@e.Definition.DataType</td><td>@AdminUi.Constraints(e.Definition)</td><td>@(e.DefinedAt == node.Code ? "this class" : e.DefinedAt)</td></tr>
+                                }
+                                @if (detail.Effective.Count == 0) { <tr><td colspan="5" class="muted">No attributes.</td></tr> }
+                            </tbody>
+                        </table></div>
+                    </section>
+
+                    <section class="panel">
+                        <h3>Attributes defined by @node.Code</h3>
+                        <AttributeEditor Definitions="detail.OwnAttributes" Save="SaveAttributeAsync" Retire="RetireAttributeAsync" OnChanged="Reload" />
+                    </section>
+
+                    <section class="panel">
+                        <h3>Rename</h3>
+                        <form class="grid-form" @onsubmit="RenameAsync" @onsubmit:preventDefault>
+                            <label>Name * <input @bind="editName" maxlength="200" required /></label>
+                            <label>Sort order <input type="number" @bind="editSort" /></label>
+                            <label class="wide">Description <input @bind="editDescription" maxlength="2000" /></label>
+                            <div class="toolbar wide"><button type="submit" disabled="@busy">Save</button></div>
+                        </form>
+                    </section>
+
+                    <section class="panel" aria-label="Move or retire">
+                        <h3>Move or retire</h3>
+                        <div class="grid-form">
+                            <label>Move under
+                                <select @bind="moveTarget">
+                                    <option value="">(top level)</option>
+                                    @foreach (var (n, indent) in rows.Where(r => !r.Node.Path.StartsWith(node.Path, StringComparison.Ordinal))) { <option value="@n.Code">@AdminUi.Indented(n, indent)</option> }
+                                </select>
+                            </label>
+                            <label>Reason * <input @bind="actionReason" maxlength="500" /></label>
+                        </div>
+                        <ValidationList Errors="actionErrors" />
+                        <div class="toolbar">
+                            @if (pending is null)
+                            {
+                                <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(actionReason))" @onclick="AskMove">Move class</button>
+                                <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(actionReason))" @onclick="() => AskToggle(node)">@(node.IsActive ? "Retire class" : "Restore class")</button>
+                            }
+                            else
+                            {
+                                <span>@PendingText(node)</span>
+                                <button type="button" class="danger" disabled="@busy" @onclick="ConfirmAction">Confirm</button>
+                                <button type="button" class="secondary" @onclick="() => pending = null">Cancel</button>
+                            }
+                        </div>
+                    </section>
+                }
+
+                <section class="panel">
+                    <h3>@(selected is null ? "New top-level class" : $"New subclass of {selected}")</h3>
+                    <form class="grid-form" @onsubmit="CreateAsync" @onsubmit:preventDefault>
+                        <label>Code * <input @bind="newCode" maxlength="40" required /></label>
+                        <label>Name * <input @bind="newName" maxlength="200" required /></label>
+                        <label class="wide">Description <input @bind="newDescription" maxlength="2000" /></label>
+                        <div class="toolbar wide">
+                            <button type="submit" disabled="@busy">Create class</button>
+                            @if (selected is not null) { <button type="button" class="secondary" @onclick="() => Select(null)">Create at top level instead</button> }
+                        </div>
+                    </form>
+                </section>
+            </div>
+        </div>
+
+        <section class="panel" aria-label="Import and export">
+            <h3>Import and export the hierarchy</h3>
+            <p class="muted">Format <code>keel-classification/1</code> as JSON or CSV (see docs/migration/classification-format.md). An import creates or updates classes and attributes by code and name; it never deletes, moves or retires. A dry run shows exactly what an apply would do.</p>
+            <p><a class="button secondary" href="admin-files/classification?format=json" download>Export JSON</a> <a class="button secondary" href="admin-files/classification?format=csv" download>Export CSV</a></p>
+            <label>File to import (.json or .csv) <InputFile OnChange="Loaded" accept=".json,.csv" /></label>
+            @if (importName is not null)
+            {
+                <p>@importName: @importDoc?.Nodes.Count class(es). <button type="button" class="secondary" disabled="@busy" @onclick="() => RunImport(true)">Dry run</button></p>
+            }
+            <ValidationList Errors="importErrors" />
+            @if (report is not null)
+            {
+                <p role="status"><strong>@(report.DryRun ? "Dry run" : "Applied"):</strong> @report.Created to create, @report.Updated to update, @report.Unchanged unchanged.</p>
+                <div class="table-wrap"><table class="data">
+                    <caption class="visually-hidden">Import report</caption>
+                    <thead><tr><th scope="col">Class</th><th scope="col">Action</th><th scope="col">Detail</th></tr></thead>
+                    <tbody>@foreach (var l in report.Lines) { <tr><td>@l.Code</td><td>@l.Action</td><td>@l.Detail</td></tr> }</tbody>
+                </table></div>
+                @if (report.DryRun && report.Errors.Count == 0 && importDoc is not null)
+                {
+                    <label>Reason * <input @bind="importReason" maxlength="500" /></label>
+                    <div class="toolbar"><button type="button" class="danger" disabled="@(busy || string.IsNullOrWhiteSpace(importReason))" @onclick="() => RunImport(false)">Apply import</button></div>
+                }
+            }
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private ClassTree? tree;
+    private IReadOnlyList<(ClassNodeDto Node, int Indent)> rows = [];
+    private ClassDetail? detail;
+    private string? selected, error, message, pending, importName;
+    private string editName = "", editDescription = "", moveTarget = "", actionReason = "", newCode = "", newName = "", newDescription = "", importReason = "";
+    private int editSort;
+    private IReadOnlyList<string>? actionErrors, importErrors;
+    private ClassHierarchyDoc? importDoc;
+    private ClassImportReport? report;
+    private bool busy;
+
+    protected override Task OnInitializedAsync() => Reload();
+
+    private async Task Reload()
+    {
+        tree = await Classes.TreeAsync();
+        rows = AdminUi.Rows(tree);
+        detail = selected is null ? null : await Classes.GetAsync(selected);
+        if (detail is not null)
+        {
+            editName = detail.Node.Name;
+            editDescription = detail.Node.Description;
+            editSort = detail.Node.SortOrder;
+            moveTarget = detail.Ancestors.LastOrDefault()?.Code ?? "";
+        }
+    }
+
+    private async Task Select(string? code)
+    {
+        selected = code;
+        pending = null;
+        actionErrors = null;
+        actionReason = "";
+        message = null;
+        await Reload();
+    }
+
+    private async Task CreateAsync()
+    {
+        busy = true;
+        var o = await Classes.CreateNodeAsync(await Users.GetAsync(), new ClassNodeInput(newCode.Trim(), newName, newDescription, selected), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { message = $"Created {o.Value!.Code}."; error = null; newCode = newName = newDescription = ""; selected = o.Value.Code; await Reload(); }
+        else error = o.Kind == OutcomeKind.Invalid ? string.Join(" ", o.Errors) : UiText.Message(o);
+    }
+
+    private async Task RenameAsync()
+    {
+        busy = true;
+        var o = await Classes.UpdateNodeAsync(await Users.GetAsync(), selected!, editName, editDescription, editSort, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { message = "Saved."; error = null; await Reload(); } else error = UiText.Message(o);
+    }
+
+    private void AskMove() => pending = "move";
+
+    private void AskToggle(ClassNodeDto node) => pending = node.IsActive ? "retire" : "restore";
+
+    private string PendingText(ClassNodeDto node) => pending switch
+    {
+        "move" => $"Move {node.Code} and its subclasses under {(moveTarget == "" ? "the top level" : moveTarget)}? Classified parts are checked first.",
+        "retire" => $"Retire {node.Code}? It is no longer offered for new classification.",
+        _ => $"Restore {node.Code}?",
+    };
+
+    private async Task ConfirmAction()
+    {
+        busy = true;
+        actionErrors = null;
+        var subject = await Users.GetAsync();
+        var corr = CurrentUser.NewCorrelationId();
+        var o = pending == "move"
+            ? await Classes.MoveNodeAsync(subject, selected!, moveTarget == "" ? null : moveTarget, actionReason, corr)
+            : await Classes.SetStatusAsync(subject, selected!, pending == "restore", actionReason, corr);
+        busy = false;
+        pending = null;
+        if (o.IsOk) { message = "Done."; actionReason = ""; await Reload(); }
+        else actionErrors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+    }
+
+    private async Task<Outcome<AttributeChange>> SaveAttributeAsync(AttributeDefinitionInput input, bool create) =>
+        await Classes.SaveAttributeAsync(await Users.GetAsync(), selected!, input, create, CurrentUser.NewCorrelationId());
+
+    private async Task<Outcome<AttributeChange>> RetireAttributeAsync(string name, bool retired, string reason) =>
+        await Classes.SetAttributeRetiredAsync(await Users.GetAsync(), selected!, name, retired, reason, CurrentUser.NewCorrelationId());
+
+    private async Task Loaded(InputFileChangeEventArgs e)
+    {
+        importErrors = null;
+        report = null;
+        importDoc = null;
+        var file = e.File;
+        importName = file.Name;
+        using var reader = new StreamReader(file.OpenReadStream(8_000_000));
+        var text = await reader.ReadToEndAsync();
+        var (doc, why) = file.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ClassificationIO.FromCsv(text) : ClassificationIO.FromJson(text);
+        importDoc = doc;
+        if (why is not null) importErrors = [why];
+    }
+
+    private async Task RunImport(bool dry)
+    {
+        busy = true;
+        var o = await Classes.ImportHierarchyAsync(await Users.GetAsync(), importDoc!, dry, importReason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk)
+        {
+            report = o.Value;
+            importErrors = report!.Errors.Count > 0 ? report.Errors : null;
+            if (!dry) { message = $"Imported: {report.Created} created, {report.Updated} updated."; importDoc = null; importName = null; await Reload(); }
+        }
+        else importErrors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+    }
+}

@@ -125,6 +125,13 @@
                 </dl>
             </section>
 
+            @* --- Classification (increment 2.2): the class and its attribute values belong to the iteration --- *@
+            @if (p.Revision.IsLatest)
+            {
+                <Keel.Web.Components.Pages.Classification.PartClassificationPanel Number="@p.Number" Editable="@(p.Checkout?.IsMine == true && p.Permissions.CanModify)" Version="@($"{p.Iteration.Label}|{p.Checkout is not null}")" />
+            }
+            @* --- end classification --- *@
+
             @* ---- Linked documents (increment 1.3, ADR-0016) ---- *@
             <PartDocumentsPanel PartNumber="@p.Number" Revision="@Revision" IterationLabel="@p.Iteration.Label" CheckedOutByMe="@(p.Checkout?.IsMine == true)" />
             @* ---- end linked documents ---- *@
@@ -208,9 +215,13 @@
         await using (var conn = await Db.OpenConnectionAsync())
         {
             defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);
-            lifecycle = await Lifecycle.LoadAsync(conn, null, PartService.DefaultLifecycle, CancellationToken.None);
         }
         var outcome = await Parts.GetAsync(await Users.GetAsync(), Number, Revision, Corr());
+        if (outcome.Value is { } found) // 2.2: the part's own lifecycle version (versions are data)
+        {
+            await using var lcConn = await Db.OpenConnectionAsync();
+            lifecycle = await Lifecycle.LoadAsync(lcConn, null, found.LifecycleId, CancellationToken.None);
+        }
         notFound = !outcome.IsOk;
         Apply(outcome.Value);
     }

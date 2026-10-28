@@ -1,4 +1,4 @@
-@foreach (var d in Definitions)
+@foreach (var d in Definitions.Where(d => !d.Retired)) // 2.2: retired attributes are not offered for input; their stored values stay readable
 {
     var label = LabelFor(d);
     if (d.DataType == "boolean")
@@ -25,8 +25,9 @@
     {
         <label>
             @label
-            <input value="@Get(d.Name)" maxlength="@(d.MaxLength ?? 4000)" inputmode="@(d.DataType == "number" ? "decimal" : "text")"
+            <input value="@Get(d.Name)" maxlength="@(d.MaxLength ?? 4000)" inputmode="@(d.DataType == "number" ? "decimal" : "text")" title="@d.HelpText"
                    @onchange="e => Set(d.Name, e.Value as string)" />
+            @if (!string.IsNullOrEmpty(d.HelpText)) { <span class="muted small">@d.HelpText</span> }
         </label>
     }
 }

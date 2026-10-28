@@ -1,0 +1,58 @@
+@page "/admin/history"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject ConfigHistoryService History
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: change history">
+    <AdminNav />
+    <div class="stack">
+        <p>Every configuration change and denied attempt, newest first, read from the tamper-evident audit log. The log itself, with chain verification, stays with the auditor role.</p>
+        <form class="toolbar" role="search" @onsubmit="Load" @onsubmit:preventDefault>
+            <label class="grow">Filter by action <input @bind="filter" placeholder="for example lifecycle, attribute, class" /></label>
+            <button type="submit">Filter</button>
+        </form>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        <div class="table-wrap"><table class="data">
+            <caption class="visually-hidden">Configuration change history</caption>
+            <thead><tr><th scope="col">When (UTC)</th><th scope="col">Who</th><th scope="col">Action</th><th scope="col">Item</th><th scope="col">Outcome</th><th scope="col">Differences</th></tr></thead>
+            <tbody>
+                @foreach (var h in entries)
+                {
+                    <tr>
+                        <td>@AdminUi.Utc(h.At)</td>
+                        <td>@h.Actor</td>
+                        <td>@h.Action</td>
+                        <td>@h.ObjectId</td>
+                        <td class="@(h.Outcome == "Success" ? "" : "outcome-denied")">@h.Outcome</td>
+                        <td>
+                            @if (h.Diff.Count > 0 || h.Reason is not null)
+                            {
+                                <details>
+                                    <summary>@(h.Diff.Count) difference(s)@(h.Reason is null ? "" : ", reason given")</summary>
+                                    @if (h.Reason is not null) { <p>Reason: @h.Reason</p> }
+                                    <ul>@foreach (var d in h.Diff) { <li>@d</li> }</ul>
+                                </details>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (entries.Count == 0) { <tr><td colspan="6" class="muted">No matching events.</td></tr> }
+            </tbody>
+        </table></div>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<ConfigHistoryEntry> entries = [];
+    private string filter = "";
+    private string? error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await History.ListAsync(await Users.GetAsync(), 200, string.IsNullOrWhiteSpace(filter) ? null : filter.Trim());
+        error = o.IsOk ? null : UiText.Message(o);
+        entries = o.Value ?? [];
+    }
+}

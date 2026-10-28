@@ -1,0 +1,23 @@
+@* The classification tree as a keyboard-operable list of buttons. Counts (optional) are the matching parts per class, computed under the caller's access. *@
+<ul class="class-tree" role="tree" aria-label="@Label">
+    @foreach (var (node, indent) in Rows)
+    {
+        var selected = string.Equals(node.Code, Selected, StringComparison.OrdinalIgnoreCase);
+        <li role="none" class="indent-@indent @(node.IsActive ? "" : "retired")">
+            <button type="button" role="treeitem" class="tree-item @(selected ? "selected" : "")" aria-level="@(indent + 1)" aria-selected="@(selected ? "true" : "false")"
+                    @onclick="() => OnSelect.InvokeAsync(node.Code)">
+                @node.Name <span class="muted">@node.Code</span>
+                @if (Counts is not null && Counts.TryGetValue(node.Code, out var n)) { <span class="count" aria-label="@n parts">@n</span> }
+                @if (!node.IsActive) { <span class="badge">Retired</span> }
+            </button>
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<(ClassNodeDto Node, int Indent)> Rows { get; set; }
+    [Parameter] public string? Selected { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, long>? Counts { get; set; }
+    [Parameter] public string Label { get; set; } = "Classification";
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+}

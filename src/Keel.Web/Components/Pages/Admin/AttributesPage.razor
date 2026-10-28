@@ -1,0 +1,39 @@
+@page "/admin/attributes"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject AttributeAdminService Attributes
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: attributes">
+    <AdminNav />
+    <div class="stack">
+        <p>Attribute definitions for <strong>parts</strong>. Validation (format, range, length, allowed values) is applied the next time a part is saved or checked in; stored values are never changed. Attributes for documents and change objects need attribute storage on those objects (planned for Phase 2c). Classification attributes are managed per class under <a href="admin/classification">Classification</a>.</p>
+        <label class="toolbar"><input type="checkbox" @bind="showRetired" @bind:after="Load" /> Show retired attributes</label>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (definitions is not null)
+        {
+            <AttributeEditor Definitions="definitions" Save="SaveAsync" Retire="RetireAsync" OnChanged="Load" />
+        }
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<AttributeDefinitionDto>? definitions;
+    private bool showRetired;
+    private string? error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var outcome = await Attributes.ListAsync(await Users.GetAsync(), "part", showRetired);
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        definitions = outcome.Value;
+    }
+
+    private async Task<Outcome<AttributeChange>> SaveAsync(AttributeDefinitionInput input, bool create) =>
+        create ? await Attributes.CreateAsync(await Users.GetAsync(), "part", input, CurrentUser.NewCorrelationId())
+               : await Attributes.UpdateAsync(await Users.GetAsync(), "part", input, CurrentUser.NewCorrelationId());
+
+    private async Task<Outcome<AttributeChange>> RetireAsync(string name, bool retired, string reason) =>
+        await Attributes.SetRetiredAsync(await Users.GetAsync(), "part", name, retired, reason, CurrentUser.NewCorrelationId());
+}

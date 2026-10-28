@@ -41,6 +41,7 @@ public static class WorkflowRegistration
         services.AddSingleton<UserDirectory>();
         services.AddSingleton<WorkflowService>();
         services.AddSingleton<SignDraftStore>();
+        services.AddSingleton<Keel.Core.IWorkflowTemplateAdmin, WorkflowTemplateAdmin>(); // 2.2 admin UI
         return services;
     }
 

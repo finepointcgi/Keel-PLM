@@ -1,6 +1,7 @@
 @using Keel.Web.Components.Pages.Configuration
 @inject CurrentUser Users
 @inject BomService Bom
+@inject IReferenceData Refs
 
 <section class="panel stack" aria-labelledby="bom-edit-heading">
     <div>
@@ -21,7 +22,7 @@
             Unit
             <select @bind="addUnit">
                 <option value="">Part default</option>
-                @foreach (var u in UnitsOfMeasure.All) { <option value="@u">@u</option> }
+                @foreach (var u in units) { <option value="@u">@u</option> }
             </select>
         </label>
         <label>Find number <input @bind="addFind" inputmode="numeric" placeholder="Next free" /></label>
@@ -48,7 +49,7 @@
                             <td><input aria-label="Find number" @bind="editFind" inputmode="numeric" size="6" /></td>
                             <td>@(l.ChildNumber ?? "Restricted item")</td><td>@l.ChildName</td>
                             <td><input aria-label="Quantity" @bind="editQty" inputmode="decimal" size="8" /></td>
-                            <td><select aria-label="Unit" @bind="editUnit">@foreach (var u in UnitsOfMeasure.All) { <option value="@u">@u</option> }</select></td>
+                            <td><select aria-label="Unit" @bind="editUnit">@foreach (var u in units) { <option value="@u">@u</option> }</select></td>
                             <td><input aria-label="Reference designators" @bind="editRefs" /></td>
                             <td><input aria-label="Notes" @bind="editNotes" maxlength="1000" /></td>
                             <td><EffectivityFields Value="editEff" Label="Edit line: " /></td>
@@ -95,6 +96,9 @@
     [Parameter] public EventCallback<IReadOnlyList<Markings>> OnMarkings { get; set; }
 
     private WorkingBom? working;
+    private IReadOnlyList<string> units = []; // 2.2: administrator data
+
+    protected override async Task OnInitializedAsync() => units = await Refs.CodesAsync(RefLists.Unit);
     private readonly List<string> errors = [];
     private bool busy;
     private string addChild = "", addQty = "1", addUnit = "", addFind = "", addRefs = "", addNotes = "", copySource = "";

@@ -2,13 +2,14 @@
 @using Keel.Documents
 @inject CurrentUser Users
 @inject DocumentService Docs
+@inject IReferenceData Refs
 
 <PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Documents">
     <form class="toolbar" role="search" @onsubmit="() => Search(0)">
         <input aria-label="Search documents" placeholder="Number or name" class="grow" @bind="query" />
         <select aria-label="Document type" @bind="type" @bind:after="() => Search(0)">
             <option value="">Any type</option>
-            @foreach (var t in DocumentTypes.All) { <option value="@t">@t</option> }
+            @foreach (var t in docTypes) { <option value="@t">@t</option> }
         </select>
         <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
             <option value="">Any state</option>
@@ -55,7 +56,13 @@
     private int offset;
     private DocumentSearchResult? result;
 
-    protected override Task OnInitializedAsync() => Search(0);
+    private IReadOnlyList<string> docTypes = []; // 2.2: administrator data
+
+    protected override async Task OnInitializedAsync()
+    {
+        docTypes = await Refs.CodesAsync(RefLists.DocumentType);
+        await Search(0);
+    }
 
     private async Task Search(int newOffset)
     {

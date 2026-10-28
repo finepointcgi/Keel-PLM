@@ -152,7 +152,8 @@ public sealed partial class ChangeService(NpgsqlDataSource dataSource, IAuditLog
         if (title.Length is 0 or > MaxTitleLength) errors.Add($"Title is required (at most {MaxTitleLength} characters).");
         if ((cmd.Description?.Length ?? 0) > 8000) errors.Add("Description must be at most 8000 characters.");
         if ((cmd.Reason?.Length ?? 0) > 4000) errors.Add("Reason must be at most 4000 characters.");
-        if (!ChangePriorities.All.Contains(cmd.Priority)) errors.Add($"Priority must be one of: {string.Join(", ", ChangePriorities.All)}.");
+        var priorities = await ReferenceChecks.ActiveCodesAsync(conn, tx, RefLists.ChangePriority, ct); // 2.2: priorities are administrator data
+        if (!priorities.Contains(cmd.Priority)) errors.Add($"Priority must be one of: {string.Join(", ", priorities)}.");
         if (cmd.ChangeClass is not null && !ChangeClasses.All.Contains(cmd.ChangeClass)) errors.Add("Class must be I or II.");
         if (errors.Count > 0) return Outcome<ChangeDetail>.Invalid(errors);
 
@@ -283,7 +284,8 @@ public sealed partial class ChangeService(NpgsqlDataSource dataSource, IAuditLog
             if (title.Length is 0 or > MaxTitleLength) errors.Add($"Title is required (at most {MaxTitleLength} characters).");
             if ((cmd.Description?.Length ?? 0) > 8000) errors.Add("Description must be at most 8000 characters.");
             if ((cmd.Reason?.Length ?? 0) > 4000) errors.Add("Reason must be at most 4000 characters.");
-            if (!ChangePriorities.All.Contains(cmd.Priority)) errors.Add($"Priority must be one of: {string.Join(", ", ChangePriorities.All)}.");
+            var priorities = await ReferenceChecks.ActiveCodesAsync(conn, tx, RefLists.ChangePriority, ct); // 2.2: administrator data; an unchanged retired value stays valid
+            if (!priorities.Contains(cmd.Priority) && cmd.Priority != c.Head.Priority) errors.Add($"Priority must be one of: {string.Join(", ", priorities)}.");
             if (errors.Count > 0) return Invalid([.. errors]);
             await using var up = new NpgsqlCommand("UPDATE chg.change SET title = @t, description = @d, priority = @p, reason = @r WHERE id = @id", conn, tx);
             up.Parameters.AddWithValue("t", title);

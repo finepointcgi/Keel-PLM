@@ -125,6 +125,7 @@ builder.Services.AddSingleton<IDocumentPinProvider, Keel.Documents.DocumentPinPr
 Keel.Change.ChangeModule.AddKeelChange(builder.Services);
 builder.Services.AddKeelWorkflow(builder.Configuration);
 builder.Services.AddSingleton<Keel.Migration.BatchQueries>(); // Phase 3: read-only migration batch viewer (admin page); loading is the keel-import CLI
+Keel.Admin.AdminModule.AddKeelAdmin(builder.Services); // 2.2 administration and classification
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -226,6 +227,7 @@ app.MapBomEndpoints(); // 1.4 BOM
 app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management
 app.MapConfigurationEndpoints(); // 2.1 baselines and effectivity
+app.MapAdminEndpoints(); // 2.2 administration and classification
 app.MapKeelUi<App>();
 
 app.Run();

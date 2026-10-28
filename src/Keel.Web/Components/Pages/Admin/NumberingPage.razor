@@ -1,0 +1,95 @@
+@page "/admin/numbering"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject NumberingAdminService Numbering
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: numbering">
+    <AdminNav />
+    <div class="stack">
+        <p>Generated numbers are a prefix plus a counter. The counter only moves forward, so a number is never issued twice, whatever the prefix. The preview is the number the next object would get; another user may take it first. Change prefixes (PR, ECR, ECN, CT) are fixed by database format checks.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (saved is not null) { <p role="status" class="permit">@saved</p> }
+        <div class="table-wrap"><table class="data">
+            <caption class="visually-hidden">Numbering by object type</caption>
+            <thead><tr><th scope="col">Object type</th><th scope="col">Prefix</th><th scope="col">Digits</th><th scope="col">Next number</th><th scope="col">Editable</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+                @foreach (var n in rows)
+                {
+                    <tr>
+                        <td>@n.ObjectType</td><td><code>@n.Prefix</code></td><td>@n.Width</td><td><code>@n.NextNumber</code></td><td>@(n.PrefixEditable ? "Yes" : "Fixed")</td>
+                        <td>@if (n.PrefixEditable) { <button type="button" class="secondary" @onclick="() => Edit(n)">Edit</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+
+        @if (editing is not null)
+        {
+            <section class="panel">
+                <h3>Numbering for @editing.ObjectType</h3>
+                <form class="grid-form" @onsubmit="PreviewOrSave" @onsubmit:preventDefault>
+                    <label>Prefix * <input @bind="prefix" maxlength="16" required aria-describedby="prefix-help" /></label>
+                    <label>Digits * <input type="number" min="4" max="12" @bind="width" required /></label>
+                    <p class="wide" id="prefix-help">Next number would be <strong><code>@NumberingAdminService.Format(prefix?.Trim() ?? "", width, editing.NextValue)</code></strong>. Capital letters, digits and . _ - only.</p>
+                    <label class="wide">Reason * <input @bind="reason" maxlength="500" required /></label>
+                    <div class="toolbar wide">
+                        <button type="submit" disabled="@(busy || string.IsNullOrWhiteSpace(reason))">Save numbering</button>
+                        <button type="button" class="secondary" @onclick="() => editing = null">Cancel</button>
+                    </div>
+                </form>
+                <h4>Move the counter forward</h4>
+                <form class="grid-form" @onsubmit="AdvanceAsync" @onsubmit:preventDefault>
+                    <label>Next value * <input type="number" min="@(editing.NextValue + 1)" @bind="advanceTo" /></label>
+                    <p class="muted small wide">Use this after importing explicit numbers so generated numbers skip past them. The counter cannot go back.</p>
+                    <div class="toolbar wide"><button type="submit" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(reason) || advanceTo <= editing.NextValue)">Advance counter</button></div>
+                </form>
+            </section>
+        }
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<NumberingInfo> rows = [];
+    private NumberingInfo? editing;
+    private string? prefix, reason, error, saved;
+    private int width;
+    private long advanceTo;
+    private bool busy;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await Numbering.ListAsync(await Users.GetAsync());
+        error = o.IsOk ? null : UiText.Message(o);
+        rows = o.Value ?? [];
+    }
+
+    private void Edit(NumberingInfo n)
+    {
+        editing = n;
+        prefix = n.Prefix;
+        width = n.Width;
+        advanceTo = n.NextValue + 1;
+        reason = "";
+        saved = null;
+    }
+
+    private async Task PreviewOrSave()
+    {
+        busy = true;
+        var o = await Numbering.UpdateAsync(await Users.GetAsync(), editing!.ObjectType, prefix ?? "", width, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { saved = $"Numbering for {o.Value!.ObjectType} saved. Next number: {o.Value.NextNumber}."; editing = null; error = null; await Load(); }
+        else error = UiText.Message(o);
+    }
+
+    private async Task AdvanceAsync()
+    {
+        busy = true;
+        var o = await Numbering.AdvanceAsync(await Users.GetAsync(), editing!.ObjectType, advanceTo, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { saved = $"Counter advanced. Next number: {o.Value!.NextNumber}."; editing = null; error = null; await Load(); }
+        else error = UiText.Message(o);
+    }
+}
