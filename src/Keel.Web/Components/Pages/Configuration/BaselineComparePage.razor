@@ -1,0 +1,70 @@
+@page "/baselines/compare"
+@inject CurrentUser Users
+@inject BaselineService Baselines
+@inject BomService Bom
+
+@* Baseline against baseline, or a baseline against the current latest / latest released structure of its root part. *@
+<PageFrame Banner="@(result?.Banner ?? UiText.Unclassified)" Title="Compare baselines">
+    <p><a href="baselines">Back to baselines</a></p>
+    <form class="toolbar" @onsubmit="Run" aria-label="Baselines to compare">
+        <label class="inline-check">From
+            <select aria-label="From baseline" @bind="from">
+                <option value="">Choose a baseline</option>
+                @foreach (var b in all) { <option value="@b.Number">@b.Number · @b.Name</option> }
+            </select>
+        </label>
+        <label class="inline-check">To
+            <select aria-label="To" @bind="to">
+                <option value="">Current latest released structure</option>
+                <option value="@Latest">Current latest structure</option>
+                @foreach (var b in all) { <option value="@b.Number">@b.Number · @b.Name</option> }
+            </select>
+        </label>
+        <button type="submit" disabled="@(from.Length == 0)">Compare</button>
+        @if (result is not null)
+        {
+            <a class="button secondary" download data-enhance-nav="false" href="@CsvUrl()">Export CSV</a>
+        }
+    </form>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (result is not null) { <DeepDiffTable Result="result" /> }
+</PageFrame>
+
+@code {
+    private const string Latest = "~latest";
+
+    [SupplyParameterFromQuery(Name = "from")] public string? FromQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "to")] public string? ToQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "spec")] public string? SpecQuery { get; set; }
+
+    private IReadOnlyList<BaselineSummary> all = [];
+    private DeepComparison? result;
+    private string? error;
+    private string from = "", to = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var page = await Baselines.SearchAsync(await Users.GetAsync(), new BaselineSearch(Limit: 200), CurrentUser.NewCorrelationId());
+        all = page.IsOk ? page.Value!.Items : [];
+        from = FromQuery ?? "";
+        to = !string.IsNullOrWhiteSpace(ToQuery) ? ToQuery! : string.Equals(SpecQuery, "Latest", StringComparison.OrdinalIgnoreCase) ? Latest : "";
+        if (from.Length > 0) await Run();
+    }
+
+    private BomConfigSpec CurrentSpec => to == Latest ? BomConfigSpec.Latest : BomConfigSpec.LatestReleased;
+
+    private async Task Run()
+    {
+        if (from.Length == 0) return;
+        var subject = await Users.GetAsync();
+        var outcome = to.Length > 0 && to != Latest
+            ? await Bom.CompareBaselinesAsync(subject, from, to, CurrentUser.NewCorrelationId())
+            : await Bom.CompareBaselineToCurrentAsync(subject, from, CurrentSpec, CurrentUser.NewCorrelationId());
+        error = outcome.IsOk ? null : outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome);
+        result = outcome.Value;
+    }
+
+    private string CsvUrl() => to.Length > 0 && to != Latest
+        ? $"ui/baselines/compare.csv?from={Uri.EscapeDataString(from)}&to={Uri.EscapeDataString(to)}"
+        : $"ui/baselines/compare.csv?from={Uri.EscapeDataString(from)}&spec={CurrentSpec}";
+}

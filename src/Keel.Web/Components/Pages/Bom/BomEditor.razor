@@ -1,3 +1,4 @@
+@using Keel.Web.Components.Pages.Configuration
 @inject CurrentUser Users
 @inject BomService Bom
 
@@ -26,6 +27,7 @@
         <label>Find number <input @bind="addFind" inputmode="numeric" placeholder="Next free" /></label>
         <label class="wide">Reference designators <input @bind="addRefs" placeholder="R1 R2 R3 (EA lines: count must equal the quantity)" /></label>
         <label class="wide">Notes <input @bind="addNotes" maxlength="1000" /></label>
+        <div class="wide"><span class="muted small">Effectivity: </span><EffectivityFields Value="addEff" Label="New line: " /></div>
         <div class="actions"><button type="submit" disabled="@busy">Add line</button></div>
     </form>
 
@@ -36,7 +38,7 @@
         {
             <div class="table-wrap"><table class="data bom-edit">
                 <caption class="sr-only">Working copy lines</caption>
-                <thead><tr><th scope="col">Find</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Designators</th><th scope="col">Notes</th><th scope="col">Actions</th></tr></thead>
+                <thead><tr><th scope="col">Find</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Designators</th><th scope="col">Notes</th><th scope="col">Effectivity</th><th scope="col">Actions</th></tr></thead>
                 <tbody>
                 @foreach (var l in working.Lines)
                 {
@@ -49,6 +51,7 @@
                             <td><select aria-label="Unit" @bind="editUnit">@foreach (var u in UnitsOfMeasure.All) { <option value="@u">@u</option> }</select></td>
                             <td><input aria-label="Reference designators" @bind="editRefs" /></td>
                             <td><input aria-label="Notes" @bind="editNotes" maxlength="1000" /></td>
+                            <td><EffectivityFields Value="editEff" Label="Edit line: " /></td>
                             <td>
                                 <button type="button" disabled="@busy" @onclick="() => SaveEdit(l)">Save</button>
                                 <button type="button" class="secondary" @onclick="() => editingId = null">Cancel</button>
@@ -65,6 +68,7 @@
                             <td>@l.Unit</td>
                             <td>@string.Join(' ', l.ReferenceDesignators)</td>
                             <td>@l.Notes</td>
+                            <td>@l.EffectivityText</td>
                             <td>
                                 <button type="button" class="secondary" disabled="@(busy || l.Redacted)" @onclick="() => StartEdit(l)">Edit</button>
                                 <button type="button" class="secondary" disabled="@busy" @onclick="() => Remove(l)">Remove</button>
@@ -95,6 +99,7 @@
     private bool busy;
     private string addChild = "", addQty = "1", addUnit = "", addFind = "", addRefs = "", addNotes = "", copySource = "";
     private bool copyReplace;
+    private readonly Keel.Web.Services.EffectivityForm addEff = new(), editEff = new();
     private Guid? editingId;
     private string editQty = "", editUnit = "EA", editFind = "", editRefs = "", editNotes = "";
     private string? loadedFor;
@@ -153,13 +158,14 @@
         if (!TryQty(addQty, out var qty) || !TryFind(addFind, out var find)) return;
         busy = true;
         var outcome = await Bom.AddUsageAsync(await Users.GetAsync(), Part.Number,
-            new AddUsageCommand(addChild, qty, string.IsNullOrEmpty(addUnit) ? null : addUnit, find, SplitRefs(addRefs), addNotes), Corr());
+            new AddUsageCommand(addChild, qty, string.IsNullOrEmpty(addUnit) ? null : addUnit, find, SplitRefs(addRefs), addNotes, addEff.ToInput()), Corr());
         busy = false;
         if (outcome.IsOk)
         {
             errors.Clear();
             addChild = addFind = addRefs = addNotes = "";
             addQty = "1";
+            (addEff.Kind, addEff.Context, addEff.From, addEff.To) = ("", "", "", "");
             await Reload();
         }
         else Fail(outcome);
@@ -170,6 +176,8 @@
         editingId = l.Id;
         (editQty, editUnit, editFind) = (l.Quantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture), l.Unit, l.FindNumber.ToString(System.Globalization.CultureInfo.InvariantCulture));
         (editRefs, editNotes) = (string.Join(' ', l.ReferenceDesignators), l.Notes ?? "");
+        var current = Keel.Web.Services.EffectivityForm.FromRange(l.Effectivity);
+        (editEff.Kind, editEff.Context, editEff.From, editEff.To) = (current.Kind, current.Context, current.From, current.To);
     }
 
     private async Task SaveEdit(WorkingBomLine l)
@@ -177,7 +185,7 @@
         if (!TryQty(editQty, out var qty) || !TryFind(editFind, out var find)) return;
         if (find is null) { errors.Clear(); errors.Add("Find number is required."); return; }
         busy = true;
-        var outcome = await Bom.UpdateUsageAsync(await Users.GetAsync(), Part.Number, l.Id, new UpdateUsageCommand(qty, editUnit, find.Value, SplitRefs(editRefs), editNotes), Corr());
+        var outcome = await Bom.UpdateUsageAsync(await Users.GetAsync(), Part.Number, l.Id, new UpdateUsageCommand(qty, editUnit, find.Value, SplitRefs(editRefs), editNotes, editEff.ToInput(), ClearEffectivity: editEff.IsBlank), Corr());
         busy = false;
         if (outcome.IsOk) { errors.Clear(); editingId = null; await Reload(); }
         else Fail(outcome);

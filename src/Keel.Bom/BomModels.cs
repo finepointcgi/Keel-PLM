@@ -3,8 +3,7 @@ using Keel.Core;
 namespace Keel.Bom;
 
 /// <summary>
-/// How a usage link's child version is chosen at read time (ADR-0003). Effectivity and Baseline are Phase 2 and
-/// throw <see cref="NotSupportedException"/> when requested.
+/// How a usage link's child version is chosen at read time (ADR-0003, ADR-0021).
 /// </summary>
 public enum BomConfigSpec
 {
@@ -12,9 +11,9 @@ public enum BomConfigSpec
     Latest,
     /// <summary>The child master's highest revision in the Released state (latest iteration); unresolved when there is none.</summary>
     LatestReleased,
-    /// <summary>Phase 2 (configuration management).</summary>
+    /// <summary>As designed or built for one unit: lines whose effectivity covers it, each child at the revision whose effectivity covers it.</summary>
     Effectivity,
-    /// <summary>Phase 2 (configuration management).</summary>
+    /// <summary>Exactly the items of an established or draft baseline, as frozen at its creation.</summary>
     Baseline,
 }
 
@@ -37,7 +36,11 @@ public sealed record BomQuery(
     int? Iteration = null,
     BomConfigSpec Spec = BomConfigSpec.Latest,
     int? Depth = null,
-    string? ParentLine = null);
+    string? ParentLine = null,
+    /// <summary>Baseline number for <see cref="BomConfigSpec.Baseline"/>.</summary>
+    string? Baseline = null,
+    /// <summary>Unit for <see cref="BomConfigSpec.Effectivity"/>.</summary>
+    EffectivityRequest? Effectivity = null);
 
 /// <summary>
 /// One line of an exploded structure. Redacted lines (A4) carry only quantity, unit, find number, level and path;
@@ -67,7 +70,12 @@ public sealed record BomLine(
     IReadOnlyList<string> ReferenceDesignators,
     string? Notes,
     string? Banner,
-    Markings? Markings);
+    Markings? Markings,
+    /// <summary>Applicability of this line (null: applies to every unit). Shown for redacted lines too: it is not identifying (CFG-6).</summary>
+    EffectivityRange? Effectivity = null)
+{
+    public string? EffectivityText => Effectivity?.Describe();
+}
 
 public sealed record BomExplosion(
     string RootNumber,
@@ -81,7 +89,9 @@ public sealed record BomExplosion(
     /// <summary>Aggregate banner of the root and every readable line returned.</summary>
     string Banner,
     int RedactedCount,
-    int UnresolvedCount);
+    int UnresolvedCount,
+    /// <summary>What the structure was resolved for, e.g. "serial 101 (ORCA-POD)" or "baseline BL-000001"; null for Latest and LatestReleased.</summary>
+    string? Configuration = null);
 
 public sealed record BomExport(string FileName, string Csv, string Banner, int Lines, int RedactedCount);
 
@@ -115,7 +125,11 @@ public sealed record WhereUsedRow(
     string? ParentState,
     string? ParentStateLabel,
     string? Banner,
-    Markings? Markings);
+    Markings? Markings,
+    EffectivityRange? Effectivity = null)
+{
+    public string? EffectivityText => Effectivity?.Describe();
+}
 
 public sealed record WhereUsedResult(string Number, string Name, int Levels, IReadOnlyList<WhereUsedRow> Rows, string Banner);
 
@@ -152,7 +166,11 @@ public sealed record WorkingBomLine(
     IReadOnlyList<string> ReferenceDesignators,
     string? Notes,
     string? Banner,
-    Markings? Markings);
+    Markings? Markings,
+    EffectivityRange? Effectivity = null)
+{
+    public string? EffectivityText => Effectivity?.Describe();
+}
 
 public sealed record WorkingBom(string Number, string Revision, IReadOnlyList<WorkingBomLine> Lines, string Banner, int MaxChildren);
 
@@ -162,11 +180,15 @@ public sealed record AddUsageCommand(
     string? Unit = null,
     int? FindNumber = null,
     IReadOnlyList<string>? ReferenceDesignators = null,
-    string? Notes = null);
+    string? Notes = null,
+    EffectivityInput? Effectivity = null);
 
+/// <summary><see cref="Effectivity"/> null leaves the line's effectivity as it is; <see cref="ClearEffectivity"/> removes it (the line then applies to every unit).</summary>
 public sealed record UpdateUsageCommand(
     decimal Quantity,
     string Unit,
     int FindNumber,
     IReadOnlyList<string>? ReferenceDesignators = null,
-    string? Notes = null);
+    string? Notes = null,
+    EffectivityInput? Effectivity = null,
+    bool ClearEffectivity = false);

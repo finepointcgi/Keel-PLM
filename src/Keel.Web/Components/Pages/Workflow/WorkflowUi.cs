@@ -56,6 +56,7 @@ public static class WorkflowText
     {
         "part" => $"parts/{Uri.EscapeDataString(key)}",
         "ecr" or "ecn" => $"changes/{Uri.EscapeDataString(key)}", // 1.6: change requests and change notices
+        "baseline" => $"baselines/{Uri.EscapeDataString(key)}", // 2.1: baselines established by signatures
         _ => null,
     };
 

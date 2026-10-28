@@ -1,0 +1,68 @@
+@page "/parts/{Number}/compare-units"
+@inject CurrentUser Users
+@inject BomService Bom
+@inject EffectivityService Effectivity
+
+@* What differs between two units of one part: for example serial 100 and serial 101 of ORCA-POD (A19, ADR-0021). *@
+<PageFrame Banner="@(result?.Banner ?? UiText.Unclassified)" Title="Compare units">
+    <p><a href="parts/@Uri.EscapeDataString(Number)">Back to @Number</a></p>
+    <h2 class="subhead">@Number</h2>
+    <form class="stack" @onsubmit="Run" aria-label="Units to compare">
+        <div class="toolbar"><strong>Unit A</strong> <UnitFields Value="a" Label="Unit A: " ContextList="contexts" /></div>
+        <div class="toolbar"><strong>Unit B</strong> <UnitFields Value="b" Label="Unit B: " ContextList="contexts" /></div>
+        <div class="toolbar">
+            <button type="submit">Compare units</button>
+            @if (result is not null)
+            {
+                <a class="button secondary" download data-enhance-nav="false" href="@CsvUrl()">Export CSV</a>
+            }
+        </div>
+    </form>
+    <datalist id="contexts">@foreach (var c in contextIds) { <option value="@c"></option> }</datalist>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (result is not null) { <DeepDiffTable Result="result" /> }
+    @if (revisions is not null)
+    {
+        <section class="panel" aria-labelledby="rev-eff-heading">
+            <h3 id="rev-eff-heading">Revisions and the units they serve</h3>
+            <div class="table-wrap"><table class="data">
+                <thead><tr><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Effectivity</th><th scope="col">Set by</th></tr></thead>
+                <tbody>
+                @foreach (var r in revisions.Revisions)
+                {
+                    <tr><td>@r.Revision@(r.IsLatest ? " (latest)" : "")</td><td>@r.StateLabel</td><td>@(r.Range?.Describe() ?? "Not restricted")</td><td>@r.SourceChange</td></tr>
+                }
+                </tbody>
+            </table></div>
+        </section>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private readonly UnitForm a = new(), b = new();
+    private DeepComparison? result;
+    private PartEffectivity? revisions;
+    private IReadOnlyList<string> contextIds = [];
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var subject = await Users.GetAsync();
+        contextIds = [.. (await Effectivity.ListContextsAsync(subject, CurrentUser.NewCorrelationId())).Select(c => c.Id)];
+        revisions = (await Effectivity.GetPartAsync(subject, Number, CurrentUser.NewCorrelationId())).Value;
+    }
+
+    private async Task Run()
+    {
+        var (ra, ea) = a.ToRequest();
+        var (rb, eb) = b.ToRequest();
+        if (ra is null || rb is null) { error = string.Join(" ", new[] { ea is null ? null : "Unit A: " + ea, eb is null ? null : "Unit B: " + eb }.OfType<string>()); return; }
+        var outcome = await Bom.CompareUnitsAsync(await Users.GetAsync(), Number, ra, rb, null, CurrentUser.NewCorrelationId());
+        error = outcome.IsOk ? null : outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome);
+        result = outcome.Value;
+    }
+
+    private string CsvUrl() => $"ui/parts/{Uri.EscapeDataString(Number)}/compare-units.csv?{a.Query()}&{b.Query("To").Replace("context=", "contextTo=", StringComparison.Ordinal)}";
+}

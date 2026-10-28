@@ -20,6 +20,8 @@ public sealed class BomPerformanceTests(PostgresFixture pg)
     {
         TestContext.Current.SendDiagnosticMessage(message);
         TestContext.Current.TestOutputHelper?.WriteLine(message);
+        // Optional: KEEL_PERF_LOG=<file> appends the timings to a file, for runs where diagnostic messages are not shown.
+        if (Environment.GetEnvironmentVariable("KEEL_PERF_LOG") is { Length: > 0 } path) File.AppendAllText(path, message + Environment.NewLine);
     }
 
     private static async Task<(T Result, TimeSpan Elapsed)> Time<T>(Func<Task<T>> call)

@@ -1,0 +1,80 @@
+@page "/baselines"
+@inject CurrentUser Users
+@inject BaselineService Baselines
+
+@* Baselines the signed-in user may read. The page banner is the aggregate of the rows shown (ADR-0014, ADR-0021). *@
+<PageFrame Banner="@(page?.Banner ?? UiText.Unclassified)" Title="Baselines">
+    <form class="toolbar" @onsubmit="Search" aria-label="Search baselines">
+        <input aria-label="Search text" placeholder="Number, name, milestone, purpose" class="grow" @bind="text" />
+        <input aria-label="Root part" placeholder="Root part number" size="14" @bind="root" />
+        <select aria-label="State" @bind="state">
+            <option value="">Any state</option>
+            <option value="Draft">Draft</option>
+            <option value="UnderReview">Under review</option>
+            <option value="Established">Established</option>
+            <option value="Superseded">Superseded</option>
+            <option value="Archived">Archived</option>
+        </select>
+        <select aria-label="Type" @bind="type">
+            <option value="">Any type</option>
+            @foreach (var t in types) { <option value="@t.Type">@t.Label</option> }
+        </select>
+        <button type="submit">Search</button>
+        <a class="button" href="baselines/new">New baseline</a>
+        <a class="button secondary" href="baselines/compare">Compare baselines</a>
+    </form>
+
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (page is not null)
+    {
+        <p class="muted" aria-live="polite">@(page.Total == 0 ? "No baselines match." : $"{page.Total} baseline{(page.Total == 1 ? "" : "s")}")</p>
+        @if (page.Items.Count > 0)
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Baselines</caption>
+                <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Milestone</th><th scope="col">State</th><th scope="col">Root</th><th scope="col">Configuration</th><th scope="col">Items</th><th scope="col">Created</th><th scope="col">Markings</th></tr></thead>
+                <tbody>
+                @foreach (var b in page.Items)
+                {
+                    <tr>
+                        <td><a href="baselines/@Uri.EscapeDataString(b.Number)">@b.Number</a></td>
+                        <td>@b.Name</td>
+                        <td>@b.Type</td>
+                        <td>@b.Milestone</td>
+                        <td><span class="badge @ConfigurationText.StateClass(b.State)">@b.StateLabel</span>@(b.Signoff && b.State == "Draft" ? " (needs sign-off)" : "")</td>
+                        <td>@if (b.RootNumber is not null) { <a href="parts/@Uri.EscapeDataString(b.RootNumber)">@b.RootNumber</a> @b.RootVersion } else { <span class="restricted-label">Restricted item</span> }</td>
+                        <td>@b.SpecText</td>
+                        <td>@b.ItemCount</td>
+                        <td>@UiText.Utc(b.CreatedAt) · @b.CreatedBy</td>
+                        <td><MarkingChip Text="@b.Banner" /></td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</PageFrame>
+
+@code {
+    [SupplyParameterFromQuery(Name = "root")] public string? RootQuery { get; set; }
+    private BaselinePage? page;
+    private IReadOnlyList<BaselineTypeInfo> types = [];
+    private string text = "", root = "", state = "", type = "";
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        types = await Baselines.ListTypesAsync();
+        root = RootQuery ?? "";
+        await Search();
+    }
+
+    private async Task Search()
+    {
+        var outcome = await Baselines.SearchAsync(await Users.GetAsync(),
+            new BaselineSearch(string.IsNullOrWhiteSpace(text) ? null : text, string.IsNullOrEmpty(state) ? null : state, string.IsNullOrEmpty(type) ? null : type,
+                string.IsNullOrWhiteSpace(root) ? null : root.Trim()), CurrentUser.NewCorrelationId());
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        page = outcome.Value;
+    }
+}

@@ -1,3 +1,4 @@
+@using Keel.Web.Components.Pages.Configuration
 @inject CurrentUser Users
 @inject ChangeService Changes
 
@@ -37,6 +38,14 @@
                             @if (a.ResultingRevision is not null && !a.Redacted)
                             {
                                 <a href="@ChangeUi.PartHref(a.Key!, a.ResultingRevision)">@a.ResultingRevision</a> <span class="muted">(@a.ResultingState)</span>
+                                <div class="small">@(a.Effectivity is null ? "Supersedes the earlier revision completely" : "Effective " + a.Effectivity)</div>
+                                @if (Detail.Permissions.Editable && Detail.Permissions.CanModify)
+                                {
+                                    <div class="toolbar">
+                                        <EffectivityFields Value="EffForm(a.Id)" ShowTo="false" Label="@($"{a.Key} new revision: ")" />
+                                        <button type="button" class="secondary" disabled="@busy" @onclick="() => SetEffectivity(a)">Set</button>
+                                    </div>
+                                }
                             }
                         </td>
                         <td>@if (a.Banner is not null) { <MarkingChip Text="@a.Banner" /> }</td>
@@ -65,6 +74,20 @@
 
     private bool busy;
     private string? error;
+    private readonly Dictionary<Guid, Keel.Web.Services.EffectivityForm> effForms = [];
+
+    private Keel.Web.Services.EffectivityForm EffForm(Guid id) => effForms.TryGetValue(id, out var f) ? f : effForms[id] = new() { Kind = "serial" };
+
+    /// <summary>Sets the units the new revision is effective from (open-ended); a blank type clears it. Checked by the change service.</summary>
+    private async Task SetEffectivity(AffectedObjectView row)
+    {
+        error = null;
+        busy = true;
+        var outcome = await Changes.SetAffectedEffectivityAsync(await Users.GetAsync(), Detail.Number, row.Id, EffForm(row.Id).ToInput(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) await OnUpdated.InvokeAsync(outcome.Value);
+        else error = ChangeUi.Message(outcome);
+    }
 
     private async Task Add(string key, string action, bool raise)
     {

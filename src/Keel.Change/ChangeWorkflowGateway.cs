@@ -20,7 +20,7 @@ namespace Keel.Change;
 /// the ECN is Released and its ECR (when all its notices are) Implemented, all in the engine's transaction, or none of it.
 /// </para>
 /// </summary>
-internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnumerable<IChangeObjectGateway> objectGateways) : IWorkflowObjectGateway
+internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnumerable<IChangeObjectGateway> objectGateways, IRevisionEffectivity? effectivity = null) : IWorkflowObjectGateway
 {
     private const string Draft = "Draft";
     private const string UnderReview = "UnderReview";
@@ -83,6 +83,9 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
             return GatewayResult.Fail($"{row.Number} changes nothing yet. Add at least one object to revise or obsolete before submitting it.");
 
         // Lock the objects in master-id order (the order every writer uses), re-check them and, for a notice, lock the resulting revisions.
+        var ranges = IsEcn && effectivity is not null
+            ? await effectivity.GetForAffectedAsync(conn, tx, [.. affected.Select(a => a.Id)], ct)
+            : new Dictionary<Guid, EffectivityRange>();
         var snapAffected = new List<SnapshotAffected>();
         var snapResulting = new List<SnapshotResulting>();
         var toReview = new List<(IChangeObjectGateway Gateway, ChangeObject Resulting)>();
@@ -97,7 +100,10 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
                 return GatewayResult.Fail($"{name}'s markings are no longer covered by {row.Number}. {MarkingDominance.Describe(gaps)} Raise the markings of {row.Number} and submit again.");
             if (IsEcn && a.Action is ChangeActions.Revise or ChangeActions.Obsolete && live.State != "Released")
                 return GatewayResult.Fail($"{name} revision {live.Revision} is {live.StateLabel}, not Released; take it off {row.Number} or restore it.");
-            snapAffected.Add(new SnapshotAffected(a.ObjectType, live.Key, live.Name, live.Revision, live.RevisionId, a.Action));
+            snapAffected.Add(new SnapshotAffected(a.ObjectType, live.Key, live.Name, live.Revision, live.RevisionId, a.Action, ranges.TryGetValue(a.Id, out var eff) ? eff.Describe() : null));
+            // The effectivity must still agree with what is Released now (another notice may have released a revision since it was set).
+            if (eff is not null && effectivity is not null && await effectivity.ValidateForReviseAsync(conn, tx, a.MasterId, eff, ct) is { } effectivityProblem)
+                return GatewayResult.Fail($"{name}: {effectivityProblem}");
 
             if (IsEcn && a.Action == ChangeActions.Revise && a.ResultingRevisionId is { } resultingId)
             {
@@ -180,7 +186,10 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
 
         var released = new List<string>();
         var obsoleted = new List<string>();
-        foreach (var a in await ChangeStore.LoadAffectedAsync(conn, tx, row.Id, ct))
+        var retained = new List<string>();
+        var affectedRows = await ChangeStore.LoadAffectedAsync(conn, tx, row.Id, ct);
+        var ranges = effectivity is null ? new Dictionary<Guid, EffectivityRange>() : await effectivity.GetForAffectedAsync(conn, tx, [.. affectedRows.Select(x => x.Id)], ct);
+        foreach (var a in affectedRows)
         {
             var gateway = ObjectsFor(a.ObjectType);
             var affected = await gateway.FindByRevisionAsync(conn, tx, a.RevisionId, forUpdate: true, ct);
@@ -202,6 +211,24 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
                 var rel = await gateway.ReleaseResultingAsync(conn, tx, resulting, actor, now, ct);
                 if (!rel.IsOk) return rel;
                 released.Add($"{resulting.Key} {resulting.Revision}");
+
+                // 2.1 (ADR-0021): with an effectivity service, the effectivity of the new revision decides which earlier Released revisions
+                // stay Released with a closed range and which become Obsolete. Without a range every other Released revision is superseded.
+                if (effectivity is not null)
+                {
+                    var plan = await effectivity.ApplyReleaseAsync(conn, tx, resulting.MasterId, resultingId, ranges.GetValueOrDefault(a.Id), row.Number, actor, now, ct);
+                    if (plan.Error is not null) return GatewayResult.Fail(plan.Error);
+                    foreach (var revisionId in plan.ObsoleteRevisionIds)
+                    {
+                        var old = await gateway.FindByRevisionAsync(conn, tx, revisionId, forUpdate: true, ct);
+                        if (old is null) continue;
+                        var retired = await gateway.ObsoleteAsync(conn, tx, old, actor, now, ct);
+                        if (!retired.IsOk) return retired;
+                        obsoleted.Add($"{old.Key} {old.Revision}");
+                    }
+                    foreach (var kept in plan.Narrowed) retained.Add($"{resulting.Key} {kept.Revision} ({kept.After.Describe()})");
+                    continue;
+                }
             }
             var obs = await gateway.ObsoleteAsync(conn, tx, affected, actor, now, ct);
             if (!obs.IsOk) return obs;
@@ -214,9 +241,9 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
         var implemented = await ImplementEcrAsync(conn, tx, row, actor, now, ct);
         if (implemented is { IsOk: false } failed) return failed;
         await ChangeStore.AppendHistoryAsync(conn, tx, row.Id, null, actor, "Released",
-            $"Released {(released.Count == 0 ? "no revisions" : string.Join(", ", released))}; obsoleted {(obsoleted.Count == 0 ? "none" : string.Join(", ", obsoleted))}.", now, ct);
+            $"Released {(released.Count == 0 ? "no revisions" : string.Join(", ", released))}; obsoleted {(obsoleted.Count == 0 ? "none" : string.Join(", ", obsoleted))}{(retained.Count == 0 ? "" : $"; still Released for their earlier units: {string.Join(", ", retained)}")}.", now, ct);
         await Audit(tx, actor, "change.release", row, ("submission", row.Submission.ToString(CultureInfo.InvariantCulture)), ("released", string.Join(",", released)),
-            ("obsoleted", string.Join(",", obsoleted)), ("ecr", implemented is null ? null : "implemented"));
+            ("obsoleted", string.Join(",", obsoleted)), ("retainedByEffectivity", string.Join(",", retained)), ("ecr", implemented is null ? null : "implemented"));
         return GatewayResult.Ok;
     }
 

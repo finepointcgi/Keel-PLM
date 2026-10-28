@@ -198,6 +198,7 @@ public sealed partial class ChangeService
             foreach (var (rev, obj) in await gateway.FindByRevisionsAsync(conn, tx, ids, ct)) live[rev] = obj;
         }
         var affected = new List<AffectedObjectView>();
+        var ranges = effectivity is null ? new Dictionary<Guid, EffectivityRange>() : (await effectivity.GetForAffectedAsync(conn, tx, [.. rows.Select(r => r.Id)], ct)).ToDictionary();
         foreach (var r in rows)
         {
             if (!live.TryGetValue(r.RevisionId, out var o) || !AccessPolicy.Evaluate(subject, o.Markings, PlmAction.Read).Permitted)
@@ -207,7 +208,7 @@ public sealed partial class ChangeService
             }
             shown.Add(o.Markings);
             var res = r.ResultingRevisionId is { } resId && live.TryGetValue(resId, out var ro) ? ro : null;
-            affected.Add(new AffectedObjectView(r.Id, false, r.ObjectType, o.Key, o.Name, o.Revision, o.StateLabel, r.Action, r.ResultingRevision, res?.StateLabel, o.Markings.BannerText(), r.AddedAt, r.AddedBy));
+            affected.Add(new AffectedObjectView(r.Id, false, r.ObjectType, o.Key, o.Name, o.Revision, o.StateLabel, r.Action, r.ResultingRevision, res?.StateLabel, o.Markings.BannerText(), r.AddedAt, r.AddedBy, ranges.TryGetValue(r.Id, out var eff) ? eff.Describe() : null));
         }
 
         var modify = AccessPolicy.Evaluate(subject, row.Markings, PlmAction.Modify);

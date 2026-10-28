@@ -12,7 +12,7 @@ public sealed record CreateChangeFromRequest(string? Title = null, string? Descr
 public sealed record UpdateChangeRequest(string Title, string? Description, string Priority, string? Reason);
 public sealed record ClassifyChangeRequest(string ChangeClass);
 public sealed record ChangeObjectMarkingsRequest(MarkingsDto Markings, string Reason);
-public sealed record AddAffectedRequest(string ObjectType, string Key, string Action, string? Revision = null, bool RaiseMarkings = false);
+public sealed record AddAffectedRequest(string ObjectType, string Key, string Action, string? Revision = null, bool RaiseMarkings = false, EffectivityInput? Effectivity = null);
 public sealed record ChangeTransitionRequest(string ToState, string? ReasonCode = null, string? Reason = null);
 public sealed record CreateChangeTaskRequest(string Title, string? Description, string Assignee, DateOnly? DueDate = null);
 public sealed record TaskTextRequest(string? Text);
@@ -84,7 +84,7 @@ public static class ChangeEndpoints
 
         // ---- affected and resulting objects
         changes.MapPost("/{number}/affected", async (string number, AddAffectedRequest req, HttpContext ctx, ChangeService svc, CancellationToken ct) =>
-            (await svc.AddAffectedAsync(SubjectFactory.Require(ctx), number, new AddAffectedCommand(req.ObjectType, req.Key, req.Action, req.Revision, req.RaiseMarkings), CorrelationId.Get(ctx), ct)).ToHttp());
+            (await svc.AddAffectedAsync(SubjectFactory.Require(ctx), number, new AddAffectedCommand(req.ObjectType, req.Key, req.Action, req.Revision, req.RaiseMarkings, req.Effectivity), CorrelationId.Get(ctx), ct)).ToHttp());
 
         changes.MapDelete("/{number}/affected/{id:guid}", async (string number, Guid id, HttpContext ctx, ChangeService svc, CancellationToken ct) =>
             (await svc.RemoveAffectedAsync(SubjectFactory.Require(ctx), number, id, CorrelationId.Get(ctx), ct)).ToHttp());

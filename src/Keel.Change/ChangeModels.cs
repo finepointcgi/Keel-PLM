@@ -74,7 +74,8 @@ public sealed record UpdateChangeCommand(string Title, string? Description, stri
 /// Add an object to a change. <see cref="Revision"/> names a revision explicitly (refused unless it is the latest). When the change's
 /// markings do not cover the object's, <see cref="RaiseMarkings"/> says whether to raise them (CHG-3); otherwise the request is refused.
 /// </summary>
-public sealed record AddAffectedCommand(string ObjectType, string Key, string Action, string? Revision = null, bool RaiseMarkings = false);
+/// <summary><see cref="Effectivity"/> (2.1): the units a revised object's new revision is effective from, for example serial 101 of ORCA-POD (ADR-0021).</summary>
+public sealed record AddAffectedCommand(string ObjectType, string Key, string Action, string? Revision = null, bool RaiseMarkings = false, EffectivityInput? Effectivity = null);
 
 public sealed record CreateTaskCommand(string Title, string? Description, string Assignee, DateOnly? DueDate);
 
@@ -89,7 +90,7 @@ public sealed record ChangeSearchResult(IReadOnlyList<ChangeSummary> Items, long
 /// <summary>An affected object. Redacted when the viewer may not read it now: only the action is disclosed (A4).</summary>
 public sealed record AffectedObjectView(
     Guid Id, bool Redacted, string ObjectType, string? Key, string? Name, string? Revision, string? State, string Action,
-    string? ResultingRevision, string? ResultingState, string? Banner, DateTimeOffset AddedAt, string AddedBy);
+    string? ResultingRevision, string? ResultingState, string? Banner, DateTimeOffset AddedAt, string AddedBy, string? Effectivity = null);
 
 public sealed record ChangeRef(string Type, string Number, string Title, string StateLabel, string Banner);
 

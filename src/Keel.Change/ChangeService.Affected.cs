@@ -103,6 +103,15 @@ public sealed partial class ChangeService
         if (existing.Any(r => r.ObjectType == obj.ObjectType && r.MasterId == obj.MasterId))
             return Fail($"{obj.Key} is already listed in {change.Number}.");
 
+        // ---- effectivity of the new revision (2.1): parsed and checked before anything is created
+        EffectivityRange? range = null;
+        if (cmd.Effectivity is { } typed)
+        {
+            var refusal = await ParseEffectivityAsync(conn, tx, subject, change, cmd.Action, obj.MasterId, typed, ct);
+            if (refusal.Error is not null) return Invalid(refusal.Error);
+            range = refusal.Range;
+        }
+
         // ---- marking dominance (ADR-0019): whoever reads this change learns about the object.
         var gaps = MarkingDominance.Gaps(change.Markings, obj.Markings);
         if (gaps.Count > 0)
@@ -156,15 +165,59 @@ public sealed partial class ChangeService
             ins.Parameters.AddWithValue("at", now);
             ins.Parameters.AddWithValue("by", ChangeStore.Who(subject));
             await ins.ExecuteNonQueryAsync(ct);
+            if (range is not null && effectivity is not null) await effectivity.SetForAffectedAsync(conn, tx, id, range, subject, now, ct);
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
         {
             return Fail($"Revision {obj.Revision} of {obj.Key} is already held by another open change notice.");
         }
         await ChangeStore.AppendHistoryAsync(conn, tx, change.Id, null, subject, "Object added",
-            $"{obj.Key} revision {obj.Revision}: {cmd.Action}{(resultingLabel is null ? "" : $"; revision {resultingLabel} created in work")}.", now, ct);
-        return Done(("object", obj.Key), ("revision", obj.Revision), ("action", cmd.Action), ("resulting", resultingLabel), ("objectMarkings", obj.Markings.BannerText()),
+            $"{obj.Key} revision {obj.Revision}: {cmd.Action}{(resultingLabel is null ? "" : $"; revision {resultingLabel} created in work")}{(range is null ? "" : $"; effective {range.Describe()}")}.", now, ct);
+        return Done(("object", obj.Key), ("revision", obj.Revision), ("action", cmd.Action), ("resulting", resultingLabel), ("effectivity", range?.Describe()), ("objectMarkings", obj.Markings.BannerText()),
             ("raised", (gaps.Count > 0).ToString(CultureInfo.InvariantCulture)));
+    }
+
+    /// <summary>
+    /// Sets or clears the effectivity of the revision a draft change notice creates ("revision B is effective from serial 101", ADR-0021).
+    /// Only a <c>revise</c> row on a change notice can carry one; the range is open at the top and agrees with the part's other Released revisions.
+    /// </summary>
+    public Task<Outcome<ChangeDetail>> SetAffectedEffectivityAsync(Subject subject, string number, Guid affectedId, EffectivityInput? input, string? correlationId, CancellationToken ct = default) =>
+        MutateAsync(subject, number, "change.set_effectivity", correlationId, PlmAction.Modify, async (c, conn, tx) =>
+        {
+            if (!c.Editable) return Frozen(c);
+            if (effectivity is null) return Fail("Effectivity is not available on this host.");
+            var row = (await ChangeStore.LoadAffectedAsync(conn, tx, c.Head.Id, ct)).FirstOrDefault(r => r.Id == affectedId);
+            if (row is null) return Fail($"{c.Head.Number} does not list that object.");
+            var gateway = GatewayFor(row.ObjectType) ?? throw new InvalidOperationException($"No gateway for {row.ObjectType}.");
+            // The object's master is locked like every object change, then the caller must still be allowed to modify it.
+            var live = await gateway.FindByRevisionAsync(conn, tx, row.RevisionId, forUpdate: true, ct);
+            if (live is null || !AccessPolicy.Evaluate(subject, live.Markings, PlmAction.Read).Permitted) return Invalid($"{row.Key} was not found.");
+            var modify = AccessPolicy.Evaluate(subject, live.Markings, PlmAction.Modify);
+            if (!modify.Permitted) return Forbid([.. modify.Reasons]) with { DenialDetails = [("reasons", string.Join(",", modify.Reasons)), ("target", live.Key)] };
+
+            EffectivityRange? range = null;
+            if (input is not null)
+            {
+                var parsed = await ParseEffectivityAsync(conn, tx, subject, c.Head, row.Action, row.MasterId, input, ct);
+                if (parsed.Error is not null) return Invalid(parsed.Error);
+                range = parsed.Range;
+            }
+            await effectivity.SetForAffectedAsync(conn, tx, row.Id, range, subject, c.Now, ct);
+            await ChangeStore.AppendHistoryAsync(conn, tx, c.Head.Id, null, subject, range is null ? "Effectivity cleared" : "Effectivity set",
+                $"{row.Key} revision {row.ResultingRevision}: {range?.Describe() ?? "no effectivity (supersedes the earlier revision completely)"}.", c.Now, ct);
+            return Done(("object", row.Key), ("effectivity", range?.Describe()));
+        }, ct);
+
+    private async Task<(EffectivityRange? Range, string? Error)> ParseEffectivityAsync(
+        NpgsqlConnection conn, NpgsqlTransaction tx, Subject subject, ChangeRow change, string action, Guid masterId, EffectivityInput input, CancellationToken ct)
+    {
+        if (effectivity is null) return (null, "Effectivity is not available on this host.");
+        if (change.Type != ChangeTypes.Ecn || action != ChangeActions.Revise)
+            return (null, "Only an object that a change notice revises can carry an effectivity for its new revision.");
+        var parsed = await effectivity.ParseAsync(conn, tx, subject, input, ct);
+        if (parsed.Error is not null || parsed.Range is null) return (null, parsed.Error ?? "The effectivity could not be read.");
+        var problem = await effectivity.ValidateForReviseAsync(conn, tx, masterId, parsed.Range, ct);
+        return problem is null ? parsed : (null, problem);
     }
 
     private sealed record Holder(ChangeRow Row, bool IsResulting);

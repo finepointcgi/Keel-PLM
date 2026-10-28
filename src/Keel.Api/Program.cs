@@ -121,6 +121,7 @@ Keel.Bom.BomModule.AddKeelBom(builder.Services); // 1.4 BOM
 builder.Services.AddSingleton<IWorkflowObjectGateway, Keel.Parts.PartWorkflowGateway>();
 builder.Services.AddSingleton<IChangeObjectGateway, Keel.Parts.PartChangeGateway>(); // 1.6 change management
 builder.Services.AddSingleton<ILinkedDocumentProvider, Keel.Documents.LinkedDocumentProvider>();
+builder.Services.AddSingleton<IDocumentPinProvider, Keel.Documents.DocumentPinProvider>(); // 2.1 baselines pin documents
 Keel.Change.ChangeModule.AddKeelChange(builder.Services);
 builder.Services.AddKeelWorkflow(builder.Configuration);
 
@@ -223,6 +224,7 @@ app.MapDocumentEndpoints();
 app.MapBomEndpoints(); // 1.4 BOM
 app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management
+app.MapConfigurationEndpoints(); // 2.1 baselines and effectivity
 app.MapKeelUi<App>();
 
 app.Run();

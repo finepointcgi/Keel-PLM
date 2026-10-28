@@ -1,7 +1,10 @@
 @* BOM section of the part page (increment 1.4). Shows the checked-in structure of the displayed version, and the editor while the
    signed-in user holds the check-out. The page banner is the aggregate of the part and every displayed row. *@
+@using Keel.Web.Components.Pages.Configuration
 @inject CurrentUser Users
 @inject BomService Bom
+@inject BaselineService Baselines
+@inject EffectivityService Effectivity
 
 <section class="panel stack" aria-labelledby="bom-heading">
     <div class="bom-heading">
@@ -9,6 +12,8 @@
         <nav class="toolbar" aria-label="BOM views">
             <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/where-used")">Where used</a>
             <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/compare")">Compare versions</a>
+            <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/compare-units")">Compare units</a>
+            <a href="@($"baselines/new?part={Uri.EscapeDataString(Part.Number)}")">Create baseline</a>
         </nav>
     </div>
 
@@ -17,7 +22,26 @@
             <legend class="sr-only">Configuration</legend>
             <label class="inline-check"><input type="radio" name="bom-spec" checked="@(spec == BomConfigSpec.Latest)" @onchange="() => SetSpec(BomConfigSpec.Latest)" /> Latest</label>
             <label class="inline-check"><input type="radio" name="bom-spec" checked="@(spec == BomConfigSpec.LatestReleased)" @onchange="() => SetSpec(BomConfigSpec.LatestReleased)" /> Latest released</label>
+            <label class="inline-check"><input type="radio" name="bom-spec" checked="@(spec == BomConfigSpec.Effectivity)" @onchange="() => SetSpec(BomConfigSpec.Effectivity)" /> As of serial, lot or date</label>
+            <label class="inline-check"><input type="radio" name="bom-spec" checked="@(spec == BomConfigSpec.Baseline)" @onchange="() => SetSpec(BomConfigSpec.Baseline)" /> Baseline</label>
         </fieldset>
+        @if (spec == BomConfigSpec.Effectivity)
+        {
+            <span class="inline-check">As of <UnitFields Value="unitForm" Label="As of: " ContextList="bom-contexts" />
+                <button type="button" class="secondary" @onclick="Reload">Show</button></span>
+            <datalist id="bom-contexts">@foreach (var c in contextIds) { <option value="@c"></option> }</datalist>
+        }
+        @if (spec == BomConfigSpec.Baseline)
+        {
+            <label class="inline-check">
+                Baseline
+                <select aria-label="Baseline" @bind="baselineNumber" @bind:after="Reload">
+                    <option value="">Choose a baseline of @Part.Number</option>
+                    @foreach (var b in baselineChoices) { <option value="@b.Number">@b.Number · @b.Name (@b.StateLabel)</option> }
+                </select>
+            </label>
+            @if (baselineChoices.Count == 0) { <span class="muted small">@Part.Number has no baseline you can read yet.</span> }
+        }
         <label class="inline-check">
             Levels
             <select aria-label="Levels shown" @bind="levels" @bind:after="Reload">
@@ -40,7 +64,7 @@
             @(explosion.Lines.Count == 0 ? "No components." : $"{rowsShown} line{(rowsShown == 1 ? "" : "s")} shown")
             @if (explosion.RedactedCount > 0) { <text> · @explosion.RedactedCount restricted item@(explosion.RedactedCount == 1 ? "" : "s") you cannot see</text> }
             @if (explosion.UnresolvedCount > 0) { <text> · @explosion.UnresolvedCount without a released revision</text> }
-            · @explosion.RootRevision.@explosion.RootIteration, @(spec == BomConfigSpec.Latest ? "latest" : "latest released") children
+            · @explosion.RootRevision.@explosion.RootIteration, @(explosion.Configuration ?? (spec == BomConfigSpec.Latest ? "latest children" : "latest released children"))
         </p>
         @if (explosion.Lines.Count > 0)
         {
@@ -76,6 +100,10 @@
 
 @code {
     private BomConfigSpec spec = BomConfigSpec.Latest;
+    private readonly Keel.Web.Services.UnitForm unitForm = new();
+    private string baselineNumber = "";
+    private IReadOnlyList<BaselineSummary> baselineChoices = [];
+    private IReadOnlyList<string> contextIds = [];
     private int levels = 1; // 0 = all
     private bool summaryView, leavesOnly = true;
     private BomExplosion? explosion;
@@ -99,15 +127,38 @@
     }
 
     private string ExportUrl() =>
-        $"ui/parts/{Uri.EscapeDataString(Part.Number)}/bom.csv?revision={Uri.EscapeDataString(Part.Revision.Revision)}&iteration={Part.Iteration.Iteration}&spec={spec}{(levels > 0 ? $"&depth={levels}" : "")}";
+        $"ui/parts/{Uri.EscapeDataString(Part.Number)}/bom.csv?revision={Uri.EscapeDataString(Part.Revision.Revision)}&iteration={Part.Iteration.Iteration}&spec={spec}{(levels > 0 ? $"&depth={levels}" : "")}"
+        + (spec == BomConfigSpec.Baseline ? $"&baseline={Uri.EscapeDataString(baselineNumber)}" : spec == BomConfigSpec.Effectivity ? "&" + unitForm.Query() : "");
 
-    private BomQuery Query(int? depth, string? parentLine = null) =>
-        new(Part.Number, Part.Revision.Revision, Part.Iteration.Iteration, spec, depth, parentLine);
+    // Latest and LatestReleased start from the displayed revision; an as-of-unit view starts from the revision the unit resolves to, and a baseline from its own root.
+    private BomQuery Query(int? depth, string? parentLine = null) => spec switch
+    {
+        BomConfigSpec.Effectivity => new(Part.Number, null, null, spec, depth, parentLine, null, unitForm.ToRequest().Request),
+        BomConfigSpec.Baseline => new(Part.Number, null, null, spec, depth, parentLine, baselineNumber),
+        _ => new(Part.Number, Part.Revision.Revision, Part.Iteration.Iteration, spec, depth, parentLine),
+    };
+
+    /// <summary>The reason a unit or baseline view cannot be shown yet, or null.</summary>
+    private string? SelectionProblem() => spec switch
+    {
+        BomConfigSpec.Effectivity => unitForm.ToRequest().Error,
+        BomConfigSpec.Baseline when baselineNumber.Length == 0 => "Choose a baseline to show.",
+        _ => null,
+    };
 
     private async Task Reload()
     {
         error = null;
         var subject = await Users.GetAsync();
+        if (SelectionProblem() is { } problem)
+        {
+            explosion = null;
+            summary = null;
+            treeMarkings = [];
+            error = problem;
+            await PublishBanner();
+            return;
+        }
         if (summaryView)
         {
             var s = await Bom.SummaryAsync(subject, Query(levels == 0 ? null : levels), leavesOnly, Corr());
@@ -123,7 +174,21 @@
         await PublishBanner();
     }
 
-    private async Task SetSpec(BomConfigSpec next) { spec = next; await Reload(); }
+    private async Task SetSpec(BomConfigSpec next)
+    {
+        spec = next;
+        if (next == BomConfigSpec.Baseline && baselineChoices.Count == 0) await LoadChoices();
+        if (next == BomConfigSpec.Baseline && baselineNumber.Length == 0 && baselineChoices.Count > 0) baselineNumber = baselineChoices[0].Number;
+        await Reload();
+    }
+
+    private async Task LoadChoices()
+    {
+        var subject = await Users.GetAsync();
+        var found = await Baselines.SearchAsync(subject, new BaselineSearch(RootNumber: Part.Number, Limit: 100), CurrentUser.NewCorrelationId());
+        baselineChoices = found.IsOk ? found.Value!.Items : [];
+        contextIds = [.. (await Effectivity.ListContextsAsync(subject, CurrentUser.NewCorrelationId())).Select(c => c.Id)];
+    }
     private async Task SetView(bool toSummary) { summaryView = toSummary; await Reload(); }
     private async Task SetLeaves(bool value) { leavesOnly = value; await Reload(); }
     private async Task SetLevels(int next) { levels = next; await Reload(); }
