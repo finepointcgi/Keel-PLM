@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace Keel.Change;
 
 /// <summary>An object a submitted change lists, as frozen at submission.</summary>
-internal sealed record SnapshotAffected(string ObjectType, string Key, string Name, string Revision, Guid RevisionId, string Action);
+internal sealed record SnapshotAffected(string ObjectType, string Key, string Name, string Revision, Guid RevisionId, string Action, string? Effectivity = null);
 
 /// <summary>A resulting revision as frozen at submission: the exact iteration reviewed and the fingerprint of its content.</summary>
 internal sealed record SnapshotResulting(string ObjectType, string Key, string Revision, Guid RevisionId, string IterationLabel, Guid IterationId, string Fingerprint);
@@ -61,7 +61,7 @@ internal static class ChangeSnapshot
         if (d.SourceNumber is not null) sb.Append("Created from ").AppendLine(d.SourceNumber);
         sb.Append("Markings: ").AppendLine(d.MarkingBanner);
         sb.AppendLine("Affected objects:");
-        foreach (var a in d.Affected) sb.Append("  ").Append(a.Key).Append(" revision ").Append(a.Revision).Append(": ").AppendLine(a.Action);
+        foreach (var a in d.Affected) sb.Append("  ").Append(a.Key).Append(" revision ").Append(a.Revision).Append(": ").Append(a.Action).AppendLine(a.Effectivity is null ? "" : $", new revision effective {a.Effectivity}");
         if (d.Resulting.Count > 0)
         {
             sb.AppendLine("Resulting revisions:");
@@ -83,7 +83,7 @@ internal static class ChangeSnapshot
             ["snapshotSha256"] = snapshotSha256Hex,
         };
         for (var i = 0; i < d.Affected.Count; i++)
-            o[$"affected {i + 1}"] = $"{d.Affected[i].Key} revision {d.Affected[i].Revision}: {d.Affected[i].Action}";
+            o[$"affected {i + 1}"] = $"{d.Affected[i].Key} revision {d.Affected[i].Revision}: {d.Affected[i].Action}{(d.Affected[i].Effectivity is null ? "" : $", effective {d.Affected[i].Effectivity}")}";
         for (var i = 0; i < d.Resulting.Count; i++)
         {
             var r = d.Resulting[i];

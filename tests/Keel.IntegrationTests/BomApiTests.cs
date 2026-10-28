@@ -90,9 +90,9 @@ public sealed class BomApiTests(PostgresFixture pg)
         Assert.Equal(HttpStatusCode.NotFound, (await alice.GetAsync($"/api/v1/parts/{asm}/bom?parentLine=999")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await alice.GetAsync($"/api/v1/parts/{asm}/bom?depth=99")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await alice.GetAsync($"/api/v1/parts/{asm}/bom?spec=sideways")).StatusCode);
-        var phase2 = await alice.GetAsync($"/api/v1/parts/{asm}/bom?spec=effectivity");
-        Assert.Equal(HttpStatusCode.NotImplemented, phase2.StatusCode);
-        Assert.Contains("Phase 2", await phase2.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        var noUnit = await alice.GetAsync($"/api/v1/parts/{asm}/bom?spec=effectivity");   // Phase 2.1: needs a serial number, lot or date
+        Assert.Equal(HttpStatusCode.BadRequest, noUnit.StatusCode);
+        Assert.Contains("serial number, lot or date", await noUnit.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         var released = await Json(await alice.GetAsync($"/api/v1/parts/{asm}/bom?spec=LatestReleased"));
         Assert.Equal(3, released.GetProperty("unresolvedCount").GetInt32());
 

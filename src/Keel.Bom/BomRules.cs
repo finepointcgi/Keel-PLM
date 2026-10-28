@@ -73,6 +73,33 @@ public static partial class BomRules
         return result;
     }
 
+    /// <summary>
+    /// Parses a line path whose elements are find numbers with an optional alternate ordinal ("30", "30~1" for the second line of find number 30),
+    /// e.g. "10.30~1.20". Alternates are lines of one find number told apart by effectivity (ADR-0021).
+    /// </summary>
+    public static bool TryParsePath(string? path, out int[] finds, out int[] alts)
+    {
+        finds = [];
+        alts = [];
+        if (string.IsNullOrWhiteSpace(path)) return true;
+        var parts = path.Split('.');
+        if (parts.Length > BomLimits.MaxDepth * 10) return false;
+        finds = new int[parts.Length];
+        alts = new int[parts.Length];
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var seg = parts[i].Split('~');
+            if (seg.Length > 2) return false;
+            if (!int.TryParse(seg[0], NumberStyles.None, CultureInfo.InvariantCulture, out finds[i]) || finds[i] < 1) return false;
+            if (seg.Length == 2 && (!int.TryParse(seg[1], NumberStyles.None, CultureInfo.InvariantCulture, out alts[i]) || alts[i] < 1)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>The path text of a line: the parent's path, then the find number, then "~n" for the n-th alternate.</summary>
+    public static string PathOf(string parentPath, int find, int alt) =>
+        (parentPath.Length == 0 ? "" : parentPath + ".") + find.ToString(CultureInfo.InvariantCulture) + (alt > 0 ? "~" + alt.ToString(CultureInfo.InvariantCulture) : "");
+
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._\-/]{0,31}$")]
     private static partial Regex DesignatorPattern();
 }
@@ -86,7 +113,7 @@ public static class BomCsv
     {
         var sb = new StringBuilder(1 << 20);
         sb.Append(Cell(banner)).Append("\r\n");
-        sb.Append("Level,Path,Find number,Part number,Name,Revision,State,Quantity,Unit,Extended quantity,Reference designators,Markings,Flags\r\n");
+        sb.Append("Level,Path,Find number,Part number,Name,Revision,State,Quantity,Unit,Extended quantity,Reference designators,Markings,Effectivity,Flags\r\n");
         foreach (var l in lines)
         {
             var flags = l.Redacted ? "restricted" : l.Unresolved ? "unresolved: no released revision" : l.Circular ? "circular reference" : "";
@@ -102,6 +129,7 @@ public static class BomCsv
               .Append(l.ExtendedQuantity.ToString("0.######", CultureInfo.InvariantCulture)).Append(',')
               .Append(Cell(string.Join(' ', l.ReferenceDesignators))).Append(',')
               .Append(Cell(l.Banner)).Append(',')
+              .Append(Cell(l.EffectivityText)).Append(',')
               .Append(Cell(flags)).Append("\r\n");
         }
         sb.Append(Cell(banner)).Append("\r\n");

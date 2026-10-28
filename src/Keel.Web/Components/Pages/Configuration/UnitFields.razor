@@ -1,0 +1,13 @@
+@* The unit a structure is resolved for: serial number and lot inside an end-item context, and/or a date (A19). *@
+<span class="effectivity-fields">
+    <input aria-label="@(Label)End-item context" placeholder="Context, e.g. ORCA-POD" size="14" list="@ContextList" @bind="Value.Context" />
+    <input aria-label="@(Label)Serial number" placeholder="Serial" size="8" inputmode="numeric" @bind="Value.Serial" />
+    <input aria-label="@(Label)Lot or block number" placeholder="Lot" size="6" inputmode="numeric" @bind="Value.Lot" />
+    <input aria-label="@(Label)Date" placeholder="yyyy-MM-dd" size="11" @bind="Value.Date" />
+</span>
+
+@code {
+    [Parameter, EditorRequired] public required Keel.Web.Services.UnitForm Value { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? ContextList { get; set; }
+}

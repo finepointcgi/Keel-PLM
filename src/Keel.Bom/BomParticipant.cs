@@ -16,8 +16,10 @@ internal sealed class BomParticipant : IPartIterationParticipant
         var (conn, t) = Unwrap(tx);
         await using var cmd = new NpgsqlCommand(
             """
-            INSERT INTO plm.bom_working_usage (id, checkout_revision_id, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by)
-            SELECT gen_random_uuid(), @rid, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by
+            INSERT INTO plm.bom_working_usage (id, checkout_revision_id, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by,
+                                               eff_kind, eff_context, eff_from, eff_to)
+            SELECT gen_random_uuid(), @rid, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by,
+                   eff_kind, eff_context, eff_from, eff_to
             FROM plm.bom_usage WHERE parent_iteration_id = @iter
             """, conn, t);
         cmd.Parameters.AddWithValue("rid", revisionId);
@@ -62,9 +64,12 @@ internal sealed class BomParticipant : IPartIterationParticipant
 
         await using var ins = new NpgsqlCommand(
             """
-            INSERT INTO plm.bom_usage (id, parent_iteration_id, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by)
-            SELECT gen_random_uuid(), @iter, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by
+            INSERT INTO plm.bom_usage (id, parent_iteration_id, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by,
+                                       eff_kind, eff_context, eff_from, eff_to)
+            SELECT gen_random_uuid(), @iter, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by,
+                   eff_kind, eff_context, eff_from, eff_to
             FROM plm.bom_working_usage WHERE checkout_revision_id = @rid
+            ORDER BY find_number, eff_from NULLS FIRST, created_at, id
             """, conn, t);
         ins.Parameters.AddWithValue("iter", newIterationId);
         ins.Parameters.AddWithValue("rid", revisionId);
@@ -80,9 +85,12 @@ internal sealed class BomParticipant : IPartIterationParticipant
         var (conn, t) = Unwrap(tx);
         await using var ins = new NpgsqlCommand(
             """
-            INSERT INTO plm.bom_usage (id, parent_iteration_id, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by)
-            SELECT gen_random_uuid(), @to, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by
+            INSERT INTO plm.bom_usage (id, parent_iteration_id, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by,
+                                       eff_kind, eff_context, eff_from, eff_to)
+            SELECT gen_random_uuid(), @to, child_master_id, quantity, unit, find_number, reference_designators, notes, structure_type, created_at, created_by,
+                   eff_kind, eff_context, eff_from, eff_to
             FROM plm.bom_usage WHERE parent_iteration_id = @from
+            ORDER BY find_number, alt
             """, conn, t);
         ins.Parameters.AddWithValue("to", newIterationId);
         ins.Parameters.AddWithValue("from", fromIterationId);
@@ -97,7 +105,8 @@ internal sealed class BomParticipant : IPartIterationParticipant
         await using var cmd = new NpgsqlCommand(
             """
             SELECT concat_ws('|', find_number::text, child_master_id::text, quantity::text, unit, array_to_string(reference_designators, ','), COALESCE(notes, ''))
-            FROM plm.bom_usage WHERE parent_iteration_id = @it ORDER BY find_number
+                   || CASE WHEN eff_kind IS NULL THEN '' ELSE '|eff:' || eff_kind || ':' || COALESCE(eff_context, '') || ':' || COALESCE(eff_from::text, '') || ':' || COALESCE(eff_to::text, '') END
+            FROM plm.bom_usage WHERE parent_iteration_id = @it ORDER BY find_number, alt
             """, conn, t);
         cmd.Parameters.AddWithValue("it", iterationId);
         await using var r = await cmd.ExecuteReaderAsync(ct);

@@ -9,9 +9,9 @@
 .inline-fieldset { display: inline-flex; gap: 12px; border: 0; padding: 0; margin: 0; }
 .form-errors { margin: 0; padding-left: 20px; }
 .bom-grid { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 14px; overflow-x: auto; }
-.bom-body { height: 480px; overflow-y: auto; min-width: 920px; }
-.bom-row { display: grid; grid-template-columns: 64px minmax(200px, 1.4fr) minmax(140px, 1.4fr) 110px 80px 56px 90px 130px minmax(160px, 1.6fr);
-  align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-bottom: 1px solid var(--border); white-space: nowrap; min-width: 920px; }
+.bom-body { height: 480px; overflow-y: auto; min-width: 1060px; }
+.bom-row { display: grid; grid-template-columns: 64px minmax(200px, 1.4fr) minmax(140px, 1.4fr) 110px 80px 56px 90px 130px minmax(120px, 1fr) minmax(160px, 1.6fr);
+  align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-bottom: 1px solid var(--border); white-space: nowrap; min-width: 1060px; }
 .bom-row > span { overflow: hidden; text-overflow: ellipsis; }
 .bom-head { font-weight: 600; background: var(--bg); position: sticky; top: 0; z-index: 1; }
 .bom-row[role="row"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -34,3 +34,10 @@ table.data tr.diff-removed td:first-child { color: var(--deny); font-weight: 600
 table.data tr.diff-changed td:first-child { color: var(--accent); font-weight: 600; }
 table.bom-edit input, table.bom-edit select { max-width: 160px; }
 .bom-grid a, table.data a { color: var(--accent); }
+
+/* Configuration management (2.1): effectivity inputs, baseline states, comparison rows. */
+.effectivity-fields { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.state-draft, .state-established { border-color: var(--permit); color: var(--permit); }
+.state-draft { border-color: var(--border); color: inherit; }
+.state-superseded, .state-archived { color: var(--muted); }
+.cell-eff { font-size: 13px; }

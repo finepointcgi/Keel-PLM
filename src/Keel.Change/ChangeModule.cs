@@ -34,11 +34,12 @@ public static class ChangeModule
     /// </summary>
     public static IServiceCollection AddKeelChange(this IServiceCollection services)
     {
-        services.AddSingleton<ChangeService>();
+        services.AddSingleton(sp => new ChangeService(sp.GetRequiredService<Npgsql.NpgsqlDataSource>(), sp.GetRequiredService<Keel.Audit.IAuditLog>(),
+            sp.GetServices<IChangeObjectGateway>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<IRevisionEffectivity>()));
         services.AddSingleton<ImpactAnalysisService>();
         services.AddSingleton<IChangeBindingGuard, ChangeBindingGuard>();
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecr, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>()));
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecn, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>()));
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecr, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>()));
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecn, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>()));
         return services;
     }
 }

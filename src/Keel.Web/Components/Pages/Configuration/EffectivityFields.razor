@@ -1,0 +1,31 @@
+@* One effectivity range: type, end-item context and the two ends. Blank type means "applies to every unit". Values are validated by the service (ADR-0021). *@
+<span class="effectivity-fields">
+    <select aria-label="@(Label)Effectivity type" @bind="Value.Kind">
+        <option value="">All units</option>
+        <option value="serial">Serial</option>
+        <option value="lot">Lot or block</option>
+        <option value="date">Date (UTC)</option>
+    </select>
+    @if (!Value.IsBlank)
+    {
+        @if (Value.Kind != "date")
+        {
+            <input aria-label="@(Label)End-item context" placeholder="Context, e.g. ORCA-POD" size="14" list="@ContextList" @bind="Value.Context" />
+        }
+        <input aria-label="@(Label)Effective from" placeholder="@(Value.Kind == "date" ? "From yyyy-MM-dd" : "From")" size="10" @bind="Value.From" />
+        @if (ShowTo)
+        {
+            <input aria-label="@(Label)Effective to" placeholder="@(Value.Kind == "date" ? "To yyyy-MM-dd" : "To (blank: open)")" size="10" @bind="Value.To" />
+        }
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public required Keel.Web.Services.EffectivityForm Value { get; set; }
+    /// <summary>False where a range is always open at the top (the effectivity of a revision a change notice creates).</summary>
+    [Parameter] public bool ShowTo { get; set; } = true;
+    /// <summary>Prefix for the accessible names, to tell several editors on one page apart.</summary>
+    [Parameter] public string Label { get; set; } = "";
+    /// <summary>Id of a datalist with the contexts the user may use, when the page has one.</summary>
+    [Parameter] public string? ContextList { get; set; }
+}

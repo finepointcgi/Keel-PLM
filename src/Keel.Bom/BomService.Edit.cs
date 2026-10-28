@@ -69,13 +69,22 @@ public sealed partial class BomService
             var (errors, designators) = BomRules.ValidateLine(cmd.Quantity, unit, cmd.ReferenceDesignators, cmd.Notes, cmd.FindNumber);
             if (errors.Count > 0) return EditStep<WorkingBomLine>.Invalid([.. errors]);
 
+            EffectivityRange? range = null;
+            if (cmd.Effectivity is { } input)
+            {
+                var parsed = await EffectivityStore.ParseAsync(conn, tx, subject, input, ct);
+                if (parsed.Error is not null) return EditStep<WorkingBomLine>.Invalid(parsed.Error);
+                range = parsed.Range;
+            }
+
             var existing = await LoadExistingAsync(conn, tx, ctx.RevisionId, null, ct);
             if (existing.Count >= BomLimits.MaxChildrenPerParent)
                 return EditStep<WorkingBomLine>.Conflict($"A parent can have at most {BomLimits.MaxChildrenPerParent} direct children.");
             var find = cmd.FindNumber ?? BomRules.NextFindNumber(existing.Select(e => e.Find));
             if (find > BomLimits.MaxFindNumber) return EditStep<WorkingBomLine>.Conflict("No find numbers left above the highest in use; renumber the structure.");
-            if (existing.Any(e => e.Find == find)) return EditStep<WorkingBomLine>.Conflict($"Find number {find} is already used on this parent.");
-            var clash = BomRules.DesignatorClashes(designators, existing.SelectMany(e => e.Designators));
+            var overlap = existing.FirstOrDefault(e => e.Find == find && EffectivityRules.Conflict(e.Range, range));
+            if (overlap is not null) return EditStep<WorkingBomLine>.Conflict(EffectivityRules.ConflictMessage(find, overlap.Range, range));
+            var clash = BomRules.DesignatorClashes(designators, existing.Where(e => !Disjoint(e.Range, range)).SelectMany(e => e.Designators));
             if (clash.Count > 0) return EditStep<WorkingBomLine>.Invalid($"Reference designators already used elsewhere on this parent: {string.Join(", ", clash)}.");
             var cycle = await CycleErrorAsync(conn, tx, subject, ctx, [child.MasterId], ct);
             if (cycle is not null) return EditStep<WorkingBomLine>.Conflict(cycle);
@@ -83,10 +92,12 @@ public sealed partial class BomService
             var id = Guid.CreateVersion7();
             await using (var ins = new NpgsqlCommand(
                 """
-                INSERT INTO plm.bom_working_usage (id, checkout_revision_id, child_master_id, quantity, unit, find_number, reference_designators, notes, created_at, created_by)
-                VALUES (@id, @rid, @child, @qty, @unit, @find, @refs, @notes, @at, @by)
+                INSERT INTO plm.bom_working_usage (id, checkout_revision_id, child_master_id, quantity, unit, find_number, reference_designators, notes, created_at, created_by,
+                                                   eff_kind, eff_context, eff_from, eff_to)
+                VALUES (@id, @rid, @child, @qty, @unit, @find, @refs, @notes, @at, @by, @ek, @ec, @ef, @et)
                 """, conn, tx))
             {
+                EffectivityStore.Bind(ins, range);
                 ins.Parameters.AddWithValue("id", id);
                 ins.Parameters.AddWithValue("rid", ctx.RevisionId);
                 ins.Parameters.AddWithValue("child", child.MasterId);
@@ -101,7 +112,7 @@ public sealed partial class BomService
             }
             var line = (await LoadWorkingLinesAsync(conn, tx, subject, ctx.RevisionId, id, new MarkingCache(), ct)).Single();
             return EditStep<WorkingBomLine>.Done(line, ("usage", id.ToString("D")), ("child", child.Number), ("find", Fmt(find)),
-                ("quantity", $"{cmd.Quantity.ToString(CultureInfo.InvariantCulture)} {unit}"));
+                ("quantity", $"{cmd.Quantity.ToString(CultureInfo.InvariantCulture)} {unit}"), ("effectivity", range?.Describe()));
         }, ct);
 
     public Task<Outcome<WorkingBomLine>> UpdateUsageAsync(Subject subject, string number, Guid usageId, UpdateUsageCommand cmd, string? correlationId, CancellationToken ct = default) =>
@@ -112,13 +123,23 @@ public sealed partial class BomService
             if (current is null) return EditStep<WorkingBomLine>.Missing();
             var (errors, designators) = BomRules.ValidateLine(cmd.Quantity, cmd.Unit, cmd.ReferenceDesignators, cmd.Notes, cmd.FindNumber);
             if (errors.Count > 0) return EditStep<WorkingBomLine>.Invalid([.. errors]);
-            if (existing.Any(e => e.Id != usageId && e.Find == cmd.FindNumber)) return EditStep<WorkingBomLine>.Conflict($"Find number {cmd.FindNumber} is already used on this parent.");
-            var clash = BomRules.DesignatorClashes(designators, existing.Where(e => e.Id != usageId).SelectMany(e => e.Designators));
+            var range = current.Range;
+            if (cmd.ClearEffectivity) range = null;
+            else if (cmd.Effectivity is { } input)
+            {
+                var parsed = await EffectivityStore.ParseAsync(conn, tx, subject, input, ct);
+                if (parsed.Error is not null) return EditStep<WorkingBomLine>.Invalid(parsed.Error);
+                range = parsed.Range;
+            }
+            var overlap = existing.FirstOrDefault(e => e.Id != usageId && e.Find == cmd.FindNumber && EffectivityRules.Conflict(e.Range, range));
+            if (overlap is not null) return EditStep<WorkingBomLine>.Conflict(EffectivityRules.ConflictMessage(cmd.FindNumber, overlap.Range, range));
+            var clash = BomRules.DesignatorClashes(designators, existing.Where(e => e.Id != usageId && !Disjoint(e.Range, range)).SelectMany(e => e.Designators));
             if (clash.Count > 0) return EditStep<WorkingBomLine>.Invalid($"Reference designators already used elsewhere on this parent: {string.Join(", ", clash)}.");
 
             await using (var upd = new NpgsqlCommand(
-                "UPDATE plm.bom_working_usage SET quantity = @qty, unit = @unit, find_number = @find, reference_designators = @refs, notes = @notes WHERE id = @id AND checkout_revision_id = @rid", conn, tx))
+                "UPDATE plm.bom_working_usage SET quantity = @qty, unit = @unit, find_number = @find, reference_designators = @refs, notes = @notes, eff_kind = @ek, eff_context = @ec, eff_from = @ef, eff_to = @et WHERE id = @id AND checkout_revision_id = @rid", conn, tx))
             {
+                EffectivityStore.Bind(upd, range);
                 upd.Parameters.AddWithValue("qty", cmd.Quantity);
                 upd.Parameters.AddWithValue("unit", cmd.Unit);
                 upd.Parameters.AddWithValue("find", cmd.FindNumber);
@@ -130,7 +151,8 @@ public sealed partial class BomService
             }
             var line = (await LoadWorkingLinesAsync(conn, tx, subject, ctx.RevisionId, usageId, new MarkingCache(), ct)).Single();
             return EditStep<WorkingBomLine>.Done(line, ("usage", usageId.ToString("D")), ("find", $"{Fmt(current.Find)} to {Fmt(cmd.FindNumber)}"),
-                ("quantity", $"{current.Quantity.ToString(CultureInfo.InvariantCulture)} {current.Unit} to {cmd.Quantity.ToString(CultureInfo.InvariantCulture)} {cmd.Unit}"));
+                ("quantity", $"{current.Quantity.ToString(CultureInfo.InvariantCulture)} {current.Unit} to {cmd.Quantity.ToString(CultureInfo.InvariantCulture)} {cmd.Unit}"),
+                ("effectivity", $"{current.Range?.Describe() ?? "none"} to {range?.Describe() ?? "none"}"));
         }, ct);
 
     public Task<Outcome<RemovedUsage>> RemoveUsageAsync(Subject subject, string number, Guid usageId, string? correlationId, CancellationToken ct = default) =>
@@ -152,14 +174,15 @@ public sealed partial class BomService
         EditAsync<WorkingBom>(subject, number, "bom.renumber", correlationId, async (ctx, conn, tx) =>
         {
             if (start < 1 || step < 1) return EditStep<WorkingBom>.Invalid("Start and step must be 1 or greater.");
-            var count = (await LoadExistingAsync(conn, tx, ctx.RevisionId, null, ct)).Count;
+            var all = await LoadExistingAsync(conn, tx, ctx.RevisionId, null, ct);
+            var count = all.Select(l => l.Find).Distinct().Count();   // alternatives of one find number keep sharing it
             if ((long)start + (long)step * count > BomLimits.MaxFindNumber) return EditStep<WorkingBom>.Invalid($"Find numbers would exceed {BomLimits.MaxFindNumber}.");
-            // The uniqueness constraint is deferrable, so lines can swap numbers inside one statement.
+            // The alternatives check is a deferrable constraint trigger evaluated at the end of the statement, so lines can swap numbers inside one UPDATE.
             await using (var defer = new NpgsqlCommand("SET CONSTRAINTS ALL DEFERRED", conn, tx)) await defer.ExecuteNonQueryAsync(ct);
             await using (var upd = new NpgsqlCommand(
                 """
                 UPDATE plm.bom_working_usage w SET find_number = n.new_find
-                FROM (SELECT id, @start + (row_number() OVER (ORDER BY find_number) - 1) * @step AS new_find
+                FROM (SELECT id, @start + (dense_rank() OVER (ORDER BY find_number) - 1) * @step AS new_find
                       FROM plm.bom_working_usage WHERE checkout_revision_id = @rid) n
                 WHERE w.id = n.id
                 """, conn, tx))
@@ -170,7 +193,7 @@ public sealed partial class BomService
                 await upd.ExecuteNonQueryAsync(ct);
             }
             await using (var immediate = new NpgsqlCommand("SET CONSTRAINTS ALL IMMEDIATE", conn, tx)) await immediate.ExecuteNonQueryAsync(ct);
-            return EditStep<WorkingBom>.Done(await WorkingViewAsync(conn, tx, subject, ctx, ct), ("start", Fmt(start)), ("step", Fmt(step)), ("lines", Fmt(count)));
+            return EditStep<WorkingBom>.Done(await WorkingViewAsync(conn, tx, subject, ctx, ct), ("start", Fmt(start)), ("step", Fmt(step)), ("lines", Fmt(all.Count)));
         }, ct);
 
     /// <summary>
@@ -204,8 +227,10 @@ public sealed partial class BomService
             }
             await using (var ins = new NpgsqlCommand(
                 """
-                INSERT INTO plm.bom_working_usage (id, checkout_revision_id, child_master_id, quantity, unit, find_number, reference_designators, notes, created_at, created_by)
-                SELECT gen_random_uuid(), @rid, u.child_master_id, u.quantity, u.unit, u.find_number, u.reference_designators, u.notes, @at, @by
+                INSERT INTO plm.bom_working_usage (id, checkout_revision_id, child_master_id, quantity, unit, find_number, reference_designators, notes, created_at, created_by,
+                                                   eff_kind, eff_context, eff_from, eff_to)
+                SELECT gen_random_uuid(), @rid, u.child_master_id, u.quantity, u.unit, u.find_number, u.reference_designators, u.notes, @at, @by,
+                       u.eff_kind, u.eff_context, u.eff_from, u.eff_to
                 FROM plm.bom_usage u WHERE u.parent_iteration_id = @iter
                 """, conn, tx))
             {
@@ -223,7 +248,11 @@ public sealed partial class BomService
 
     private sealed record Head(Guid MasterId, string Number, string PartType, string DefaultUnit, Markings Markings);
     private sealed record CheckoutInfo(Guid RevisionId, string Revision, string State, string UserId, string? UserName);
-    private sealed record ExistingLine(Guid Id, int Find, decimal Quantity, string Unit, string[] Designators);
+    private sealed record ExistingLine(Guid Id, int Find, decimal Quantity, string Unit, string[] Designators, EffectivityRange? Range);
+
+    /// <summary>Lines whose ranges are in one dimension and share no unit never apply together, so they may reuse reference designators.</summary>
+    private static bool Disjoint(EffectivityRange? a, EffectivityRange? b) =>
+        a is not null && b is not null && a.Kind == b.Kind && string.Equals(a.Context, b.Context, StringComparison.Ordinal) && !a.Overlaps(b);
 
     private async Task<Outcome<T>> EditAsync<T>(
         Subject subject, string number, string action, string? correlationId,
@@ -306,11 +335,11 @@ public sealed partial class BomService
     {
         var list = new List<ExistingLine>();
         await using var cmd = new NpgsqlCommand(
-            "SELECT id, find_number, quantity, unit, reference_designators FROM plm.bom_working_usage WHERE checkout_revision_id = @rid AND (@except::uuid IS NULL OR id <> @except)", conn, tx);
+            "SELECT id, find_number, quantity, unit, reference_designators, eff_kind, eff_context, eff_from, eff_to FROM plm.bom_working_usage WHERE checkout_revision_id = @rid AND (@except::uuid IS NULL OR id <> @except)", conn, tx);
         cmd.Parameters.AddWithValue("rid", revisionId);
         cmd.Parameters.AddWithValue("except", (object?)except ?? DBNull.Value);
         await using var r = await cmd.ExecuteReaderAsync(ct);
-        while (await r.ReadAsync(ct)) list.Add(new ExistingLine(r.GetGuid(0), r.GetInt32(1), r.GetDecimal(2), r.GetString(3), r.GetFieldValue<string[]>(4)));
+        while (await r.ReadAsync(ct)) list.Add(new ExistingLine(r.GetGuid(0), r.GetInt32(1), r.GetDecimal(2), r.GetString(3), r.GetFieldValue<string[]>(4), EffectivityStore.ReadRange(r, 5)));
         return list;
     }
 
@@ -332,7 +361,7 @@ public sealed partial class BomService
             if (readable) (m, banner) = cache.Get(r, r.GetGuid(7), 11);
             lines.Add(new WorkingBomLine(r.GetGuid(0), r.GetInt32(1), r.GetDecimal(2), r.GetString(3), !readable,
                 readable ? r.GetGuid(6) : null, readable ? r.GetString(8) : null, readable ? r.GetString(9) : null, readable ? r.GetString(10) : null,
-                readable ? r.GetFieldValue<string[]>(4) : [], readable && !r.IsDBNull(5) ? r.GetString(5) : null, banner, m));
+                readable ? r.GetFieldValue<string[]>(4) : [], readable && !r.IsDBNull(5) ? r.GetString(5) : null, banner, m, EffectivityStore.ReadRange(r, 21)));
         }
         return lines;
     }

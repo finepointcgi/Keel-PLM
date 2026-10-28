@@ -182,10 +182,13 @@ public sealed class BomDomainTests
     }
 
     [Fact]
-    public void Config_specs_for_phase_two_are_named_as_such()
+    public void Effectivity_resolves_per_level_and_a_baseline_has_no_per_level_resolution()
     {
-        var e = Assert.Throws<NotSupportedException>(() => BomSql.Resolve(BomConfigSpec.Effectivity));
-        Assert.Contains("Phase 2", e.Message, StringComparison.Ordinal);
-        Assert.Contains("Effectivity", e.Message, StringComparison.Ordinal);
+        // Phase 2.1: Effectivity prefers the Released revision whose effectivity covers the unit; a baseline is read from its stored items, not resolved per level.
+        var sql = BomSql.Resolve(BomConfigSpec.Effectivity, "u.child_master_id");
+        Assert.Contains("cfg.revision_effectivity", sql, StringComparison.Ordinal);
+        Assert.Contains("lifecycle_state = 'Released'", sql, StringComparison.Ordinal);
+        var e = Assert.Throws<NotSupportedException>(() => BomSql.Resolve(BomConfigSpec.Baseline, "u.child_master_id"));
+        Assert.Contains("Baseline", e.Message, StringComparison.Ordinal);
     }
 }

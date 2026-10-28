@@ -1,0 +1,244 @@
+@page "/baselines/{Number}"
+@inject CurrentUser Users
+@inject BaselineService Baselines
+@inject BomService Bom
+
+<PageFrame Banner="@Banner()" Title="@($"Baseline {Number}")">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Baseline @Number was not found, or you are not authorized to see it.</p>
+        <p><a href="baselines">Back to baselines</a></p>
+    }
+    else if (detail is not null)
+    {
+        var s = detail.Summary;
+        <article class="stack">
+            <header class="part-header">
+                <div>
+                    <h2>@s.Number · @s.Name</h2>
+                    <p class="muted">
+                        @s.Type baseline@(s.Milestone is null ? "" : $" · milestone {s.Milestone}") · created @UiText.Utc(s.CreatedAt) by @s.CreatedBy
+                        · <a href="baselines">All baselines</a>
+                    </p>
+                </div>
+                <div class="badges">
+                    <span class="badge @ConfigurationText.StateClass(s.State)">@s.StateLabel</span>
+                    <MarkingChip Text="@s.Banner" />
+                </div>
+            </header>
+
+            @if (notices.Count > 0) { <ul class="notice" role="status">@foreach (var n in notices) { <li>@n</li> }</ul> }
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (detail.Notices.Count > 0) { <ul class="notice" role="status">@foreach (var n in detail.Notices) { <li>@n</li> }</ul> }
+
+            <dl class="facts">
+                <dt>Root part</dt>
+                <dd>@if (s.RootNumber is not null) { <a href="parts/@Uri.EscapeDataString(s.RootNumber)">@s.RootNumber</a> <text>@s.RootName · @s.RootVersion</text> } else { <span class="restricted-label">Restricted item</span> }</dd>
+                <dt>Configuration</dt><dd>@s.SpecText</dd>
+                <dt>Items</dt><dd>@s.ItemCount (including the root)@(detail.DocumentCount > 0 ? $" · {detail.DocumentCount} pinned document{(detail.DocumentCount == 1 ? "" : "s")}" : "")</dd>
+                @if (detail.Purpose.Length > 0) { <dt>Purpose</dt><dd>@detail.Purpose</dd> }
+                <dt>Establishment</dt>
+                <dd>
+                    @if (detail.EstablishReason is not null) { <text>@detail.EstablishReason (@detail.EstablishedBy, @(s.EstablishedAt is { } at ? UiText.Utc(at) : "") UTC)</text> }
+                    else if (detail.Permissions.RequiresSignoff) { <text>Requires sign-off: it is established when every approver has signed.</text> }
+                    else { <text>Not established yet.</text> }
+                </dd>
+                @if (detail.SupersededBy is not null) { <dt>Superseded by</dt><dd><a href="baselines/@Uri.EscapeDataString(detail.SupersededBy)">@detail.SupersededBy</a></dd> }
+                @if (detail.Supersedes.Count > 0) { <dt>Supersedes</dt><dd>@foreach (var n in detail.Supersedes) { <a href="baselines/@Uri.EscapeDataString(n)">@n </a> }</dd> }
+                @if (detail.StateReason is not null) { <dt>Reason</dt><dd>@detail.StateReason</dd> }
+                <dt>Content hash</dt><dd><code>@detail.ContentSha256</code></dd>
+            </dl>
+
+            @if (detail.Permissions.CanModify && s.State is "Draft" or "Established" or "Superseded")
+            {
+                <section class="panel stack" aria-labelledby="actions-heading">
+                    <h3 id="actions-heading">Actions</h3>
+                    <div class="toolbar">
+                        <input aria-label="Reason" placeholder="Reason (required for establishing, superseding and archiving)" class="grow" maxlength="2000" @bind="reason" @bind:event="oninput" />
+                        @if (detail.Permissions.CanEstablishDirectly)
+                        {
+                            <button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="Establish">Establish</button>
+                        }
+                        @if (s.State == "Established" && sameRoot.Count > 0)
+                        {
+                            <select aria-label="Superseded by" @bind="supersedeBy">
+                                <option value="">Superseded by</option>
+                                @foreach (var o in sameRoot) { <option value="@o.Number">@o.Number · @o.Name</option> }
+                            </select>
+                            <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(reason) || supersedeBy.Length == 0)" @onclick="Supersede">Supersede</button>
+                        }
+                        @if (detail.Permissions.CanArchive)
+                        {
+                            <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="Archive">Archive</button>
+                        }
+                    </div>
+                    @if (detail.Permissions.RequiresSignoff && s.State == "Draft")
+                    {
+                        <p class="muted small">This baseline needs sign-off: submit it for review below. It becomes Established when every approver has signed.</p>
+                    }
+                    @if (s.State == "Draft")
+                    {
+                        <form class="grid-form" @onsubmit="Save" aria-label="Edit the draft">
+                            <label>Name <input @bind="editName" maxlength="200" required /></label>
+                            <label>Milestone <input @bind="editMilestone" maxlength="40" /></label>
+                            <label class="wide">Purpose <textarea rows="2" maxlength="4000" @bind="editPurpose"></textarea></label>
+                            <div class="actions"><button type="submit" class="secondary" disabled="@busy">Save changes</button></div>
+                        </form>
+                    }
+                </section>
+            }
+            <BaselineReviewPanel Detail="detail" OnChanged="Load" />
+
+            <section class="panel stack" aria-labelledby="items-heading">
+                <div class="bom-heading">
+                    <h3 id="items-heading">Items</h3>
+                    <nav class="toolbar" aria-label="Baseline views">
+                        <button type="button" class="secondary" @onclick="Verify">Check integrity</button>
+                        <a class="button secondary" download data-enhance-nav="false" href="@($"ui/baselines/{Uri.EscapeDataString(Number)}/items.csv")">Export CSV</a>
+                        <a href="@($"baselines/compare?from={Uri.EscapeDataString(Number)}&spec=Latest")">Compare with the latest structure</a>
+                        <a href="@($"baselines/compare?from={Uri.EscapeDataString(Number)}&spec=LatestReleased")">Compare with the latest released</a>
+                    </nav>
+                </div>
+                <div class="toolbar">
+                    <label class="inline-check">Levels
+                        <select aria-label="Levels shown" @bind="levels" @bind:after="LoadItems">
+                            @for (var i = 1; i <= BomLimits.MaxDepth; i++) { <option value="@i">@i</option> }
+                            <option value="0">All</option>
+                        </select>
+                    </label>
+                    @if (others.Count > 0)
+                    {
+                        <label class="inline-check">Compare with
+                            <select aria-label="Compare with another baseline" @bind="compareWith">
+                                <option value="">Choose a baseline</option>
+                                @foreach (var o in others) { <option value="@o.Number">@o.Number · @o.Name (@o.StateLabel)</option> }
+                            </select>
+                        </label>
+                        <a class="button secondary" href="@($"baselines/compare?from={Uri.EscapeDataString(Number)}&to={Uri.EscapeDataString(compareWith)}")" aria-disabled="@(compareWith.Length == 0)">Compare</a>
+                    }
+                </div>
+                @if (items is not null)
+                {
+                    <p class="muted small" aria-live="polite">
+                        @(items.Lines.Count == 0 ? "No components." : $"{rowsShown} line{(rowsShown == 1 ? "" : "s")} shown")
+                        @if (items.RedactedCount > 0) { <text> · @items.RedactedCount restricted item@(items.RedactedCount == 1 ? "" : "s") you cannot see</text> }
+                    </p>
+                    @if (items.Lines.Count > 0) { <BomTreeGrid Lines="items.Lines" LoadChildren="LoadChildren" OnVisibleChanged="OnVisible" AriaLabel="Baseline items" /> }
+                }
+            </section>
+
+            @if (documents is { Rows.Count: > 0 })
+            {
+                <section class="panel" aria-labelledby="docs-heading">
+                    <h3 id="docs-heading">Pinned documents</h3>
+                    <div class="table-wrap"><table class="data">
+                        <thead><tr><th scope="col">Item line</th><th scope="col">Link</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
+                        <tbody>
+                        @foreach (var d in documents.Rows)
+                        {
+                            <tr class="@(d.Redacted ? "restricted" : "")">
+                                <td>@(d.ItemPath.Length == 0 ? "root" : d.ItemPath)</td>
+                                <td>@d.LinkType</td>
+                                <td>@if (d.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="documents/@Uri.EscapeDataString(d.Number!)">@d.Number</a> }</td>
+                                <td>@d.Name</td><td>@d.Revision</td><td>@d.State</td>
+                                <td>@if (d.Banner is not null) { <MarkingChip Text="@d.Banner" /> }</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table></div>
+                </section>
+            }
+        </article>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private BaselineDetail? detail;
+    private BomExplosion? items;
+    private BaselineDocuments? documents;
+    private IReadOnlyList<BaselineSummary> others = [], sameRoot = [];
+    private IReadOnlyList<Markings> shown = [];
+    private readonly List<string> notices = [];
+    private bool notFound, busy;
+    private string? error;
+    private int levels = 1, rowsShown;
+    private string compareWith = "", reason = "", supersedeBy = "", editName = "", editPurpose = "", editMilestone = "";
+
+    private string Banner() => detail is null ? UiText.Unclassified : Markings.AggregateBanner(shown.Append(detail.Summary.Markings).Distinct());
+
+    protected override Task OnParametersSetAsync() => Load();
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var outcome = await Baselines.GetAsync(subject, Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is null) return;
+        (editName, editPurpose, editMilestone) = (detail.Summary.Name, detail.Purpose, detail.Summary.Milestone ?? "");
+        var siblings = await Baselines.SearchAsync(subject, new BaselineSearch(RootNumber: detail.Summary.RootNumber, Limit: 100), CurrentUser.NewCorrelationId());
+        others = siblings.IsOk && detail.Summary.RootNumber is not null ? [.. siblings.Value!.Items.Where(b => b.Number != Number)] : [];
+        sameRoot = [.. others.Where(b => b.State == "Established")];
+        await LoadItems();
+        var docs = detail.DocumentCount > 0 ? await Baselines.GetDocumentsAsync(subject, Number, CurrentUser.NewCorrelationId()) : null;
+        documents = docs?.Value;
+    }
+
+    private BomQuery Query(int? depth, string? parentLine = null) => new("", null, null, BomConfigSpec.Baseline, depth, parentLine, Number);
+
+    private async Task LoadItems()
+    {
+        var outcome = await Bom.ExplodeAsync(await Users.GetAsync(), Query(levels == 0 ? null : levels), CurrentUser.NewCorrelationId());
+        if (outcome.IsOk)
+        {
+            items = outcome.Value;
+            rowsShown = items!.Lines.Count;
+            shown = [.. items.Lines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()];
+        }
+        else error = UiText.Message(outcome);
+    }
+
+    private async Task<IReadOnlyList<BomLine>> LoadChildren(BomLine line)
+    {
+        var outcome = await Bom.ExplodeAsync(await Users.GetAsync(), Query(1, line.Path), CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return []; }
+        error = null;
+        return outcome.Value!.Lines;
+    }
+
+    private Task OnVisible(IReadOnlyList<BomLine> rows)
+    {
+        rowsShown = rows.Count;
+        shown = [.. rows.Where(r => r.Markings is not null).Select(r => r.Markings!).Distinct()];
+        return Task.CompletedTask;
+    }
+
+    private async Task Run(Func<Task<Outcome<BaselineDetail>>> action, string done)
+    {
+        busy = true;
+        error = null;
+        var outcome = await action();
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        notices.Clear();
+        notices.Add(done);
+        reason = "";
+        await Load();
+    }
+
+    private async Task Establish() => await Run(async () => await Baselines.EstablishAsync(await Users.GetAsync(), Number, reason, CurrentUser.NewCorrelationId()), $"{Number} is established.");
+    private async Task Archive() => await Run(async () => await Baselines.ArchiveAsync(await Users.GetAsync(), Number, reason, CurrentUser.NewCorrelationId()), $"{Number} is archived.");
+    private async Task Supersede() => await Run(async () => await Baselines.SupersedeAsync(await Users.GetAsync(), Number, supersedeBy, reason, CurrentUser.NewCorrelationId()), $"{Number} is superseded by {supersedeBy}.");
+    private async Task Save() => await Run(async () => await Baselines.UpdateAsync(await Users.GetAsync(), Number, editName, editPurpose, string.IsNullOrWhiteSpace(editMilestone) ? null : editMilestone, CurrentUser.NewCorrelationId()), "Saved.");
+
+    private async Task Verify()
+    {
+        var outcome = await Baselines.VerifyAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notices.Clear();
+        notices.Add(!outcome.IsOk ? UiText.Message(outcome)
+            : outcome.Value!.Intact ? "Integrity check passed: the stored items match the hash recorded at creation."
+            : "Integrity check FAILED: the stored items no longer match the hash recorded at creation. Report this to an administrator.");
+    }
+}

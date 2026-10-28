@@ -189,9 +189,10 @@ public sealed class BomStructureTests(PostgresFixture pg)
         Assert.Equal(OutcomeKind.Invalid, (await env.Bom.ExplodeAsync(Alice, new BomQuery(top, ParentLine: "10..5"), null)).Kind);
         Assert.Equal(OutcomeKind.NotFound, (await env.Bom.ExplodeAsync(Alice, new BomQuery(top, Revision: "Z"), null)).Kind);
         Assert.Equal(OutcomeKind.NotFound, (await env.Bom.ExplodeAsync(Alice, new BomQuery("NOPE"), null)).Kind);
-        var phase2 = await Assert.ThrowsAsync<NotSupportedException>(() => env.Bom.ExplodeAsync(Alice, new BomQuery(top, Spec: BomConfigSpec.Effectivity), null));
-        Assert.Contains("Phase 2", phase2.Message, StringComparison.Ordinal);
-        await Assert.ThrowsAsync<NotSupportedException>(() => env.Bom.ExplodeAsync(Alice, new BomQuery(top, Spec: BomConfigSpec.Baseline), null));
+        // Phase 2.1 delivers Effectivity and Baseline: without a unit or a baseline they are invalid requests (the full cases are in EffectivityTests and BaselineTests).
+        Assert.Equal(OutcomeKind.Invalid, (await env.Bom.ExplodeAsync(Alice, new BomQuery(top, Spec: BomConfigSpec.Effectivity), null)).Kind);
+        Assert.Equal(OutcomeKind.Invalid, (await env.Bom.ExplodeAsync(Alice, new BomQuery(top, Spec: BomConfigSpec.Baseline), null)).Kind);
+        Assert.Equal(OutcomeKind.NotFound, (await env.Bom.ExplodeAsync(Alice, new BomQuery(top, Spec: BomConfigSpec.Baseline, Baseline: "BL-999999"), null)).Kind);
     }
 
     [Fact]

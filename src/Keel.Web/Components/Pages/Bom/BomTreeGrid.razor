@@ -13,6 +13,7 @@
         <span role="columnheader">Unit</span>
         <span role="columnheader" class="num">Ext qty</span>
         <span role="columnheader">State</span>
+        <span role="columnheader">Effectivity</span>
         <span role="columnheader">Markings</span>
     </div>
     <div class="bom-body" tabindex="-1">
@@ -54,6 +55,7 @@
                     @if (line.Circular) { <span class="flag">Circular reference</span> }
                     else { @line.StateLabel }
                 </span>
+                <span role="gridcell" class="cell-eff" title="@line.EffectivityText">@line.EffectivityText</span>
                 <span role="gridcell">@if (line.Banner is not null) { <MarkingChip Text="@line.Banner" /> }</span>
             </div>
         </Virtualize>

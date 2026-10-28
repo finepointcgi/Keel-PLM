@@ -120,6 +120,40 @@ public sealed partial class ArchitectureTests
         Assert.True(offenders.Count == 0, "Keel.Change touches other modules' tables:\n" + string.Join("\n", offenders));
     }
 
+    /// <summary>
+    /// Baseline items name parts, so a statement that reads <c>cfg.baseline_item</c> must join the part master through the read filter (hidden items become
+    /// placeholders, A4) or only test membership. The one exception is the owner's hash and verification read, which is never shown to a user.
+    /// </summary>
+    [Fact]
+    public void Baseline_item_reads_apply_the_read_filter_or_stay_inside_the_module()
+    {
+        var root = FindRepoRoot();
+        var offenders = new List<string>();
+        var checkedStatements = 0;
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+                     .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+        {
+            var text = File.ReadAllText(file);
+            foreach (Match m in BaselineItemRead().Matches(text))
+            {
+                checkedStatements++;
+                if (!file.Contains("Keel.Bom", StringComparison.Ordinal))
+                {
+                    offenders.Add($"{Path.GetRelativePath(root, file)}: baseline items read outside Keel.Bom");
+                    continue;
+                }
+                // BaselineStore reads the stored rows to hash and verify them; the result is a digest, never a list shown to a reader.
+                if (file.EndsWith("BaselineStore.cs", StringComparison.Ordinal)) continue;
+                var statement = text.Substring(m.Index, Math.Min(900, text.Length - m.Index));
+                if (!statement.Contains("filter.Sql}", StringComparison.OrdinalIgnoreCase) && !m.Value.Contains("SELECT 1", StringComparison.OrdinalIgnoreCase)
+                    && !text.Substring(Math.Max(0, m.Index - 12), Math.Min(m.Index, 12)).Contains("SELECT 1", StringComparison.OrdinalIgnoreCase))
+                    offenders.Add($"{Path.GetRelativePath(root, file)}: {m.Value}");
+            }
+        }
+        Assert.True(checkedStatements >= 3, "The rule found too few statements; the pattern is probably broken.");
+        Assert.True(offenders.Count == 0, "Unfiltered baseline item reads:\n" + string.Join("\n", offenders));
+    }
+
     /// <summary>ADR-0014: every routable page renders through PageFrame, which requires a marking banner.</summary>
     [Fact]
     public void Every_page_renders_through_page_frame()
@@ -136,11 +170,14 @@ public sealed partial class ArchitectureTests
         Assert.True(offenders.Count == 0, "Pages without PageFrame: " + string.Join(", ", offenders));
     }
 
-    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change)\b[^\n]*", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change|cfg\.baseline)\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlFromMarkedTable();
 
     [GeneratedRegex(@"(FROM|JOIN)\s+plm\.part_master\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlTouchesPartMaster();
+
+    [GeneratedRegex(@"(SELECT\s+1\s+)?FROM\s+cfg\.baseline_item\b[^\n]*", RegexOptions.IgnoreCase)]
+    private static partial Regex BaselineItemRead();
 
     [GeneratedRegex(@"\b(plm\.(part_|document_|bom_)\w*|wf\.\w+)", RegexOptions.IgnoreCase)]
     private static partial Regex OtherModuleTables();

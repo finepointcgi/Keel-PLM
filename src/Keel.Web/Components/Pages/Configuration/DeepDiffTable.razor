@@ -1,0 +1,35 @@
+@* The result of a structure comparison: baseline against baseline or the current structure, or one unit against another. Restricted lines are placeholders (A4). *@
+<p class="muted" aria-live="polite">
+    @(Result.Lines.Count == 0 ? "No differences." : $"{Result.Added} added, {Result.Removed} removed, {Result.Changed} changed")
+    · @Result.Unchanged unchanged. @Result.Title: @Result.FromLabel to @Result.ToLabel.
+</p>
+@if (Result.Lines.Count > 0)
+{
+    <div class="table-wrap"><table class="data">
+        <caption class="sr-only">Differences</caption>
+        <thead><tr><th scope="col">Change</th><th scope="col">Path</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Version</th><th scope="col">Find</th><th scope="col">Qty</th><th scope="col">Details</th><th scope="col">Markings</th></tr></thead>
+        <tbody>
+        @foreach (var l in Result.Lines)
+        {
+            <tr class="diff-@l.Kind.ToString().ToLowerInvariant() @(l.Redacted ? "restricted" : "")">
+                <td>@ConfigurationText.ChangeKind(l.Kind)</td>
+                <td>@l.Path</td>
+                <td>@if (l.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="parts/@Uri.EscapeDataString(l.Number!)">@l.Number</a> }</td>
+                <td>@l.Name</td>
+                <td>@Pair(l.FromVersion, l.ToVersion)</td>
+                <td>@Pair(l.FromFind?.ToString(), l.ToFind?.ToString())</td>
+                <td>@Pair(l.FromQuantity is { } fq ? Q(fq) : null, l.ToQuantity is { } tq ? Q(tq) : null) @l.Unit</td>
+                <td>@string.Join("; ", l.Changes)</td>
+                <td>@if (l.Banner is not null) { <MarkingChip Text="@l.Banner" /> }</td>
+            </tr>
+        }
+        </tbody>
+    </table></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public required DeepComparison Result { get; set; }
+
+    private static string Q(decimal d) => d.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Pair(string? a, string? b) => a is null ? b ?? "" : b is null ? a : a == b ? a : $"{a} to {b}";
+}
