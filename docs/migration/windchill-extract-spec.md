@@ -29,7 +29,10 @@ Files: `parts.csv`, `part_uses.csv`, `documents.csv`, `document_files.csv`, `par
 | anything else (`Context`, `Organization`, export-control attributes, custom IBAs ...) | properties (inputs for attribute and markings mappings) |
 
 ### part-uses (`part-uses.json`, `part_uses.csv`): BOM lines
-`ParentNumber`, `ParentVersion`, `ParentIteration` (blank = the version's last iteration), `ChildNumber`, `Quantity`, `Unit` (or `QuantityUnit`), `FindNumber` (or `LineNumber`), `ReferenceDesignators` (comma or semicolon separated), `Notes`, `Effectivity` (not loaded, Phase 2a; preserved in notes).
+`ParentNumber`, `ParentVersion`, `ParentIteration` (blank = the version's last iteration), `ChildNumber`, `Quantity`, `Unit` (or `QuantityUnit`), `FindNumber` (or `LineNumber`), `ReferenceDesignators` (comma or semicolon separated), `Notes`, `Effectivity` (free text, kept in the line notes), and the structured effectivity columns of [below](#part-uses-effectivity).
+
+#### Part-uses effectivity {#part-uses-effectivity}
+Columns of `part-uses` (all optional; blank when the line has no structured effectivity): `EffectivityType` (`serial`, `lot` or `date`), `EffectivityUnit` (or `EffectivityContext`: the end item or serial scope in Windchill), `EffectivityFrom`, `EffectivityTo` (whole numbers, a lot/block name, or ISO 8601 for dates), `EffectivityEndCondition` (`openEnded`, `stockOut`). **One range per row**: a line that has several ranges, or alternates of one find number, is several rows with the same parent, child and `FindNumber`. These columns are our contract (no public property list for Windchill effectivity was found); a conversion script maps the real fields. Mapping: [mapping-reference.md](mapping-reference.md#effectivity).
 
 ### documents and document files
 `documents.*` has the part columns with `DocumentType` instead of `PartType` and no unit/source. `document_files.csv` (or nested `Files`): `DocumentNumber`, `DocumentVersion`, `DocumentIteration` (nested rows get these from the document row), `Name` (or `FileName`), `ContentType` (or `MimeType`), `Path` (relative to the package, the file content), `FileSize`, `Sha256` (optional; verified when given, computed and reported otherwise), `Role` (`PRIMARY` marks the primary file; without one the first file is primary).
@@ -41,7 +44,7 @@ Files: `parts.csv`, `part_uses.csv`, `documents.csv`, `document_files.csv`, `par
 `change_notices.*` -> ECN, `change_requests.*` -> ECR, `problem_reports.*` -> PR. Columns: `Number`, `Name` (title), `Description`, `State`, `ChangeClass`, `Priority`, `Reason`, `CreatedOn`, `CreatedBy`, `StateChangedOn`, `StateChangedBy`, `ParentNumber` (the PR an ECR came from, the ECR an ECN came from), other columns are properties. Affected objects (`change_affected.csv` or nested `AffectedItems`): `ChangeNumber`, `ItemNumber`, `Version`, `ResultingVersion`, `Action` (`revise`, `obsolete`, `none`).
 
 ### users, classifications
-`users.*`: `Name`, `FullName`, `Groups`. `classifications.*`: `PartNumber`, `ClassCode`, other columns are class attributes (staged, not loaded: Phase 2b).
+`users.*`: `Name`, `FullName`, `Groups`. `classifications.*`: `PartNumber`, `ClassCode`, other columns are class attributes (blank values are absent values). Loaded with `classification.load`. The class hierarchy is the optional file `classification.json` (`keel-classification/1`) at the root of the directory ([classification-format.md](classification-format.md#migration)).
 
 ## Getting data into this shape
 Practical paths (see [README.md](README.md)): (1) call the ProdMgmt, DocMgmt and ChangeMgmt domains of Windchill REST Services with `$expand` for uses, associations and content info and save the pages as the files above (a script that renames properties to this contract is usually needed); (2) use the loader/export tools your Windchill administrators already run and convert to the CSV form; (3) build the neutral canonical package from your own tooling (`package.json`, see the canonical format in [mapping-reference.md](mapping-reference.md#canonical-package)). In all cases, ask for **all iterations** of every version: a latest-only export loses iteration history.

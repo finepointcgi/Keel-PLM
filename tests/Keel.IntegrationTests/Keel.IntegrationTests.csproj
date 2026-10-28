@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\Keel.Change\Keel.Change.csproj" />
     <ProjectReference Include="..\..\src\Keel.Migration\Keel.Migration.csproj" />
     <ProjectReference Include="..\..\src\Keel.Import\Keel.Import.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Seed\Keel.Seed.csproj" />
     <ProjectReference Include="..\Keel.Migration.Fixtures\Keel.Migration.Fixtures.csproj" />
     <ProjectReference Include="..\..\src\Keel.Admin\Keel.Admin.csproj" />
     <ProjectReference Include="..\..\src\Keel.Integration\Keel.Integration.csproj" />

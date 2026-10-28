@@ -45,12 +45,30 @@ modules and local configuration; confirm any statement against the customer's ow
 | 7 | 5 | alice, bob | **Changes**. Open **ECN-000001** (Draft, class II). Show affected object (gimbal bracket A) and resulting **revision B in work**. **Run impact analysis**: where-used up the tree (gimbal, housing, top assembly, spares kit), linked documents (drawing, CAD placeholder, vibration report), other open changes. Submit for review (ada, bob), sign both (ada first, then bob; step-up may repeat). Open the bracket: **Rev B (Released)**, **Rev A (Obsolete)**, links and structure carried over. | A released item changes only through a change notice; revision B is created when the part joins the notice and is locked with it. Class I needs a CCB-approved ECR: open **ECR-000001** (Class I, bob's CCB task open), sign as bob, then **Open change notice**. Also show ECN-000002 (approver pending), ECN-000003 (rejected, back in Draft with the reason), the change tasks, and PR-000001/PR-000002. | Change objects (problem report, request, notice, task) are native in both; impact analysis that combines where-used, documents, other open changes and marking-aware redaction is usually assembled from reports or customization. |
 | 8 | 3 | audrey | Sign in as **audrey**, open **Audit log**, **Verify chain**. | Newest first: part, document, BOM, workflow, signature and change events, plus the denials from step 5. The chain is hash-linked and signed checkpoints are written periodically; audrey can verify without being able to change anything, and `keel-audit verify` does the same offline. Admin ada can create checkpoints but, like everyone, gets no bypass of markings. | Audit trails exist in both; tamper-evidence (hash chain, signed checkpoints) and an offline verifier are typically provided by database-level controls or add-ons. |
 
+## What's new in the seeded data (Phase 2 and 4 content)
+The seed now also goes through the Phase 2 and Phase 4 services, so these pages have content from the first minute. The walkthrough above is unchanged (part and document numbers, ECN-000001 to ECN-000003 and the counts of 63 parts, 12 documents and 8 changes are the same); the seeder prints this list too, and `--manifest` writes it as JSON (`extras`).
+
+| What | Where | Number or name |
+|---|---|---|
+| Classification tree: Fasteners > Screws > Socket head; Machined parts > Brackets; Electronics > Modules, with class attributes (thread, length, drive size, minimum wall, nominal voltage) | Administration, Classification | FASTENERS, SCREWS, SOCKET-HEAD, MACHINED, BRACKETS, ELECTRONICS, MODULES |
+| 13 parts classified with values before their release (five socket head screws, four brackets and plates including the gimbal bracket P-000015, three modules, the forward shell) | the part pages and the classification facet search | for example wall thickness 2.0 mm on P-000015 |
+| Design baseline of the Gimbal assembly, established directly (frozen before the yoke change) | Baselines | BL-000001 |
+| Release baseline of the pressure housing, established through review with two e-signatures | Baselines | BL-000002 |
+| Effectivity context with Block 1 and Block 2 | Administration, Effectivity | ORCA-POD |
+| In-work assembly with two alternates by serial for find number 30 (screws M5 for serials 1 to 100, M4 from 101) | the BOM of the partner mounting interface assembly | P-000005 |
+| Revision B of the gimbal yoke effective from serial 101 through an ECN released with effectivity; revision A stays Released for serials up to 100 | the yoke page and the ECN | P-000016, ECN-000004 |
+| MBOM for PLANT-A of the gimbal drive module, released through review with signatures; MBOM of the pod left in work with a stale reconciliation after an EBOM change | MBOMs | MB-000001 released, MB-000002 stale |
+| TDP export record (the real service wrote the signed ZIP to a throwaway stream; only the manifest is kept) for the gimbal bracket to the recipient profile `orca-prime-contractor` | Administration, Integration, and the part's export history | P-000015 |
+| Clearance profiles `orca-prime-contractor`, `partner-taa-0042`, `public-release`; the file-drop sink `erp-staging-drop` is **disabled** (a sink pointing at a system that does not exist would only produce dead letters) | Administration, Integration | |
+| ERP outbox events written by the releases (`part.released`, `bom.published`, `baseline.established`, `change.released`, `mbom.released`); no dispatcher runs in the seed | Administration, Integration, Outbox | about 70 events |
+
+The demo host needs `Keel:Integration:FileDropRoot` (and a TDP signing key) in its own configuration before the sink can be enabled or a package exported again; the seeded export was signed with a key that existed only during the seed, so verifying that record against your site's keys reports an untrusted signature, by design. The numbers above are what a fresh seed prints.
+
 ## What this demo does not show yet
 Say this plainly if asked; it is on the roadmap, not hidden.
 - **CAD integration** (check-in from CAD tools, viewing, attribute sync): only a CAD placeholder file exists (Phase 4).
-- **Effectivity, baselines, MBOM, redlines, alternates**: Phase 2. Only Latest and Latest released config specs exist.
-- **Migration importers** from Teamcenter or Windchill: Phase 3.
-- **ERP and other integrations**, notifications, outbox: Phase 4.
+- **Redlines** and markup. Effectivity, baselines, alternates and the MBOM exist and are seeded (see above) but are not part of the 25-minute walkthrough.
+- **Migration** (`keel-import`) and the **ERP integrations** exist (docs/migration, docs/integration) but are not part of the walkthrough; notifications do not exist.
 - **High availability, backup and disaster recovery, SIEM forwarding, idle-session lock, CAC/PIV login**: Phase 5 or site integration (the dev IdP is Keycloak with passwords).
 - **Containers, Helm and the offline bundle** are delivered separately in increment 1.7 packaging.
 - Workflow template editor, delegation and escalation, documents as affected objects, and a signing path for change tasks are Phase 2.

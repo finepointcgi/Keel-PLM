@@ -4,10 +4,14 @@ using Keel.Audit;
 using Keel.Seed;
 using Keel.TestSupport;
 
-return await SeedCli.RunAsync(args, Console.Out, Console.Error);
-
 namespace Keel.Seed
 {
+    /// <summary>An explicit entry point (not top-level statements) so this executable declares no type named Program: the integration tests also see the API host's Program.</summary>
+    internal static class SeedEntryPoint
+    {
+        private static async Task<int> Main(string[] args) => await SeedCli.RunAsync(args, Console.Out, Console.Error);
+    }
+
     /// <summary>Command line of <c>keel-seed</c>. See docs/setup.md and docs/increments/1.7-demo.md.</summary>
     public static class SeedCli
     {
@@ -127,6 +131,17 @@ namespace Keel.Seed
             Row("ECN under review, approver pending", m.EcnUnderReview);
             Row("ECN rejected by the approver (back in Draft)", m.EcnRejected);
             Row("Change tasks", string.Join(", ", m.ChangeTasks));
+            if (m.Extras is { } x)
+            {
+                Row($"Classification tree ({x.ClassCodes.Count} classes), parts classified", x.ClassifiedParts.ToString(CultureInfo.InvariantCulture));
+                Row("Design baseline (established) / Release baseline (signed)", $"{x.DesignBaseline} / {x.ReleaseBaseline}");
+                Row($"Effectivity context; assembly with two alternates by serial", $"{x.EffectivityContext}; {x.AlternatesAssembly}");
+                Row("Part revision B effective from serial 101 / the ECN that did it", $"{x.RevisedPart} / {x.EffectivityEcn}");
+                Row("MBOM released (PLANT-A) / MBOM in work, stale (pod)", $"{x.ReleasedMbom} / {x.StaleMbom}");
+                Row("TDP export record (part, recipient profile)", $"{x.TdpPart}, {x.TdpRecipient} ({x.TdpExportId:D})");
+                Row("Clearance profiles / disabled file-drop sink", $"{string.Join(", ", x.ClearanceProfiles)} / {x.DisabledSink}");
+                Row("ERP outbox events written by the seed", x.OutboxEvents.ToString(CultureInfo.InvariantCulture));
+            }
             w.WriteLine();
             w.WriteLine(m.AuditChainValid
                 ? $"Audit chain verified: valid, {m.AuditEventsChecked} events checked."

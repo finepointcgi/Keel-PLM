@@ -18,6 +18,8 @@
     <ProjectReference Include="..\Keel.Bom\Keel.Bom.csproj" />
     <ProjectReference Include="..\Keel.Workflow\Keel.Workflow.csproj" />
     <ProjectReference Include="..\Keel.Change\Keel.Change.csproj" />
+    <ProjectReference Include="..\Keel.Admin\Keel.Admin.csproj" />
+    <ProjectReference Include="..\Keel.Integration\Keel.Integration.csproj" />
     <!-- The scale scenario wraps the existing bulk generator (the same code the performance gate uses). -->
     <ProjectReference Include="..\..\tests\Keel.TestSupport\Keel.TestSupport.csproj" />
   </ItemGroup>
