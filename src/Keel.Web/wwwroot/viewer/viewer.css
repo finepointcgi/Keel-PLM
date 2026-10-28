@@ -1,0 +1,136 @@
+/* Styles of the standalone file viewer (ADR-0027). Independent of app.css so the viewer keeps working when the application shell is redesigned.
+   No inline styles are used anywhere: the viewer's CSP forbids style attributes, and scripts set styles through the CSSOM only. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1b1f24;
+  --muted: #5b6470;
+  --border: #d5dae1;
+  --accent: #1d4ed8;
+  --deny: #a3191c;
+  --banner-unclassified: #007a33;
+  --banner-cui: #502b85;
+  --viewer-stage-bg: #1b2330;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171b;
+    --surface: #1d2126;
+    --text: #e6e9ed;
+    --muted: #9aa4b1;
+    --border: #343a42;
+    --accent: #8db0ff;
+    --deny: #ff8f8f;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body.viewer-page { margin: 0; background: var(--bg); display: flex; flex-direction: column; min-height: 100vh; }
+
+.marking-banner {
+  color: #fff; text-align: center; font-weight: 700; letter-spacing: 0.04em; padding: 4px 16px; font-size: 13px; flex: 0 0 auto; z-index: 20;
+}
+.tone-unclassified { background: var(--banner-unclassified); }
+.tone-cui { background: var(--banner-cui); }
+
+.viewer-bar {
+  display: flex; align-items: center; gap: 12px 20px; padding: 8px 16px; flex-wrap: wrap; flex: 0 0 auto;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.viewer-back { color: var(--accent); }
+.viewer-title { font-size: 18px; margin: 0; overflow-wrap: anywhere; }
+.viewer-badge { border: 1px solid var(--border); border-radius: 12px; padding: 1px 10px; font-size: 12px; color: var(--muted); }
+.viewer-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-size: 13px; flex: 1 1 auto; color: var(--muted); }
+.viewer-facts dt { display: inline; font-weight: 600; }
+.viewer-facts dd { display: inline; margin: 0 8px 0 4px; }
+.viewer-button, .viewer-tool {
+  font: inherit; font-size: 14px; padding: 5px 12px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent); color: #fff;
+  text-decoration: none; cursor: pointer;
+}
+@media (prefers-color-scheme: dark) { .viewer-button, .viewer-tool { color: #0b1020; } }
+.viewer-tool { background: var(--surface); color: var(--text); border-color: var(--border); padding: 4px 10px; }
+.viewer-tool[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+@media (prefers-color-scheme: dark) { .viewer-tool[aria-pressed="true"] { color: #0b1020; } }
+.viewer-button:focus-visible, .viewer-tool:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, .viewer-page :focus-visible {
+  outline: 3px solid #ffbf47; outline-offset: 2px;
+}
+
+.viewer-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 16px; background: var(--surface);
+  border-bottom: 1px solid var(--border); flex: 0 0 auto;
+}
+.viewer-toolbar[hidden] { display: none; }
+.viewer-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+.viewer-field { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+.viewer-field select, .viewer-page-input { font: inherit; font-size: 13px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
+.viewer-page-input { width: 4.5em; }
+.viewer-group { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.viewer-group[hidden] { display: none; }
+.viewer-readout { font-size: 13px; color: var(--muted); }
+.viewer-readout-block { flex: 1 1 260px; }
+
+.viewer-main { flex: 1 1 auto; min-height: 320px; position: relative; display: flex; flex-direction: column; }
+.viewer-status, .viewer-progress { margin: 16px; }
+.viewer-progress { width: min(480px, 90%); }
+.viewer-stage { position: relative; flex: 1 1 auto; min-height: 300px; background: var(--viewer-stage-bg); overflow: hidden; }
+.viewer-stage[data-viewer-stage] { display: flex; flex-direction: column; }
+.viewer-error { color: var(--deny); margin: 16px; font-weight: 600; }
+.viewer-warning { color: var(--deny); }
+.viewer-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin: 24px; padding: 20px; max-width: 760px; }
+.viewer-panel h2 { margin-top: 0; font-size: 20px; }
+.viewer-failure { border-color: var(--deny); }
+.viewer-details { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 12px 0 18px; }
+.viewer-details dt { font-weight: 600; }
+.viewer-details dd { margin: 0; overflow-wrap: anywhere; }
+
+.viewer-notices { flex: 0 0 auto; padding: 6px 16px; font-size: 12px; background: var(--surface); border-top: 1px solid var(--border); color: var(--text); }
+.viewer-notices p { margin: 2px 0; }
+.viewer-distribution { font-weight: 600; }
+.viewer-notices details summary { cursor: pointer; color: var(--muted); }
+
+/* Marking overlay for files that cannot be stamped in place (3D models, images). */
+.viewer-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; display: flex; flex-direction: column; justify-content: space-between; }
+.viewer-overlay-top, .viewer-overlay-bottom {
+  background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 12px; font-weight: 600; padding: 3px 10px; text-align: center; letter-spacing: 0.03em;
+}
+.viewer-overlay-top { font-size: 13px; letter-spacing: 0.05em; }
+body.banner-tampered .viewer-stage, body.banner-tampered .viewer-toolbar { display: none !important; }
+.viewer-tamper { color: var(--deny); font-weight: 700; margin: 24px; }
+
+/* 3D */
+.scene-host { position: absolute; inset: 0; }
+.scene-host canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.scene-host canvas.measuring { cursor: crosshair; }
+.viewer-measure-label {
+  position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; background: #ff3b30; color: #fff; font-size: 12px; font-weight: 700;
+  padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+}
+.viewer-measure-label[hidden] { display: none; }
+
+/* Image */
+.image-frame { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; background: repeating-conic-gradient(#2b3340 0% 25%, #232a35 0% 50%) 50% / 24px 24px; }
+.image-frame:active { cursor: grabbing; }
+.image-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; user-select: none; image-rendering: auto; }
+
+/* PDF (page images come from the marked PDF; the text layer makes the text selectable) */
+.pdf-scroll { position: absolute; inset: 0; overflow: auto; padding: 12px 16px; background: #525659; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.pdf-page { position: relative; background: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5); flex: 0 0 auto; }
+.pdf-page canvas { display: block; }
+.pdf-inverted .pdf-page canvas { filter: invert(1) hue-rotate(180deg); }
+.pdf-text { position: absolute; inset: 0; overflow: clip; line-height: 1; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; }
+.pdf-text :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; }
+.pdf-text span.markedContent { top: 0; height: 0; }
+.pdf-text ::selection { background: rgba(0, 90, 255, 0.35); }
+
+@media (forced-colors: active) {
+  .viewer-tool, .viewer-button { border: 1px solid ButtonText; }
+  .viewer-tool[aria-pressed="true"] { outline: 2px solid Highlight; }
+  .marking-banner, .viewer-overlay-top, .viewer-overlay-bottom { border: 1px solid CanvasText; }
+}
+@media (max-width: 600px) {
+  .viewer-bar, .viewer-toolbar { padding-left: 8px; padding-right: 8px; }
+  .viewer-facts { display: none; }
+}

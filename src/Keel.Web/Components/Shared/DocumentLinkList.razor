@@ -21,7 +21,7 @@ else
                     else
                     {
                         var d = l.Document;
-                        <td><a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a></td>
+                        <td><a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a> <a class="button secondary" href="@ViewerUi.PrimaryUrl(d.Number, l.PinnedRevision)" data-action="view-primary" target="_top" data-enhance-nav="false" title="Open the primary file of @d.Number in the viewer">View</a></td>
                         <td>@d.Name</td>
                         <td>
                             @d.Revision.@d.Iteration

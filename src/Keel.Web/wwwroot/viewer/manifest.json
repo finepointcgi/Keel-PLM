@@ -1,0 +1,93 @@
+{
+  "description": "SHA-256 of every file served by the viewer (see docs/third-party/viewer.md). Regenerate with node tools/viewer-vendor/manifest.mjs.",
+  "files": [
+    {
+      "path": "banner-guard.js",
+      "sha256": "c722fcae308a9959c08a759f24737ef91887f75bb8f1ea4457d054fe5d25839c",
+      "size": 4252,
+      "vendored": false
+    },
+    {
+      "path": "step-worker.js",
+      "sha256": "030fba98cf38bb51e2c39598fa27113d7597f9b5f1081d270259d607e2ea912b",
+      "size": 1340,
+      "vendored": false
+    },
+    {
+      "path": "vendor/occt-import-js.js",
+      "sha256": "3fb44ce11d00611f9b3f3c5775d520ebab48930c1f08279b7b1316f05f0d3379",
+      "size": 96871,
+      "vendored": true,
+      "component": "occt-import-js (JavaScript glue)",
+      "license": "LGPL-2.1"
+    },
+    {
+      "path": "vendor/occt-import-js.wasm",
+      "sha256": "33391fc9d94ea5c869a6718488bf0a9a464222bac9bdc764dfe1690cef281952",
+      "size": 7604031,
+      "vendored": true,
+      "component": "occt-import-js (OpenCascade Technology compiled to WebAssembly)",
+      "license": "LGPL-2.1"
+    },
+    {
+      "path": "vendor/pdf.min.mjs",
+      "sha256": "27fc2a057a00f92a4334ad06e17dbd7259912954e9fb7f76400bcca5fd190a9c",
+      "size": 352645,
+      "vendored": true,
+      "component": "pdf.js (pdfjs-dist) main library",
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "vendor/pdf.worker.min.mjs",
+      "sha256": "1baa1844c89c80a5b2797c916e75ab29254be46d8e9cb53cb6364d7aad84be36",
+      "size": 1375838,
+      "vendored": true,
+      "component": "pdf.js (pdfjs-dist) worker",
+      "license": "Apache-2.0"
+    },
+    {
+      "path": "vendor/three-bundle.js",
+      "sha256": "1b5e810aa9149dcccff96fd1a4246290f3753aad64b88ce10236a1a65b09f99e",
+      "size": 651894,
+      "vendored": true,
+      "component": "three.js + OrbitControls, STLLoader, OBJLoader, GLTFLoader (bundled with esbuild)",
+      "license": "MIT"
+    },
+    {
+      "path": "viewer-3d.js",
+      "sha256": "9a6b1e67be04747f0ecc8596add618e8c0fb2137381994580755520f89cb8d65",
+      "size": 25775,
+      "vendored": false
+    },
+    {
+      "path": "viewer-image.js",
+      "sha256": "8fe7903e3ef1d8c813f64ef28191cbd845869740c4a3b90818bc5c921d8baf5a",
+      "size": 4293,
+      "vendored": false
+    },
+    {
+      "path": "viewer-pdf.js",
+      "sha256": "744f311f084ff23ca388a926a57b67acc6fe07dcf1d7b337c1e636e13563d59e",
+      "size": 9162,
+      "vendored": false
+    },
+    {
+      "path": "viewer-ui.js",
+      "sha256": "e06863d322c3708cb519d10be3d4d415f003a206f2d5ee229248aa74ecec2d14",
+      "size": 2979,
+      "vendored": false
+    },
+    {
+      "path": "viewer.css",
+      "sha256": "3dbc7158c0bfbe48f22f89c6759a0f76be597c6ba1c033164b5e80405300f319",
+      "size": 7770,
+      "vendored": false
+    },
+    {
+      "path": "viewer.js",
+      "sha256": "b98b2c38877eda62b5d84211d2a8555b9635d17e1451664e7e185ebf688c8b18",
+      "size": 4729,
+      "vendored": false
+    }
+  ]
+}

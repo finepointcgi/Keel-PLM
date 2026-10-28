@@ -166,3 +166,4 @@ fieldset.facet .range input { width: 7em; }
 .toolbar label.checkbox, label.toolbar { flex-direction: row; align-items: center; }
 select, input { max-width: 100%; }
 .split > * { min-width: 0; }
+.badge.file-type { font-size: 11px; padding: 0 6px; margin-left: 6px; letter-spacing: 0.04em; }
