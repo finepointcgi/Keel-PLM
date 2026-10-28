@@ -4,7 +4,7 @@ Keel is an on-prem, air-gapped PLM platform replacing Teamcenter/Windchill for `
 Read this file, then [assumptions.md](assumptions.md) and [adr/README.md](adr/README.md), before changing code.
 
 ## Status
-- **Phase 1, increment 1.1 (Foundations):** done 2026-10-27. Next: **1.2 Parts**.
+- **Phase 1:** 1.1 Foundations done, 1.2 Parts done (2026-10-27). Next: **1.3 Documents and vault**.
 - Phase plan: 1.1 Foundations → 1.2 Parts → 1.3 Documents and vault → 1.4 BOM → 1.5 Review and release → 1.6 Change → 1.7 Demo-ready.
   Later phases: 2 Configuration management, 3 Migration, 4 Integrations, 5 Production operations.
 
@@ -13,6 +13,7 @@ Read this file, then [assumptions.md](assumptions.md) and [adr/README.md](adr/RE
 src/Keel.Core        domain primitives shared by all modules (Subject, Markings, Result types)
 src/Keel.Security    ABAC policy: in-memory evaluator + SQL filter builder (ADR-0004)
 src/Keel.Audit       hash-chained audit log, checkpoints, verifier (ADR-0005)
+src/Keel.Parts       parts: master/revision/iteration, lifecycle, attributes, check-out/check-in, search
 src/Keel.Api         ASP.NET Core host, auth, health, metrics, endpoints
 src/Keel.AuditCli    `keel-audit verify` command-line verifier
 db/migrations        plain SQL migrations, applied in order by the migrator (Keel.Api --migrate)
@@ -76,3 +77,27 @@ See [setup.md](setup.md).
 - Architecture test enforcing module references and filter usage: added in 1.2 when the first marked table exists.
 - Unauthenticated (401) requests are logged, not chained into the audit log (flood resistance), per ADR-0005.
 - Tail deletion *after* the last checkpoint is only detectable via SIEM forwarding (Phase 5) — checkpoint interval bounds the window.
+
+### 1.2 Parts (2026-10-27)
+**Delivered**
+- Migration `0002_parts.sql`: `plm` schema; data-defined lifecycle (`part-default`: In Work → Under Review → Released → Obsolete, transitions tagged manual/workflow/change);
+  admin-defined attribute definitions (string/number/boolean/enum, seeded for parts); part master/revision/iteration; check-out table holding the private working copy.
+- Database guards: iterations immutable; no inserts/check-outs on locked revisions; locked revisions can only change state; masters/revisions never deleted; part identity immutable.
+- `Keel.Parts.PartService`: create (auto `P-nnnnnn`, explicit numbers admin-only), get (404 when unauthorized, denial audited), search (FTS + trigram, SQL access filter, aggregate page banner), check-out / save working copy / check-in / undo (owner or admin), manual transitions, admin "set state" override with reason, markings change with reason and self-lockout prevention. All per-part mutations serialize on `SELECT … FOR UPDATE` of the master.
+- `RevisionScheme` (ASME Y14.35), `AttributeValidator`, `Markings.AggregateBanner`, shared `MarkingColumns` contract in Keel.Security.
+- API: `/api/v1/parts` (GET search, POST create), `/{number}` GET, `/checkout`, `/working-copy`, `/checkin`, `/undo-checkout`, `/state`, `/markings`, plus `/api/v1/metadata/parts`. Outcome → HTTP mapping (400/403 with reason codes/404/409).
+- Web: parts search (per-row marking chips, page banner = aggregate), create form (attributes from metadata, markings), detail (check-out/edit/check-in, transitions with reasons, admin set-state, markings change, history, revision switcher). Access tokens now renew via refresh token.
+- Architecture tests: module reference rules; list queries over `plm.part_master` must interpolate `filter.Sql` or be key lookups.
+
+**Tests:** 44 unit, 34 integration (incl. 12-way concurrent check-out, DB lock enforcement, unauthorized-read auditing), 6 web, smoke script now 16 checks.
+
+**Decisions / assumptions made in this increment**
+- Name, type, unit and source live on the master and are not editable yet (rename is Phase 2). Description and attributes are per iteration.
+- `created_by` / `state_changed_by` store the login name for display; the audit log keeps the stable IdP subject.
+- Manual transitions: In Work ⇄ Under Review. Release only via workflow (1.5); Obsolete only via change notice (1.6). Admins can override with a reason (migration and corrections), audited as `part.set_state`.
+- Markings of locked revisions change only through change control (1.6).
+- Revising (A → B) is implemented in 1.6 inside an ECN (A8); `RevisionScheme.Next` is ready for it.
+
+**Deferred**
+- Revision-level marking overrides (ADR-0002) are not yet stored; markings live on the master.
+- Attribute definitions are seeded by migration; the admin UI is Phase 2.

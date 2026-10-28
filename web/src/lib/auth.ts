@@ -23,7 +23,8 @@ export async function getUserManager(): Promise<UserManager> {
     scope: "openid profile",
     // ADR-0007: tokens live in memory only, never in localStorage/sessionStorage.
     userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
-    automaticSilentRenew: false,
+    // Access tokens are short-lived (5 min); renew with the refresh token before they expire.
+    automaticSilentRenew: true,
   });
   return manager;
 }
@@ -48,4 +49,25 @@ export async function ensureSignedIn(): Promise<User | null> {
 export async function signOut(): Promise<void> {
   const um = await getUserManager();
   await um.signoutRedirect();
+}
+
+/**
+ * Current access token, renewing it with the refresh token when it is expired or about to expire.
+ * If renewal fails (IdP session ended), the user is sent back to sign in.
+ */
+export async function accessToken(): Promise<string> {
+  const um = await getUserManager();
+  let user = await um.getUser();
+  if (!user || user.expired || (user.expires_in ?? 0) < 30) {
+    try {
+      user = await um.signinSilent();
+    } catch {
+      user = null;
+    }
+    if (!user) {
+      await um.signinRedirect({ state: window.location.hash });
+      throw new Error("Your session expired. Signing in again…");
+    }
+  }
+  return user.access_token;
 }

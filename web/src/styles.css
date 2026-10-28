@@ -74,3 +74,29 @@ table.data th, table.data td { text-align: left; padding: 6px 10px; border-botto
 .outcome-denied, .outcome-failure { color: var(--deny); font-weight: 600; }
 .center { text-align: center; margin-top: 20vh; }
 @media (max-width: 600px) { main { padding: 16px; } .facts { grid-template-columns: 1fr; } }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+.panel h3 { margin: 0 0 12px; font-size: 16px; }
+fieldset.grid-form { margin: 0; }
+legend { font-weight: 700; padding: 0 4px; }
+.grid-form .wide { grid-column: 1 / -1; }
+.grid-form .checkbox { flex-direction: row; align-items: center; gap: 8px; }
+textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-weight: 400; }
+.grow { flex: 1; min-width: 160px; }
+.toolbar { flex-wrap: wrap; align-items: center; }
+a.button { display: inline-block; padding: 6px 14px; border-radius: 4px; border: 1px solid var(--accent); text-decoration: none; }
+a.button.secondary { color: var(--accent); }
+.chip { color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.part-header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.part-header h2 { margin: 0 0 4px; font-size: 20px; }
+.part-header p { margin: 0; }
+.badges { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.badge { border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; font-size: 13px; background: var(--surface); }
+.state-released { border-color: var(--permit); color: var(--permit); }
+.state-underreview { border-color: var(--accent); color: var(--accent); }
+.state-obsolete { color: var(--muted); }
+.small { font-size: 13px; margin: 4px 0; }
+.facts .fact-row { display: contents; }
+details.admin { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 8px; }
+details.admin summary { cursor: pointer; color: var(--muted); }
+nav[aria-label="Revisions"] a[aria-current="page"] { font-weight: 700; }
