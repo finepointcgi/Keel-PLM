@@ -16,8 +16,25 @@ docker compose -f deploy/compose/compose.yaml up -d
 |---|---|---|
 | PostgreSQL 17 | `127.0.0.1:55432` | Roles `keel_migrator` (owner) and `keel_app` (least privilege) created by `deploy/compose/initdb/00-roles.sql` |
 | Keycloak 26.4 (dev IdP) | `http://localhost:18080` | Realm `keel` imported from `deploy/compose/keycloak/keel-realm.json`; admin console user `admin` |
+| SeaweedFS 4.47 (dev vault, S3 API) | `http://localhost:18333` | `weed mini`; bucket `keel-vault`; dev-only S3 identity in `deploy/compose/seaweedfs/s3.json` (ADR-0015) |
 
-Ports can be overridden with `KEEL_PG_PORT` / `KEEL_IDP_PORT`. If you change them, update `src/Keel.Api/appsettings.Development.json`.
+Ports can be overridden with `KEEL_PG_PORT` / `KEEL_IDP_PORT` / `KEEL_VAULT_PORT`. If you change them, update `src/Keel.Api/appsettings.Development.json`.
+
+SeaweedFS sizes its volume count from free disk space. If the Docker disk is nearly full it starts with zero writable
+volumes and uploads fail with "no volume server capacity"; free space in Docker (or enlarge its disk) and restart `vault`.
+
+### Vault configuration (`Keel:Vault`)
+| Key | Default | Notes |
+|---|---|---|
+| `ServiceUrl` | – | S3 endpoint; `https://` in production. Path-style addressing is always used. |
+| `AccessKey`, `SecretKey` | – | Store credentials (secrets via environment or mounted files, never images). |
+| `Bucket` | `keel-vault` | Must exist; the application does not create buckets. |
+| `ServerSideEncryption` | `true` (appsettings.json) | SSE-S3 (`AES256`) on every object. |
+| `MaxUploadBytes` | 2147483648 (2 GiB) | At most 5 GiB. |
+| `PartSizeBytes` | 16777216 | Upload part size; the most memory one upload holds. |
+| `MaxPdfStampBytes` | 268435456 | Larger PDFs are delivered in a marked ZIP instead of stamped in place. |
+
+Readiness (`/health/ready`) includes a `vault` check that lists the bucket with the configured identity.
 
 ## 2. Create the audit checkpoint key (once)
 ```bash
@@ -53,7 +70,7 @@ Password for every user is `keel-dev-<username>` (dev realm only).
 ## Tests
 ```bash
 scripts/test.sh          # everything (CI entry point); needs Docker running
-scripts/smoke.sh         # against the running dev stack: real Keycloak tokens -> real API
+scripts/smoke.sh         # against the running dev stack: real Keycloak tokens -> real API (incl. vault upload/download)
 ```
 Verify the audit chain offline:
 ```bash

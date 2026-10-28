@@ -19,7 +19,7 @@ assumption is confirmed or overturned.
 | A10 | Marking non-PDF files | PDFs are stamped in place. Every other format is delivered inside a ZIP with a marking cover sheet (PDF) and a `MARKINGS.txt` manifest. | Phase 1.3 |
 | A11 | Scale (sizing target) | 500 concurrent users, 5 M parts, 50 TB vault, single site. 10-level/50k-line explosion < 2 s at p95. | ADR-0003, ADR-0009 |
 | A12 | Deployment | Docker Compose for dev and small sites; Helm on CNCF-conformant Kubernetes (RKE2 is the reference). Images on Red Hat UBI 9 bases; FIPS-mode RHEL hosts in production. | ADR-0008, ADR-0012 |
-| A13 | Object storage | Code depends on the S3 API only. No product dependency on MinIO given its 2025 licensing/distribution changes. Dev store chosen in increment 1.3. | ADR-0012 |
+| A13 | Object storage | Code depends on the S3 API only. No product dependency on MinIO given its 2025 licensing/distribution changes. Dev/test store: SeaweedFS (Apache-2.0), chosen in increment 1.3. | ADR-0012, ADR-0015 |
 | A14 | CAD / ERP | First CAD target and ERP product unknown. Phase 4 starts with neutral formats and a generic event/REST contract. | ADR-0011 |
 | A15 | Migration timing | Migration is Phase 3, after configuration management (Phase 2). | Phase plan |
 | A16 | UI libraries | Open-source only (MIT/Apache/BSD). No commercial grid. | ADR-0010 |
@@ -28,3 +28,6 @@ assumption is confirmed or overturned.
 | A19 | Effectivity | Serial-number effectivity is primary, then lot/block, then date. Effectivity is carried on BOM usage links and on change-driven revision supersession. | Phase 2 |
 | A20 | Audit retention | 7 years online-verifiable, with optional syslog (RFC 5424 over TLS) forwarding to a SIEM. | ADR-0005 |
 | A21 | Company name | `[Company]` placeholder retained; product name **"Keel PLM"** (working name), namespace `Keel`. | Everywhere |
+| A22 | Distribution statement date | The DoDI 5230.24 "date of determination" is not yet captured with the markings, so stamped statements omit it. Added with the Phase 2 markings model. | `MarkingStatements`, Phase 1.3 |
+| A23 | Reference link resolution | A part's `references` link to a document resolves at read time to the latest Released revision, else the latest revision. `describes` links pin a revision. A simple configuration specification until Phase 2 effectivity/baselines. | ADR-0016 |
+| A24 | Document primary file | A new document may have no primary file; once an iteration has one, later iterations must keep one (replace, not drop). Submitting a document for review requires a primary file. | `DocumentService`, Phase 1.3 |

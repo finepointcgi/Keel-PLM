@@ -38,6 +38,24 @@ FOUND=$(curl -sf -H "Authorization: Bearer $LENA" "$API/api/v1/parts?q=$NUMBER" 
 check "lena search hides $NUMBER"       0     "$FOUND"
 check "alice checks out $NUMBER"        200   "$(status -X POST -H "Authorization: Bearer $ALICE" "$API/api/v1/parts/$NUMBER/checkout")"
 check "alice checks in $NUMBER"         200   "$(status -H "Authorization: Bearer $ALICE" -H 'Content-Type: application/json' -d '{"comment":"smoke"}' "$API/api/v1/parts/$NUMBER/checkin")"
+# Documents and vault (increment 1.3): upload into the S3 vault, marked download, part link, access denials.
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+printf 'Synthetic smoke test procedure %s\n' "$(date +%s)-$RANDOM" > "$TMP/smoke.txt"
+DOCMETA='{"name":"Smoke test procedure","documentType":"Procedure","markings":{"exportJurisdiction":"Itar","distributionStatement":"D","owningOrg":"ENG","usmlCategory":"XI(d)","cuiCategories":["EXPT"],"controllingOffice":"ACME","distributionReason":"Critical technology","program":"ORCA"}}'
+DOC=$(curl -sf -H "Authorization: Bearer $ALICE" --form-string "metadata=$DOCMETA" -F "file=@$TMP/smoke.txt;type=text/plain" "$API/api/v1/documents")
+DOCNUM=$(echo "$DOC" | python3 -c 'import sys,json;print(json.load(sys.stdin)["number"])')
+FILEID=$(echo "$DOC" | python3 -c 'import sys,json;print(json.load(sys.stdin)["iteration"]["files"][0]["id"])')
+check "alice created $DOCNUM with a file" D-    "${DOCNUM:0:2}"
+check "lena cannot download $DOCNUM"      404   "$(status -H "Authorization: Bearer $LENA" "$API/api/v1/documents/$DOCNUM/files/$FILEID/download")"
+MARKS=$(curl -sf -D - -o "$TMP/out.zip" -H "Authorization: Bearer $ALICE" "$API/api/v1/documents/$DOCNUM/files/$FILEID/download" | tr -d '\r' | sed -n 's/^[Xx]-[Kk]eel-[Mm]arkings: //p')
+check "download carries markings header"  "CUI//EXPT %C2%B7 ITAR USML XI(d) %C2%B7 DISTRIBUTION D %C2%B7 PROGRAM ORCA" "$MARKS"
+ENTRIES=$(python3 -c 'import sys,zipfile;print(",".join(zipfile.ZipFile(sys.argv[1]).namelist()))' "$TMP/out.zip")
+check "download is a marked ZIP"          "MARKINGS.pdf,MARKINGS.txt,smoke.txt" "$ENTRIES"
+check "alice checks out $NUMBER again"    200   "$(status -X POST -H "Authorization: Bearer $ALICE" "$API/api/v1/parts/$NUMBER/checkout")"
+check "alice links $DOCNUM to $NUMBER"    200   "$(status -H "Authorization: Bearer $ALICE" -H 'Content-Type: application/json' -d "{\"documentNumber\":\"$DOCNUM\",\"linkType\":\"references\"}" "$API/api/v1/parts/$NUMBER/working-copy/documents")"
+check "alice checks in the link"          200   "$(status -H "Authorization: Bearer $ALICE" -H 'Content-Type: application/json' -d '{"comment":"smoke link"}' "$API/api/v1/parts/$NUMBER/checkin")"
+LINKS=$(curl -sf -H "Authorization: Bearer $ALICE" "$API/api/v1/parts/$NUMBER/documents" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)["links"]))')
+check "$NUMBER lists its document"         1     "$LINKS"
 VALID=$(curl -sf -X POST -H "Authorization: Bearer $AUDREY" "$API/api/v1/audit/verify" | python3 -c 'import sys,json;print(json.load(sys.stdin)["valid"])')
 check "audit chain still verifies"     True  "$VALID"
 echo "smoke test passed"
