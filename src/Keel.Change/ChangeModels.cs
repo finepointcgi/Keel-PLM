@@ -155,12 +155,14 @@ public sealed record ObjectChanges(IReadOnlyList<ChangeSummary> Open, ChangeSumm
 public sealed record ImpactObject(
     Guid AffectedId, bool Redacted, string Action, string? Key, string? Name, string? Revision, string? Banner,
     IReadOnlyList<WhereUsedEntry> WhereUsed, int RedactedParents, int MaxLevel,
-    IReadOnlyList<LinkedDocument> Documents, StructureComparison? Compare, string? CompareNote);
+    IReadOnlyList<LinkedDocument> Documents, StructureComparison? Compare, string? CompareNote,
+    /// <summary>MBOMs derived from this part's EBOM that go stale when it is revised (2.3, ADR-0024), and how many more the caller may not read.</summary>
+    IReadOnlyList<StaleMbom>? StaleMboms = null, int HiddenMboms = 0);
 
 public sealed record ImpactConflict(string Kind, string ChangeType, string ChangeNumber, string Title, string StateLabel, string? ObjectKey, string Banner);
 
 public sealed record ImpactSummary(
-    int AffectedObjects, int HiddenObjects, int WhereUsedParents, int RedactedParents, int Documents, int RedactedDocuments, int OpenConflicts, int StructureChanges);
+    int AffectedObjects, int HiddenObjects, int WhereUsedParents, int RedactedParents, int Documents, int RedactedDocuments, int OpenConflicts, int StructureChanges, int StaleMboms = 0);
 
 public sealed record ImpactReport(string Number, IReadOnlyList<ImpactObject> Objects, IReadOnlyList<ImpactConflict> Conflicts, ImpactSummary Summary, string Banner,
     IReadOnlyList<Markings> Shown);

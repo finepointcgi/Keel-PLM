@@ -16,6 +16,12 @@ public static class BomModule
         services.AddSingleton<EffectivityService>();
         services.AddSingleton<IRevisionEffectivity, RevisionEffectivityService>();
         services.AddSingleton<IWorkflowObjectGateway>(sp => new BaselineWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>()));
+        // ---- Increment 2.3: EBOM / MBOM and reconciliation (ADR-0024)
+        services.AddSingleton<MbomService>();
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new MbomWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>()));
+        services.AddSingleton<IManufacturingBomSource, MbomBomSource>();
+        services.AddSingleton<IManufacturingImpactProvider, MbomImpactProvider>();
+        // ---- end 2.3
         return services;
     }
 }

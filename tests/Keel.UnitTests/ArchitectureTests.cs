@@ -56,6 +56,8 @@ public sealed partial class ArchitectureTests
             if (file.EndsWith("PartChangeGateway.cs", StringComparison.Ordinal)) continue;
             // The seed tool's one fresh-database probe (a yes/no administrative question with no end user); everything else it does goes through services.
             if (file.EndsWith("Keel.Seed" + Path.DirectorySeparatorChar + "DatabaseState.cs", StringComparison.Ordinal)) continue;
+            // The MBOM reconciliation reads two facts about children (Make assembly? MBOM of the plant released?) as inputs of the system's own check, never shown (ADR-0024).
+            if (file.EndsWith("MbomReconcileInputs.cs", StringComparison.Ordinal)) continue;
             // The migration reconciler (ADR-0023) is an administrative comparison with no end user: it counts and hashes the objects of one import
             // batch (ids, numbers, markings columns) and returns only counts and source ids, never names or descriptions. This is the ONLY file of the
             // importer that selects from a marked table; every write goes through ImportWriter.
@@ -87,6 +89,7 @@ public sealed partial class ArchitectureTests
         foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src", "Keel.Bom"), "*.cs", SearchOption.AllDirectories)
                      .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
         {
+            if (file.EndsWith("MbomReconcileInputs.cs", StringComparison.Ordinal)) continue; // see List_queries_over_marked_tables_use_the_read_filter
             var text = File.ReadAllText(file);
             foreach (Match m in SqlTouchesPartMaster().Matches(text))
             {
@@ -156,6 +159,48 @@ public sealed partial class ArchitectureTests
         Assert.True(offenders.Count == 0, "Unfiltered baseline item reads:\n" + string.Join("\n", offenders));
     }
 
+    /// <summary>
+    /// ADR-0024: MBOM lines, working lines and reconciliation findings name parts, so every statement that reads them for display joins the part master through the
+    /// read filter. The files listed here read them as the system's own view (hashing, copying inside an authorized transaction, reconciliation inputs).
+    /// </summary>
+    [Fact]
+    public void Mbom_structure_reads_apply_the_read_filter_or_stay_in_the_system_view_files()
+    {
+        var root = FindRepoRoot();
+        var systemView = new[] { "MbomStore.cs", "MbomService.cs", "MbomService.Reconcile.cs", "MbomService.Lines.cs", "MbomService.Generate.cs", "MbomWorkflowGateway.cs", "MbomReconcileInputs.cs", "MbomIntegrations.cs" };
+        var offenders = new List<string>();
+        var checkedStatements = 0;
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src", "Keel.Bom"), "Mbom*.cs"))
+        {
+            var text = File.ReadAllText(file);
+            foreach (Match m in MbomStructureRead().Matches(text))
+            {
+                checkedStatements++;
+                var start = Math.Max(0, m.Index - 700);
+                var window = text.Substring(start, Math.Min(1700, text.Length - start));
+                if (!window.Contains("filter.Sql}", StringComparison.OrdinalIgnoreCase) && !systemView.Contains(Path.GetFileName(file)))
+                    offenders.Add($"{Path.GetFileName(file)}: {m.Value.Trim()}");
+            }
+        }
+        Assert.True(checkedStatements >= 10, "The rule found too few statements; the pattern is probably broken.");
+        Assert.True(offenders.Count == 0, "Unfiltered MBOM structure reads outside the system-view files:\n" + string.Join("\n", offenders));
+        // The reader-facing loaders carry the filter.
+        Assert.Contains("LEFT JOIN plm.part_master cm ON cm.id = u.child_master_id AND {filter.Sql}", File.ReadAllText(Path.Combine(root, "src", "Keel.Bom", "MbomService.Lines.cs")), StringComparison.Ordinal);
+        Assert.Contains("LEFT JOIN plm.part_master cm ON cm.id = f.child_master_id AND {filter.Sql}", File.ReadAllText(Path.Combine(root, "src", "Keel.Bom", "MbomService.Reconcile.cs")), StringComparison.Ordinal);
+    }
+
+    /// <summary>Only the BOM module's own files touch the mbom schema (other modules use the interfaces in Keel.Core).</summary>
+    [Fact]
+    public void Only_the_bom_module_touches_the_mbom_schema()
+    {
+        var root = FindRepoRoot();
+        var sep = Path.DirectorySeparatorChar;
+        var offenders = Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{sep}obj{sep}", StringComparison.Ordinal) && !f.Contains($"{sep}Keel.Bom{sep}", StringComparison.Ordinal))
+            .Where(f => MbomSchema().IsMatch(File.ReadAllText(f))).Select(f => Path.GetRelativePath(root, f)).ToList();
+        Assert.True(offenders.Count == 0, "These files read the mbom schema directly: " + string.Join(", ", offenders));
+    }
+
     /// <summary>ADR-0014: every routable page renders through PageFrame, which requires a marking banner.</summary>
     [Fact]
     public void Every_page_renders_through_page_frame()
@@ -210,8 +255,14 @@ public sealed partial class ArchitectureTests
     [GeneratedRegex(@"(FROM|JOIN)\s+(wf\.instance)\b", RegexOptions.IgnoreCase)]
     private static partial Regex WorkflowInstanceOrDocuments();
 
-    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change|cfg\.baseline)\b[^\n]*", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change|cfg\.baseline|mbom\.mbom)\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlFromMarkedTable();
+
+    [GeneratedRegex(@"(FROM|JOIN)\s+mbom\.(usage|working_usage|reconciliation_finding)\b[^\n]*", RegexOptions.IgnoreCase)]
+    private static partial Regex MbomStructureRead();
+
+    [GeneratedRegex(@"\b(FROM|JOIN|INTO|UPDATE)\s+mbom\.\w+", RegexOptions.IgnoreCase)]
+    private static partial Regex MbomSchema();
 
     [GeneratedRegex(@"(FROM|JOIN)\s+plm\.part_master\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlTouchesPartMaster();
@@ -223,7 +274,7 @@ public sealed partial class ArchitectureTests
     private static partial Regex OtherModuleTables();
 
     // source_id: the objects created from one already-authorized change (counted by process rules; every list shown to a user carries the filter).
-    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key|source_id)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key|source_id|part_master_id)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
     private static partial Regex KeyLookup();
 
     private static string FindRepoRoot()
