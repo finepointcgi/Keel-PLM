@@ -25,3 +25,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0018](0018-workflow-and-esignature.md) | Workflow engine and e-signature | Accepted |
 | [0019](0019-change-management.md) | Change management (PR/ECR/ECN/CT, revise-in-change) | Accepted |
 | [0020](0020-container-images-and-offline-bundle.md) | Container images and offline bundle | Accepted |
+| [0023](0023-migration-importers.md) | Migration importers (PLMXML, Windchill extract, canonical package) | Accepted |

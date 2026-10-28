@@ -4,8 +4,8 @@ Keel is an on-prem, air-gapped PLM platform replacing Teamcenter/Windchill for `
 Read this file, then [assumptions.md](assumptions.md) and [adr/README.md](adr/README.md), before changing code.
 
 ## Status
-- **Phase 1:** 1.1 Foundations, 1.2 Parts, 1.3 Documents and vault, 1.4 BOM, **Phase 1 is complete (2026-10-28)**: 1.1-1.7 merged (foundations, parts, documents/vault, BOM, workflow/e-signature, change management, seed data + E2E + demo script, container image/Helm/offline bundle). Next: Phase 2 (configuration management: effectivity, baselines, EBOM/MBOM, admin UI, classification).
-- Per-increment notes (delivered, tests, decisions, deferred): [1.3](increments/1.3-documents.md), [1.4](increments/1.4-bom.md), [1.5](increments/1.5-workflow.md), [1.6](increments/1.6-change.md), [1.7 demo](increments/1.7-demo.md), [1.7 packaging](increments/1.7-packaging.md). Demo walkthrough: [demo-script.md](demo-script.md). Operations: [docs/ops](ops/).
+- **Phase 1:** 1.1 Foundations, 1.2 Parts, 1.3 Documents and vault, 1.4 BOM, **Phase 1 is complete (2026-10-28)**: 1.1-1.7 merged (foundations, parts, documents/vault, BOM, workflow/e-signature, change management, seed data + E2E + demo script, container image/Helm/offline bundle). Phase 3 migration importers merged (2026-10-28; docs in docs/migration/). In flight: Phase 2a baselines + effectivity (migration 0008), 2b admin UI + classification (migration 0009). Still to do: EBOM/MBOM reconciliation, ERP/TDP integrations, compliance gaps.
+- Per-increment notes (delivered, tests, decisions, deferred): [1.3](increments/1.3-documents.md), [1.4](increments/1.4-bom.md), [1.5](increments/1.5-workflow.md), [1.6](increments/1.6-change.md), [1.7 demo](increments/1.7-demo.md), [1.7 packaging](increments/1.7-packaging.md), [3.0 migration](increments/3.0-migration.md). Demo walkthrough: [demo-script.md](demo-script.md). Operations: [docs/ops](ops/).
 - Phase plan: 1.1 Foundations → 1.2 Parts → 1.3 Documents and vault → 1.4 BOM → 1.5 Review and release → 1.6 Change → 1.7 Demo-ready.
   Later phases: 2 Configuration management, 3 Migration, 4 Integrations, 5 Production operations.
 
@@ -16,6 +16,7 @@ src/Keel.Security    ABAC policy: in-memory evaluator + SQL filter builder (ADR-
 src/Keel.Audit       hash-chained audit log, checkpoints, verifier (ADR-0005)
 src/Keel.Documents   documents, vault (S3), marked downloads, part-document links
 src/Keel.Bom         BOM structure, explosion, where-used, compare, CSV
+src/Keel.Migration   migration importers: readers, mapping, dry-run, load, reconcile (CLI: src/Keel.Import)
 src/Keel.Change      change management: PR/ECR/ECN/CT, revise-in-change, impact analysis
 src/Keel.Workflow    workflow engine, e-signature with step-up, user directory
 src/Keel.Parts       parts: master/revision/iteration, lifecycle, attributes, check-out/check-in, search
