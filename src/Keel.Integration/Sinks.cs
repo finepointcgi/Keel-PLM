@@ -178,7 +178,7 @@ public sealed class WebhookSink(IntegrationOptions options, SecretResolver secre
     {
         var code = (int)status;
         if (code is >= 200 and < 300) return DeliveryOutcome.Ok;
-        if (code is >= 300 and < 400) return DeliveryOutcome.Permanent($"HTTP {code}: redirects are never followed{(location is null ? "" : $" (to {location.GetLeftPart(UriPartial.Path)})")}; fix the endpoint URL.");
+        if (code is >= 300 and < 400) return DeliveryOutcome.Permanent($"HTTP {code}: redirects are never followed{(location is null ? "" : $" (to {(location.IsAbsoluteUri ? location.GetLeftPart(UriPartial.Path) : location.OriginalString.Split('?')[0])})")}; fix the endpoint URL.");
         if (code == 410) return DeliveryOutcome.Permanent("HTTP 410: the endpoint says it is gone; disable or fix the sink, then requeue.");
         if (code is 408 or 429) return DeliveryOutcome.Retry($"HTTP {code}");
         if (code is >= 400 and < 500) return DeliveryOutcome.Permanent($"HTTP {code}: the endpoint rejected the event permanently.");
@@ -214,17 +214,28 @@ public sealed class WebhookSink(IntegrationOptions options, SecretResolver secre
                 // Every resolved address must pass, so a name that also resolves somewhere forbidden is refused outright.
                 foreach (var a in addresses)
                     if (guard.CheckAddress(host, a) is { } problem) throw new SsrfRefusedException(problem);
-                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                try
+                // Try the addresses in order (a name often resolves to both ::1 and 127.0.0.1); all of them already passed the guard.
+                SocketException? last = null;
+                foreach (var address in addresses)
                 {
-                    await socket.ConnectAsync(new IPEndPoint(addresses[0], context.DnsEndPoint.Port), token);
-                    return new NetworkStream(socket, ownsSocket: true);
+                    var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), token);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch (SocketException e)
+                    {
+                        socket.Dispose();
+                        last = e;
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
                 }
-                catch
-                {
-                    socket.Dispose();
-                    throw;
-                }
+                throw last ?? new SocketException((int)SocketError.HostNotFound);
             },
         };
         return new HttpClient(handler, disposeHandler: true)

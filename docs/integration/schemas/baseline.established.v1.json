@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/baseline.established.v1.json",
+  "title": "baseline.established v1",
+  "description": "A baseline was established. The content is available through the pull API and the TDP export.",
+  "type": "object",
+  "properties": {
+    "baselineId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "number": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "milestone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "root": {
+      "type": "object",
+      "properties": {
+        "number": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "iteration": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "revision",
+        "iteration"
+      ],
+      "additionalProperties": false
+    },
+    "configuration": {
+      "type": "string"
+    },
+    "itemCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "documentCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "contentSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "establishedAt": {
+      "type": "string"
+    },
+    "establishReason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "baselineId",
+    "number",
+    "name",
+    "type",
+    "state",
+    "milestone",
+    "root",
+    "configuration",
+    "itemCount",
+    "documentCount",
+    "contentSha256",
+    "establishedAt",
+    "establishReason"
+  ],
+  "additionalProperties": false
+}

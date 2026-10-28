@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/part.obsoleted.v1.json",
+  "title": "part.obsoleted v1",
+  "description": "A released part revision became obsolete (change notice or administrator override).",
+  "type": "object",
+  "properties": {
+    "partId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "revisionId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "number": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "partType": {
+      "type": "string",
+      "enum": [
+        "Assembly",
+        "Component",
+        "Standard",
+        "RawMaterial"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "Make",
+        "Buy"
+      ]
+    },
+    "defaultUnit": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "iteration": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "attributes": {
+      "type": "object"
+    },
+    "via": {
+      "type": "string",
+      "enum": [
+        "workflow",
+        "change",
+        "admin"
+      ]
+    },
+    "stateChangedBy": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "partId",
+    "revisionId",
+    "number",
+    "name",
+    "partType",
+    "source",
+    "defaultUnit",
+    "revision",
+    "iteration",
+    "state",
+    "description",
+    "attributes",
+    "via",
+    "stateChangedBy"
+  ],
+  "additionalProperties": false
+}

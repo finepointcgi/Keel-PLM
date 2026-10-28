@@ -25,7 +25,8 @@ public sealed class SecretResolver(IntegrationOptions options)
         if (!options.ClientCertificates.TryGetValue(name, out var path)) throw new InvalidOperationException($"Client certificate '{name}' is not configured (Keel:Integration:ClientCertificates:{name}).");
         using var pem = X509Certificate2.CreateFromPemFile(path);
         // Re-import through PKCS#12 so the private key is usable by TLS on every platform.
-        return X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pfx), null);
+        var password = Guid.NewGuid().ToString("N"); // some platforms refuse a PKCS#12 without a password
+        return X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pfx, password), password);
     }
 
     public X509Certificate2Collection CaBundle(string name)

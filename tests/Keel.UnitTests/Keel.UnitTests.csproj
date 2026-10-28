@@ -23,5 +23,6 @@
     <ProjectReference Include="..\..\src\Keel.Web\Keel.Web.csproj" />
     <ProjectReference Include="..\..\src\Keel.Migration\Keel.Migration.csproj" />
     <ProjectReference Include="..\Keel.Migration.Fixtures\Keel.Migration.Fixtures.csproj" />
+    <ProjectReference Include="..\Keel.TestSupport\Keel.TestSupport.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/envelope.v1.json",
+  "title": "Keel event envelope v1",
+  "description": "The signed envelope delivered to sinks and returned by the pull API. 'data' is validated by the schema named type.v{version}.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "type": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "occurredAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$"
+    },
+    "source": {
+      "type": "string",
+      "const": "keel-plm"
+    },
+    "aggregate": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "number": {
+          "type": "string"
+        },
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "number",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "correlationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "actor": {
+      "type": "string"
+    },
+    "markings": {
+      "type": "object",
+      "properties": {
+        "banner": {
+          "type": "string"
+        },
+        "exportJurisdiction": {
+          "type": "string",
+          "enum": [
+            "None",
+            "Ear",
+            "Itar"
+          ]
+        },
+        "eccn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usmlCategory": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cuiCategories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "distributionStatement": {
+          "type": "string",
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "F"
+          ]
+        },
+        "controllingOffice": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "program": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owningOrg": {
+          "type": "string"
+        },
+        "exportAuthorizations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "banner",
+        "exportJurisdiction",
+        "eccn",
+        "usmlCategory",
+        "cuiCategories",
+        "distributionStatement",
+        "controllingOffice",
+        "program",
+        "owningOrg",
+        "exportAuthorizations"
+      ],
+      "additionalProperties": false
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "version",
+    "occurredAt",
+    "source",
+    "aggregate",
+    "correlationId",
+    "actor",
+    "markings",
+    "data"
+  ],
+  "additionalProperties": false
+}
