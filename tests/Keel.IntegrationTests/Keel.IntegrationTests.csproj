@@ -10,12 +10,14 @@
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
     <ProjectReference Include="..\..\src\Keel.Security\Keel.Security.csproj" />
     <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\..\src\Keel.Api\Keel.Api.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Viewer\Keel.Viewer.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
     <ProjectReference Include="..\..\src\Keel.Documents\Keel.Documents.csproj" />
     <ProjectReference Include="..\..\src\Keel.Bom\Keel.Bom.csproj" />

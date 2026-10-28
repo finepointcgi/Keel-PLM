@@ -1,0 +1,16 @@
+{
+  "name": "keel-viewer-vendor",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Maintainer-only tooling that produces the vendored viewer assets under src/Keel.Web/wwwroot/viewer/vendor. Never runs at product runtime.",
+  "type": "module",
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": {
+    "three": "0.186.1",
+    "occt-import-js": "0.0.23",
+    "pdfjs-dist": "4.10.38"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

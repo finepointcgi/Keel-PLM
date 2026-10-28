@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Not "Keel.Viewer": a namespace of that name would shadow identifiers called Viewer (test subjects, fields) in the other modules. -->
+    <RootNamespace>Keel.Viewing</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
+    <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Keel.UnitTests" />
+    <InternalsVisibleTo Include="Keel.IntegrationTests" />
+  </ItemGroup>
+</Project>

@@ -179,3 +179,4 @@ pre.payload { overflow: auto; max-height: 320px; background: var(--surface); bor
   background: #fde68a; color: #1b1f24; border: 1px solid #b45309; border-radius: 6px; padding: 10px 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
 .session-warning button { background: #1b1f24; border-color: #1b1f24; }
 @media (max-width: 600px) { .lock-panel { margin-top: 4vh; padding: 16px; } .topbar .session-hint { display: none; } }
+.badge.file-type { font-size: 11px; padding: 0 6px; margin-left: 6px; letter-spacing: 0.04em; }

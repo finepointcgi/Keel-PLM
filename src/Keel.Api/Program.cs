@@ -117,6 +117,7 @@ builder.Services.AddSingleton<AuditQueries>();
 builder.Services.AddSingleton<AuditLogService>();
 builder.Services.AddSingleton<Keel.Parts.PartService>();
 builder.Services.AddKeelDocuments(builder.Configuration);
+builder.Services.AddKeelViewerHost(builder.Configuration); // 6.0 file viewer
 Keel.Bom.BomModule.AddKeelBom(builder.Services); // 1.4 BOM
 builder.Services.AddSingleton<IWorkflowObjectGateway, Keel.Parts.PartWorkflowGateway>();
 builder.Services.AddSingleton<IChangeObjectGateway, Keel.Parts.PartChangeGateway>(); // 1.6 change management
@@ -209,6 +210,7 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 if (!app.Environment.IsDevelopment()) app.UseHsts();
 app.UseSecurityHeaders(Uri.TryCreate(options.Auth.Authority, UriKind.Absolute, out var idp) ? idp.GetLeftPart(UriPartial.Authority) : null);
+app.UseKeelViewerHeaders(); // 6.0: the viewer's own CSP on /viewer/* and its assets only
 app.UseCorrelationId();
 app.UseHttpMetrics();
 app.UseAuthentication();
@@ -233,6 +235,7 @@ app.MapKeelApi();
 app.MapPartEndpoints();
 app.MapDocumentEndpoints();
 app.MapComplianceEndpoints(); // 5.0 compliance: scan coverage, rescan, vault GC reports
+app.MapViewerEndpoints(); // 6.0 file viewer
 app.MapBomEndpoints(); // 1.4 BOM
 app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management

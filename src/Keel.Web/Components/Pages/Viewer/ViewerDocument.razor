@@ -1,0 +1,89 @@
+@* STANDALONE viewer document (increment 6.0, ADR-0027). Deliberately NOT a routable Blazor page: it is rendered to a string by the viewer endpoint
+   (full navigation, no circuit, no blazor.web.js) and is served with the viewer's own Content-Security-Policy. It renders the marking banner of the
+   viewed object at the top and the bottom itself; an architecture test requires both banners, the distribution statement and that their text comes from
+   Model.Banner, which the host takes from the object's markings. *@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>@Model.Title · Keel PLM viewer</title>
+    <link rel="stylesheet" href="@(ViewerUi.AssetBase)viewer.css" />
+</head>
+<body class="viewer-page" data-viewer="@Model.ViewerType" data-status="@Model.Status" data-format="@Model.FormatId"
+      data-meta-url="@Model.MetaUrl" data-content-url="@Model.ContentUrl" data-asset-base="@ViewerUi.AssetBase" data-max-triangles="@Model.MaxTriangles">
+    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="note" aria-label="Marking banner (top)" data-position="top" data-viewer-banner>@Model.Banner</div>
+    <header class="viewer-bar">
+        <a class="viewer-back" href="@Model.BackUrl">Back to document</a>
+        <h1 class="viewer-title" tabindex="-1">@Model.Title</h1>
+        @if (Model.Status != "not-found")
+        {
+            <span class="viewer-badge">@Model.FormatLabel</span>
+            <dl class="viewer-facts" aria-label="File details">
+                <dt>Document</dt><dd>@Model.DocumentNumber @Model.IterationLabel</dd>
+                <dt>Size</dt><dd>@Model.Size</dd>
+                <dt>SHA-256</dt><dd><code title="@Model.Sha256">@(Model.Sha256 is { Length: >= 16 } sha ? sha[..16] + "…" : Model.Sha256)</code></dd>
+            </dl>
+            @if (Model.DownloadUrl is not null)
+            {
+                <a class="viewer-button" href="@Model.DownloadUrl" download>Download (marked)</a>
+            }
+        }
+    </header>
+    <div id="viewer-toolbar" class="viewer-toolbar" role="toolbar" aria-label="Viewer tools" hidden></div>
+    <main id="viewer-root" class="viewer-main" tabindex="-1">
+        @if (Model.Status == "not-found")
+        {
+            <p class="viewer-error" role="alert">@Model.Message</p>
+        }
+        else if (Model.Status != "ready")
+        {
+            <section class="viewer-panel" aria-labelledby="viewer-panel-title">
+                <h2 id="viewer-panel-title">@(Model.Status switch { "too-large" => "Too large to preview", "blocked" => "Preview not available", _ => "No preview for this type" })</h2>
+                <p role="status">@Model.Message</p>
+                @if (Model.Warning is not null && Model.Warning != Model.Message) { <p class="viewer-warning">@Model.Warning</p> }
+                <dl class="viewer-details">
+                    <dt>File name</dt><dd>@Model.FileName</dd>
+                    <dt>Type</dt><dd>@Model.FormatLabel</dd>
+                    <dt>Size</dt><dd>@Model.Size</dd>
+                    <dt>SHA-256</dt><dd><code>@Model.Sha256</code></dd>
+                </dl>
+                @if (Model.DownloadUrl is not null) { <a class="viewer-button" href="@Model.DownloadUrl" download>Download (marked)</a> }
+            </section>
+        }
+        else
+        {
+            <p id="viewer-status" class="viewer-status" role="status" aria-live="polite">Loading the file…</p>
+            <progress id="viewer-progress" class="viewer-progress" max="100" hidden></progress>
+            <div id="viewer-stage" class="viewer-stage" data-viewer-stage></div>
+            <noscript><p class="viewer-error">The viewer needs JavaScript. @(Model.DownloadUrl is null ? "" : "You can download the file instead.")</p></noscript>
+        }
+    </main>
+    @if (Model.Status != "not-found")
+    {
+        <section class="viewer-notices" aria-label="Distribution statement and handling notices" data-viewer-notices>
+            @if (Model.DistributionStatement is { } statement)
+            {
+                <p class="viewer-distribution" data-viewer-distribution>@statement</p>
+            }
+            @if (Model.Notices.Any(n => n != Model.DistributionStatement))
+            {
+                <details>
+                    <summary>Other handling notices</summary>
+                    @foreach (var n in Model.Notices.Where(n => n != Model.DistributionStatement)) { <p>@n</p> }
+                </details>
+            }
+        </section>
+    }
+    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="note" aria-label="Marking banner (bottom)" data-position="bottom" data-viewer-banner>@Model.Banner</div>
+    @if (Model.Status == "ready")
+    {
+        <script type="module" src="@(ViewerUi.AssetBase)viewer.js"></script>
+    }
+</body>
+</html>
+
+@code {
+    [Parameter, EditorRequired] public required ViewerPageModel Model { get; set; }
+}

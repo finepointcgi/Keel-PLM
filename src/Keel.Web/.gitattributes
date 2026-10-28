@@ -1,0 +1,2 @@
+# Vendored and hashed viewer files must stay byte-for-byte as built (wwwroot/viewer/manifest.json holds their SHA-256): no line-ending conversion.
+wwwroot/viewer/** -text

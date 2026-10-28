@@ -31,3 +31,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0024](0024-ebom-mbom.md) | EBOM, MBOM and reconciliation | Accepted |
 | [0025](0025-integration-outbox-erp-tdp.md) | Integration outbox, ERP events and TDP export | Accepted |
 | [0026](0026-session-lock-scanning-gc-siem.md) | Session lock, upload scanning, vault GC, SIEM forwarding | Accepted |
+| [0027](0027-file-viewer.md) | In-browser file viewer (3D, PDF, images) | Accepted |

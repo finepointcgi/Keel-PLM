@@ -63,6 +63,8 @@ public sealed class E2EFixture : IAsyncLifetime
     public DemoManifest Manifest { get; private set; } = null!;
     public IBrowser Browser { get; private set; } = null!;
     public NpgsqlDataSource AppDb { get; private set; } = null!;
+    /// <summary>The throwaway vault of this run (viewer tests put their own synthetic files into it through the real services).</summary>
+    public VaultOptions Vault { get; private set; } = null!;
 
     public async ValueTask InitializeAsync()
     {
@@ -84,6 +86,7 @@ public sealed class E2EFixture : IAsyncLifetime
             await Task.WhenAll(postgres, vault, keycloak);
             var (appCs, migratorCs) = await postgres;
             var vaultOptions = await vault;
+            Vault = vaultOptions;
             IdpUrl = await keycloak;
             Log($"Postgres, vault and Keycloak are up (idp {IdpUrl}).");
 
@@ -118,7 +121,12 @@ public sealed class E2EFixture : IAsyncLifetime
             var exit = Microsoft.Playwright.Program.Main(["install", "chromium"]);
             if (exit != 0) throw new InvalidOperationException($"'playwright install chromium' failed with exit code {exit}.");
             _playwright = await Playwright.CreateAsync();
-            Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+            {
+                Headless = true,
+                // The 3D viewer needs WebGL; a CI container has no GPU, so Chromium renders it in software (SwiftShader).
+                Args = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--enable-webgl"],
+            });
             Log("Chromium launched.");
         }
         catch (Exception e)
