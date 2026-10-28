@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA1861;CA2000;CA1849;CA1031;CA1303;xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="PdfPig" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Keel.Seed\Keel.Seed.csproj" />
+    <!-- Builds the real host that the fixture starts as a child process; nothing from it is referenced in-process. -->
+    <ProjectReference Include="..\..\src\Keel.Api\Keel.Api.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

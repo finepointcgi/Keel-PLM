@@ -74,6 +74,30 @@ Verify the audit chain offline:
 KEEL_AUDIT_CONNECTION="Host=localhost;Port=55432;Database=keel;Username=keel_app;Password=keel_app_dev" dotnet run --project src/Keel.AuditCli -- verify --public-key deploy/compose/secrets/checkpoint-signing.pub.pem
 ```
 
+## Demo data (`keel-seed`, increment 1.7)
+`src/Keel.Seed` fills a **migrated** database with synthetic data, entirely through the module services (so every action is authorized, validated and audited, and the audit chain verifies at the end). It needs the vault (documents have real PDFs).
+```bash
+scripts/seed.sh                                   # = dotnet run --project src/Keel.Seed -- --scenario demo
+dotnet run --project src/Keel.Seed -- --scenario scale --lines 50000 --levels 8 --allow-non-empty   # bulk structure for performance demos (off by default)
+```
+| Option | Meaning |
+|---|---|
+| `--scenario demo` | The fictional ORCA sensor pod: 63 parts, 74 BOM lines over 5 levels, 12 documents (generated PDFs plus a CAD placeholder), 58 released revisions with e-signatures, and changes in flight (PR, ECR, ECNs, tasks). It prints the numbers the [demo script](demo-script.md) uses. |
+| `--scenario scale` | Wraps the performance-gate generator (`--lines`, `--levels`, `--root-children`, `--released`, `--prefix`). Bulk SQL as `keel_app`: guards apply, but generated rows have no per-object audit events. |
+| `--allow-non-empty` | The tool refuses when `plm.part_master` already has rows (exit code 2); this bypasses that explicitly. |
+| `--connection`, `--settings`, `--public-key`, `--manifest` | Override the connection, add an appsettings file, verify checkpoint signatures, write the summary as JSON. |
+
+The connection is resolved like the API's: `src/Keel.Api/appsettings.Development.json` (found from the working directory), then environment variables with the same keys (`Keel__Database__AppConnectionString`, `Keel__Vault__ServiceUrl`, …), then `--connection`. **It defaults to the dev stack, so set the variables when you mean another database.**
+Users come from the dev realm itself (the realm JSON is embedded in the tool, so ids and attributes cannot drift) and are recorded in `identity.user_directory` through the same upsert the application runs at sign-in; passwords are never read. One seed-only identity, `kraken-eng` (programs KRAKEN and ORCA), authors the KRAKEN part and is not a login. Exit codes: 0 ok, 1 failure, 2 refused (non-empty), 3 audit chain invalid.
+Reset the dev database before re-seeding: see "Reset" in [demo-script.md](demo-script.md).
+
+## End-to-end tests (Playwright, increment 1.7)
+```bash
+scripts/e2e.sh                                       # builds, then runs tests/Keel.E2E with KEEL_E2E=1
+scripts/e2e.sh -- --filter-class "*HappyPathTests"   # one class
+```
+The suite is skipped unless `KEEL_E2E=1`, so `dotnet test` of the other projects stays fast. It needs Docker and, once, a Chromium download (Playwright's installer runs from the test setup; the product never needs the network). The fixture starts **its own** PostgreSQL, SeaweedFS and Keycloak containers (tmpfs, random host ports, dev realm imported with a patched redirect URI), applies migrations with `Keel.Api --migrate`, seeds the ORCA data, and runs the real `Keel.Api` host as a child process (`Keel__Workflow__StepUpMaxAgeSeconds=30`, the product minimum, so the step-up round trip is testable) on a free port. It never uses ports 5080, 18080, 55432 or 18333, and every container is removed at the end. Logs and, for failures, screenshots and Playwright traces are written to `TestResults/e2e/` (`npx playwright show-trace` or <https://trace.playwright.dev> opens a trace zip).
+
 ## Production notes (summary; full ops guide is Phase 5)
 - Set `Keel__Security__RequireFips=true` (the default in `appsettings.json`) on FIPS-mode RHEL hosts.
 - Restrict `/metrics` to the monitoring network (NetworkPolicy / host firewall).

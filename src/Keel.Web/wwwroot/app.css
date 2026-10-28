@@ -121,3 +121,11 @@ fieldset.slot { border: 1px solid var(--border); border-radius: 6px; padding: 8p
 fieldset.slot ul { list-style: none; padding: 0; margin: 6px 0; }
 fieldset.slot li { display: flex; gap: 12px; align-items: center; padding: 2px 0; }
 .release { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px; }
+
+/* Increment 1.7 (found by the phone-width E2E test): the top bar must wrap instead of widening the page. */
+.topbar nav { flex-wrap: wrap; }
+@media (max-width: 600px) { .topbar { padding: 10px 16px; gap: 12px; } }
+/* Wide tables inside panels scroll within the panel, never the page. */
+.panel { overflow-x: auto; }
+/* Visually hidden text is absolutely positioned; contain it in the scrolling panel so it cannot widen the page. */
+.panel, .table-wrap { position: relative; }
