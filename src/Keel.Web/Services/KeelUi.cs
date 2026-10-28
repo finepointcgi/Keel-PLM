@@ -4,6 +4,7 @@ using Keel.Audit;
 using Keel.Core;
 using Keel.Parts;
 using Keel.Security;
+using Keel.Workflow;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -34,6 +35,10 @@ public static class KeelUi
     public const string CookieScheme = CookieAuthenticationDefaults.AuthenticationScheme;
     public const string OidcScheme = OpenIdConnectDefaults.AuthenticationScheme;
     public const string SessionExpiresClaim = "keel_session_expires";
+    /// <summary>Authentication property marking an OIDC challenge as an e-signature step-up (prompt=login, max_age=0).</summary>
+    public const string StepUpItem = "keel.step_up";
+    public const string StepUpPath = "/account/step-up";
+    private const string StepUpFailure = "keel.step_up_refused";
 
     /// <summary>Registers the Blazor UI and its server-side OIDC sign-in (ADR-0014). Call after AddAuthentication().</summary>
     public static AuthenticationBuilder AddKeelUi(this AuthenticationBuilder auth, KeelUiOptions options, bool secureCookies)
@@ -75,10 +80,24 @@ public static class KeelUi
             o.SignInScheme = CookieScheme;
             o.TokenValidationParameters.NameClaimType = "preferred_username";
             o.TokenValidationParameters.RoleClaimType = "roles";
-            o.Events.OnTokenValidated = ctx =>
+            // E-signature step-up (A9, ADR-0007): force a fresh login and require auth_time to be returned.
+            o.Events.OnRedirectToIdentityProvider = ctx =>
             {
-                var expires = DateTimeOffset.UtcNow.Add(options.SessionLifetime).ToUnixTimeSeconds();
-                ((ClaimsIdentity)ctx.Principal!.Identity!).AddClaim(new Claim(SessionExpiresClaim, expires.ToString(CultureInfo.InvariantCulture)));
+                if (ctx.Properties.Items.ContainsKey(StepUpItem))
+                {
+                    ctx.ProtocolMessage.Prompt = "login";
+                    ctx.ProtocolMessage.MaxAge = "0";
+                }
+                return Task.CompletedTask;
+            };
+            o.Events.OnTokenValidated = OnTokenValidatedAsync(options);
+            o.Events.OnRemoteFailure = ctx =>
+            {
+                if (ctx.Failure?.Message == StepUpFailure)
+                {
+                    ctx.Response.Redirect("/access-denied");
+                    ctx.HandleResponse();
+                }
                 return Task.CompletedTask;
             };
             // Keycloak (and most IdPs) require client_id when no id_token_hint is sent with the logout request.
@@ -91,9 +110,60 @@ public static class KeelUi
         return auth;
     }
 
+    private static Func<TokenValidatedContext, Task> OnTokenValidatedAsync(KeelUiOptions options) => async ctx =>
+    {
+        var identity = (ClaimsIdentity)ctx.Principal!.Identity!;
+        // Capture auth_time from the id token on every sign-in so signatures can require recent authentication.
+        if (identity.FindFirst("auth_time") is null
+            && ctx.SecurityToken is System.IdentityModel.Tokens.Jwt.JwtSecurityToken jwt && jwt.Claims.FirstOrDefault(c => c.Type == "auth_time") is { } authTime)
+            identity.AddClaim(new Claim("auth_time", authTime.Value));
+
+        var expires = DateTimeOffset.UtcNow.Add(options.SessionLifetime).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        var services = ctx.HttpContext.RequestServices;
+        var fresh = SubjectClaims.FromPrincipal(ctx.Principal);
+        if (ctx.Properties?.Items.ContainsKey(StepUpItem) == true)
+        {
+            // The step-up replaces the cookie principal, so it must be the same person re-authenticating.
+            var previous = (await ctx.HttpContext.AuthenticateAsync(CookieScheme)).Principal;
+            var verdict = StepUp.Check(previous, ctx.Principal);
+            if (verdict is StepUp.Verdict.SubjectMismatch or StepUp.Verdict.MissingAuthTime)
+            {
+                if (services.GetService<IAuditLog>() is { } audit)
+                    await audit.AppendAsync(new AuditEntry
+                    {
+                        Actor = SubjectClaims.FromPrincipal(previous ?? ctx.Principal) is { } who ? ActorSnapshot.From(who) : ActorSnapshot.System,
+                        Action = "session.step_up", Outcome = AuditOutcome.Denied, ObjectType = "session",
+                        Details = AuditDetails.Of(("reason", verdict == StepUp.Verdict.SubjectMismatch ? "step_up.subject_mismatch" : "step_up.auth_time_missing")),
+                    });
+                ctx.Fail(StepUpFailure);
+                return;
+            }
+            // A step-up proves recent authentication; it does not extend the absolute session lifetime.
+            expires = previous?.FindFirst(SessionExpiresClaim)?.Value ?? expires;
+            if (fresh is not null && services.GetService<IAuditLog>() is { } log)
+                await log.AppendAsync(new AuditEntry
+                {
+                    Actor = ActorSnapshot.From(fresh), Action = "session.step_up", Outcome = AuditOutcome.Success, ObjectType = "session",
+                    Details = AuditDetails.Of(("authTime", fresh.AuthTime?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture))),
+                });
+        }
+        identity.AddClaim(new Claim(SessionExpiresClaim, expires));
+        // The user directory learns who signed in (and their current attributes) for participant pickers (A50).
+        if (fresh is not null && services.GetService<UserDirectory>() is { } directory) await directory.UpsertAsync(fresh);
+    };
+
+    /// <summary>Only same-site relative paths are accepted as return targets; anything else goes home.</summary>
+    internal static string LocalReturnUrl(string? returnUrl) =>
+        returnUrl is { Length: > 0 } && returnUrl[0] == '/' && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\')) ? returnUrl : "/";
+
     public static void MapKeelUi<TApp>(this WebApplication app)
     {
         app.MapRazorComponents<TApp>().AddInteractiveServerRenderMode();
+
+        // E-signature step-up: a challenge of the OIDC scheme with prompt=login and max_age=0. The result replaces the
+        // session cookie (same subject required, see OnTokenValidated) and records the new auth_time.
+        app.MapGet(StepUpPath, (string? returnUrl) => Results.Challenge(
+            new AuthenticationProperties(new Dictionary<string, string?> { [StepUpItem] = "1" }) { RedirectUri = LocalReturnUrl(returnUrl) }, [OidcScheme])).AllowAnonymous();
 
         app.MapPost("/account/logout", async (HttpContext ctx, IAntiforgery antiforgery) =>
         {

@@ -9,6 +9,7 @@
     <ProjectReference Include="..\Keel.Parts\Keel.Parts.csproj" />
     <ProjectReference Include="..\Keel.Documents\Keel.Documents.csproj" />
     <ProjectReference Include="..\Keel.Bom\Keel.Bom.csproj" />
+    <ProjectReference Include="..\Keel.Workflow\Keel.Workflow.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
   </ItemGroup>
   <ItemGroup>

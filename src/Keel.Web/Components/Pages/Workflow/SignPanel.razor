@@ -1,0 +1,57 @@
+<section class="panel sign-panel" aria-labelledby="sign-heading">
+    <h3 id="sign-heading">Sign</h3>
+    @if (!CanSign)
+    {
+        <p class="muted" role="status">You cannot sign this task. @string.Join(" ", BlockedReasons.Select(WorkflowText.Reason))</p>
+    }
+    else
+    {
+        <div class="stack">
+            <p class="muted">Your signature is bound to the exact version shown on this page and to your identity. It cannot be changed afterwards.</p>
+            @if (StepUpRequired)
+            {
+                <p class="notice" role="status">
+                    Your last sign-in was more than @Window ago, so you will be asked to sign in again when you choose a decision.
+                    What you type here is kept while you do.
+                </p>
+            }
+            <label>
+                Comment <span class="muted">(required to reject or to approve with comments)</span>
+                <textarea rows="4" maxlength="2000" @bind="Comment" @bind:event="oninput" @bind:after="CommentEdited" aria-describedby="@(validation is null ? null : "sign-validation")"></textarea>
+            </label>
+            @if (validation is not null) { <p id="sign-validation" class="error" role="alert">@validation</p> }
+            @if (Error is not null) { <p class="error" role="alert">@Error</p> }
+            <div class="toolbar" role="group" aria-label="Signature meaning">
+                @foreach (var c in ReasonCodes)
+                {
+                    <button type="button" class="@(c.Decision == "reject" ? "danger" : null)" disabled="@Busy" @onclick="() => Choose(c)">@c.Label</button>
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<ReasonCodeView> ReasonCodes { get; set; }
+    [Parameter] public bool CanSign { get; set; }
+    [Parameter] public IReadOnlyList<string> BlockedReasons { get; set; } = [];
+    [Parameter] public bool StepUpRequired { get; set; }
+    [Parameter] public int StepUpMaxAgeSeconds { get; set; } = 300;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string Comment { get; set; } = "";
+    [Parameter] public EventCallback<string> CommentChanged { get; set; }
+    [Parameter] public EventCallback<SignChoice> OnSign { get; set; }
+
+    private string Window => StepUpMaxAgeSeconds >= 120 ? $"{StepUpMaxAgeSeconds / 60} minutes" : $"{StepUpMaxAgeSeconds} seconds";
+
+    private string? validation;
+
+    private Task CommentEdited() => CommentChanged.InvokeAsync(Comment);
+
+    private async Task Choose(ReasonCodeView code)
+    {
+        validation = code.RequiresComment && string.IsNullOrWhiteSpace(Comment) ? $"Enter a comment to sign as \"{code.Label}\"." : null;
+        if (validation is null) await OnSign.InvokeAsync(new SignChoice(code.Code, string.IsNullOrWhiteSpace(Comment) ? null : Comment.Trim()));
+    }
+}

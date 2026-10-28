@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
     <ProjectReference Include="..\..\src\Keel.Documents\Keel.Documents.csproj" />
     <ProjectReference Include="..\..\src\Keel.Bom\Keel.Bom.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Workflow\Keel.Workflow.csproj" />
     <ProjectReference Include="..\..\src\Keel.Web\Keel.Web.csproj" />
   </ItemGroup>
 </Project>

@@ -52,7 +52,8 @@ public sealed class PartApiTests(PostgresFixture pg)
         Assert.Equal(0.15m, checkin.GetProperty("iteration").GetProperty("attributes").GetProperty("mass").GetDecimal());
 
         var submit = await alice.PostAsJsonAsync("/api/v1/parts/P-000001/state", new { toState = "UnderReview" });
-        Assert.Equal("UnderReview", (await Json(submit)).GetProperty("revision").GetProperty("state").GetString());
+        // Entering Under Review and releasing both belong to the review workflow (increment 1.5).
+        Assert.Equal(HttpStatusCode.Conflict, submit.StatusCode);
         var release = await alice.PostAsJsonAsync("/api/v1/parts/P-000001/state", new { toState = "Released" });
         Assert.Equal(HttpStatusCode.Conflict, release.StatusCode);
 

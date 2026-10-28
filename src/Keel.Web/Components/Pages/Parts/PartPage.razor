@@ -3,6 +3,7 @@
 @inject PartService Parts
 @inject NpgsqlDataSource Db
 @using Npgsql
+@using Keel.Web.Components.Pages.Workflow
 
 <PageFrame Banner="@(bomBanner ?? part?.Banner ?? UiText.Unclassified)" Title="Part">
     @if (notFound)
@@ -103,6 +104,10 @@
                 </section>
             }
 
+            @* Increment 1.5: submit for review, review status and release history. *@
+            <PartReviewPanel Number="@p.Number" State="@p.Revision.State" Latest="@p.Revision.IsLatest" CheckedOut="@(p.Checkout is not null)"
+                             CanModify="@p.Permissions.CanModify" OnChanged="Refresh" />
+
             <section class="panel">
                 <h3>Iteration @p.Iteration.Label</h3>
                 <p>@(string.IsNullOrEmpty(p.Iteration.Description) ? "No description" : p.Iteration.Description)</p>
@@ -187,6 +192,8 @@
     private string? bomBanner; // 1.4: aggregate banner reported by the BOM section
 
     private static string Corr() => CurrentUser.NewCorrelationId();
+
+    private Task Refresh() => OnParametersSetAsync();
 
     protected override async Task OnParametersSetAsync()
     {

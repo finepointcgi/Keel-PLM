@@ -16,6 +16,8 @@ public sealed class DocumentLinkTests(PostgresFixture pg)
 {
     // Kim is on both programs, so she can link a KRAKEN document that Alice cannot see.
     private static readonly Subject Kim = User("kim", programs: ["ORCA", "KRAKEN"]);
+    // Review is entered only through the workflow engine (1.5); these tests lock a part with the audited admin override.
+    private static readonly Subject Admin = User("ada", roles: [Roles.Admin, Roles.Viewer]);
 
     private sealed record Env(DocumentService Docs, PartService Parts, TestDatabase Db, NpgsqlDataSource Ds);
 
@@ -204,7 +206,7 @@ public sealed class DocumentLinkTests(PostgresFixture pg)
         await Rejects("UPDATE plm.part_document_link SET created_by = 'mallory'", PostgresErrorCodes.InsufficientPrivilege);
         await Rejects("DELETE FROM plm.part_document_link", PostgresErrorCodes.InsufficientPrivilege);
 
-        await env.Parts.SetStateAsync(Alice, "P-000001", "UnderReview", null, false, null);
+        await env.Parts.SetStateAsync(Admin, "P-000001", "UnderReview", "Test: lock the part", true, null);
         Assert.Contains("locked", (await env.Docs.AddLinkToWorkingCopyAsync(Alice, "P-000001", "D-000002", "references", null, null)).Errors[0]);
         await Rejects($"INSERT INTO plm.part_document_link (id, part_iteration_id, link_type, document_master_id, created_at, created_by) " +
             $"SELECT gen_random_uuid(), id, 'references', {d2}, now(), 'x' FROM plm.part_iteration WHERE iteration = 2", PostgresErrorCodes.CheckViolation);

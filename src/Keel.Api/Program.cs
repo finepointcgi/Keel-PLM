@@ -5,6 +5,7 @@ using Keel.Api.Endpoints;
 using Keel.Api.Infrastructure;
 using Keel.Audit;
 using Keel.Core;
+using Keel.Workflow;
 using Keel.Web.Components;
 using Keel.Web.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -51,6 +52,8 @@ builder.Services.AddSingleton<AuditLogService>();
 builder.Services.AddSingleton<Keel.Parts.PartService>();
 builder.Services.AddKeelDocuments(builder.Configuration);
 Keel.Bom.BomModule.AddKeelBom(builder.Services); // 1.4 BOM
+builder.Services.AddSingleton<IWorkflowObjectGateway, Keel.Parts.PartWorkflowGateway>();
+builder.Services.AddKeelWorkflow(builder.Configuration);
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -128,6 +131,7 @@ app.UseCorrelationId();
 app.UseHttpMetrics();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseKeelUserDirectory();
 app.UseAntiforgery();
 
 // Liveness says only that the process serves requests; readiness gates traffic on DB + schema + FIPS posture.
@@ -146,6 +150,7 @@ app.MapKeelApi();
 app.MapPartEndpoints();
 app.MapDocumentEndpoints();
 app.MapBomEndpoints(); // 1.4 BOM
+app.MapWorkflowEndpoints();
 app.MapKeelUi<App>();
 
 app.Run();
