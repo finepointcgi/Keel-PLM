@@ -24,25 +24,8 @@
         @if (error is not null) { <p class="error" role="alert">@error</p> }
         @if (plan is not null)
         {
-            <p>Package markings: <MarkingChip Text="@plan.Banner" /></p>
-            <p class="muted">@plan.PartCount part(s), @plan.StructureLines structure line(s), @plan.DocumentCount document(s) in @plan.Elements.Count(e => e.Kind == "document") file(s)@(plan.UnmappedDocuments > 0 ? $"; {plan.UnmappedDocuments} document(s) have no category and go into Other technical data" : "").</p>
-            @if (plan.Elements.Any(e => e.Kind is "document" or "document-record"))
-            {
-                <ul class="plain">
-                    @foreach (var g in plan.Elements.Where(e => e.Kind is "document" or "document-record").GroupBy(e => e.Category))
-                    {
-                        <li>@TdpCategories.Label(g.Key): @g.Select(e => e.DocumentNumber).Distinct().Count() document(s)</li>
-                    }
-                </ul>
-            }
-            @if (!plan.Permitted)
-            {
-                <div class="error" role="alert">
-                    <p>This package cannot be exported to this recipient. Nothing is partial: a package is complete or it is refused.</p>
-                    <ul>@foreach (var r in plan.Refusals) { <li>@r.Message (@r.Count)</li> }</ul>
-                </div>
-            }
-            else
+            <TdpPlanView Plan="plan" />
+            @if (plan.Permitted)
             {
                 <form method="post" action="@Keel.Web.Services.TdpUi.ExportRoute">
                     <AntiforgeryToken />

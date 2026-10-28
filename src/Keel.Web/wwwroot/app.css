@@ -166,3 +166,6 @@ fieldset.facet .range input { width: 7em; }
 .toolbar label.checkbox, label.toolbar { flex-direction: row; align-items: center; }
 select, input { max-width: 100%; }
 .split > * { min-width: 0; }
+
+/* Phase 4: outbox payload view */
+pre.payload { overflow: auto; max-height: 320px; background: var(--surface); border: 1px solid var(--border); padding: 8px; }

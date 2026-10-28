@@ -1,0 +1,29 @@
+@using Keel.Integration
+@* What a Technical Data Package would contain, and why it would be refused. Presentational: it takes the plan the service computed. A refusal lists reasons
+   with counts only (never the names of objects the exporter may not read). *@
+<div class="tdp-plan">
+    <p>Package markings: <MarkingChip Text="@Plan.Banner" /></p>
+    <p class="muted">
+        @Plan.PartCount part(s), @Plan.StructureLines structure line(s), @Plan.DocumentCount document(s) in @Plan.Elements.Count(e => e.Kind == "document") file(s)@(Plan.UnmappedDocuments > 0 ? $"; {Plan.UnmappedDocuments} document(s) have no category and go into Other technical data" : "").
+    </p>
+    @if (Plan.Elements.Any(e => e.Kind is "document" or "document-record"))
+    {
+        <ul class="plain categories">
+            @foreach (var g in Plan.Elements.Where(e => e.Kind is "document" or "document-record").GroupBy(e => e.Category))
+            {
+                <li>@TdpCategories.Label(g.Key): @g.Select(e => e.DocumentNumber).Distinct().Count() document(s)</li>
+            }
+        </ul>
+    }
+    @if (!Plan.Permitted)
+    {
+        <div class="error refusals" role="alert">
+            <p>This package cannot be exported to this recipient. Nothing is partial: a package is complete or it is refused.</p>
+            <ul>@foreach (var r in Plan.Refusals) { <li>@r.Message (@r.Count)</li> }</ul>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required TdpPlan Plan { get; set; }
+}
