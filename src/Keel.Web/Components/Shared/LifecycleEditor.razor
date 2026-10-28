@@ -1,0 +1,58 @@
+@* States and transitions of a lifecycle draft. Existing state keys are read-only (they are referred to by objects and by code). The server validates and publishes. *@
+<div class="stack">
+    <fieldset class="lifecycle-states">
+        <legend>States</legend>
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Key</th><th scope="col">Label</th><th scope="col">Order</th><th scope="col">Initial</th><th scope="col">Locked</th><th scope="col">Final</th><th scope="col">Objects</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+            <tbody>
+                @foreach (var s in Draft.States)
+                {
+                    <tr>
+                        <td>@if (s.IsExisting) { <code>@s.State</code> } else { <input aria-label="State key" maxlength="40" @bind="s.State" /> }</td>
+                        <td><input aria-label="Label of @(s.State == "" ? "new state" : s.State)" maxlength="60" @bind="s.Label" /></td>
+                        <td><input aria-label="Order of @s.State" type="number" class="narrow" @bind="s.SortOrder" /></td>
+                        <td><input type="radio" name="initial" aria-label="@s.State is the initial state" checked="@(Draft.Initial == s.State && s.State != "")" @onchange="() => Draft.Initial = s.State" /></td>
+                        <td><input type="checkbox" aria-label="@s.State is locked" @bind="s.IsLocked" /></td>
+                        <td><input type="checkbox" aria-label="@s.State is final" @bind="s.IsFinal" /></td>
+                        <td>@(Usage is not null && Usage.TryGetValue(s.State, out var n) ? n.ToString() : "0")</td>
+                        <td>
+                            @if (!s.IsExisting) { <button type="button" class="secondary" @onclick="() => Draft.RemoveState(s)">Remove</button> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        <div class="toolbar"><button type="button" class="secondary" @onclick="Draft.AddState">Add state</button></div>
+        <p class="muted small">Locked states freeze the data (release locking). "Objects" counts revisions in the state under the version you are editing.</p>
+    </fieldset>
+
+    <fieldset class="lifecycle-transitions">
+        <legend>Transitions</legend>
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Taken by</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+            <tbody>
+                @foreach (var t in Draft.Transitions)
+                {
+                    <tr>
+                        <td><select aria-label="Transition from" @bind="t.From">@foreach (var s in Draft.States.Where(s => s.State != "")) { <option value="@s.State">@s.State</option> }</select></td>
+                        <td><select aria-label="Transition to" @bind="t.To">@foreach (var s in Draft.States.Where(s => s.State != "")) { <option value="@s.State">@s.State</option> }</select></td>
+                        <td>
+                            <select aria-label="Taken by" @bind="t.Via">
+                                <option value="manual">A user (manual)</option>
+                                <option value="workflow">A review workflow</option>
+                                <option value="change">A change notice</option>
+                            </select>
+                        </td>
+                        <td><button type="button" class="secondary" @onclick="() => Draft.Transitions.Remove(t)">Remove</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        <div class="toolbar"><button type="button" class="secondary" @onclick="Draft.AddTransition">Add transition</button></div>
+    </fieldset>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required LifecycleDraft Draft { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, long>? Usage { get; set; }
+}

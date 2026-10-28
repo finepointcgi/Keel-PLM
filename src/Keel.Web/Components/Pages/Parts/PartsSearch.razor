@@ -16,6 +16,7 @@
         <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
             <a class="button secondary" href="parts/new">New part</a>
         </AuthorizeView>
+        <a class="button secondary" href="parts/classification">By classification</a>
     </form>
 
     @if (result is not null)

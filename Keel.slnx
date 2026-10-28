@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Keel.Admin/Keel.Admin.csproj" />
     <Project Path="src/Keel.Api/Keel.Api.csproj" />
     <Project Path="src/Keel.Audit/Keel.Audit.csproj" />
     <Project Path="src/Keel.Bom/Keel.Bom.csproj" />

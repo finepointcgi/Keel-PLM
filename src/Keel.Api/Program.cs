@@ -123,6 +123,7 @@ builder.Services.AddSingleton<IChangeObjectGateway, Keel.Parts.PartChangeGateway
 builder.Services.AddSingleton<ILinkedDocumentProvider, Keel.Documents.LinkedDocumentProvider>();
 Keel.Change.ChangeModule.AddKeelChange(builder.Services);
 builder.Services.AddKeelWorkflow(builder.Configuration);
+Keel.Admin.AdminModule.AddKeelAdmin(builder.Services); // 2.2 administration and classification
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -223,6 +224,7 @@ app.MapDocumentEndpoints();
 app.MapBomEndpoints(); // 1.4 BOM
 app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management
+app.MapAdminEndpoints(); // 2.2 administration and classification
 app.MapKeelUi<App>();
 
 app.Run();

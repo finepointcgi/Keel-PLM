@@ -1,0 +1,290 @@
+@page "/admin/lifecycles"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject LifecycleAdminService Lifecycles
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: lifecycles">
+    <AdminNav />
+    <div class="stack">
+        <p>Lifecycles are versioned. Publishing an edit creates a <strong>new version that new objects use</strong>; existing objects keep theirs until you migrate them with a state mapping. A published version never changes.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (message is not null) { <p role="status" class="permit">@message</p> }
+
+        @if (families.Count > 0)
+        {
+            <div class="toolbar">
+                <label>Lifecycle
+                    <select @bind="family" @bind:after="() => LoadView(null)">
+                        @foreach (var f in families) { <option value="@f.Family">@f.Name (@f.Family)</option> }
+                    </select>
+                </label>
+                @if (info is not null)
+                {
+                    <label>Version
+                        <select @bind="shownVersion" @bind:after="() => LoadView(shownVersion)">
+                            @foreach (var v in info.Versions) { <option value="@v.Version">@(v.IsCurrent ? $"{v.Version} (current)" : v.Version.ToString())</option> }
+                        </select>
+                    </label>
+                }
+            </div>
+        }
+
+        @if (view is not null && info is not null)
+        {
+            <section class="panel">
+                <h3>@view.Definition.Name · version @view.Definition.Version @(view.IsCurrent ? "(current)" : "")</h3>
+                <p class="muted">Applies to <strong>@info.ObjectType</strong> objects. @(view.Definition.ChangeNote is null ? "" : $"Change note: {view.Definition.ChangeNote}") @view.TotalRevisions revision(s) use this version.</p>
+                @if (!info.Editable) { <p class="notice">This lifecycle is tied to change-process rules in code and database triggers; it can be viewed here. Its editor is planned for Phase 5.</p> }
+                <div class="table-wrap"><table class="data">
+                    <caption class="visually-hidden">States of version @view.Definition.Version</caption>
+                    <thead><tr><th scope="col">State</th><th scope="col">Label</th><th scope="col">Locked</th><th scope="col">Initial</th><th scope="col">Final</th><th scope="col">Revisions in state</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in view.Definition.States.OrderBy(s => s.SortOrder))
+                        {
+                            <tr><td><code>@s.State</code></td><td>@s.Label</td><td>@(s.IsLocked ? "Yes" : "")</td><td>@(s.IsInitial ? "Yes" : "")</td><td>@(s.IsFinal ? "Yes" : "")</td><td>@(view.Usage.FirstOrDefault(u => u.State == s.State)?.Revisions ?? 0)</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+                <h4>Transitions</h4>
+                <ul class="plain">@foreach (var t in view.Definition.Transitions) { <li><code>@t.From</code> to <code>@t.To</code> <span class="muted">(@t.Via)</span></li> }</ul>
+                @if (info.Editable && view.IsCurrent && draft is null)
+                {
+                    <div class="toolbar"><button type="button" @onclick="StartDraft">Edit as a new version</button></div>
+                }
+            </section>
+        }
+
+        @if (draft is not null)
+        {
+            <section class="panel" aria-label="@(creating ? "New lifecycle" : "New version")">
+                <h3>@(creating ? "New lifecycle" : $"New version {view!.Definition.Version + 1} of {draft.Name}")</h3>
+                @if (creating)
+                {
+                    <div class="grid-form">
+                        <label>Id * <input @bind="newFamily" maxlength="41" placeholder="part-fasteners" /></label>
+                        <label>Name * <input @bind="draft.Name" maxlength="120" /></label>
+                    </div>
+                }
+                <LifecycleEditor Draft="draft" Usage="usage" />
+                <ValidationList Errors="validation?.Errors" Warnings="validation?.Warnings" Effects="validation?.Effects" />
+                <label>@(creating ? "Reason" : "Change note *") <input @bind="changeNote" maxlength="500" /></label>
+                <div class="toolbar">
+                    <button type="button" class="secondary" disabled="@busy" @onclick="ValidateAsync">Validate and preview effect</button>
+                    @if (!confirming) { <button type="button" disabled="@(busy || (!creating && string.IsNullOrWhiteSpace(changeNote)))" @onclick="() => confirming = true">@(creating ? "Create lifecycle" : "Publish new version")</button> }
+                    <button type="button" class="secondary" @onclick="CancelDraft">Cancel</button>
+                </div>
+                @if (confirming)
+                {
+                    <div class="confirm" role="group" aria-label="Confirm publish">
+                        <p>@(creating ? "Create this lifecycle? Part and document types can then be bound to it." : $"Publish version {view!.Definition.Version + 1}? New objects will use it from now on; the {view.TotalRevisions} existing revision(s) stay on version {view.Definition.Version}.")</p>
+                        <div class="toolbar">
+                            <button type="button" class="danger" disabled="@busy" @onclick="PublishAsync">@(creating ? "Confirm create" : "Confirm publish")</button>
+                            <button type="button" class="secondary" @onclick="() => confirming = false">Back</button>
+                        </div>
+                    </div>
+                }
+            </section>
+        }
+
+        @if (info is { Editable: true } && draft is null)
+        {
+            <section class="panel">
+                <h3>Create a new lifecycle</h3>
+                <p class="muted">Starts as a copy of <strong>@info.Family</strong>. Bind it to a part or document type under <a href="admin/lists">Types and lists</a> so new objects of that type use it.</p>
+                <div class="toolbar"><button type="button" class="secondary" @onclick="StartCreate">New lifecycle from a copy</button></div>
+            </section>
+        }
+
+        @if (info is { Editable: true } && info.Versions.Count > 1 && LifecycleRules.VersionedObjectTypes.Contains(info.ObjectType))
+        {
+            <section class="panel" aria-label="Migrate objects">
+                <h3>Migrate objects to the current version</h3>
+                <p class="muted">Moves existing objects from an older version to version @info.CurrentVersion. Every state in use needs a target; locked states cannot be mapped to unlocked ones; objects under an active review block the migration.</p>
+                <div class="toolbar">
+                    <label>From version
+                        <select @bind="migrateFrom">@foreach (var v in info.Versions.Where(v => v.Version < info.CurrentVersion)) { <option value="@v.Version">@v.Version</option> }</select>
+                    </label>
+                    <button type="button" class="secondary" disabled="@busy" @onclick="PreviewMigrationAsync">Preview</button>
+                </div>
+                @if (plan is not null)
+                {
+                    <p><strong>@plan.Revisions</strong> revision(s) on version @plan.FromVersion.@(plan.ActiveReviews > 0 ? $" {plan.ActiveReviews} are under an active review." : "")</p>
+                    <div class="table-wrap"><table class="data">
+                        <caption class="visually-hidden">State mapping</caption>
+                        <thead><tr><th scope="col">State in use</th><th scope="col">Revisions</th><th scope="col">Becomes</th></tr></thead>
+                        <tbody>
+                            @foreach (var u in plan.StatesInUse.Where(u => u.Revisions > 0))
+                            {
+                                <tr>
+                                    <td><code>@u.State</code></td><td>@u.Revisions@(u.CheckedOut > 0 ? $" ({u.CheckedOut} checked out)" : "")</td>
+                                    <td>
+                                        <select aria-label="Target state for @u.State" value="@Mapped(u.State)" @onchange="e => mapping[u.State] = (string)e.Value!">
+                                            <option value="">Choose a state</option>
+                                            @foreach (var s in target!.States.OrderBy(s => s.SortOrder)) { <option value="@s.State">@s.State · @s.Label</option> }
+                                        </select>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table></div>
+                    <ValidationList Errors="migrationErrors" />
+                    <label>Reason * <input @bind="migrationReason" maxlength="500" /></label>
+                    <div class="toolbar">
+                        @if (!confirmMigrate) { <button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(migrationReason))" @onclick="() => confirmMigrate = true">Migrate @plan.Revisions revision(s)</button> }
+                        else
+                        {
+                            <span>Move @plan.Revisions revision(s) to version @info.CurrentVersion? This is audited and cannot be undone automatically.</span>
+                            <button type="button" class="danger" disabled="@busy" @onclick="MigrateAsync">Confirm migration</button>
+                            <button type="button" class="secondary" @onclick="() => confirmMigrate = false">Back</button>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<LifecycleFamilyInfo> families = [];
+    private LifecycleFamilyInfo? info;
+    private LifecycleVersionView? view;
+    private LifecycleDraft? draft;
+    private IReadOnlyDictionary<string, long>? usage;
+    private LifecycleValidation? validation;
+    private MigrationPlan? plan;
+    private LifecycleDefinition? target;
+    private readonly Dictionary<string, string> mapping = new(StringComparer.Ordinal);
+    private IReadOnlyList<string>? migrationErrors;
+    private string family = "", newFamily = "", changeNote = "", migrationReason = "", message = "";
+    private string? error;
+    private int shownVersion, migrateFrom;
+    private bool busy, confirming, creating, confirmMigrate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFamilies();
+        if (families.Count > 0) { family = families.Any(f => f.Family == "part-default") ? "part-default" : families[0].Family; await LoadView(null); }
+    }
+
+    private async Task LoadFamilies()
+    {
+        var o = await Lifecycles.ListFamiliesAsync(await Users.GetAsync());
+        error = o.IsOk ? null : UiText.Message(o);
+        families = o.Value ?? [];
+    }
+
+    private async Task LoadView(int? version)
+    {
+        draft = null;
+        plan = null;
+        validation = null;
+        confirming = confirmMigrate = creating = false;
+        await LoadFamilies();
+        info = families.FirstOrDefault(f => f.Family == family);
+        if (info is null) return;
+        var o = await Lifecycles.GetAsync(await Users.GetAsync(), family, version);
+        error = o.IsOk ? null : UiText.Message(o);
+        view = o.Value;
+        shownVersion = view?.Definition.Version ?? info.CurrentVersion;
+        migrateFrom = info.Versions.Where(v => v.Version < info.CurrentVersion).Select(v => v.Version).DefaultIfEmpty(0).Max();
+    }
+
+    private void StartDraft()
+    {
+        draft = LifecycleDraft.From(view!.Definition);
+        usage = view.Usage.ToDictionary(u => u.State, u => u.Revisions);
+        validation = null;
+        changeNote = "";
+        creating = false;
+        message = "";
+    }
+
+    private void StartCreate()
+    {
+        draft = LifecycleDraft.From(view!.Definition);
+        draft.Name = "";
+        usage = null;
+        validation = null;
+        creating = true;
+        newFamily = "";
+        changeNote = "";
+        message = "";
+    }
+
+    private void CancelDraft()
+    {
+        draft = null;
+        confirming = creating = false;
+        validation = null;
+    }
+
+    private async Task ValidateAsync()
+    {
+        busy = true;
+        if (creating)
+        {
+            var v = LifecycleRules.Validate(draft!.ToDefinition() with { Family = newFamily, ObjectType = info!.ObjectType }, true);
+            validation = v;
+        }
+        else
+        {
+            var o = await Lifecycles.ValidateAsync(await Users.GetAsync(), family, draft!.ToDefinition());
+            validation = o.Value;
+            error = o.IsOk ? null : UiText.Message(o);
+        }
+        busy = false;
+    }
+
+    private async Task PublishAsync()
+    {
+        busy = true;
+        var subject = await Users.GetAsync();
+        Outcome<LifecycleVersionView> o = creating
+            ? await Lifecycles.CreateFamilyAsync(subject, newFamily.Trim(), draft!.Name, info!.ObjectType, draft.ToDefinition(), CurrentUser.NewCorrelationId())
+            : await Lifecycles.PublishVersionAsync(subject, family, draft!.ToDefinition(), changeNote, CurrentUser.NewCorrelationId());
+        busy = false;
+        confirming = false;
+        if (o.IsOk)
+        {
+            message = creating ? $"Created lifecycle {o.Value!.Definition.Family}." : $"Published version {o.Value!.Definition.Version}. New objects use it from now on.";
+            if (creating) family = o.Value!.Definition.Family;
+            draft = null;
+            creating = false;
+            await LoadView(null);
+        }
+        else validation = new LifecycleValidation(o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)], [], []);
+    }
+
+    private async Task PreviewMigrationAsync()
+    {
+        busy = true;
+        migrationErrors = null;
+        var subject = await Users.GetAsync();
+        var o = await Lifecycles.PreviewMigrationAsync(subject, family, migrateFrom, info!.CurrentVersion);
+        busy = false;
+        if (!o.IsOk) { error = UiText.Message(o); return; }
+        plan = o.Value;
+        target = (await Lifecycles.GetAsync(subject, family, info.CurrentVersion)).Value?.Definition;
+        mapping.Clear();
+        foreach (var (k, v) in plan!.SuggestedMapping) mapping[k] = v;
+    }
+
+    private string Mapped(string state) => mapping.TryGetValue(state, out var v) ? v : "";
+
+    private async Task MigrateAsync()
+    {
+        busy = true;
+        var o = await Lifecycles.MigrateObjectsAsync(await Users.GetAsync(), family, migrateFrom, info!.CurrentVersion,
+            mapping.Where(m => m.Value != "").ToDictionary(m => m.Key, m => m.Value), migrationReason, CurrentUser.NewCorrelationId());
+        busy = false;
+        confirmMigrate = false;
+        if (o.IsOk)
+        {
+            message = $"Migrated: {o.Value!.RevisionsMoved} state change(s); {o.Value.ObjectsOnNewVersion} revision(s) now use version {o.Value.ToVersion}.";
+            migrationErrors = null;
+            plan = null;
+            await LoadView(null);
+        }
+        else migrationErrors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+    }
+}

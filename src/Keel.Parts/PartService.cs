@@ -31,9 +31,6 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
         var errors = new List<string>();
         var name = cmd.Name?.Trim() ?? "";
         if (name.Length is 0 or > 200) errors.Add("Name is required (at most 200 characters).");
-        if (!PartTypes.All.Contains(cmd.PartType)) errors.Add($"Part type must be one of: {string.Join(", ", PartTypes.All)}.");
-        if (!PartSources.All.Contains(cmd.Source)) errors.Add("Source must be Make or Buy.");
-        if (!UnitsOfMeasure.IsValid(cmd.DefaultUnit)) errors.Add($"Unit must be one of: {string.Join(", ", UnitsOfMeasure.All)}.");
         if (cmd.Number is not null && !NumberPattern().IsMatch(cmd.Number)) errors.Add("Explicit part numbers may contain only A-Z, 0-9, '-', '.', '_' (max 40).");
         if ((cmd.Description?.Length ?? 0) > 4000) errors.Add("Description must be at most 4000 characters.");
 
@@ -43,6 +40,13 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
 
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
+        // 2.2: type, source and unit lists are administrator data (cfg.ref_item), read in this transaction.
+        var partTypes = await ReferenceChecks.ActiveCodesAsync(conn, tx, RefLists.PartType, ct);
+        var sources = await ReferenceChecks.ActiveCodesAsync(conn, tx, RefLists.PartSource, ct);
+        var units = await ReferenceChecks.ActiveCodesAsync(conn, tx, RefLists.Unit, ct);
+        if (!partTypes.Contains(cmd.PartType)) errors.Add($"Part type must be one of: {string.Join(", ", partTypes)}.");
+        if (!sources.Contains(cmd.Source)) errors.Add($"Source must be one of: {string.Join(", ", sources)}.");
+        if (string.IsNullOrEmpty(cmd.DefaultUnit) || !units.Contains(cmd.DefaultUnit)) errors.Add($"Unit must be one of: {string.Join(", ", units)}.");
         var defs = await AttributeValidator.LoadAsync(conn, tx, ObjectType, ct);
         var (attributes, attrErrors) = AttributeValidator.Validate(defs, cmd.Attributes);
         errors.AddRange(attrErrors);
@@ -56,12 +60,13 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             return Outcome<PartDetail>.Forbidden(decision.Reasons);
         }
 
-        var lifecycle = await Lifecycle.LoadAsync(conn, tx, DefaultLifecycle, ct) ?? throw new InvalidOperationException("Default part lifecycle is missing.");
+        // 2.2: new parts start in the current version of the lifecycle family bound to their part type (default: part-default).
+        var family = await ReferenceChecks.LifecycleFamilyAsync(conn, tx, RefLists.PartType, cmd.PartType, DefaultLifecycle, ct);
+        var lifecycle = await Lifecycle.LoadAsync(conn, tx, await Lifecycle.CurrentIdAsync(conn, tx, family, ct), ct) ?? throw new InvalidOperationException("Default part lifecycle is missing.");
         var number = cmd.Number;
         if (number is null)
         {
-            await using var seq = new NpgsqlCommand("SELECT nextval('plm.part_number_seq')", conn, tx);
-            number = "P-" + ((long)(await seq.ExecuteScalarAsync(ct))!).ToString("D6", CultureInfo.InvariantCulture);
+            number = await Numbering.NextAsync(conn, tx, ObjectType, ct); // 2.2: prefix and width are configuration
         }
         else
         {

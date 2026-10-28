@@ -22,5 +22,6 @@
     <ProjectReference Include="..\Keel.TestSupport\Keel.TestSupport.csproj" />
     <ProjectReference Include="..\..\src\Keel.Workflow\Keel.Workflow.csproj" />
     <ProjectReference Include="..\..\src\Keel.Change\Keel.Change.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Admin\Keel.Admin.csproj" />
   </ItemGroup>
 </Project>

@@ -55,8 +55,15 @@ public sealed partial class WorkflowService(
         }
 
         var templates = (await WorkflowStore.LoadTemplatesAsync(conn, tx, activeOnly: true, ct)).Where(t => t.ObjectType == cmd.ObjectType).ToList();
+        // 2.2: an administrator can pin the template an object type starts with (wf.template_pin); an explicit choice still wins.
+        string? pin;
+        await using (var pc = new NpgsqlCommand("SELECT template_id FROM wf.template_pin WHERE object_type = @t", conn, tx))
+        {
+            pc.Parameters.AddWithValue("t", cmd.ObjectType);
+            pin = (string?)await pc.ExecuteScalarAsync(ct);
+        }
         TemplateRow? row = cmd.TemplateId is null
-            ? (templates.Count == 1 ? templates[0] : null)
+            ? (pin is null ? null : templates.FirstOrDefault(t => t.Id == pin)) ?? (templates.Count == 1 ? templates[0] : null)
             : templates.FirstOrDefault(t => t.Id == cmd.TemplateId);
         if (row is null)
             return Outcome<InstanceView>.Invalid([cmd.TemplateId is null

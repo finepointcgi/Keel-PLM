@@ -1,0 +1,184 @@
+@* Table and form for attribute definitions, shared by part attributes and classification attributes. Calls back into the owning page's service. *@
+<div class="stack">
+    <div class="table-wrap"><table class="data">
+        <caption class="visually-hidden">Attribute definitions</caption>
+        <thead><tr><th scope="col">Label</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Rules</th><th scope="col">Required</th><th scope="col">Stored values</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>
+            @foreach (var d in Definitions)
+            {
+                <tr class="@(d.Retired ? "retired" : "")">
+                    <td>@d.Label@(d.Unit is null ? "" : $" ({d.Unit})")</td>
+                    <td><code>@d.Name</code></td>
+                    <td>@d.DataType</td>
+                    <td>@AdminUi.Constraints(d)</td>
+                    <td>@(d.Required ? "Yes" : "No")</td>
+                    <td>@d.ValuesInUse</td>
+                    <td>@(d.Retired ? "Retired" : "Active")</td>
+                    <td class="actions-cell">
+                        <button type="button" class="secondary" @onclick="() => Edit(d)">Edit</button>
+                        <button type="button" class="secondary" @onclick="() => AskRetire(d)">@(d.Retired ? "Restore" : "Retire")</button>
+                    </td>
+                </tr>
+            }
+            @if (Definitions.Count == 0) { <tr><td colspan="8" class="muted">No attributes defined.</td></tr> }
+        </tbody>
+    </table></div>
+
+    @if (retiring is not null)
+    {
+        <section class="panel confirm" role="group" aria-label="Confirm @(retiring.Retired ? "restore" : "retire")">
+            <h3>@(retiring.Retired ? "Restore" : "Retire") attribute @retiring.Label</h3>
+            <p>
+                @if (!retiring.Retired)
+                {
+                    <text>Retiring removes the attribute from new input. @(retiring.ValuesInUse > 0 ? $"{retiring.ValuesInUse} stored value(s) stay readable on existing iterations and are carried forward unchanged." : "No values are stored.")</text>
+                }
+                else { <text>The attribute appears in forms again.</text> }
+            </p>
+            <label>Reason * <input @bind="reason" maxlength="500" /></label>
+            <div class="toolbar">
+                <button type="button" class="danger" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="ConfirmRetire">@(retiring.Retired ? "Confirm restore" : "Confirm retire")</button>
+                <button type="button" class="secondary" @onclick="CancelRetire">Cancel</button>
+            </div>
+        </section>
+    }
+
+    <section class="panel">
+        <h3>@(editing ? $"Edit {form.Name}" : "New attribute")</h3>
+        <form class="grid-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+            <label>Name * <input @bind="form.Name" maxlength="63" readonly="@editing" aria-describedby="name-help" required /></label>
+            <label>Label * <input @bind="form.Label" maxlength="120" required /></label>
+            <label>
+                Data type
+                <select @bind="form.DataType">
+                    @foreach (var t in AttributeSpecs.DataTypes) { <option value="@t">@t</option> }
+                </select>
+            </label>
+            <label>Unit (numbers) <input @bind="form.Unit" maxlength="20" /></label>
+            <label>Sort order <input type="number" @bind="form.SortOrder" /></label>
+            <label>Group <input @bind="form.Group" maxlength="60" /></label>
+            @if (form.DataType == "enum")
+            {
+                <label class="wide">Values, one per line * <textarea rows="4" @bind="enumText"></textarea></label>
+            }
+            @if (form.DataType == "string")
+            {
+                <label>Maximum length <input type="number" min="1" max="4000" @bind="form.MaxLength" /></label>
+                <label>Format (regular expression, whole value) <input @bind="form.Pattern" maxlength="500" /></label>
+            }
+            @if (form.DataType == "number")
+            {
+                <label>Minimum <input inputmode="decimal" @bind="minText" /></label>
+                <label>Maximum <input inputmode="decimal" @bind="maxText" /></label>
+            }
+            <label class="wide">Help text <input @bind="form.HelpText" maxlength="500" /></label>
+            <label class="checkbox"><input type="checkbox" @bind="form.Required" /> Required</label>
+            <p id="name-help" class="muted small wide">The name is lower case letters, digits and underscores and never changes. @(editing ? "The data type cannot change once values are stored; create a new attribute and retire this one instead." : "")</p>
+            <ValidationList Errors="errors" Warnings="warnings" />
+            @if (saved is not null) { <p role="status" class="permit wide">@saved</p> }
+            <div class="toolbar wide">
+                <button type="submit" disabled="@busy">@(editing ? "Save changes" : "Create attribute")</button>
+                @if (editing) { <button type="button" class="secondary" @onclick="Reset">Cancel edit</button> }
+            </div>
+        </form>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<AttributeDefinitionDto> Definitions { get; set; }
+    /// <summary>Creates (true) or updates (false) a definition.</summary>
+    [Parameter, EditorRequired] public required Func<AttributeDefinitionInput, bool, Task<Outcome<AttributeChange>>> Save { get; set; }
+    /// <summary>Retires or restores: name, retired, reason.</summary>
+    [Parameter, EditorRequired] public required Func<string, bool, string, Task<Outcome<AttributeChange>>> Retire { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private AttributeFormModel form = new();
+    private string enumText = "", minText = "", maxText = "", reason = "";
+    private bool editing, busy;
+    private AttributeDefinitionDto? retiring;
+    private IReadOnlyList<string>? errors, warnings;
+    private string? saved;
+
+    private sealed class AttributeFormModel
+    {
+        public string Name { get; set; } = "";
+        public string Label { get; set; } = "";
+        public string DataType { get; set; } = "string";
+        public string? Unit { get; set; }
+        public int SortOrder { get; set; }
+        public string? Group { get; set; }
+        public int? MaxLength { get; set; }
+        public string? Pattern { get; set; }
+        public string? HelpText { get; set; }
+        public bool Required { get; set; }
+    }
+
+    private void Edit(AttributeDefinitionDto d)
+    {
+        form = new AttributeFormModel
+        {
+            Name = d.Name, Label = d.Label, DataType = d.DataType, Unit = d.Unit, SortOrder = d.SortOrder, Group = d.Group, MaxLength = d.MaxLength, Pattern = d.Pattern, HelpText = d.HelpText, Required = d.Required,
+        };
+        enumText = d.EnumValues is null ? "" : string.Join('\n', d.EnumValues);
+        minText = AdminUi.Number(d.Min);
+        maxText = AdminUi.Number(d.Max);
+        editing = true;
+        errors = warnings = null;
+        saved = null;
+    }
+
+    private void Reset()
+    {
+        form = new AttributeFormModel();
+        enumText = minText = maxText = "";
+        editing = false;
+        errors = warnings = null;
+    }
+
+    private async Task SubmitAsync()
+    {
+        busy = true;
+        saved = null;
+        var input = new AttributeDefinitionInput(form.Name?.Trim() ?? "", form.Label ?? "", form.DataType, form.Unit, form.DataType == "enum" ? [.. enumText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)] : null,
+            form.Required, form.MaxLength, form.SortOrder, form.HelpText, form.Group, form.Pattern, AdminUi.ParseNumber(minText), AdminUi.ParseNumber(maxText));
+        var outcome = await Save(input, !editing);
+        busy = false;
+        if (outcome.IsOk)
+        {
+            if (!editing) Reset();
+            errors = null;
+            warnings = outcome.Value!.Warnings;
+            saved = $"Saved {outcome.Value.Definition.Label} (revision {outcome.Value.Definition.Revision}).";
+            await OnChanged.InvokeAsync();
+        }
+        else
+        {
+            warnings = null;
+            errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+        }
+    }
+
+    private void AskRetire(AttributeDefinitionDto d)
+    {
+        retiring = d;
+        reason = "";
+    }
+
+    private void CancelRetire() => retiring = null;
+
+    private async Task ConfirmRetire()
+    {
+        if (retiring is null) return;
+        busy = true;
+        var outcome = await Retire(retiring.Name, !retiring.Retired, reason);
+        busy = false;
+        if (outcome.IsOk)
+        {
+            warnings = outcome.Value!.Warnings;
+            errors = null;
+            retiring = null;
+            await OnChanged.InvokeAsync();
+        }
+        else errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+    }
+}

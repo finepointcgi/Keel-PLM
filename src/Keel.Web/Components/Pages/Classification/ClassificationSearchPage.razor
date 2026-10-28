@@ -1,0 +1,91 @@
+@page "/parts/classification"
+@inject CurrentUser Users
+@inject ClassificationService Classes
+
+@* The banner is the aggregate of the parts listed (they carry markings); the class tree and the counts only ever include parts the user may read. *@
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Parts by classification">
+    <div class="stack">
+        <p><a href="parts">Back to part search</a> · Choose a class, then narrow by its attributes. Counts show only the parts you are authorized to see.</p>
+        <form class="toolbar" role="search" @onsubmit="() => Search(0)" @onsubmit:preventDefault>
+            <input aria-label="Search number or name" placeholder="Number or name" class="grow" @bind="query" />
+            <button type="submit">Search</button>
+        </form>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+        <div class="split">
+            <aside class="stack">
+                <section class="panel" aria-label="Class tree">
+                    <h3>Class</h3>
+                    <p><button type="button" class="link" @onclick="() => SelectClass(null)">All classified parts</button></p>
+                    @if (rows.Count > 0) { <ClassTreeNav Rows="rows" Selected="selected" Counts="counts" OnSelect="SelectClass" /> }
+                    else { <p class="muted">No classes have been defined.</p> }
+                </section>
+                <section class="panel" aria-label="Attribute filters">
+                    <h3>Attributes</h3>
+                    @if (selected is null) { <p class="muted">Choose a class to filter by its attributes.</p> }
+                    else { <FacetPanel Facets="result?.Facets ?? []" Selection="selection" OnChanged="() => Search(0)" /> }
+                </section>
+            </aside>
+
+            <div class="stack">
+                @if (result is not null)
+                {
+                    <p class="muted">@result.Total classified part@(result.Total == 1 ? "" : "s")@(selected is null ? "" : $" in {selected} and its subclasses") you can access</p>
+                    <div class="table-wrap"><table class="data">
+                        <caption class="visually-hidden">Classified parts</caption>
+                        <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Class</th><th scope="col">Values</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in result.Items)
+                            {
+                                <tr>
+                                    <td><a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a></td><td>@p.Name</td><td>@p.ClassCode</td>
+                                    <td>@string.Join(", ", p.ClassAttributes.Select(a => $"{a.Key} {a.Value?.ToJsonString().Trim('"')}"))</td>
+                                    <td>@p.Revision.@p.Iteration</td><td>@p.State</td><td><MarkingChip Text="@p.Banner" /></td>
+                                </tr>
+                            }
+                            @if (result.Items.Count == 0) { <tr><td colspan="7" class="muted">No parts match.</td></tr> }
+                        </tbody>
+                    </table></div>
+                    <div class="toolbar">
+                        <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Search(Math.Max(0, offset - PageSize))">Previous</button>
+                        <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Search(offset + PageSize)">Next</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private IReadOnlyList<(ClassNodeDto Node, int Indent)> rows = [];
+    private IReadOnlyDictionary<string, long>? counts;
+    private ClassSearchResult? result;
+    private readonly FacetSelection selection = new();
+    private string? selected, error;
+    private string query = "";
+    private int offset;
+
+    protected override async Task OnInitializedAsync()
+    {
+        rows = AdminUi.Rows(await Classes.TreeAsync(), activeOnly: true);
+        await Search(0);
+    }
+
+    private async Task SelectClass(string? code)
+    {
+        selected = code;
+        selection.Clear();
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        var o = await Classes.SearchAsync(await Users.GetAsync(), new ClassSearchQuery(selected, query, null, selection.ToFilters(), PageSize, offset), CurrentUser.NewCorrelationId());
+        error = o.IsOk ? null : o.Kind == OutcomeKind.Invalid ? string.Join(" ", o.Errors) : UiText.Message(o);
+        if (!o.IsOk) return;
+        result = o.Value;
+        counts = result!.ClassCounts.ToDictionary(c => c.Code, c => c.Count);
+    }
+}

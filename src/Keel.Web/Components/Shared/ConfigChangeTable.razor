@@ -1,0 +1,29 @@
+@* The plan of a configuration import: what would be created, changed, retired or cannot be done safely. *@
+@if (Changes.Count == 0)
+{
+    <p class="muted">Nothing to do: the target already matches the file@(Unchanged > 0 ? $" ({Unchanged} item(s) compared)" : "").</p>
+}
+else
+{
+    <div class="table-wrap"><table class="data">
+        <caption class="visually-hidden">Planned configuration changes</caption>
+        <thead><tr><th scope="col">Section</th><th scope="col">Item</th><th scope="col">Action</th><th scope="col">Detail</th></tr></thead>
+        <tbody>
+            @foreach (var c in Changes)
+            {
+                <tr class="change-@c.Kind">
+                    <td>@c.Section</td>
+                    <td>@c.Key</td>
+                    <td><span class="badge kind-@c.Kind">@c.Kind</span></td>
+                    <td>@c.Detail</td>
+                </tr>
+            }
+        </tbody>
+    </table></div>
+    <p class="muted small">@Changes.Count(c => c.Kind == "create") to create, @Changes.Count(c => c.Kind == "change") to change, @Changes.Count(c => c.Kind is "retire" or "restore") to retire or restore, @Changes.Count(c => c.Kind == "blocked") blocked, @Unchanged unchanged.</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<ConfigChange> Changes { get; set; }
+    [Parameter] public int Unchanged { get; set; }
+}

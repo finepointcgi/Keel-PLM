@@ -1,6 +1,7 @@
 @page "/changes/{Number}"
 @inject CurrentUser Users
 @inject ChangeService Changes
+@inject IReferenceData Refs
 
 <PageFrame Banner="@Banner" Title="@(detail is null ? "Change" : ChangeUi.TypeName(detail.Type))">
     @if (notFound)
@@ -36,7 +37,7 @@
                 {
                     <div class="grid-form">
                         <label class="wide">Title * <input maxlength="200" @bind="editTitle" /></label>
-                        <label>Priority <select @bind="editPriority">@foreach (var level in ChangePriorities.All) { <option value="@level">@level</option> }</select></label>
+                        <label>Priority <select @bind="editPriority">@foreach (var level in priorities) { <option value="@level">@level</option> }</select></label>
                         <label class="wide">Description <textarea rows="4" maxlength="8000" @bind="editDescription"></textarea></label>
                         <label class="wide">Reason <textarea rows="2" maxlength="4000" @bind="editReason"></textarea></label>
                     </div>
@@ -199,6 +200,10 @@
     private IReadOnlyList<ChangeReasonCode> reasonCodes = [];
 
     private string Banner => detail is null ? UiText.Unclassified : Markings.AggregateBanner(detail.Shown.Concat(impactShown));
+
+    private IReadOnlyList<string> priorities = []; // 2.2: administrator data
+
+    protected override async Task OnInitializedAsync() => priorities = await Refs.CodesAsync(RefLists.ChangePriority);
 
     protected override Task OnParametersSetAsync() => Reload();
 

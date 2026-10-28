@@ -3,6 +3,7 @@
 @inject PartService Parts
 @inject NpgsqlDataSource Db
 @inject NavigationManager Nav
+@inject IReferenceData Refs
 @using Npgsql
 
 @* A blank form shows no controlled data; the markings being entered appear on the created part. *@
@@ -15,15 +16,15 @@
                 <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
                 <label>
                     Type
-                    <InputSelect @bind-Value="partType">@foreach (var t in PartTypes.All) { <option value="@t">@t</option> }</InputSelect>
+                    <InputSelect @bind-Value="partType">@foreach (var t in partTypes) { <option value="@t">@t</option> }</InputSelect>
                 </label>
                 <label>
                     Unit of measure
-                    <InputSelect @bind-Value="unit">@foreach (var u in UnitsOfMeasure.All) { <option value="@u">@u</option> }</InputSelect>
+                    <InputSelect @bind-Value="unit">@foreach (var u in units) { <option value="@u">@u</option> }</InputSelect>
                 </label>
                 <label>
                     Source
-                    <InputSelect @bind-Value="source">@foreach (var s in PartSources.All) { <option value="@s">@s</option> }</InputSelect>
+                    <InputSelect @bind-Value="source">@foreach (var s in sources) { <option value="@s">@s</option> }</InputSelect>
                 </label>
                 <label class="wide">Description <InputTextArea @bind-Value="description" rows="3" maxlength="4000" /></label>
             </fieldset>
@@ -49,6 +50,7 @@
 
 @code {
     private IReadOnlyList<AttributeDefinition>? defs;
+    private IReadOnlyList<string> partTypes = [], units = [], sources = []; // 2.2: administrator data
     private string name = "", partType = "Component", unit = UnitsOfMeasure.Each, source = "Make", description = "";
     private readonly AttributeInput attributes = new();
     private readonly MarkingsInput markings = new();
@@ -59,6 +61,9 @@
     {
         await using var conn = await Db.OpenConnectionAsync();
         defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);
+        partTypes = await Refs.CodesAsync(RefLists.PartType);
+        units = await Refs.CodesAsync(RefLists.Unit);
+        sources = await Refs.CodesAsync(RefLists.PartSource);
     }
 
     private async Task Create()

@@ -235,10 +235,11 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        await using (var conn = await Db.OpenConnectionAsync())
-            lifecycleStates = (await Lifecycle.LoadAsync(conn, null, DocumentService.DefaultLifecycle, CancellationToken.None))?.States ?? [];
         var subject = await Users.GetAsync();
         var outcome = await Docs.GetAsync(subject, Number, Revision, Corr());
+        // 2.2: the document's own lifecycle version (versions are data)
+        await using (var conn = await Db.OpenConnectionAsync())
+            lifecycleStates = (await Lifecycle.LoadAsync(conn, null, outcome.Value?.LifecycleId ?? DocumentService.DefaultLifecycle, CancellationToken.None))?.States ?? [];
         notFound = !outcome.IsOk;
         Apply(outcome.Value);
         if (outcome.IsOk)

@@ -1,0 +1,116 @@
+@inject CurrentUser Users
+@inject ClassificationService Classes
+
+@* The class of a part and its class-attribute values. They belong to the iteration: edited in the check-out, frozen at check-in. *@
+<section class="panel" aria-label="Classification">
+    <h3>Classification</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (view is not null)
+    {
+        @if (view.ClassCode is null)
+        {
+            <p class="muted">Not classified.@(Editable ? "" : "")</p>
+        }
+        else
+        {
+            <p><strong>@string.Join(" › ", view.PathNames)</strong> <span class="muted">(@view.ClassCode)</span>@(view.IsWorkingCopy ? " · working copy" : "")</p>
+            @if (view.Effective.Count > 0)
+            {
+                <dl class="facts">
+                    @foreach (var e in view.Effective.Where(e => !e.Definition.Retired || view.Attributes.ContainsKey(e.Definition.Name)))
+                    {
+                        <dt>@e.Definition.Label@(e.Definition.Retired ? " (retired)" : "")</dt>
+                        <dd>@Display(e.Definition, view.Attributes[e.Definition.Name])</dd>
+                    }
+                </dl>
+            }
+        }
+
+        @if (Editable)
+        {
+            <details open="@editing" @ontoggle="e => editing = !editing">
+                <summary>@(view.ClassCode is null ? "Classify this part" : "Change classification")</summary>
+                <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                    <label>
+                        Class
+                        <select @bind="chosen" @bind:after="ClassChanged">
+                            <option value="">Not classified</option>
+                            @foreach (var (n, indent) in rows) { <option value="@n.Code">@AdminUi.Indented(n, indent)</option> }
+                        </select>
+                    </label>
+                    @if (formDefs.Count > 0) { <AttributeFields Definitions="formDefs" Value="input" /> }
+                    <div class="toolbar wide">
+                        <button type="submit" disabled="@busy">Save classification</button>
+                    </div>
+                </form>
+            </details>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>True when the signed-in user has this part checked out and may modify it.</summary>
+    [Parameter] public bool Editable { get; set; }
+    /// <summary>Changes whenever the part's iteration or check-out changes, so the panel reloads.</summary>
+    [Parameter] public string Version { get; set; } = "";
+
+    private PartClassificationView? view;
+    private IReadOnlyList<(ClassNodeDto Node, int Indent)> rows = [];
+    private IReadOnlyList<AttributeDefinition> formDefs = [];
+    private AttributeInput input = new();
+    private string chosen = "", loadedKey = "";
+    private string? error;
+    private bool busy, editing;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Number}|{Version}|{Editable}";
+        if (key == loadedKey) return;
+        loadedKey = key;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var o = await Classes.GetForPartAsync(subject, Number, CurrentUser.NewCorrelationId());
+        error = o.IsOk ? null : UiText.Message(o);
+        view = o.Value;
+        if (view is null) return;
+        if (Editable)
+        {
+            var tree = await Classes.TreeAsync();
+            rows = AdminUi.Rows(tree, activeOnly: true);
+            chosen = view.ClassCode ?? "";
+            formDefs = AdminUi.ToFormDefinitions(view.Effective);
+            input = AttributeInput.From(view.Attributes);
+        }
+    }
+
+    private async Task ClassChanged()
+    {
+        input = new AttributeInput();
+        formDefs = [];
+        if (chosen == "") return;
+        var detail = await Classes.GetAsync(chosen);
+        formDefs = detail is null ? [] : AdminUi.ToFormDefinitions(detail.Effective);
+        if (view?.ClassCode == chosen) input = AttributeInput.From(view.Attributes);
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        var attributes = input.ToJson(formDefs);
+        var o = await Classes.SetForPartAsync(await Users.GetAsync(), Number, chosen == "" ? null : chosen, attributes, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { view = o.Value; error = null; editing = false; }
+        else error = o.Kind == OutcomeKind.Invalid ? string.Join(" ", o.Errors) : UiText.Message(o);
+    }
+
+    private static string Display(AttributeDefinitionDto d, System.Text.Json.Nodes.JsonNode? value)
+    {
+        var (_, text) = AttributeInput.Format([new AttributeDefinition(d.Name, d.Label, d.DataType, d.Unit, d.EnumValues, d.Required, d.MaxLength, d.SortOrder)], d.Name, value);
+        return text == "" ? "Not set" : text;
+    }
+}

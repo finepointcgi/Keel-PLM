@@ -59,12 +59,14 @@ public static class PartEndpoints
             return (await svc.ChangeMarkingsAsync(SubjectFactory.Require(ctx), number, markings.Value, req.Reason, CorrelationId.Get(ctx), ct)).ToHttp();
         });
 
-        app.MapGet("/api/v1/metadata/parts", async (NpgsqlDataSource db, CancellationToken ct) =>
+        app.MapGet("/api/v1/metadata/parts", async (NpgsqlDataSource db, IReferenceData refs, CancellationToken ct) =>
         {
             await using var conn = await db.OpenConnectionAsync(ct);
             var attrs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, ct);
-            var lifecycle = await Lifecycle.LoadAsync(conn, null, PartService.DefaultLifecycle, ct);
-            return new PartMetadata(PartTypes.All, PartSources.All, [.. UnitsOfMeasure.All], attrs, lifecycle!);
+            var lifecycle = await Lifecycle.LoadAsync(conn, null, await Lifecycle.CurrentIdAsync(conn, null, PartService.DefaultLifecycle, ct), ct);
+            // 2.2: the lists are administrator data; retired attributes are hidden from new input.
+            return new PartMetadata(await refs.CodesAsync(RefLists.PartType, ct), await refs.CodesAsync(RefLists.PartSource, ct), await refs.CodesAsync(RefLists.Unit, ct),
+                [.. attrs.Where(a => !a.Retired)], lifecycle!);
         }).RequireAuthorization(Policies.AnyPlmRole);
     }
 }

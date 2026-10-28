@@ -10,8 +10,11 @@ namespace Keel.Parts;
 /// run in the engine's transaction. State changes honour the lifecycle data of 0002: each transition used here must exist
 /// and be tagged <c>workflow</c>, so release stays impossible through any other path.
 /// </summary>
-public sealed class PartWorkflowGateway(IEnumerable<IChangeBindingGuard>? bindingGuards = null) : IWorkflowObjectGateway
+public sealed class PartWorkflowGateway(IEnumerable<IChangeBindingGuard>? bindingGuards = null, IEnumerable<IPartIterationParticipant>? participants = null) : IWorkflowObjectGateway
 {
+    // 2.2: participants that opt in (classification) have their content covered by the review signature as well.
+    private readonly IPartIterationParticipant[] _signedParticipants = participants?.Where(p => p.CoveredByReviewSignature).ToArray() ?? [];
+
     // 1.6: a revision created by an open change notice is released only through that notice (ADR-0019).
     private readonly IChangeBindingGuard[] _bindingGuards = bindingGuards?.ToArray() ?? [];
 
@@ -110,8 +113,19 @@ public sealed class PartWorkflowGateway(IEnumerable<IChangeBindingGuard>? bindin
         cmd.Parameters.AddWithValue("id", iterationId);
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return null;
-        return new IterationContent(reader.GetGuid(0), PartService.ObjectType, reader.GetString(1), reader.GetString(2),
+        var content = new IterationContent(reader.GetGuid(0), PartService.ObjectType, reader.GetString(1), reader.GetString(2),
             $"{reader.GetString(2)}.{reader.GetInt32(3)}", reader.GetString(4), reader.GetString(5));
+        await reader.CloseAsync();
+        if (_signedParticipants.Length == 0) return content;
+        // The text opted-in participants own joins the signed attributes under a key no attribute name can have (names start with a-z).
+        var owned = new List<string>();
+        foreach (var p in _signedParticipants)
+            if (await p.DescribeContentAsync(tx, iterationId, ct) is { } text) owned.Add(text);
+        if (owned.Count == 0) return content;
+        owned.Sort(StringComparer.Ordinal);
+        var merged = System.Text.Json.Nodes.JsonNode.Parse(content.AttributesJson)!.AsObject();
+        merged["$owned"] = string.Join('\n', owned);
+        return content with { AttributesJson = merged.ToJsonString() };
     }
 
     private static async Task<GatewayResult> TransitionAsync(DbConnection conn, DbTransaction tx, WorkflowObject obj, string from, string to, Subject actor, DateTimeOffset now, CancellationToken ct)

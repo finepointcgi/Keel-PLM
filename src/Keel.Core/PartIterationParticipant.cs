@@ -30,6 +30,12 @@ public interface IPartIterationParticipant
     /// </summary>
     Task<string?> DescribeContentAsync(DbTransaction tx, Guid iterationId, CancellationToken ct) => Task.FromResult<string?>(null);
 
+    /// <summary>
+    /// True when this participant's <see cref="DescribeContentAsync"/> text is also covered by the part review's e-signature hash (increment 2.2:
+    /// classification). Off by default so the signature hashes of existing content (for example BOM lines) do not change.
+    /// </summary>
+    bool CoveredByReviewSignature => false;
+
     /// <summary>Called before the check-out row is deleted by an undo. Working copies normally disappear by cascade; override only if needed.</summary>
     Task OnUndoCheckOutAsync(DbTransaction tx, Guid revisionId, CancellationToken ct) => Task.CompletedTask;
 }

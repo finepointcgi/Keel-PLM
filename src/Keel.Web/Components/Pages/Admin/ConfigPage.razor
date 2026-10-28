@@ -1,0 +1,88 @@
+@page "/admin/config"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject ConfigTransferService Config
+
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: export and import">
+    <AdminNav />
+    <div class="stack">
+        <p>Promote configuration between environments (development to test to production). The export is one canonical JSON document with a SHA-256 hash of its content. It holds configuration only: no users, secrets, counters or object data. An import shows what it would create, change or retire before it applies anything.</p>
+        @if (message is not null) { <p role="status" class="permit">@message</p> }
+
+        <section class="panel">
+            <h3>Export</h3>
+            <p><a class="button" href="admin-files/config" download="keel-config.json">Download configuration</a></p>
+            <p class="muted small">The file name carries no environment information. The hash is shown when you export through the API or after a download in the history page.</p>
+        </section>
+
+        <section class="panel" aria-label="Import">
+            <h3>Import</h3>
+            <label>Configuration file (.json) <InputFile OnChange="Loaded" accept=".json" /></label>
+            <ValidationList Errors="errors" />
+            @if (doc is not null)
+            {
+                <p>File <strong>@fileName</strong>, format <code>@doc.Format</code>, content hash <code>@doc.Sha256[..16]…</code> (verified).</p>
+                <div class="toolbar"><button type="button" class="secondary" disabled="@busy" @onclick="DryRunAsync">Show what would change (dry run)</button></div>
+            }
+            @if (plan is not null)
+            {
+                <ConfigChangeTable Changes="plan.Changes" Unchanged="plan.Unchanged" />
+                @if (plan.Changes.Count > 0 && !plan.Changes.Any(c => c.Kind == "blocked"))
+                {
+                    <label>Reason * <input @bind="reason" maxlength="500" /></label>
+                    <div class="toolbar">
+                        @if (!confirming) { <button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="() => confirming = true">Apply import</button> }
+                        else
+                        {
+                            <span>Apply @plan.Changes.Count change(s) to this environment? Each is validated and audited; the import stops at the first error and can be run again.</span>
+                            <button type="button" class="danger" disabled="@busy" @onclick="ApplyAsync">Confirm apply</button>
+                            <button type="button" class="secondary" @onclick="() => confirming = false">Back</button>
+                        }
+                    </div>
+                }
+                else if (plan.Changes.Any(c => c.Kind == "blocked")) { <p class="notice">Blocked items cannot be applied by an import. Resolve them in the matching admin page, then import again.</p> }
+            }
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private ConfigDocument? doc;
+    private string? fileName, message, reason;
+    private IReadOnlyList<string>? errors;
+    private ConfigImportReport? plan;
+    private bool busy, confirming;
+
+    private async Task Loaded(InputFileChangeEventArgs e)
+    {
+        errors = null;
+        plan = null;
+        doc = null;
+        message = null;
+        fileName = e.File.Name;
+        using var reader = new StreamReader(e.File.OpenReadStream(16_000_000));
+        var (parsed, why) = ConfigDocument.FromJson(await reader.ReadToEndAsync());
+        doc = parsed;
+        if (why is not null) errors = [why];
+    }
+
+    private async Task DryRunAsync()
+    {
+        busy = true;
+        var o = await Config.DryRunAsync(await Users.GetAsync(), doc!);
+        busy = false;
+        plan = o.Value;
+        errors = o.IsOk ? null : o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+        confirming = false;
+    }
+
+    private async Task ApplyAsync()
+    {
+        busy = true;
+        var o = await Config.ApplyAsync(await Users.GetAsync(), doc!, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        confirming = false;
+        if (o.IsOk) { message = $"Imported: {o.Value!.Applied} change(s) applied."; errors = null; plan = null; doc = null; reason = ""; }
+        else errors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+    }
+}

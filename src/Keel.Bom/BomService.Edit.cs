@@ -66,7 +66,8 @@ public sealed partial class BomService
                 return EditStep<WorkingBomLine>.Hidden($"Part '{cmd.ChildNumber.Trim()}' was not found, or you are not authorized to see it.", "child.not_readable");
 
             var unit = cmd.Unit ?? child.DefaultUnit;
-            var (errors, designators) = BomRules.ValidateLine(cmd.Quantity, unit, cmd.ReferenceDesignators, cmd.Notes, cmd.FindNumber);
+            var (errors, designators) = BomRules.ValidateLine(cmd.Quantity, unit, cmd.ReferenceDesignators, cmd.Notes, cmd.FindNumber,
+                await ReferenceChecks.ActiveCodesAsync(conn, tx, RefLists.Unit, ct));
             if (errors.Count > 0) return EditStep<WorkingBomLine>.Invalid([.. errors]);
 
             var existing = await LoadExistingAsync(conn, tx, ctx.RevisionId, null, ct);
@@ -110,7 +111,8 @@ public sealed partial class BomService
             var existing = await LoadExistingAsync(conn, tx, ctx.RevisionId, null, ct);
             var current = existing.FirstOrDefault(e => e.Id == usageId);
             if (current is null) return EditStep<WorkingBomLine>.Missing();
-            var (errors, designators) = BomRules.ValidateLine(cmd.Quantity, cmd.Unit, cmd.ReferenceDesignators, cmd.Notes, cmd.FindNumber);
+            var (errors, designators) = BomRules.ValidateLine(cmd.Quantity, cmd.Unit, cmd.ReferenceDesignators, cmd.Notes, cmd.FindNumber,
+                [.. await ReferenceChecks.ActiveCodesAsync(conn, tx, RefLists.Unit, ct), current.Unit]);
             if (errors.Count > 0) return EditStep<WorkingBomLine>.Invalid([.. errors]);
             if (existing.Any(e => e.Id != usageId && e.Find == cmd.FindNumber)) return EditStep<WorkingBomLine>.Conflict($"Find number {cmd.FindNumber} is already used on this parent.");
             var clash = BomRules.DesignatorClashes(designators, existing.Where(e => e.Id != usageId).SelectMany(e => e.Designators));

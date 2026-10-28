@@ -10,11 +10,13 @@ public static partial class BomRules
 {
     /// <summary>Validates quantity, unit, reference designators and notes of one line; returns normalized designators.</summary>
     public static (IReadOnlyList<string> Errors, string[] Designators) ValidateLine(
-        decimal quantity, string? unit, IReadOnlyList<string>? designators, string? notes, int? findNumber)
+        decimal quantity, string? unit, IReadOnlyList<string>? designators, string? notes, int? findNumber, IReadOnlyCollection<string>? allowedUnits = null)
     {
         var errors = new List<string>();
-        if (!UnitsOfMeasure.IsValid(unit))
-            errors.Add($"Unit '{unit}' is not valid; use one of: {string.Join(", ", UnitsOfMeasure.All)}.");
+        // 2.2: the unit list is administrator data; callers with a database pass it, the compile-time list is the fallback for pure callers.
+        var units = allowedUnits ?? UnitsOfMeasure.All;
+        if (unit is null || !units.Contains(unit))
+            errors.Add($"Unit '{unit}' is not valid; use one of: {string.Join(", ", units)}.");
         if (quantity <= 0) errors.Add("Quantity must be greater than zero.");
         else if (quantity > BomLimits.MaxQuantity) errors.Add($"Quantity must be at most {BomLimits.MaxQuantity.ToString("N0", CultureInfo.InvariantCulture)}.");
         else if (decimal.Round(quantity, 6) != quantity) errors.Add("Quantity may have at most 6 decimal places.");
