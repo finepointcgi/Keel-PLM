@@ -141,9 +141,11 @@ public sealed class SessionLockTests(E2EFixture fx)
             await page.GotoAsync(fx.LockHostUrl + "/documents/" + m.SystemSpecification);
             await page.WaitForSelectorAsync("#password"); // a full login again: the old session cannot come back
 
-            var trail = (await SessionEventsAsync()).Skip(eventsBefore).Select(e => e.Action).ToList();
+            // Only this test's user: the idle-lock test's session on the same host can still lock itself while this test runs.
+            static bool IsAudrey(Keel.Audit.AuditRecord e) => e.Payload.Contains("\"name\":\"audrey\"", StringComparison.Ordinal);
+            var trail = (await SessionEventsAsync()).Skip(eventsBefore).Where(IsAudrey).Select(e => e.Action).ToList();
             Assert.Equal(["session.lock", "session.lock_expired", "session.terminated_idle"], trail.Where(a => a is "session.lock" or "session.lock_expired" or "session.terminated_idle"));
-            var manual = (await SessionEventsAsync()).Skip(eventsBefore).First(e => e.Action == "session.lock");
+            var manual = (await SessionEventsAsync()).Skip(eventsBefore).Where(IsAudrey).First(e => e.Action == "session.lock");
             Assert.Contains("manual", manual.Payload, StringComparison.Ordinal);
         });
     }
