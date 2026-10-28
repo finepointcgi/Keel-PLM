@@ -15,7 +15,10 @@ public static class BomModule
         services.AddSingleton<BaselineService>();
         services.AddSingleton<EffectivityService>();
         services.AddSingleton<IRevisionEffectivity, RevisionEffectivityService>();
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new BaselineWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>()));
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new BaselineWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetService<IDomainEventSink>()));
+        // Phase 4 integration (ADR-0025): the released-EBOM snapshot for bom.published events and the structure source of Technical Data Packages.
+        services.AddSingleton<IBomPublicationSource, BomPublicationSource>();
+        services.AddSingleton<ITdpStructureSource, TdpStructureSource>();
         return services;
     }
 }

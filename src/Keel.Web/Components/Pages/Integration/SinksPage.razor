@@ -1,0 +1,158 @@
+@page "/admin/integration/sinks"
+@inject CurrentUser Users
+@inject IntegrationAdminService Admin
+
+@* Sink configuration is not controlled data: names, endpoints and the names of secrets (never their values). *@
+<PageFrame Banner="@UiText.Unclassified" Title="Integration: sinks">
+    <AdminNav />
+    <IntegrationNav />
+    <div class="stack">
+        <p>A sink receives events from the outbox. A webhook posts a signed envelope to an on-premises HTTPS endpoint; a file drop writes files with manifests for batch import. Every sink has a clearance profile: events it is not cleared for are withheld, never delivered. Secrets are referenced by name and read from the secrets directory.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (errors.Count > 0) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
+        @if (saved is not null) { <p role="status" class="permit">@saved</p> }
+        <section class="panel">
+            <h3>Sinks</h3>
+            @if (sinks.Count == 0) { <p class="muted">No sinks are defined.</p> }
+            else
+            {
+                <div class="table-wrap"><table class="data">
+                    <caption class="visually-hidden">Sinks</caption>
+                    <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Target</th><th scope="col">Profile</th><th scope="col">Events</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var s in sinks)
+                        {
+                            <tr>
+                                <td><code>@s.Name</code><br /><span class="muted small">@s.Label</span></td>
+                                <td>@s.Kind</td>
+                                <td>@(s.ConfigString("url") ?? s.ConfigString("directory"))</td>
+                                <td>@s.ProfileName</td>
+                                <td>@(s.EventTypes.Count == 0 ? "all" : string.Join(", ", s.EventTypes))@(s.FullStructure ? " + full structure" : "")</td>
+                                <td>@(s.Enabled ? "Enabled" : "Disabled")</td>
+                                <td class="actions-cell"><button type="button" class="secondary" @onclick="() => Edit(s)">Edit</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+        </section>
+        <section class="panel">
+            <h3>@(editing ? $"Edit {name}" : "Add a sink")</h3>
+            <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <label>Name * <input @bind="name" maxlength="41" readonly="@editing" required /></label>
+                <label>Label * <input @bind="label" maxlength="120" required /></label>
+                <label>Kind <select @bind="kind" disabled="@editing"><option value="webhook">Webhook</option><option value="filedrop">File drop</option><option value="broker">Message broker (Phase 4b)</option></select></label>
+                <label>Clearance profile <select @bind="profile">@foreach (var p in profiles) { <option value="@p.Name">@p.Label (@p.Name)</option> }</select></label>
+                @if (kind == "webhook")
+                {
+                    <label class="wide">Endpoint URL (https, allow-listed host) <input @bind="url" maxlength="500" /></label>
+                    <label>Secret name <input @bind="secretName" maxlength="41" /></label>
+                    <label>Second secret (rotation) <input @bind="secondarySecret" maxlength="41" /></label>
+                    <label>Client certificate name (mTLS) <input @bind="clientCert" maxlength="41" /></label>
+                    <label>CA bundle name <input @bind="caBundle" maxlength="41" /></label>
+                    <label>Timeout (seconds) <input type="number" @bind="timeout" min="1" max="120" /></label>
+                }
+                else if (kind == "filedrop")
+                {
+                    <label class="wide">Directory (relative to the file-drop root) <input @bind="directory" maxlength="200" /></label>
+                    <label>Format <select @bind="format"><option value="json">One JSON file per event</option><option value="ndjson">One NDJSON file per batch</option></select></label>
+                }
+                <label class="wide">Event types (comma separated, empty = all) <input @bind="types" /></label>
+                <label class="checkbox"><input type="checkbox" @bind="full" /> Also deliver the full-structure BOM event</label>
+                <label class="checkbox"><input type="checkbox" @bind="enabled" /> Enabled</label>
+                <div class="toolbar wide">
+                    <button type="submit" disabled="@busy">@(editing ? "Save changes" : "Add sink")</button>
+                    @if (editing) { <button type="button" class="secondary" @onclick="Reset">Cancel edit</button> }
+                </div>
+            </form>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<SinkRecord> sinks = [];
+    private IReadOnlyList<ProfileRecord> profiles = [];
+    private string name = "", label = "", kind = "webhook", profile = "", url = "", secretName = "", secondarySecret = "", clientCert = "", caBundle = "", directory = "", format = "json", types = "";
+    private int timeout = 10;
+    private bool editing, busy, enabled, full;
+    private string? error, saved;
+    private List<string> errors = [];
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var user = await Users.GetAsync();
+        var s = await Admin.ListSinksAsync(user);
+        var p = await Admin.ListProfilesAsync(user);
+        error = !s.IsOk ? UiText.Message(s) : !p.IsOk ? UiText.Message(p) : null;
+        sinks = s.Value ?? [];
+        profiles = p.Value ?? [];
+        if (profile.Length == 0) profile = profiles.FirstOrDefault()?.Name ?? "";
+    }
+
+    private void Edit(SinkRecord s)
+    {
+        editing = true;
+        (name, label, kind, profile, enabled, full) = (s.Name, s.Label, s.Kind, s.ProfileName, s.Enabled, s.FullStructure);
+        types = string.Join(", ", s.EventTypes);
+        url = s.ConfigString("url") ?? "";
+        secretName = s.ConfigString("secretName") ?? "";
+        secondarySecret = s.ConfigString("secondarySecretName") ?? "";
+        clientCert = s.ConfigString("clientCertName") ?? "";
+        caBundle = s.ConfigString("caBundleName") ?? "";
+        timeout = s.ConfigInt("timeoutSeconds") ?? 10;
+        directory = s.ConfigString("directory") ?? "";
+        format = s.ConfigString("format") ?? "json";
+        errors = [];
+    }
+
+    private void Reset()
+    {
+        editing = false;
+        name = label = url = secretName = secondarySecret = clientCert = caBundle = directory = types = "";
+        (kind, format, timeout, enabled, full) = ("webhook", "json", 10, false, false);
+        errors = [];
+    }
+
+    private JsonObject Config()
+    {
+        static string? N(string v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        var c = new JsonObject();
+        if (kind == "webhook")
+        {
+            c["url"] = N(url);
+            c["secretName"] = N(secretName);
+            if (N(secondarySecret) is { } sec) c["secondarySecretName"] = sec;
+            if (N(clientCert) is { } cc) c["clientCertName"] = cc;
+            if (N(caBundle) is { } ca) c["caBundleName"] = ca;
+            c["timeoutSeconds"] = timeout;
+        }
+        else if (kind == "filedrop")
+        {
+            c["directory"] = N(directory);
+            c["format"] = format;
+        }
+        return c;
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        saved = null;
+        errors = [];
+        try
+        {
+            var o = await Admin.SaveSinkAsync(await Users.GetAsync(),
+                new SinkInput(name.Trim(), label, kind, enabled, profile, Config(), types.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries), full), CurrentUser.NewCorrelationId());
+            if (o.IsOk) { saved = $"Saved {o.Value!.Name}."; error = null; Reset(); await Load(); }
+            else if (o.Kind == OutcomeKind.Invalid) errors = [.. o.Errors];
+            else error = UiText.Message(o);
+        }
+        catch (NotSupportedException e)
+        {
+            error = e.Message;
+        }
+        busy = false;
+    }
+}

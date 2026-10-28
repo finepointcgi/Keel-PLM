@@ -90,6 +90,7 @@ public sealed partial class BaselineService
                 return Step<BaselineDetail>.Conflict($"{l.Head.Number} requires sign-off: submit it for review and it is established when every approver has signed.");
             var moved = await BaselineStore.TransitionAsync(conn, tx, l.Head, BaselineStates.Established, "manual", BomService.DisplayId(subject), l.Now, establishReason: reason.Trim(), ct: ct);
             if (!moved.IsOk) return Step<BaselineDetail>.Conflict(moved.Error!);
+            await BaselineEvents.EmitEstablishedAsync(events, conn, tx, l.Head.Id, subject, correlationId, ct); // 4.0: ERP event, same transaction
             return Step<BaselineDetail>.Done(await ReloadAsync(conn, tx, subject, l.Head.Id, ct), ("reason", reason.Trim()), ("path", "direct"));
         }, ct);
 

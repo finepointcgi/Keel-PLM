@@ -1,0 +1,71 @@
+@page "/admin/integration/deliveries"
+@inject CurrentUser Users
+@inject IntegrationAdminService Admin
+
+@* Delivery rows carry event ids, types and sink names, not object data. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Integration: deliveries">
+    <AdminNav />
+    <IntegrationNav />
+    <div class="stack">
+        <p>One row per event and sink. Pending and failed deliveries are retried with exponential backoff; after the configured number of attempts, or on a permanent error, a delivery becomes a dead letter. Withheld deliveries were not cleared by the sink's profile and are never sent until you re-evaluate them.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (message is not null) { <p role="status" class="permit">@message</p> }
+        <div class="toolbar">
+            <label>Status <select @bind="status" @bind:after="Load"><option value="">All</option>@foreach (var s in DeliveryStatus.All) { <option value="@s">@s</option> }</select></label>
+            <label>Sink <input @bind="sink" @bind:after="Load" placeholder="sink name" /></label>
+            <button type="button" class="secondary" @onclick="Load">Refresh</button>
+            @if (!string.IsNullOrWhiteSpace(sink))
+            {
+                <button type="button" class="secondary" disabled="@busy" @onclick="() => Move(true, null)">Requeue dead letters of @sink</button>
+                <button type="button" class="secondary" disabled="@busy" @onclick="() => Move(false, null)">Re-evaluate withheld of @sink</button>
+            }
+        </div>
+        <div class="table-wrap"><table class="data">
+            <caption class="visually-hidden">Deliveries</caption>
+            <thead><tr><th scope="col">Event</th><th scope="col">Type</th><th scope="col">Sink</th><th scope="col">Status</th><th scope="col">Attempts</th><th scope="col">Next attempt</th><th scope="col">Detail</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+                @foreach (var d in rows)
+                {
+                    <tr>
+                        <td><code>@d.EventId.ToString("N")[..12]</code></td><td>@d.EventType</td><td>@d.SinkName</td><td>@d.Status</td><td>@d.Attempts</td>
+                        <td>@(d.Status is "pending" or "failed" ? UiText.Utc(d.NextAttemptAt) : "")</td>
+                        <td>@(d.Status == "withheld" ? string.Join(" ", d.WithheldReasons.Select(Keel.Security.OutboundRelease.Describe)) : d.LastError)</td>
+                        <td class="actions-cell">
+                            @if (d.Status == "dead") { <button type="button" class="secondary" disabled="@busy" @onclick="() => Move(true, d.Id)">Requeue</button> }
+                            @if (d.Status == "withheld") { <button type="button" class="secondary" disabled="@busy" @onclick="() => Move(false, d.Id)">Re-evaluate</button> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<DeliveryView> rows = [];
+    private string status = "", sink = "";
+    private string? error, message;
+    private bool busy;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await Admin.ListDeliveriesAsync(await Users.GetAsync(), string.IsNullOrEmpty(status) ? null : status, string.IsNullOrWhiteSpace(sink) ? null : sink.Trim(), 200);
+        error = o.IsOk ? null : UiText.Message(o);
+        rows = o.Value ?? [];
+    }
+
+    private async Task Move(bool requeue, Guid? id)
+    {
+        busy = true;
+        var user = await Users.GetAsync();
+        var s = string.IsNullOrWhiteSpace(sink) ? null : sink.Trim();
+        var o = requeue
+            ? await Admin.RequeueDeadAsync(user, id, id is null ? s : null, CurrentUser.NewCorrelationId())
+            : await Admin.ReevaluateWithheldAsync(user, id, id is null ? s : null, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { message = $"{o.Value} delivery(ies) {(requeue ? "requeued" : "sent back for re-evaluation")}."; await Load(); }
+        else error = UiText.Message(o);
+    }
+}

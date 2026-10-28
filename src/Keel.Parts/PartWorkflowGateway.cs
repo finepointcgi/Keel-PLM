@@ -10,7 +10,7 @@ namespace Keel.Parts;
 /// run in the engine's transaction. State changes honour the lifecycle data of 0002: each transition used here must exist
 /// and be tagged <c>workflow</c>, so release stays impossible through any other path.
 /// </summary>
-public sealed class PartWorkflowGateway(IEnumerable<IChangeBindingGuard>? bindingGuards = null, IEnumerable<IPartIterationParticipant>? participants = null) : IWorkflowObjectGateway
+public sealed class PartWorkflowGateway(IEnumerable<IChangeBindingGuard>? bindingGuards = null, IEnumerable<IPartIterationParticipant>? participants = null, IDomainEventSink? events = null) : IWorkflowObjectGateway
 {
     // 2.2: participants that opt in (classification) have their content covered by the review signature as well.
     private readonly IPartIterationParticipant[] _signedParticipants = participants?.Where(p => p.CoveredByReviewSignature).ToArray() ?? [];
@@ -90,7 +90,10 @@ public sealed class PartWorkflowGateway(IEnumerable<IChangeBindingGuard>? bindin
     {
         if (obj.State != UnderReview) return GatewayResult.Fail($"Revision {obj.Revision} is {obj.StateLabel}, not Under Review; it cannot be released by this workflow.");
         if (obj.IterationId != boundIterationId) return GatewayResult.Fail("The part content changed after the review started; the workflow no longer covers the latest iteration.");
-        return await TransitionAsync(conn, tx, obj, UnderReview, Released, actor, now, ct);
+        var released = await TransitionAsync(conn, tx, obj, UnderReview, Released, actor, now, ct);
+        // 4.0 (ADR-0025): the ERP event commits with the release.
+        if (released.IsOk) await PartEvents.EmitAsync(events, conn, tx, obj.RevisionId, EventTypes.PartReleased, PartEvents.ViaWorkflow, actor, now, null, ct);
+        return released;
     }
 
     public async Task<GatewayResult> ReturnToInWorkAsync(DbConnection conn, DbTransaction tx, WorkflowObject obj, Subject actor, DateTimeOffset now, CancellationToken ct)

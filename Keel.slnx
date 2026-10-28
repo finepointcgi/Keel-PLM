@@ -9,6 +9,7 @@
     <Project Path="src/Keel.Core/Keel.Core.csproj" />
     <Project Path="src/Keel.Documents/Keel.Documents.csproj" />
     <Project Path="src/Keel.Import/Keel.Import.csproj" />
+    <Project Path="src/Keel.Integration/Keel.Integration.csproj" />
     <Project Path="src/Keel.Migration/Keel.Migration.csproj" />
     <Project Path="src/Keel.Parts/Keel.Parts.csproj" />
     <Project Path="src/Keel.Security/Keel.Security.csproj" />

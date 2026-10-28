@@ -1,0 +1,73 @@
+@page "/admin/integration/tdp-categories"
+@inject CurrentUser Users
+@inject IntegrationAdminService Admin
+
+<PageFrame Banner="@UiText.Unclassified" Title="Integration: TDP element categories">
+    <AdminNav />
+    <IntegrationNav />
+    <div class="stack">
+        <p>A Technical Data Package is organized by MIL-STD-31000 element categories. This table maps a document type (and optionally the link type of its part link) to a category. A document without a rule goes into Other technical data and is reported on the package's cover sheet.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (errors.Count > 0) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
+        <section class="panel">
+            <h3>Mapping</h3>
+            <div class="table-wrap"><table class="data">
+                <caption class="visually-hidden">Category rules</caption>
+                <thead><tr><th scope="col">Document type</th><th scope="col">Link type</th><th scope="col">Category</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var r in rules)
+                    {
+                        <tr><td>@r.DocumentType</td><td>@(r.LinkType == "*" ? "any" : r.LinkType)</td><td>@TdpCategories.Label(r.Category)</td>
+                            <td class="actions-cell"><button type="button" class="secondary" @onclick="() => Edit(r)">Edit</button> <button type="button" class="secondary" @onclick="() => Remove(r)">Remove</button></td></tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+        <section class="panel">
+            <h3>Add or change a rule</h3>
+            <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <label>Document type * <input @bind="documentType" maxlength="60" required /></label>
+                <label>Link type <select @bind="linkType"><option value="*">Any</option><option value="describes">describes</option><option value="references">references</option></select></label>
+                <label>Category <select @bind="category">@foreach (var c in TdpCategories.All) { <option value="@c">@TdpCategories.Label(c)</option> }</select></label>
+                <div class="toolbar wide"><button type="submit" disabled="@busy">Save rule</button></div>
+            </form>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<TdpCategoryRule> rules = [];
+    private string documentType = "", linkType = "*", category = "OTHER";
+    private string? error;
+    private List<string> errors = [];
+    private bool busy;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await Admin.ListCategoryRulesAsync(await Users.GetAsync());
+        error = o.IsOk ? null : UiText.Message(o);
+        rules = o.Value ?? [];
+    }
+
+    private void Edit(TdpCategoryRule r) => (documentType, linkType, category) = (r.DocumentType, r.LinkType, r.Category);
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        errors = [];
+        var o = await Admin.SaveCategoryRuleAsync(await Users.GetAsync(), documentType, linkType, category, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) await Load();
+        else if (o.Kind == OutcomeKind.Invalid) errors = [.. o.Errors];
+        else error = UiText.Message(o);
+    }
+
+    private async Task Remove(TdpCategoryRule r)
+    {
+        var o = await Admin.DeleteCategoryRuleAsync(await Users.GetAsync(), r.DocumentType, r.LinkType, CurrentUser.NewCorrelationId());
+        error = o.IsOk ? null : UiText.Message(o);
+        await Load();
+    }
+}

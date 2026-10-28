@@ -1,0 +1,58 @@
+@page "/admin/integration/outbox"
+@inject CurrentUser Users
+@inject OutboxQueries Outbox
+
+@* The banner covers the events whose identity and payload are displayed: those the administrator may read. Other events show as restricted. *@
+<PageFrame Banner="@Banner()" Title="Integration: outbox">
+    <AdminNav />
+    <IntegrationNav />
+    <div class="stack">
+        <p>Events written with business changes, newest first. You see the payload only of events whose markings you may read; any other event is a restricted event with its type, time, markings and delivery counts.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        <div class="toolbar">
+            <label>Type <select @bind="type" @bind:after="Load"><option value="">All</option>@foreach (var t in Keel.Core.EventTypes.All) { <option value="@t">@t</option> }</select></label>
+            <label>Aggregate number <input @bind="aggregate" @bind:after="Load" placeholder="e.g. P-000123" /></label>
+            <button type="button" class="secondary" @onclick="Load">Refresh</button>
+        </div>
+        <div class="table-wrap"><table class="data">
+            <caption class="visually-hidden">Outbox events</caption>
+            <thead><tr><th scope="col">Seq</th><th scope="col">Type</th><th scope="col">Time (UTC)</th><th scope="col">Object</th><th scope="col">Markings</th><th scope="col">Deliveries</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+                @foreach (var e in items)
+                {
+                    <tr>
+                        <td>@e.Seq</td><td>@e.EventType v@(e.Version)</td><td>@UiText.Utc(e.OccurredAt)</td>
+                        <td>@if (e.Readable) { <text>@e.AggregateNumber @e.AggregateRevision</text> } else { <span class="restricted-label">Restricted event</span> }</td>
+                        <td><MarkingChip Text="@e.Banner" /></td>
+                        <td>@string.Join(", ", e.Deliveries.Select(d => $"{d.Key} {d.Value}"))</td>
+                        <td class="actions-cell">@if (e.Readable) { <button type="button" class="secondary" @onclick="() => Toggle(e.Id)">@(open == e.Id ? "Hide" : "Payload")</button> }</td>
+                    </tr>
+                    @if (open == e.Id && e.Envelope is not null)
+                    {
+                        <tr><td colspan="7"><pre class="payload">@e.Envelope.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre></td></tr>
+                    }
+                }
+            </tbody>
+        </table></div>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<OutboxListItem> items = [];
+    private string type = "", aggregate = "";
+    private Guid? open;
+    private string? error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await Outbox.ListForAdminAsync(await Users.GetAsync(), string.IsNullOrEmpty(type) ? null : type, string.IsNullOrWhiteSpace(aggregate) ? null : aggregate.Trim(), null, 100, CurrentUser.NewCorrelationId());
+        error = o.IsOk ? null : UiText.Message(o);
+        items = o.Value ?? [];
+    }
+
+    private void Toggle(Guid id) => open = open == id ? null : id;
+
+    private string Banner() => BannerMerge.Union([.. items.Where(i => i.Readable).Select(i => i.Banner)]);
+}

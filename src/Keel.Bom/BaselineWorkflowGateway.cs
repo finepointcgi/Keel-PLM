@@ -14,7 +14,7 @@ namespace Keel.Bom;
 /// the baseline itself; the signed content is a readable summary plus the content hash <em>recomputed from the live rows</em>, so any change to
 /// an item after signing makes verification fail. Establishment is atomic with the final signature. All methods run in the engine's transaction.
 /// </summary>
-internal sealed class BaselineWorkflowGateway(IAuditLog audit) : IWorkflowObjectGateway
+internal sealed class BaselineWorkflowGateway(IAuditLog audit, IDomainEventSink? events = null) : IWorkflowObjectGateway
 {
     public const string ContentFormat = "baseline-content/1";
 
@@ -69,6 +69,7 @@ internal sealed class BaselineWorkflowGateway(IAuditLog audit) : IWorkflowObject
             establishReason: "Established by review: every approver signed the baseline.", ct: ct);
         if (!moved.IsOk) return moved;
         await Audit(tx, actor, "baseline.establish", head, ("path", "workflow"), ("contentSha256", head.Sha256));
+        await BaselineEvents.EmitEstablishedAsync(events, conn, tx, head.Id, actor, null, ct); // 4.0: ERP event, same transaction
         return GatewayResult.Ok;
     }
 

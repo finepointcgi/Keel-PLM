@@ -9,6 +9,8 @@
     <PackageVersion Include="bunit" Version="2.13.3" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
+    <!-- Phase 4: OpenAPI 3.1 document of the integration API (MIT, Microsoft). Build-time metadata only; no runtime egress. -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageVersion Include="Testcontainers" Version="4.16.0" />

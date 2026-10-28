@@ -15,7 +15,7 @@ namespace Keel.Documents;
 /// the master row. File bytes go to the content-addressed vault (ADR-0015) before the metadata transaction, so no row
 /// lock is held while a large file streams.
 /// </summary>
-public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, ObjectVault vault)
+public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, ObjectVault vault, IDomainEventSink? events = null)
 {
     public const string ObjectType = "document";
     public const string DefaultLifecycle = "document-default";
@@ -377,6 +377,9 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
             cmd.Parameters.AddWithValue("by", DisplayId(subject));
             cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
             await cmd.ExecuteNonQueryAsync(ct);
+            // 4.0 (ADR-0025): releasing or obsoleting a document revision is reported to the ERP, in the same transaction.
+            if (toState is ReleasedState or "Obsolete")
+                await DocumentEvents.EmitAsync(events, conn, tx, ctx.RevisionId, toState == ReleasedState ? EventTypes.DocumentReleased : EventTypes.DocumentObsoleted, subject, clock.GetUtcNow(), correlationId, ct);
             return Done(("revision", ctx.Revision), ("from", ctx.State), ("to", toState), ("reason", reason));
         }, ct);
 

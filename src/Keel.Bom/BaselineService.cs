@@ -13,7 +13,7 @@ namespace Keel.Bom;
 /// writes its audit event (ADR-0005) in the same transaction, denials included. Creating needs Read on every item and the roles that may modify;
 /// the baseline's markings must dominate every item and pinned document. Mutations serialize on <c>SELECT ... FOR UPDATE</c> of the baseline row.
 /// </summary>
-public sealed partial class BaselineService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IDocumentPinProvider? documents = null)
+public sealed partial class BaselineService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IDocumentPinProvider? documents = null, IDomainEventSink? events = null)
 {
     public const string ObjectType = "baseline";
     private const string DraftState = BaselineStates.Draft;

@@ -13,9 +13,11 @@
     <ProjectReference Include="..\Keel.Workflow\Keel.Workflow.csproj" />
     <ProjectReference Include="..\Keel.Change\Keel.Change.csproj" />
     <ProjectReference Include="..\Keel.Admin\Keel.Admin.csproj" />
+    <ProjectReference Include="..\Keel.Integration\Keel.Integration.csproj" />
     <ProjectReference Include="..\Keel.Web\Keel.Web.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="prometheus-net.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\db\migrations\*.sql" LinkBase="migrations" CopyToOutputDirectory="PreserveNewest" />
