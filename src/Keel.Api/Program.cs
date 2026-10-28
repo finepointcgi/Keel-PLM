@@ -45,6 +45,7 @@ builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(options.Database.AppC
 builder.Services.AddSingleton<PostgresAuditLog>();
 builder.Services.AddSingleton<IAuditLog, MeteredAuditLog>();
 builder.Services.AddSingleton<AuditQueries>();
+builder.Services.AddSingleton<Keel.Parts.PartService>();
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -115,6 +116,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 app.MapMetrics().AllowAnonymous();
 
 app.MapKeelApi();
+app.MapPartEndpoints();
 
 app.Run();
 

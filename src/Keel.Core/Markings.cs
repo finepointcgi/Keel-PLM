@@ -153,6 +153,23 @@ public sealed partial record Markings
         return string.Join(" · ", parts);
     }
 
+    /// <summary>
+    /// Banner for a page showing several objects: the union of CUI categories and controls, and the most restrictive
+    /// distribution statement (F is most restrictive). Empty input means no controlled data is displayed.
+    /// </summary>
+    public static string AggregateBanner(IEnumerable<Markings> items)
+    {
+        var list = items.ToList();
+        if (list.Count == 0) return "UNCLASSIFIED";
+        var cui = list.SelectMany(m => m.CuiCategories).Distinct().Order(StringComparer.Ordinal).ToList();
+        var parts = new List<string> { cui.Count > 0 ? "CUI//" + string.Join('/', cui) : "UNCLASSIFIED" };
+        if (list.Any(m => m.ExportJurisdiction == ExportJurisdiction.Itar)) parts.Add("ITAR");
+        var eccns = list.Where(m => m.ExportJurisdiction == ExportJurisdiction.Ear).Select(m => m.Eccn!).Distinct().Order(StringComparer.Ordinal).ToList();
+        if (eccns.Count > 0) parts.Add("EAR " + string.Join(", ", eccns));
+        parts.Add($"DISTRIBUTION {list.Max(m => m.DistributionStatement)}");
+        return string.Join(" · ", parts);
+    }
+
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static ImmutableSortedSet<string> Codes(IEnumerable<string>? values, string label, List<string> errors)
