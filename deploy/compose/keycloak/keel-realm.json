@@ -28,6 +28,10 @@
       },
       {
         "name": "plm-auditor"
+      },
+      {
+        "name": "plm-integration",
+        "description": "Service accounts of connected systems (ERP reconciliation): the integration pull API and read access under the account's own markings. Grants nothing in the UI or the interactive API."
       }
     ]
   },
@@ -558,6 +562,44 @@
         "plm-viewer"
       ],
       "id": "6309dde6-88f6-5e28-82cf-84c97d4fa14b"
+    },
+    {
+      "username": "erp-service",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "ERP",
+      "lastName": "Service",
+      "email": "erp-service@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "ENG"
+        ],
+        "programs": [
+          "ORCA"
+        ],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT",
+          "CTI"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-erp-service",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-integration"
+      ],
+      "id": "f5e2c581-d932-5984-ad94-830bc84bd39c"
     }
   ],
   "components": {

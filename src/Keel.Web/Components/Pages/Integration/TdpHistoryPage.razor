@@ -1,0 +1,43 @@
+@page "/tdp"
+@using Keel.Integration
+@attribute [Authorize(Policy = Policies.AnyPlmRole)]
+@inject CurrentUser Users
+@inject TdpService Tdp
+
+@* Export history: the records the signed-in user may read under their own markings. The banner covers them. *@
+<PageFrame Banner="@BannerMerge.Union([.. rows.Select(r => r.Banner)])" Title="Technical Data Package exports">
+    <div class="stack">
+        <p>Every export is recorded with its signed manifest and the hash of that manifest (never the package itself). To check a package you hold, use the verify operation of the API: <code>POST /api/v1/tdp/{id}/verify</code> with the ZIP as the request body.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        <div class="toolbar"><label>Part or baseline number <input @bind="number" @bind:after="Load" /></label><button type="button" class="secondary" @onclick="Load">Refresh</button></div>
+        <div class="table-wrap"><table class="data">
+            <caption class="visually-hidden">Technical Data Package exports</caption>
+            <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Object</th><th scope="col">Recipient</th><th scope="col">Exporter</th><th scope="col">Markings</th><th scope="col">Counts</th><th scope="col">Manifest SHA-256</th><th scope="col">Key</th></tr></thead>
+            <tbody>
+                @foreach (var r in rows)
+                {
+                    <tr>
+                        <td>@UiText.Utc(r.CreatedAt)</td><td>@r.ObjectType @r.ObjectNumber@(r.ObjectRevision is null ? "" : " rev " + r.ObjectRevision)</td><td>@r.RecipientProfile</td><td>@r.ExporterName</td>
+                        <td><MarkingChip Text="@r.Banner" /></td>
+                        <td>@r.Counts["parts"] parts, @r.Counts["documents"] documents</td><td><code>@r.ManifestSha256[..16]…</code></td><td><code>@r.SignatureKeyId</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<TdpExportRecord> rows = [];
+    private string number = "";
+    private string? error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await Tdp.ListAsync(await Users.GetAsync(), string.IsNullOrWhiteSpace(number) ? null : number.Trim(), 100);
+        error = o.IsOk ? null : UiText.Message(o);
+        rows = o.Value ?? [];
+    }
+}

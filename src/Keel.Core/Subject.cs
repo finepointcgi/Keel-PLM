@@ -34,6 +34,12 @@ public static class Roles
     public const string Approver = "plm-approver";
     public const string Admin = "plm-admin";
     public const string Auditor = "plm-auditor";
+    /// <summary>
+    /// Service accounts of connected systems (ERP reconciliation, Phase 4). Deliberately not in <see cref="All"/>: it grants the integration pull
+    /// API and read access under the account's own markings, and no access to the interactive API or the UI.
+    /// </summary>
+    public const string Integration = "plm-integration";
 
+    /// <summary>The roles of people. <see cref="Integration"/> is a service role and is not part of this set.</summary>
     public static readonly ImmutableArray<string> All = [Viewer, Author, Approver, Admin, Auditor];
 }

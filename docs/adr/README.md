@@ -29,3 +29,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0021](0021-baselines-and-effectivity.md) | Baselines and effectivity | Accepted |
 | [0022](0022-admin-configuration-and-classification.md) | Admin configuration and classification | Accepted |
 | [0024](0024-ebom-mbom.md) | EBOM, MBOM and reconciliation | Accepted |
+| [0025](0025-integration-outbox-erp-tdp.md) | Integration outbox, ERP events and TDP export | Accepted |

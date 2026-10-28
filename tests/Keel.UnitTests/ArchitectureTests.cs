@@ -21,7 +21,9 @@ public sealed partial class ArchitectureTests
         ["Keel.Migration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Administration (2.2) reaches workflow templates only through IWorkflowTemplateAdmin in Keel.Core, implemented by Keel.Workflow.
         ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin"],
+        // Integration (ADR-0025) reaches parts, BOM, documents and change data only through Keel.Core interfaces implemented by their owners.
+        ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
@@ -54,6 +56,9 @@ public sealed partial class ArchitectureTests
             // PartChangeGateway does the same for change management: single objects by id (or a batch of ids for display) that the caller
             // evaluates with AccessPolicy on the returned markings before showing anything.
             if (file.EndsWith("PartChangeGateway.cs", StringComparison.Ordinal)) continue;
+            // The outbox snapshot readers (ADR-0025) are system reads inside the releasing transaction, keyed by id; the event's markings and the
+            // outbound release check decide who sees the result, and PartEvents/DocumentEvents load one revision by id.
+            if (file.EndsWith("BomPublicationSource.cs", StringComparison.Ordinal)) continue;
             // The seed tool's one fresh-database probe (a yes/no administrative question with no end user); everything else it does goes through services.
             if (file.EndsWith("Keel.Seed" + Path.DirectorySeparatorChar + "DatabaseState.cs", StringComparison.Ordinal)) continue;
             // The MBOM reconciliation reads two facts about children (Make assembly? MBOM of the plant released?) as inputs of the system's own check, never shown (ADR-0024).
@@ -90,6 +95,8 @@ public sealed partial class ArchitectureTests
                      .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
         {
             if (file.EndsWith("MbomReconcileInputs.cs", StringComparison.Ordinal)) continue; // see List_queries_over_marked_tables_use_the_read_filter
+            // The outbox snapshot reader of released assemblies (ADR-0025): a system read whose result is gated by the event's markings.
+            if (file.EndsWith("BomPublicationSource.cs", StringComparison.Ordinal)) continue;
             var text = File.ReadAllText(file);
             foreach (Match m in SqlTouchesPartMaster().Matches(text))
             {

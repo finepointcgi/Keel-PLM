@@ -15,7 +15,7 @@ namespace Keel.Parts;
 /// transaction as its change (ADR-0005), including denials. Per-part operations serialize on the master row.
 /// </summary>
 public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock,
-    IEnumerable<IPartIterationParticipant>? participants = null)
+    IEnumerable<IPartIterationParticipant>? participants = null, IDomainEventSink? events = null)
 {
     // 1.4: modules owning per-iteration data (BOM links) hook into check-out/check-in/undo; empty when none are registered.
     private readonly IPartIterationParticipant[] _participants = participants?.ToArray() ?? [];
@@ -338,6 +338,9 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             cmd.Parameters.AddWithValue("by", DisplayId(subject));
             cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
             await cmd.ExecuteNonQueryAsync(ct);
+            // 4.0 (ADR-0025): an administrator's override into Released or Obsolete is also reported to the ERP, in the same transaction.
+            if (toState is "Released" or "Obsolete")
+                await PartEvents.EmitAsync(events, conn, tx, ctx.RevisionId, toState == "Released" ? EventTypes.PartReleased : EventTypes.PartObsoleted, PartEvents.ViaAdmin, subject, clock.GetUtcNow(), correlationId, ct);
             return Done(("revision", ctx.Revision), ("from", ctx.State), ("to", toState), ("reason", reason));
         }, ct);
 

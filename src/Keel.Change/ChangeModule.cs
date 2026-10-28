@@ -38,8 +38,8 @@ public static class ChangeModule
             sp.GetServices<IChangeObjectGateway>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<IRevisionEffectivity>()));
         services.AddSingleton<ImpactAnalysisService>();
         services.AddSingleton<IChangeBindingGuard, ChangeBindingGuard>();
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecr, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>()));
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecn, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>()));
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecr, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>(), sp.GetService<IDomainEventSink>()));
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecn, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>(), sp.GetService<IDomainEventSink>()));
         return services;
     }
 }

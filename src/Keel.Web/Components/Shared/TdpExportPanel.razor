@@ -1,0 +1,75 @@
+@using Keel.Integration
+@inject CurrentUser Users
+@inject TdpService Tdp
+@inject IntegrationAdminService Integration
+@* Export of a Technical Data Package (MIL-STD-31000 aligned) for a part revision or a baseline. The preview says what would be included and why an export
+   would be refused (counts only). The export itself is a form POST with the session cookie and an antiforgery token; the browser then downloads the
+   signed ZIP, and the response carries its markings in X-Keel-Markings. *@
+<section class="panel" aria-labelledby="tdp-heading">
+    <h3 id="tdp-heading">Technical Data Package</h3>
+    @if (profiles.Count == 0)
+    {
+        <p class="muted">No recipient profile is available. An administrator defines them under Administration, Integration.</p>
+    }
+    else
+    {
+        <div class="toolbar">
+            <label>Recipient
+                <select @bind="recipient" aria-label="Recipient profile">
+                    @foreach (var p in profiles) { <option value="@p.Name">@p.Label (@p.RecipientCategory)</option> }
+                </select>
+            </label>
+            <button type="button" class="secondary" disabled="@busy" @onclick="PreviewAsync">Preview</button>
+        </div>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (plan is not null)
+        {
+            <TdpPlanView Plan="plan" />
+            @if (plan.Permitted)
+            {
+                <form method="post" action="@Keel.Web.Services.TdpUi.ExportRoute">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="objectType" value="@ObjectType" />
+                    <input type="hidden" name="number" value="@Number" />
+                    <input type="hidden" name="revision" value="@Revision" />
+                    <input type="hidden" name="recipient" value="@plan.RecipientProfile" />
+                    <button type="submit">Export signed package (ZIP)</button>
+                </form>
+            }
+        }
+        <p class="muted small">Past exports: <a href="tdp">Technical Data Package exports</a>.</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string ObjectType { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    [Parameter] public string? Revision { get; set; }
+    /// <summary>Reports the banner of the previewed package so the page banner covers it.</summary>
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private IReadOnlyList<ProfileRecord> profiles = [];
+    private string recipient = "";
+    private TdpPlan? plan;
+    private string? error;
+    private bool busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        profiles = await Integration.ActiveProfilesAsync();
+        recipient = profiles.FirstOrDefault()?.Name ?? "";
+    }
+
+    private async Task PreviewAsync()
+    {
+        busy = true;
+        error = null;
+        plan = null;
+        await OnBanner.InvokeAsync(null);
+        var o = await Tdp.PlanAsync(await Users.GetAsync(), new TdpRequest(ObjectType, Number, Revision, recipient), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = UiText.Message(o); return; }
+        plan = o.Value;
+        await OnBanner.InvokeAsync(plan!.Banner);
+    }
+}

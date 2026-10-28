@@ -6,4 +6,6 @@ public static class Policies
     public const string AnyPlmRole = "plm.any";
     public const string Auditor = "plm.auditor";
     public const string Admin = "plm.admin";
+    /// <summary>The integration pull API (service accounts with the plm-integration role).</summary>
+    public const string Integration = "plm.integration";
 }

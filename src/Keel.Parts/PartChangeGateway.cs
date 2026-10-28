@@ -15,7 +15,7 @@ namespace Keel.Parts;
 /// goes through the lifecycle data of 0002/0007: the transition must exist and carry the tag the caller's path requires, so release
 /// stays impossible through any other path.
 /// </summary>
-public sealed class PartChangeGateway(IEnumerable<IPartIterationParticipant>? participants = null) : IChangeObjectGateway
+public sealed class PartChangeGateway(IEnumerable<IPartIterationParticipant>? participants = null, IDomainEventSink? events = null) : IChangeObjectGateway
 {
     private const string InWork = "InWork";
     private const string UnderReview = "UnderReview";
@@ -147,15 +147,24 @@ public sealed class PartChangeGateway(IEnumerable<IPartIterationParticipant>? pa
             ? Task.FromResult(GatewayResult.Fail($"{resulting.Key} revision {resulting.Revision} is {resulting.StateLabel}, not Under Review."))
             : TransitionAsync(conn, tx, resulting.MasterId, resulting.RevisionId, UnderReview, InWork, "workflow", actor, now, ct);
 
-    public Task<GatewayResult> ReleaseResultingAsync(DbConnection conn, DbTransaction tx, ChangeObject resulting, Subject actor, DateTimeOffset now, CancellationToken ct) =>
-        resulting.State != UnderReview
-            ? Task.FromResult(GatewayResult.Fail($"{resulting.Key} revision {resulting.Revision} is {resulting.StateLabel}, not Under Review; it cannot be released with the change notice."))
-            : TransitionAsync(conn, tx, resulting.MasterId, resulting.RevisionId, UnderReview, Released, "workflow", actor, now, ct);
+    public async Task<GatewayResult> ReleaseResultingAsync(DbConnection conn, DbTransaction tx, ChangeObject resulting, Subject actor, DateTimeOffset now, CancellationToken ct)
+    {
+        if (resulting.State != UnderReview)
+            return GatewayResult.Fail($"{resulting.Key} revision {resulting.Revision} is {resulting.StateLabel}, not Under Review; it cannot be released with the change notice.");
+        var released = await TransitionAsync(conn, tx, resulting.MasterId, resulting.RevisionId, UnderReview, Released, "workflow", actor, now, ct);
+        // 4.0 (ADR-0025): the ERP event commits with the release.
+        if (released.IsOk) await PartEvents.EmitAsync(events, conn, tx, resulting.RevisionId, EventTypes.PartReleased, PartEvents.ViaChange, actor, now, null, ct);
+        return released;
+    }
 
-    public Task<GatewayResult> ObsoleteAsync(DbConnection conn, DbTransaction tx, ChangeObject affected, Subject actor, DateTimeOffset now, CancellationToken ct) =>
-        affected.State != Released
-            ? Task.FromResult(GatewayResult.Fail($"{affected.Key} revision {affected.Revision} is {affected.StateLabel}; only a Released revision becomes Obsolete through a change."))
-            : TransitionAsync(conn, tx, affected.MasterId, affected.RevisionId, Released, Obsolete, "change", actor, now, ct);
+    public async Task<GatewayResult> ObsoleteAsync(DbConnection conn, DbTransaction tx, ChangeObject affected, Subject actor, DateTimeOffset now, CancellationToken ct)
+    {
+        if (affected.State != Released)
+            return GatewayResult.Fail($"{affected.Key} revision {affected.Revision} is {affected.StateLabel}; only a Released revision becomes Obsolete through a change.");
+        var obsolete = await TransitionAsync(conn, tx, affected.MasterId, affected.RevisionId, Released, Obsolete, "change", actor, now, ct);
+        if (obsolete.IsOk) await PartEvents.EmitAsync(events, conn, tx, affected.RevisionId, EventTypes.PartObsoleted, PartEvents.ViaChange, actor, now, null, ct);
+        return obsolete;
+    }
 
     public async Task<GatewayResult> DiscardResultingAsync(DbConnection conn, DbTransaction tx, ChangeObject resulting, Guid revisedFromRevisionId, Subject actor, DateTimeOffset now, CancellationToken ct)
     {

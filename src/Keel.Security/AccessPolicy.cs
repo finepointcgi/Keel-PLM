@@ -36,7 +36,8 @@ public static class AccessPolicy
     private static readonly ImmutableDictionary<PlmAction, ImmutableArray<string>> RolesForAction =
         new Dictionary<PlmAction, ImmutableArray<string>>
         {
-            [PlmAction.Read] = [Roles.Viewer, Roles.Author, Roles.Approver, Roles.Admin, Roles.Auditor],
+            // plm-integration may read (for the pull API, under its own markings) but not download, modify or sign.
+            [PlmAction.Read] = [Roles.Viewer, Roles.Author, Roles.Approver, Roles.Admin, Roles.Auditor, Roles.Integration],
             [PlmAction.Download] = [Roles.Viewer, Roles.Author, Roles.Approver, Roles.Admin, Roles.Auditor],
             [PlmAction.Modify] = [Roles.Author, Roles.Admin],
             [PlmAction.Sign] = [Roles.Approver],

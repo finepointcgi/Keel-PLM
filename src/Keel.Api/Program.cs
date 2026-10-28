@@ -126,6 +126,10 @@ Keel.Change.ChangeModule.AddKeelChange(builder.Services);
 builder.Services.AddKeelWorkflow(builder.Configuration);
 builder.Services.AddSingleton<Keel.Migration.BatchQueries>(); // Phase 3: read-only migration batch viewer (admin page); loading is the keel-import CLI
 Keel.Admin.AdminModule.AddKeelAdmin(builder.Services); // 2.2 administration and classification
+builder.Services.AddSingleton<ITdpPartSource, Keel.Parts.PartTdpSource>(); // 4.0 TDP sources of the owning modules
+builder.Services.AddSingleton<ITdpDocumentSource, Keel.Documents.TdpDocumentSource>();
+Keel.Integration.IntegrationModule.AddKeelIntegration(builder.Services, builder.Configuration); // 4.0 outbox, ERP sinks, TDP
+builder.Services.AddKeelIntegrationOpenApi();
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -187,7 +191,8 @@ builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
     .AddPolicy(Policies.AnyPlmRole, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.All))
     .AddPolicy(Policies.Auditor, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Auditor))
-    .AddPolicy(Policies.Admin, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Admin));
+    .AddPolicy(Policies.Admin, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Admin))
+    .AddPolicy(Policies.Integration, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Integration)); // 4.0 integration pull API
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
 
 builder.Services.AddHealthChecks()
@@ -229,6 +234,8 @@ app.MapChangeEndpoints(); // 1.6 change management
 app.MapConfigurationEndpoints(); // 2.1 baselines and effectivity
 app.MapAdminEndpoints(); // 2.2 administration and classification
 app.MapMbomEndpoints(); // 2.3 EBOM / MBOM and reconciliation
+app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration administration
+app.MapOpenApi("/openapi/{documentName}.json");
 app.MapKeelUi<App>();
 
 app.Run();

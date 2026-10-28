@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/bom.published.v1.json",
+  "title": "bom.published v1",
+  "description": "The released EBOM of an assembly revision, one level, children at their latest released revision. Lines the event's markings do not cover are placeholders (restricted).",
+  "type": "object",
+  "properties": {
+    "assembly": {
+      "type": "object",
+      "properties": {
+        "partId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "revisionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "number": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "iteration": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "partId",
+        "revisionId",
+        "number",
+        "name",
+        "revision",
+        "iteration"
+      ],
+      "additionalProperties": false
+    },
+    "spec": {
+      "type": "string",
+      "const": "LatestReleased"
+    },
+    "levels": {
+      "type": "string",
+      "enum": [
+        "one"
+      ]
+    },
+    "lineCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "restrictedLineCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "findNumber": {
+                "type": "integer"
+              },
+              "alternate": {
+                "type": "integer"
+              },
+              "quantity": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "restricted": {
+                "const": true
+              }
+            },
+            "required": [
+              "findNumber",
+              "alternate",
+              "quantity",
+              "unit",
+              "restricted"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "findNumber": {
+                "type": "integer"
+              },
+              "alternate": {
+                "type": "integer"
+              },
+              "quantity": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "restricted": {
+                "const": false
+              },
+              "referenceDesignators": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "notes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "effectivity": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "child": {
+                "type": "object",
+                "properties": {
+                  "partId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "partType": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "iteration": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "unresolved": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "partId",
+                  "number",
+                  "name",
+                  "partType",
+                  "revision",
+                  "iteration",
+                  "state",
+                  "unresolved"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "findNumber",
+              "alternate",
+              "quantity",
+              "unit",
+              "restricted",
+              "referenceDesignators",
+              "notes",
+              "effectivity",
+              "child"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "assembly",
+    "spec",
+    "levels",
+    "lineCount",
+    "restrictedLineCount",
+    "lines"
+  ],
+  "additionalProperties": false
+}

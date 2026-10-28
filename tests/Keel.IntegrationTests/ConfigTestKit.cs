@@ -28,6 +28,9 @@ internal sealed class ConfigEnv
     public required WorkflowService Flow { get; init; }
     public required DocumentService? Docs { get; init; }
     public required TestClock Clock { get; init; }
+    /// <summary>Phase 4: the domain event sink the modules write to, when the test asked for one.</summary>
+    public IDomainEventSink? Sink { get; init; }
+    public required IAuditLog Audit { get; init; }
 
     public static Subject Alice => WorkflowEnv.Alice;
     public static Subject Rita => WorkflowEnv.Rita;
@@ -41,28 +44,29 @@ internal sealed class ConfigEnv
     public static Markings Itar(string program = "ORCA") => WorkflowEnv.Itar(program);
     public static Markings Open => WorkflowEnv.Open;
 
-    public static async Task<ConfigEnv> CreateAsync(PostgresFixture pg, bool documents = false)
+    public static async Task<ConfigEnv> CreateAsync(PostgresFixture pg, bool documents = false, Func<NpgsqlDataSource, IAuditLog, TimeProvider, IDomainEventSink?>? sinkFactory = null)
     {
         var db = await pg.CreateDatabaseAsync();
         var ds = db.AppDataSource();
         var clock = new TestClock();
         var audit = new PostgresAuditLog(ds, clock);
         var options = new WorkflowOptions();
+        var sink = sinkFactory?.Invoke(ds, audit, clock);
         var participants = new IPartIterationParticipant[] { new BomParticipant() };
-        var partChange = new PartChangeGateway(participants);
+        var partChange = new PartChangeGateway(participants, sink);
         var effectivity = new RevisionEffectivityService();
-        var docs = documents ? new DocumentService(ds, audit, clock, new ObjectVault(await VaultContainer.OptionsAsync())) : null;
+        var docs = documents ? new DocumentService(ds, audit, clock, new ObjectVault(await VaultContainer.OptionsAsync()), sink) : null;
         var env = new ConfigEnv
         {
-            Db = db, Ds = ds, Clock = clock, Docs = docs,
-            Parts = new PartService(ds, audit, clock, participants),
+            Db = db, Ds = ds, Clock = clock, Docs = docs, Sink = sink, Audit = audit,
+            Parts = new PartService(ds, audit, clock, participants, sink),
             Bom = new BomService(ds, audit, clock),
-            Baselines = new BaselineService(ds, audit, clock, documents ? new DocumentPinProvider() : null),
+            Baselines = new BaselineService(ds, audit, clock, documents ? new DocumentPinProvider() : null, sink),
             Eff = new EffectivityService(ds, audit, clock),
             Change = new ChangeService(ds, audit, [partChange], clock, effectivity),
             Flow = new WorkflowService(ds, audit,
-                [new PartWorkflowGateway([new ChangeBindingGuard()]), new ChangeWorkflowGateway(ChangeTypes.Ecn, audit, [partChange], effectivity),
-                 new ChangeWorkflowGateway(ChangeTypes.Ecr, audit, [partChange], effectivity), new BaselineWorkflowGateway(audit)],
+                [new PartWorkflowGateway([new ChangeBindingGuard()], null, sink), new ChangeWorkflowGateway(ChangeTypes.Ecn, audit, [partChange], effectivity, sink),
+                 new ChangeWorkflowGateway(ChangeTypes.Ecr, audit, [partChange], effectivity, sink), new BaselineWorkflowGateway(audit, sink)],
                 options, clock),
         };
         var directory = new UserDirectory(ds, clock, options, NullLogger<UserDirectory>.Instance);

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/change.approved.v1.json",
+  "title": "change.approved v1",
+  "description": "A change request was approved by the change control board.",
+  "type": "object",
+  "properties": {
+    "changeId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "number": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "changeClass": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "priority": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "sourceChange": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "submission": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "affected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "objectType": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "effectivity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "objectType",
+          "number",
+          "name",
+          "revision",
+          "action",
+          "effectivity"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "approvedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "changeId",
+    "number",
+    "type",
+    "title",
+    "description",
+    "changeClass",
+    "priority",
+    "reason",
+    "sourceChange",
+    "submission",
+    "affected",
+    "approvedAt"
+  ],
+  "additionalProperties": false
+}

@@ -20,7 +20,7 @@ namespace Keel.Change;
 /// the ECN is Released and its ECR (when all its notices are) Implemented, all in the engine's transaction, or none of it.
 /// </para>
 /// </summary>
-internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnumerable<IChangeObjectGateway> objectGateways, IRevisionEffectivity? effectivity = null) : IWorkflowObjectGateway
+internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnumerable<IChangeObjectGateway> objectGateways, IRevisionEffectivity? effectivity = null, IDomainEventSink? events = null) : IWorkflowObjectGateway
 {
     private const string Draft = "Draft";
     private const string UnderReview = "UnderReview";
@@ -177,6 +177,9 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
             if (!approved.IsOk) return approved;
             await ChangeStore.AppendHistoryAsync(conn, tx, row.Id, null, actor, "Approved by the CCB", $"Submission {row.Submission}: every CCB member approved.", now, ct);
             await Audit(tx, actor, "change.approve", row, ("submission", row.Submission.ToString(CultureInfo.InvariantCulture)));
+            // 4.0 (ADR-0025): the approved change request is reported to the ERP, in the same transaction.
+            if (events is not null && await LoadSnapshotAsync(conn, tx, boundIterationId, ct) is { } ecrSnapshot)
+                await ChangeEvents.EmitAsync(events, conn, tx, EventTypes.ChangeApproved, row, ChangeSnapshot.Parse(ecrSnapshot), [], [], actor, now, ct);
             return GatewayResult.Ok;
         }
 
@@ -244,6 +247,8 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
             $"Released {(released.Count == 0 ? "no revisions" : string.Join(", ", released))}; obsoleted {(obsoleted.Count == 0 ? "none" : string.Join(", ", obsoleted))}{(retained.Count == 0 ? "" : $"; still Released for their earlier units: {string.Join(", ", retained)}")}.", now, ct);
         await Audit(tx, actor, "change.release", row, ("submission", row.Submission.ToString(CultureInfo.InvariantCulture)), ("released", string.Join(",", released)),
             ("obsoleted", string.Join(",", obsoleted)), ("retainedByEffectivity", string.Join(",", retained)), ("ecr", implemented is null ? null : "implemented"));
+        // 4.0 (ADR-0025): the released change notice (affected and resulting revisions, effectivity) is reported to the ERP, in the same transaction.
+        await ChangeEvents.EmitAsync(events, conn, tx, EventTypes.ChangeReleased, row, data, obsoleted, retained, actor, now, ct);
         return GatewayResult.Ok;
     }
 

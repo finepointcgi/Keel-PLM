@@ -74,6 +74,27 @@ Secret-bearing settings are marked **secret**: supply them as files, never in an
 | `Keel__Vault__MaxPdfStampBytes` | `268435456` | O | Larger PDFs are delivered in a marked ZIP instead of stamped in place. |
 | `Keel__Vault__RequestTimeoutSeconds` | `30` | O | 1 to 600. Upper bound for one store request (retries included) and for each read of a streaming download. A store that does not answer makes the API reply `503` with `Retry-After: 5` instead of hanging. A download already streaming to the client cannot change its status code: it is cut. |
 
+### Integration (`Keel:Integration`, ADR-0025, [runbook](integration.md))
+| Setting | Default | Prod | Example / notes |
+|---|---|---|---|
+| `Keel__Integration__DispatcherEnabled` | `false` | O | Runs the delivery dispatcher in this process. Enable in at least one replica to deliver events. |
+| `Keel__Integration__PollInterval` / `BatchSize` / `Lease` | `00:00:02` / `25` / `00:02:00` | O | Dispatcher polling, deliveries per poll, how long a claim holds before another dispatcher may take it over. |
+| `Keel__Integration__MaxAttempts` | `8` | O | Attempts before a delivery becomes a dead letter. |
+| `Keel__Integration__BackoffBase` / `BackoffMax` | `00:00:05` / `01:00:00` | O | Exponential backoff with jitter. |
+| `Keel__Integration__LagDegradedSeconds` | `300` | O | Readiness reports Degraded when the oldest due delivery waited longer. |
+| `Keel__Integration__WebhookTimeoutSeconds` | `10` | O | Default per-request timeout of a webhook sink (a sink can set its own, 1 to 120). |
+| `Keel__Integration__AllowedHosts__0..n` | none (deny) | R for webhooks | Host names a sink URL may use: exact or `*.suffix`. |
+| `Keel__Integration__AllowedNetworks__0..n` | none | O | CIDR ranges a sink URL may resolve into. |
+| `Keel__Integration__AllowDangerousAddresses` | `false` | D | Development only: allows loopback, link-local and metadata addresses. Never in production. |
+| `Keel__Integration__FileDropRoot` | empty (file sinks refused) | R for file sinks | Directory (mounted volume) under which file-drop sinks write. |
+| `Keel__Integration__Secrets__<name>` | none | R per sink, **secret** | HMAC secret referenced by a sink's `secretName`. Names: letters, digits, `_`, `-`. |
+| `Keel__Integration__ClientCertificates__<name>` | none | O | Path of a PEM file with the client certificate and its private key (mTLS), mounted from a secret. |
+| `Keel__Integration__CaBundles__<name>` | none | O | Path of a PEM bundle the endpoint's certificate must chain to. |
+| `Keel__Integration__BomPublishedMaxLines` / `BomFullStructureMaxLines` | `5000` / `5000` | O | Larger structures are skipped and audited, never truncated. |
+| `Keel__Integration__TdpSigningKeyPath` | empty (export answers 503) | R for TDP | `/run/secrets/keel/tdp_signing_key.pem`: ECDSA P-256 PKCS#8 PEM. |
+| `Keel__Integration__TdpTrustedPublicKeyPaths__0..n` | none | O | Public keys trusted when verifying packages (retired signing keys). |
+| `Keel__Integration__TdpMaxParts` / `TdpMaxDocuments` | `2000` / `5000` | O | Larger packages are refused so they can be split. |
+
 ### Workflow (`Keel:Workflow`)
 | Setting | Default | Prod | Example / notes |
 |---|---|---|---|

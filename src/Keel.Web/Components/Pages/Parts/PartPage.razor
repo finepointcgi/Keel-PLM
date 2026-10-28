@@ -5,7 +5,7 @@
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
 
-<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner)" Title="Part">
+<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner)" Title="Part">
     @if (notFound)
     {
         <p class="error" role="alert">Part @Number was not found, or you are not authorized to see it.</p>
@@ -141,6 +141,8 @@
             @* --- Manufacturing BOMs (increment 2.3, ADR-0024): per plant, with generate from this EBOM --- *@
             <Keel.Web.Components.Pages.Mbom.MbomSection Part="p" OnBanner="b => mbomBanner = b" />
             @* --- end manufacturing BOMs --- *@
+            @* --- 4.0 Technical Data Package export (ADR-0025) --- *@
+            <TdpExportPanel ObjectType="part" Number="@p.Number" Revision="@p.Revision.Revision" OnBanner="b => tdpBanner = b" />
 
             <section class="panel">
                 <h3>Security markings</h3>
@@ -207,6 +209,7 @@
     private string? bomBanner; // 1.4: aggregate banner reported by the BOM section
     private string? mbomBanner; // 2.3: aggregate banner reported by the manufacturing BOM section
     private string? changesBanner; // 1.6: aggregate banner reported by the changes panel
+    private string? tdpBanner; // 4.0: banner of the previewed Technical Data Package
 
     private static string Corr() => CurrentUser.NewCorrelationId();
 

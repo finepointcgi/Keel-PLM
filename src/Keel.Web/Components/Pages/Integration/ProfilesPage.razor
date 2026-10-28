@@ -1,0 +1,108 @@
+@page "/admin/integration/profiles"
+@inject CurrentUser Users
+@inject IntegrationAdminService Admin
+
+<PageFrame Banner="@UiText.Unclassified" Title="Integration: clearance profiles">
+    <AdminNav />
+    <IntegrationNav />
+    <div class="stack">
+        <p>A clearance profile states what a receiving system, or the recipient of a Technical Data Package, is cleared for. The outbound release check evaluates every object against it: export jurisdiction and ECCN, U.S.-person operation or a listed export authorization, CUI categories, programs and the distribution statements of DoDI 5230.24 (statement F is never released automatically). Changing a profile never sends anything that was withheld; use Re-evaluate on the Deliveries page.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (errors.Count > 0) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
+        @if (saved is not null) { <p role="status" class="permit">@saved</p> }
+        <section class="panel">
+            <h3>Profiles</h3>
+            <div class="table-wrap"><table class="data">
+                <caption class="visually-hidden">Clearance profiles</caption>
+                <thead><tr><th scope="col">Name</th><th scope="col">Recipient</th><th scope="col">U.S. persons only</th><th scope="col">Jurisdictions</th><th scope="col">CUI</th><th scope="col">Statements</th><th scope="col">Authorizations</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var p in profiles)
+                    {
+                        <tr class="@(p.Active ? "" : "retired")">
+                            <td><code>@p.Name</code><br /><span class="muted small">@p.Label</span></td>
+                            <td>@p.RecipientCategory</td><td>@(p.UsPersonsOnly ? "Yes" : "No")</td>
+                            <td>@string.Join(", ", p.AllowedJurisdictions)</td><td>@string.Join(", ", p.AllowedCui)</td><td>@string.Join(", ", p.AllowedStatements)</td>
+                            <td>@string.Join(", ", p.ExportAuthorizations)</td><td>@(p.Active ? "Active" : "Inactive")</td>
+                            <td class="actions-cell"><button type="button" class="secondary" @onclick="() => Edit(p)">Edit</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+        <section class="panel">
+            <h3>@(editing ? $"Edit {name}" : "Add a profile")</h3>
+            <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <label>Name * <input @bind="name" maxlength="41" readonly="@editing" required /></label>
+                <label>Label * <input @bind="label" maxlength="120" required /></label>
+                <label>Recipient category
+                    <select @bind="category">@foreach (var c in new[] { "Public", "Usg", "Dod", "UsgContractor", "DodContractor", "Foreign" }) { <option value="@c">@c</option> }</select>
+                </label>
+                <label class="checkbox"><input type="checkbox" @bind="usOnly" /> Operated by U.S. persons only</label>
+                <label class="wide">Description <input @bind="description" maxlength="1000" /></label>
+                <label>Jurisdictions (None, Ear, Itar) <input @bind="jurisdictions" /></label>
+                <label>Allowed ECCNs (empty = all; 9A* allowed) <input @bind="eccns" /></label>
+                <label>Allowed USML categories (empty = all) <input @bind="usml" /></label>
+                <label>Allowed CUI categories <input @bind="cui" /></label>
+                <label>Allowed programs <input @bind="programs" /></label>
+                <label>Distribution statements (A to E) <input @bind="statements" /></label>
+                <label>Export authorizations held <input @bind="authorizations" /></label>
+                <label class="checkbox"><input type="checkbox" @bind="active" /> Active</label>
+                <div class="toolbar wide">
+                    <button type="submit" disabled="@busy">@(editing ? "Save changes" : "Add profile")</button>
+                    @if (editing) { <button type="button" class="secondary" @onclick="Reset">Cancel edit</button> }
+                </div>
+            </form>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<ProfileRecord> profiles = [];
+    private string name = "", label = "", description = "", category = "Usg", jurisdictions = "None", eccns = "", usml = "", cui = "", programs = "", statements = "A", authorizations = "";
+    private bool usOnly = true, active = true, editing, busy;
+    private string? error, saved;
+    private List<string> errors = [];
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var o = await Admin.ListProfilesAsync(await Users.GetAsync());
+        error = o.IsOk ? null : UiText.Message(o);
+        profiles = o.Value ?? [];
+    }
+
+    private static string Join(IEnumerable<string> v) => string.Join(", ", v);
+
+    private void Edit(ProfileRecord p)
+    {
+        editing = true;
+        (name, label, description, category, usOnly, active) = (p.Name, p.Label, p.Description, p.RecipientCategory, p.UsPersonsOnly, p.Active);
+        (jurisdictions, eccns, usml, cui, programs, statements, authorizations) = (Join(p.AllowedJurisdictions), Join(p.AllowedEccns), Join(p.AllowedUsml), Join(p.AllowedCui), Join(p.AllowedPrograms), Join(p.AllowedStatements), Join(p.ExportAuthorizations));
+        errors = [];
+    }
+
+    private void Reset()
+    {
+        editing = false;
+        name = label = description = eccns = usml = cui = programs = authorizations = "";
+        (category, jurisdictions, statements, usOnly, active) = ("Usg", "None", "A", true, true);
+        errors = [];
+    }
+
+    private static string[] Split(string v) => v.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        saved = null;
+        errors = [];
+        var o = await Admin.SaveProfileAsync(await Users.GetAsync(),
+            new ProfileInput(name.Trim(), label, description, category, usOnly, Split(jurisdictions), Split(eccns), Split(usml), Split(cui), Split(programs), Split(statements), Split(authorizations), active),
+            CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { saved = $"Saved {o.Value!.Name}."; error = null; Reset(); await Load(); }
+        else if (o.Kind == OutcomeKind.Invalid) errors = [.. o.Errors];
+        else error = UiText.Message(o);
+    }
+}

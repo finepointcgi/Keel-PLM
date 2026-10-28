@@ -3,7 +3,7 @@
 @inject BaselineService Baselines
 @inject BomService Bom
 
-<PageFrame Banner="@Banner()" Title="@($"Baseline {Number}")">
+<PageFrame Banner="@BannerMerge.Union(Banner(), tdpBanner)" Title="@($"Baseline {Number}")">
     @if (notFound)
     {
         <p class="error" role="alert">Baseline @Number was not found, or you are not authorized to see it.</p>
@@ -148,6 +148,8 @@
                     </table></div>
                 </section>
             }
+        @* 4.0: Technical Data Package of this baseline (ADR-0025) *@
+        <TdpExportPanel ObjectType="baseline" Number="@detail.Summary.Number" OnBanner="b => tdpBanner = b" />
         </article>
     }
 </PageFrame>
@@ -162,7 +164,7 @@
     private IReadOnlyList<Markings> shown = [];
     private readonly List<string> notices = [];
     private bool notFound, busy;
-    private string? error;
+    private string? error, tdpBanner;
     private int levels = 1, rowsShown;
     private string compareWith = "", reason = "", supersedeBy = "", editName = "", editPurpose = "", editMilestone = "";
 
