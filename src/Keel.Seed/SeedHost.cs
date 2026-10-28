@@ -1,0 +1,126 @@
+using System.Text.Json;
+using Keel.Audit;
+using Keel.Bom;
+using Keel.Change;
+using Keel.Core;
+using Keel.Documents;
+using Keel.Documents.Vault;
+using Keel.Parts;
+using Keel.Workflow;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+
+namespace Keel.Seed;
+
+/// <summary>Where the seed tool connects, resolved like the API host does: appsettings, then environment (<c>Keel__Database__AppConnectionString</c>), then flags.</summary>
+public sealed record SeedSettings(string AppConnectionString, VaultOptions Vault, string? CheckpointPublicKeyPath)
+{
+    /// <summary>
+    /// Resolution order (later wins): <c>src/Keel.Api/appsettings.Development.json</c> found by walking up from the working directory,
+    /// an explicit <c>--settings</c> file, environment variables with the API's keys, then <c>--connection</c>.
+    /// </summary>
+    public static SeedSettings Resolve(string? settingsFile, string? connection, string? publicKey)
+    {
+        var builder = new ConfigurationBuilder();
+        var dev = FindUp("src/Keel.Api/appsettings.Development.json");
+        if (dev is not null) builder.AddJsonFile(dev, optional: true);
+        if (settingsFile is not null) builder.AddJsonFile(Path.GetFullPath(settingsFile), optional: false);
+        builder.AddEnvironmentVariables();
+        var config = builder.Build();
+        var conn = connection ?? config["Keel:Database:AppConnectionString"]
+            ?? throw new InvalidOperationException(
+                "No database connection. Set Keel__Database__AppConnectionString, pass --connection, or run from the repository so src/Keel.Api/appsettings.Development.json is found.");
+        var vault = config.GetSection(VaultOptions.Section).Get<VaultOptions>() ?? new VaultOptions();
+        return new SeedSettings(conn, vault, publicKey);
+    }
+
+    private static string? FindUp(string relative)
+    {
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                var candidate = Path.Combine(dir.FullName, relative);
+                if (File.Exists(candidate)) return candidate;
+            }
+        return null;
+    }
+}
+
+/// <summary>
+/// The real services of every module wired exactly like <c>Keel.Api</c> (same registrations, same gateways), over one database.
+/// The seed goes through these, so every action is authorized, validated and audited like a user's click.
+/// </summary>
+public sealed class SeedHost : IAsyncDisposable
+{
+    private readonly ServiceProvider _services;
+
+    private SeedHost(ServiceProvider services) => _services = services;
+
+    public NpgsqlDataSource DataSource => _services.GetRequiredService<NpgsqlDataSource>();
+    public PartService Parts => _services.GetRequiredService<PartService>();
+    public BomService Bom => _services.GetRequiredService<BomService>();
+    public DocumentService Documents => _services.GetRequiredService<DocumentService>();
+    public ChangeService Change => _services.GetRequiredService<ChangeService>();
+    public ImpactAnalysisService Impact => _services.GetRequiredService<ImpactAnalysisService>();
+    public WorkflowService Workflow => _services.GetRequiredService<WorkflowService>();
+    public UserDirectory Directory => _services.GetRequiredService<UserDirectory>();
+    public ObjectVault Vault => _services.GetRequiredService<ObjectVault>();
+
+    public static SeedHost Create(SeedSettings settings)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(_ => NpgsqlDataSource.Create(settings.AppConnectionString));
+        services.AddSingleton<PostgresAuditLog>();
+        services.AddSingleton<IAuditLog>(sp => sp.GetRequiredService<PostgresAuditLog>());
+        services.AddSingleton<AuditQueries>();
+        services.AddSingleton<PartService>();
+        services.AddSingleton(settings.Vault);
+        services.AddSingleton(sp => new ObjectVault(sp.GetRequiredService<VaultOptions>()));
+        services.AddSingleton<DocumentService>();
+        BomModule.AddKeelBom(services);
+        services.AddSingleton<IWorkflowObjectGateway, PartWorkflowGateway>();
+        services.AddSingleton<IChangeObjectGateway, PartChangeGateway>();
+        services.AddSingleton<ILinkedDocumentProvider, LinkedDocumentProvider>();
+        ChangeModule.AddKeelChange(services);
+        services.AddKeelWorkflow(new ConfigurationBuilder().Build());
+        return new SeedHost(services.BuildServiceProvider());
+    }
+
+    /// <summary>Records the realm users in <c>identity.user_directory</c>, the same upsert the application runs at sign-in.</summary>
+    public async Task UpsertDirectoryAsync(IEnumerable<Subject> users)
+    {
+        foreach (var u in users) await Directory.UpsertAsync(u);
+    }
+
+    /// <summary>Walks the whole audit chain and checks any checkpoint signatures against <paramref name="trustedKeys"/>.</summary>
+    public async Task<VerificationResult> VerifyAuditAsync(IReadOnlyCollection<System.Security.Cryptography.ECDsa> trustedKeys)
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+        return await AuditVerifier.VerifyAsync(conn, trustedKeys);
+    }
+
+    public async Task<long> AuditEventCountAsync()
+    {
+        await using var cmd = DataSource.CreateCommand("SELECT count(*) FROM audit.event");
+        return (long)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    public async ValueTask DisposeAsync() => await _services.DisposeAsync();
+}
+
+/// <summary>A seed step failed through a service: the message carries the service's own reasons.</summary>
+public sealed class SeedException(string message) : Exception(message);
+
+public static class SeedExtensions
+{
+    /// <summary>Unwraps a service result, failing the seed with the service's reasons (never skipping a business rule).</summary>
+    public static T Must<T>(this Outcome<T> outcome, string what) =>
+        outcome.IsOk ? outcome.Value! : throw new SeedException($"{what}: {outcome.Kind} {string.Join("; ", outcome.Errors)}");
+
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    public static string Json(this object value) => JsonSerializer.Serialize(value, Indented);
+}

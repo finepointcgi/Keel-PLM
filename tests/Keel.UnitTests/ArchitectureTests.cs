@@ -50,6 +50,8 @@ public sealed partial class ArchitectureTests
             // PartChangeGateway does the same for change management: single objects by id (or a batch of ids for display) that the caller
             // evaluates with AccessPolicy on the returned markings before showing anything.
             if (file.EndsWith("PartChangeGateway.cs", StringComparison.Ordinal)) continue;
+            // The seed tool's one fresh-database probe (a yes/no administrative question with no end user); everything else it does goes through services.
+            if (file.EndsWith("Keel.Seed" + Path.DirectorySeparatorChar + "DatabaseState.cs", StringComparison.Ordinal)) continue;
             var text = File.ReadAllText(file);
             foreach (Match m in SqlFromMarkedTable().Matches(text))
             {
