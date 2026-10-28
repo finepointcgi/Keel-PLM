@@ -7,6 +7,8 @@ public enum OutcomeKind
     NotFound,
     Forbidden,
     Conflict,
+    /// <summary>The action needs a fresh authentication (e-signature step-up, A9). Errors[0] = reason code, Errors[1] = max age in seconds.</summary>
+    StepUpRequired,
 }
 
 /// <summary>Result of an application command or query, mapped by the API to HTTP status codes.</summary>
@@ -20,4 +22,6 @@ public sealed record Outcome<T>(OutcomeKind Kind, T? Value, IReadOnlyList<string
     public static Outcome<T> NotFound() => new(OutcomeKind.NotFound, default, []);
     public static Outcome<T> Forbidden(IEnumerable<string> reasons) => new(OutcomeKind.Forbidden, default, reasons.ToList());
     public static Outcome<T> Conflict(string message) => new(OutcomeKind.Conflict, default, [message]);
+    public static Outcome<T> StepUpRequired(string reasonCode, int maxAgeSeconds) =>
+        new(OutcomeKind.StepUpRequired, default, [reasonCode, maxAgeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
 }

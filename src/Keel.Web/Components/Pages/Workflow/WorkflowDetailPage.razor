@@ -1,0 +1,165 @@
+@page "/workflows/{Id:guid}"
+@inject CurrentUser Users
+@inject WorkflowService Flow
+
+<PageFrame Banner="@(view?.Banner ?? UiText.Unclassified)" Title="Workflow">
+    @if (notFound)
+    {
+        <p class="error" role="alert">This workflow was not found, or you are not authorized to see it.</p>
+    }
+    else if (view is not null)
+    {
+        var v = view;
+        var o = v.Target;
+        <article class="stack">
+            <header class="part-header">
+                <div>
+                    <h2>@v.TemplateName <span class="muted">v@(v.TemplateVersion)</span></h2>
+                    <p class="muted">
+                        @{ var link = WorkflowText.ObjectLink(o.ObjectType, o.Key); }
+                        @if (link is not null) { <a href="@link">@o.Key</a> } else { <span>@o.Key</span> }
+                        · @o.Name · revision @o.Revision (@o.IterationLabel) · started by @v.StartedBy on @WorkflowText.Utc(v.StartedAt)
+                    </p>
+                </div>
+                <div class="badges">
+                    <span class="badge @(v.Status == InstanceStatus.Approved ? "state-released" : v.Status == InstanceStatus.Active ? "state-underreview" : null)">@WorkflowText.Status(v.Status)</span>
+                    <MarkingChip Text="@o.Banner" />
+                </div>
+            </header>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (v.CompletionNote is not null) { <p>@v.CompletionNote</p> }
+            @if (v.Comment is not null) { <p class="muted">Submitter's comment: @v.Comment</p> }
+
+            <section class="panel">
+                <h3>Tasks</h3>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Task</th><th scope="col">Assigned to</th><th scope="col">Status</th><th scope="col">Due</th><th scope="col">Completed (UTC)</th>@if (v.CanReassign) { <th scope="col">Reassign</th> }</tr></thead>
+                    <tbody>
+                        @foreach (var t in v.Tasks)
+                        {
+                            <tr>
+                                <td>@t.Name</td>
+                                <td>@(t.AssigneeName is null ? $"Anyone holding {WorkflowText.Role(t.RequiredRole)}" : $"{t.AssigneeName} ({t.AssigneeUsername})")</td>
+                                <td>@t.Status@(t.Decision is null ? "" : $" ({t.Decision})")</td>
+                                <td class="@(t.Overdue ? "error" : null)">@WorkflowText.Due(t.DueAt, t.Overdue)</td>
+                                <td>@(t.CompletedAt is { } c ? WorkflowText.Utc(c) : "")</td>
+                                @if (v.CanReassign)
+                                {
+                                    <td>
+                                        @if (t.Status == "Open")
+                                        {
+                                            <div class="toolbar">
+                                                <input aria-label="New assignee for @t.Name" placeholder="Login or user id" @bind="reassignTo[t.Id]" />
+                                                <input aria-label="Reason for reassigning @t.Name" placeholder="Reason (required)" @bind="reassignReason[t.Id]" />
+                                                <button type="button" class="secondary" disabled="@busy" @onclick="() => Reassign(t.Id)">Reassign</button>
+                                            </div>
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            </section>
+
+            <section class="panel">
+                <h3>Signatures</h3>
+                @if (v.Signatures.Count == 0) { <p class="muted">No signatures yet.</p> }
+                else
+                {
+                    <ul class="plain signatures">
+                        @foreach (var s in v.Signatures)
+                        {
+                            var check = verification.GetValueOrDefault(s.Id);
+                            <li>
+                                <div>@s.Manifestation</div>
+                                @if (!string.IsNullOrEmpty(s.Comment)) { <div class="muted">@s.Comment</div> }
+                                <div class="muted small">
+                                    Version @s.IterationLabel · @s.MarkingBanner · hash @s.SignatureHash[..16]…
+                                    @if (check is not null)
+                                    {
+                                        <span class="@(check.Valid ? "permit" : "error")">@(check.Valid ? "Verified: the signed content is unchanged." : "TAMPERING DETECTED: " + string.Join(" ", check.Problems))</span>
+                                        @if (check.Valid && check.MarkingsChangedSince) { <span class="muted"> Markings changed after signing.</span> }
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="panel">
+                <h3>History</h3>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">When (UTC)</th><th scope="col">Who</th><th scope="col">What</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in v.Events) { <tr><td>@WorkflowText.Utc(e.At)</td><td>@e.ActorName</td><td>@e.Action@(e.Detail is null ? "" : ": " + e.Detail)</td></tr> }
+                    </tbody>
+                </table></div>
+            </section>
+
+            @if (v.CanCancel)
+            {
+                <section class="panel">
+                    <h3>Cancel this review</h3>
+                    <p class="muted">The part returns to In Work. A reason is required and is recorded.</p>
+                    <div class="toolbar">
+                        <input aria-label="Reason for cancelling" placeholder="Reason (required)" class="grow" @bind="cancelReason" />
+                        <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
+                    </div>
+                </section>
+            }
+        </article>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private InstanceView? view;
+    private Dictionary<Guid, SignatureVerification> verification = [];
+    private readonly Dictionary<Guid, string> reassignTo = new(), reassignReason = new();
+    private bool notFound, busy;
+    private string? error;
+    private string cancelReason = "";
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var user = await Users.GetAsync();
+        var outcome = await Flow.GetInstanceAsync(user, Id, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        view = outcome.Value;
+        if (view is null) return;
+        foreach (var t in view.Tasks)
+        {
+            reassignTo.TryAdd(t.Id, "");
+            reassignReason.TryAdd(t.Id, "");
+        }
+        var verified = view.Signatures.Count == 0 ? null : await Flow.VerifyInstanceAsync(user, Id, CurrentUser.NewCorrelationId());
+        verification = verified is { IsOk: true } ? verified.Value!.ToDictionary(r => r.SignatureId) : [];
+    }
+
+    private async Task Cancel()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Flow.CancelAsync(await Users.GetAsync(), Id, cancelReason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = WorkflowText.Message(outcome); return; }
+        cancelReason = "";
+        await Load();
+    }
+
+    private async Task Reassign(Guid taskId)
+    {
+        busy = true;
+        error = null;
+        var outcome = await Flow.ReassignTaskAsync(await Users.GetAsync(), taskId, reassignTo[taskId], reassignReason[taskId], CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = WorkflowText.Message(outcome); return; }
+        reassignTo[taskId] = reassignReason[taskId] = "";
+        await Load();
+    }
+}

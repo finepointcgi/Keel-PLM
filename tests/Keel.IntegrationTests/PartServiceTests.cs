@@ -59,7 +59,8 @@ public sealed class PartServiceTests(PostgresFixture pg)
         Assert.Equal("alice", p.CreatedBy);
         Assert.True(p.Permissions.CanModify);
         var transition = Assert.Single(p.Transitions);
-        Assert.Equal(("UnderReview", true), (transition.To, transition.Allowed));
+        // Review states belong to the workflow engine since 1.5: the manual path no longer enters Under Review.
+        Assert.Equal(("UnderReview", false), (transition.To, transition.Allowed));
 
         var e = Assert.Single(await Audit(ds));
         Assert.Equal(("part.create", AuditOutcome.Success, "P-000001", "corr-1"), (e.Action, e.Outcome, e.ObjectId, e.CorrelationId));
@@ -180,7 +181,8 @@ public sealed class PartServiceTests(PostgresFixture pg)
         var (svc, db, _) = await Setup();
         await svc.CreateAsync(Alice, Cmd("Spacer"), null);
 
-        var review = (await svc.SetStateAsync(Alice, "P-000001", "UnderReview", null, false, null)).Value!;
+        Assert.Contains("review workflow", (await svc.SetStateAsync(Alice, "P-000001", "UnderReview", null, false, null)).Errors[0]);
+        var review = (await svc.SetStateAsync(Ada, "P-000001", "UnderReview", "Test setup: put the part under review", true, null)).Value!;
         Assert.True(review.Revision.IsLocked);
         Assert.Contains("locked", (await svc.CheckOutAsync(Alice, "P-000001", null)).Errors[0]);
         Assert.Contains("review workflow", (await svc.SetStateAsync(Alice, "P-000001", "Released", null, false, null)).Errors[0]);

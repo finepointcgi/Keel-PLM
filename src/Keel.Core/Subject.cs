@@ -19,6 +19,11 @@ public sealed record Subject
     public ImmutableSortedSet<string> ExportAuthorizations { get; init; } = ImmutableSortedSet<string>.Empty;
     public ImmutableSortedSet<string> CuiCategories { get; init; } = ImmutableSortedSet<string>.Empty;
     public ImmutableSortedSet<string> Roles { get; init; } = ImmutableSortedSet<string>.Empty;
+    /// <summary>
+    /// When the user last authenticated at the IdP (<c>auth_time</c>), used to require recent re-authentication for
+    /// electronic signatures (A9, ADR-0007). Null when the IdP did not release it; signing then always needs step-up.
+    /// </summary>
+    public DateTimeOffset? AuthTime { get; init; }
 }
 
 /// <summary>Role names released by the IdP in the <c>roles</c> claim.</summary>

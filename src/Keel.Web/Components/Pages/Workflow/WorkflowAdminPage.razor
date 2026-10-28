@@ -1,0 +1,87 @@
+@page "/workflows"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject WorkflowService Flow
+
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Workflows">
+    <div class="stack">
+        <form class="toolbar" role="search" @onsubmit="() => Load(0)">
+            <select aria-label="Status" @bind="status" @bind:after="() => Load(0)">
+                <option value="">Any status</option>
+                <option value="Active">Active</option>
+                <option value="Approved">Released</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Cancelled">Cancelled</option>
+            </select>
+            <button type="submit">Filter</button>
+        </form>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (result is not null)
+        {
+            <p class="muted">@result.Total workflow@(result.Total == 1 ? "" : "s") on data you can access</p>
+            <div class="table-wrap"><table class="data">
+                <thead><tr><th scope="col">Item</th><th scope="col">Markings</th><th scope="col">Template</th><th scope="col">Status</th><th scope="col">Open tasks</th><th scope="col">Started by</th><th scope="col">Started (UTC)</th></tr></thead>
+                <tbody>
+                    @foreach (var i in result.Items)
+                    {
+                        <tr>
+                            <td><a href="workflows/@i.Id">@i.Target.Key</a> · @i.Target.Name <span class="muted">rev @i.Target.Revision</span></td>
+                            <td><MarkingChip Text="@i.Target.Banner" /></td>
+                            <td>@i.TemplateName</td>
+                            <td>@WorkflowText.Status(i.Status)</td>
+                            <td>@i.OpenTasks</td>
+                            <td>@i.StartedBy</td>
+                            <td>@WorkflowText.Utc(i.StartedAt)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="toolbar">
+                <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Load(Math.Max(0, offset - PageSize))">Previous</button>
+                <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Load(offset + PageSize)">Next</button>
+            </div>
+        }
+
+        <section class="panel">
+            <h3>Templates</h3>
+            <p class="muted">Read-only. Administrators upload a new template version through the API (<code>POST /api/v1/workflow/templates</code>); the editor arrives in Phase 2. Running reviews keep the version they started with.</p>
+            <div class="table-wrap"><table class="data">
+                <thead><tr><th scope="col">Template</th><th scope="col">Version</th><th scope="col">Object type</th><th scope="col">Participant groups</th></tr></thead>
+                <tbody>
+                    @foreach (var t in templates)
+                    {
+                        <tr>
+                            <td>@t.Name <span class="muted">(@t.Id)</span></td>
+                            <td>@t.Version</td>
+                            <td>@t.ObjectType</td>
+                            <td>@string.Join("; ", t.Slots.Select(s => $"{s.Label} ({(s.Min == s.Max ? s.Min.ToString() : $"{s.Min}-{s.Max}")}, {WorkflowText.Role(s.Role)})"))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private InstancePage? result;
+    private IReadOnlyList<TemplateView> templates = [];
+    private string status = "";
+    private string? error;
+    private int offset;
+
+    protected override async Task OnInitializedAsync()
+    {
+        templates = await Flow.ListTemplatesAsync(await Users.GetAsync(), activeOnly: true, CurrentUser.NewCorrelationId());
+        await Load(0);
+    }
+
+    private async Task Load(int newOffset)
+    {
+        offset = newOffset;
+        var outcome = await Flow.ListInstancesAsync(await Users.GetAsync(), status == "" ? null : status, PageSize, offset, CurrentUser.NewCorrelationId());
+        error = outcome.IsOk ? null : WorkflowText.Message(outcome);
+        result = outcome.Value;
+    }
+}

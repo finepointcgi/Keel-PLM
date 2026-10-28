@@ -16,5 +16,6 @@
     <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\..\src\Keel.Api\Keel.Api.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Workflow\Keel.Workflow.csproj" />
   </ItemGroup>
 </Project>

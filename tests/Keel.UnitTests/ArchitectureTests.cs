@@ -12,7 +12,8 @@ public sealed partial class ArchitectureTests
         ["Keel.Security"] = ["Keel.Core"],
         ["Keel.Audit"] = ["Keel.Core"],
         ["Keel.Parts"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts"],
+        ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Workflow"],
     };
 
     [Fact]
@@ -68,10 +69,10 @@ public sealed partial class ArchitectureTests
         Assert.True(offenders.Count == 0, "Pages without PageFrame: " + string.Join(", ", offenders));
     }
 
-    [GeneratedRegex(@"FROM\s+plm\.part_master\b[^\n]*", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"FROM\s+(plm\.part_master|wf\.instance)\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlFromMarkedTable();
 
-    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
     private static partial Regex KeyLookup();
 
     private static string FindRepoRoot()

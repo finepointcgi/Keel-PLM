@@ -1,0 +1,88 @@
+<section class="panel start-review" aria-labelledby="start-review-heading">
+    <h3 id="start-review-heading">Submit for review</h3>
+    <p class="muted">@Template.Name. The part is locked while the review runs. You choose the people; each must hold the needed role and be allowed to see this part, and you cannot review your own submission.</p>
+    <div class="stack">
+        @foreach (var slot in Template.Slots)
+        {
+            var picked = selected[slot.Name];
+            <fieldset class="slot">
+                <legend>@slot.Label <span class="muted">(@(slot.Min == slot.Max ? $"exactly {slot.Min}" : $"{slot.Min} to {slot.Max}"); @WorkflowText.Role(slot.Role))</span></legend>
+                @if (picked.Count > 0)
+                {
+                    <ul class="picked" aria-label="Chosen @slot.Label">
+                        @foreach (var u in picked)
+                        {
+                            <li>@u.DisplayName (@u.Username) <button type="button" class="link" @onclick="() => Remove(slot.Name, u)" aria-label="Remove @u.Username">Remove</button></li>
+                        }
+                    </ul>
+                }
+                <div class="toolbar">
+                    <input aria-label="Find @slot.Label" placeholder="Name or login" class="grow" value="@queries[slot.Name]"
+                           @onchange="e => SetQuery(slot.Name, e)" />
+                    <button type="button" class="secondary" aria-label="Search @slot.Label" disabled="@Busy" @onclick="() => Find(slot)">Find</button>
+                </div>
+                @if (results.TryGetValue(slot.Name, out var found))
+                {
+                    @if (found.Count == 0) { <p class="muted small">No eligible users found. Users appear in the directory after they sign in.</p> }
+                    <ul class="candidates" aria-label="Eligible @slot.Label">
+                        @foreach (var u in found.Where(f => picked.All(p => p.Sub != f.Sub)))
+                        {
+                            <li>
+                                @u.DisplayName (@u.Username) <span class="muted">@string.Join(", ", u.Roles)</span>
+                                <button type="button" class="secondary" disabled="@(picked.Count >= slot.Max)" @onclick="() => Add(slot.Name, u)" aria-label="Add @u.Username">Add</button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </fieldset>
+        }
+        <label>Comment for the reviewers <span class="muted">(optional)</span>
+            <textarea rows="3" maxlength="2000" @bind="comment"></textarea>
+        </label>
+        @if (Error is not null) { <p class="error" role="alert">@Error</p> }
+        <div class="toolbar">
+            <button type="button" disabled="@(Busy || !Complete)" @onclick="Submit">Start review</button>
+            <button type="button" class="secondary" disabled="@Busy" @onclick="() => OnCancel.InvokeAsync()">Cancel</button>
+            @if (!Complete) { <span class="muted small">Choose the required reviewers to continue.</span> }
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required TemplateView Template { get; set; }
+    /// <summary>Directory search for one participant group: slot name and the text typed. Returns only eligible users.</summary>
+    [Parameter, EditorRequired] public required Func<SlotView, string, Task<IReadOnlyList<DirectoryUserView>>> Search { get; set; }
+    [Parameter] public EventCallback<StartSelection> OnStart { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    private readonly Dictionary<string, List<DirectoryUserView>> selected = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> queries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<DirectoryUserView>> results = new(StringComparer.Ordinal);
+    private string comment = "";
+
+    protected override void OnParametersSet()
+    {
+        foreach (var slot in Template.Slots)
+        {
+            selected.TryAdd(slot.Name, []);
+            queries.TryAdd(slot.Name, "");
+        }
+    }
+
+    private bool Complete => Template.Slots.All(s => selected[s.Name].Count >= s.Min && selected[s.Name].Count <= s.Max);
+
+    private async Task Find(SlotView slot) => results[slot.Name] = await Search(slot, queries[slot.Name]);
+
+    private void SetQuery(string slot, ChangeEventArgs e) => queries[slot] = e.Value?.ToString() ?? string.Empty;
+
+    private void Add(string slot, DirectoryUserView user) => selected[slot].Add(user);
+
+    private void Remove(string slot, DirectoryUserView user) => selected[slot].RemoveAll(u => u.Sub == user.Sub);
+
+    private Task Submit() => OnStart.InvokeAsync(new StartSelection(
+        Template.Id,
+        Template.Slots.ToDictionary(s => s.Name, s => selected[s.Name].Select(u => u.Sub).ToArray(), StringComparer.Ordinal),
+        string.IsNullOrWhiteSpace(comment) ? null : comment.Trim()));
+}

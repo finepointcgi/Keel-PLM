@@ -1,0 +1,147 @@
+@page "/tasks/{Id:guid}"
+@inject CurrentUser Users
+@inject WorkflowService Flow
+@inject SignDraftStore Drafts
+@inject NavigationManager Nav
+
+<PageFrame Banner="@(detail?.Banner ?? UiText.Unclassified)" Title="Task">
+    @if (notFound)
+    {
+        <p class="error" role="alert">This task was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        @if (d.Summary.Redacted || d.Summary.Target is null)
+        {
+            <article class="stack">
+                <h2>@d.Summary.Name</h2>
+                <p role="status">You are no longer eligible to see the item this task is about, so its details are hidden and the task cannot be signed. Ask the person who started the review, or an administrator, to reassign it.</p>
+            </article>
+        }
+        else
+        {
+            var o = d.Summary.Target;
+            <article class="stack">
+                <header class="part-header">
+                    <div>
+                        <h2>@d.Summary.Name</h2>
+                        <p class="muted">
+                            @(d.Summary.Kind == "approval" ? "Approval" : "Review") of
+                            @{ var link = WorkflowText.ObjectLink(o.ObjectType, o.Key); }
+                            @if (link is not null) { <a href="@link">@o.Key</a> } else { <span>@o.Key</span> }
+                            · @o.Name · revision @o.Revision (@o.IterationLabel) · started by @d.Summary.StartedByName
+                        </p>
+                    </div>
+                    <div class="badges">
+                        <span class="badge">@d.Status</span>
+                        <MarkingChip Text="@o.Banner" />
+                        <span class="badge @(d.Summary.Overdue ? "error" : null)">@WorkflowText.Due(d.Summary.DueAt, d.Summary.Overdue)</span>
+                    </div>
+                </header>
+
+                @if (message is not null) { <p class="permit" role="status">@message</p> }
+
+                <section class="panel">
+                    <h3>What you are signing</h3>
+                    <p>@(string.IsNullOrEmpty(d.Description) ? "No description" : d.Description)</p>
+                    @if (d.Attributes is { Count: > 0 })
+                    {
+                        <dl class="facts">
+                            @foreach (var (k, v) in d.Attributes) { <dt>@k</dt><dd>@v?.ToString()</dd> }
+                        </dl>
+                    }
+                    <p class="muted small">Version @o.IterationLabel as stored; the signature records a hash of this content.</p>
+                </section>
+
+                @if (d.Instance is { } inst)
+                {
+                    @if (inst.Comment is not null) { <section class="panel"><h3>Submitter's comment</h3><p>@inst.Comment</p></section> }
+                    <section class="panel">
+                        <h3>Workflow history</h3>
+                        <p><a href="workflows/@inst.Id">Open the workflow</a> · @WorkflowText.Status(inst.Status)</p>
+                        @if (inst.Signatures.Count > 0)
+                        {
+                            <ul class="plain signatures" aria-label="Signatures so far">
+                                @foreach (var s in inst.Signatures) { <li>@s.Manifestation@(string.IsNullOrEmpty(s.Comment) ? "" : $": {s.Comment}")</li> }
+                            </ul>
+                        }
+                        <div class="table-wrap"><table class="data">
+                            <thead><tr><th scope="col">When (UTC)</th><th scope="col">Who</th><th scope="col">What</th></tr></thead>
+                            <tbody>
+                                @foreach (var e in inst.Events)
+                                {
+                                    <tr><td>@WorkflowText.Utc(e.At)</td><td>@e.ActorName</td><td>@e.Action@(e.Detail is null ? "" : ": " + e.Detail)</td></tr>
+                                }
+                            </tbody>
+                        </table></div>
+                    </section>
+                }
+
+                @if (d.Status == "Open")
+                {
+                    <SignPanel ReasonCodes="d.ReasonCodes" CanSign="d.CanSign" BlockedReasons="d.CannotSignReasons" StepUpRequired="d.StepUpRequired"
+                               StepUpMaxAgeSeconds="d.StepUpMaxAgeSeconds" Busy="busy" Error="@error" @bind-Comment="comment" OnSign="Sign" />
+                }
+                else
+                {
+                    <p class="muted">This task is @d.Status.ToLowerInvariant()@(d.Decision is null ? "" : $" ({d.Decision})").</p>
+                }
+            </article>
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private TaskDetail? detail;
+    private bool notFound, busy;
+    private string? error, message;
+    private string comment = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = await Users.GetAsync();
+        var outcome = await Flow.GetTaskAsync(user, Id, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        // Back from step-up: restore what the signer had typed (kept in server memory, never in the URL).
+        if (outcome.IsOk && Drafts.Take(Id, user.Id) is { } draft)
+        {
+            comment = draft.Comment ?? "";
+            message = "You signed in again. Your comment was kept; choose the decision to sign.";
+        }
+    }
+
+    private async Task Sign(SignChoice choice)
+    {
+        busy = true;
+        error = message = null;
+        var user = await Users.GetAsync();
+        var outcome = await Flow.SignAsync(user, Id, choice.Code, choice.Comment, CurrentUser.NewCorrelationId());
+        busy = false;
+        switch (outcome.Kind)
+        {
+            case OutcomeKind.Ok:
+                comment = "";
+                message = outcome.Value!.Status switch
+                {
+                    InstanceStatus.Approved => "Signed. All approvals are in and the part is released.",
+                    InstanceStatus.Rejected => "Signed. The review was rejected and the part is back In Work.",
+                    _ => "Signed.",
+                };
+                var refreshed = await Flow.GetTaskAsync(user, Id, CurrentUser.NewCorrelationId());
+                detail = refreshed.Value ?? detail;
+                break;
+            case OutcomeKind.StepUpRequired:
+                // Keep the comment while the IdP asks for credentials again, then return to this page.
+                Drafts.Put(Id, user.Id, new SignDraft(choice.Code, choice.Comment));
+                Nav.NavigateTo($"account/step-up?returnUrl={Uri.EscapeDataString("/tasks/" + Id.ToString("D"))}", forceLoad: true);
+                break;
+            default:
+                error = WorkflowText.Message(outcome);
+                break;
+        }
+    }
+}

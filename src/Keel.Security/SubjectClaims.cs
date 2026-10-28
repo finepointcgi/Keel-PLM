@@ -30,8 +30,16 @@ public static class SubjectClaims
             ExportAuthorizations = Set(principal, "export_authorizations", upper: true),
             CuiCategories = Set(principal, "cui_categories", upper: true),
             Roles = Set(principal, "roles", upper: false),
+            AuthTime = AuthTimeOf(principal),
         };
     }
+
+    /// <summary><c>auth_time</c> is seconds since the Unix epoch (OIDC Core 2). Anything unparsable counts as absent.</summary>
+    private static DateTimeOffset? AuthTimeOf(ClaimsPrincipal p) =>
+        long.TryParse(p.FindFirst("auth_time")?.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+        && seconds > 0 && seconds < 253402300799
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+            : null;
 
     private static ImmutableSortedSet<string> Set(ClaimsPrincipal p, string type, bool upper) =>
         p.FindAll(type)

@@ -107,3 +107,13 @@ form.inline { display: inline; }
 .validation-message { color: var(--deny); }
 .table-wrap { overflow-x: auto; }
 table.data td:first-child { white-space: nowrap; }
+
+/* Increment 1.5: review workflow and signatures */
+button.danger { background: var(--deny); border-color: var(--deny); color: #fff; }
+.notice { border-left: 4px solid var(--accent); background: var(--bg); padding: 8px 12px; margin: 0; }
+ul.plain { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+ul.signatures li { border-left: 3px solid var(--border); padding-left: 10px; }
+fieldset.slot { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin: 0; }
+fieldset.slot ul { list-style: none; padding: 0; margin: 6px 0; }
+fieldset.slot li { display: flex; gap: 12px; align-items: center; padding: 2px 0; }
+.release { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 8px; }

@@ -63,12 +63,15 @@ public sealed class ApiFactory(TestDatabase db, string checkpointKeyPath) : WebA
         string[]? cui = null,
         string[]? auths = null,
         string audience = "keel-api",
-        DateTime? expires = null)
+        DateTime? expires = null,
+        DateTimeOffset? authTime = null,
+        bool includeAuthTime = true,
+        string? displayName = null)
     {
         var claims = new Dictionary<string, object>
         {
             ["sub"] = sub,
-            ["name"] = "Alice Example",
+            ["name"] = displayName ?? ("User " + sub.Replace("u-", "", StringComparison.Ordinal)),
             ["preferred_username"] = sub.Replace("u-", "", StringComparison.Ordinal),
             ["org"] = "ENG",
             ["citizenship"] = "USA",
@@ -78,6 +81,8 @@ public sealed class ApiFactory(TestDatabase db, string checkpointKeyPath) : WebA
             ["export_authorizations"] = auths ?? [],
         };
         if (usPerson is { } us) claims["us_person"] = us;
+        // auth_time: when the user last authenticated at the IdP; fresh by default so signing works unless a test says otherwise.
+        if (includeAuthTime) claims["auth_time"] = (authTime ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds();
         var now = DateTime.UtcNow;
         var exp = expires ?? now.AddMinutes(5);
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
