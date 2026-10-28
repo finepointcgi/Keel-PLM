@@ -31,6 +31,31 @@ public sealed class UiAuthTests(PostgresFixture pg)
     }
 
     [Fact]
+    public async Task Ui_document_download_needs_a_session_and_streams_marked_output()
+    {
+        await using var api = await ApiFactory.CreateAsync(pg);
+        var path = $"/downloads/documents/D-000001/files/{Guid.CreateVersion7():D}";
+        // No session: the browser is sent to the IdP, like any UI page.
+        var anonymous = await NoRedirectClient(api).GetAsync(path);
+        Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
+        Assert.StartsWith(ApiFactory.Issuer, anonymous.Headers.Location!.ToString(), StringComparison.Ordinal);
+
+        // Authenticated (a bearer token stands in for the session cookie here): same marked output as the REST route.
+        var alice = api.ClientFor(ApiFactory.Token(sub: "u-alice", roles: ["plm-viewer", "plm-author"]));
+        var form = new MultipartFormDataContent
+        {
+            { new StringContent("""{"name":"Ui drawing","documentType":"Drawing","markings":{"exportJurisdiction":"None","distributionStatement":"A","owningOrg":"ENG"}}"""), "metadata" },
+            { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("ui " + Guid.NewGuid())), "file", "ui.txt" },
+        };
+        using var created = System.Text.Json.JsonDocument.Parse(await (await alice.PostAsync("/api/v1/documents", form)).Content.ReadAsStringAsync());
+        var fileId = created.RootElement.GetProperty("iteration").GetProperty("files")[0].GetProperty("id").GetString();
+        var res = await alice.GetAsync($"/downloads/documents/D-000001/files/{fileId}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal("UNCLASSIFIED %C2%B7 DISTRIBUTION A", res.Headers.GetValues("X-Keel-Markings").Single());
+        Assert.Equal("ui.txt.zip", res.Content.Headers.ContentDisposition!.FileNameStar ?? res.Content.Headers.ContentDisposition.FileName);
+    }
+
+    [Fact]
     public async Task Ui_request_without_session_redirects_to_idp_with_pkce()
     {
         await using var api = await ApiFactory.CreateAsync(pg);

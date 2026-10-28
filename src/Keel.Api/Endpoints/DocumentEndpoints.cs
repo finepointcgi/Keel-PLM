@@ -5,6 +5,7 @@ using Keel.Api.Infrastructure;
 using Keel.Core;
 using Keel.Documents;
 using Keel.Documents.Vault;
+using Keel.Web.Services;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Net.Http.Headers;
@@ -92,22 +93,11 @@ public static class DocumentEndpoints
             return (await svc.ChangeMarkingsAsync(SubjectFactory.Require(ctx), number, markings.Value, req.Reason, CorrelationId.Get(ctx), ct)).ToHttp();
         });
 
-        docs.MapGet("/{number}/files/{fileId:guid}/download", async (string number, Guid fileId, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
-        {
-            Outcome<MarkedDownload> outcome;
-            try
-            {
-                outcome = await svc.DownloadAsync(SubjectFactory.Require(ctx), number, fileId, null, null, CorrelationId.Get(ctx), ct);
-            }
-            catch (VaultIntegrityException e)
-            {
-                return Results.Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Stored file failed integrity verification", detail: e.Message);
-            }
-            if (!outcome.IsOk) return outcome.ToHttp();
-            var download = outcome.Value!;
-            ctx.Response.Headers[MarkingsHeader] = HeaderValue(download.Banner);
-            return Results.Stream(s => download.WriteToAsync(s, ctx.RequestAborted), download.ContentType, download.FileName);
-        });
+        docs.MapGet("/{number}/files/{fileId:guid}/download", Download);
+
+        // The same marked download for the Blazor UI, authenticated by the session cookie (the "keel" policy scheme routes
+        // non-/api paths to it), so pages use plain links and no token appears in a URL.
+        app.MapGet(DocumentUi.DownloadRoute, Download).RequireAuthorization(Policies.AnyPlmRole);
 
         docs.MapGet("/{number}/parts", async (string number, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
             (await svc.GetDocumentPartsAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToHttp());
@@ -129,6 +119,23 @@ public static class DocumentEndpoints
             var lifecycle = await Lifecycle.LoadAsync(conn, null, DocumentService.DefaultLifecycle, ct);
             return new DocumentMetadata(DocumentTypes.All, FileRoles.All, LinkTypes.All, vault.MaxUploadBytes, lifecycle!);
         }).RequireAuthorization(Policies.AnyPlmRole);
+    }
+
+    private static async Task<IResult> Download(string number, Guid fileId, HttpContext ctx, DocumentService svc, CancellationToken ct)
+    {
+        Outcome<MarkedDownload> outcome;
+        try
+        {
+            outcome = await svc.DownloadAsync(SubjectFactory.Require(ctx), number, fileId, null, null, CorrelationId.Get(ctx), ct);
+        }
+        catch (VaultIntegrityException e)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Stored file failed integrity verification", detail: e.Message);
+        }
+        if (!outcome.IsOk) return outcome.ToHttp();
+        var download = outcome.Value!;
+        ctx.Response.Headers[MarkingsHeader] = HeaderValue(download.Banner);
+        return Results.Stream(s => download.WriteToAsync(s, ctx.RequestAborted), download.ContentType, download.FileName);
     }
 
     /// <summary>

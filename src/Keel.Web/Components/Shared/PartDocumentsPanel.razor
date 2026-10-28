@@ -1,0 +1,74 @@
+@using Keel.Documents
+@inject CurrentUser Users
+@inject DocumentService Docs
+@* Linked documents of the part iteration being viewed (ADR-0016). Changes go into the part's working copy, so the
+   editor appears only for the user who has the part checked out. *@
+<section class="panel" aria-labelledby="linked-docs-heading">
+    <h3 id="linked-docs-heading">Linked documents (@(links?.IterationLabel ?? IterationLabel))</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (links is not null)
+    {
+        <DocumentLinkList Links="links.Links" />
+        @if (links.WorkingLinks is { } working)
+        {
+            <h4>Working copy (applied at check-in)</h4>
+            <DocumentLinkList Links="working" OnRemove="Remove" Busy="busy" Empty="The working copy has no document links." />
+            <div class="toolbar">
+                <input aria-label="Document number" placeholder="Document number, e.g. D-000001" @bind="documentNumber" />
+                <select aria-label="Link type" @bind="linkType">
+                    <option value="describes">Describes (pins a revision)</option>
+                    <option value="references">References (latest released)</option>
+                </select>
+                @if (linkType == LinkTypes.Describes)
+                {
+                    <input aria-label="Document revision" placeholder="Revision (default latest)" size="10" @bind="documentRevision" />
+                }
+                <button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(documentNumber))" @onclick="Add">Add link</button>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string PartNumber { get; set; }
+    /// <summary>Revision being viewed; null for the latest.</summary>
+    [Parameter] public string? Revision { get; set; }
+    /// <summary>Iteration label shown by the page; a change (check-in, check-out) reloads the links.</summary>
+    [Parameter, EditorRequired] public required string IterationLabel { get; set; }
+    [Parameter] public bool CheckedOutByMe { get; set; }
+
+    private PartDocumentLinks? links;
+    private string? error;
+    private bool busy;
+    private string documentNumber = "", linkType = LinkTypes.Describes, documentRevision = "";
+    private (string?, string, bool)? loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == (Revision, IterationLabel, CheckedOutByMe)) return;
+        loadedFor = (Revision, IterationLabel, CheckedOutByMe);
+        var outcome = await Docs.GetPartLinksAsync(await Users.GetAsync(), PartNumber, Revision, null, CurrentUser.NewCorrelationId());
+        links = outcome.Value;
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+    }
+
+    private async Task Add()
+    {
+        var rev = linkType == LinkTypes.Describes && !string.IsNullOrWhiteSpace(documentRevision) ? documentRevision.Trim().ToUpperInvariant() : null;
+        if (await Run(s => Docs.AddLinkToWorkingCopyAsync(s, PartNumber, documentNumber.Trim().ToUpperInvariant(), linkType, rev, CurrentUser.NewCorrelationId())))
+            (documentNumber, documentRevision) = ("", "");
+    }
+
+    private Task Remove(Guid linkId) => Run(s => Docs.RemoveLinkFromWorkingCopyAsync(s, PartNumber, linkId, CurrentUser.NewCorrelationId()));
+
+    private async Task<bool> Run(Func<Subject, Task<Outcome<PartDocumentLinks>>> op)
+    {
+        busy = true;
+        error = null;
+        var outcome = await op(await Users.GetAsync());
+        busy = false;
+        if (outcome.IsOk) { links = outcome.Value; return true; }
+        error = UiText.Message(outcome);
+        return false;
+    }
+}

@@ -115,6 +115,10 @@
                 </dl>
             </section>
 
+            @* ---- Linked documents (increment 1.3, ADR-0016) ---- *@
+            <PartDocumentsPanel PartNumber="@p.Number" Revision="@Revision" IterationLabel="@p.Iteration.Label" CheckedOutByMe="@(p.Checkout?.IsMine == true)" />
+            @* ---- end linked documents ---- *@
+
             <section class="panel">
                 <h3>Security markings</h3>
                 @if (editMarkings is null)

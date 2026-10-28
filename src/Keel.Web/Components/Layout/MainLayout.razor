@@ -6,6 +6,7 @@
         <span class="brand">Keel PLM</span>
         <nav aria-label="Main">
             <NavLink href="parts" Match="NavLinkMatch.Prefix">Parts</NavLink>
+            <NavLink href="documents" Match="NavLinkMatch.Prefix">Documents</NavLink>
             <NavLink href="access">Access check</NavLink>
             <AuthorizeView Policy="@Policies.Auditor">
                 <NavLink href="audit">Audit log</NavLink>

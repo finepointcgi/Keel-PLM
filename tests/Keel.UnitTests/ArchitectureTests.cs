@@ -14,7 +14,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Parts"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Documents reads part rows only through key lookups and the marking contract; it never references Keel.Parts.
         ["Keel.Documents"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents"],
     };
 
     [Fact]

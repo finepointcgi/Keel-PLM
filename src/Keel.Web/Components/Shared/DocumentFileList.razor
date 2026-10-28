@@ -1,0 +1,43 @@
+@using Keel.Documents
+@* Files of an iteration or of the caller's working copy. Download links go through the marked-output endpoint. *@
+@if (Files.Count == 0)
+{
+    <p class="muted">@Empty</p>
+}
+else
+{
+    <div class="table-wrap"><table class="data">
+        <thead><tr><th scope="col">Role</th><th scope="col">File</th><th scope="col">Type</th><th scope="col">Size</th><th scope="col">SHA-256</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+        <tbody>
+            @foreach (var f in Files)
+            {
+                <tr>
+                    <td>@(f.Role == FileRoles.Primary ? "Primary" : "Attachment")</td>
+                    <td>@f.FileName</td>
+                    <td>@f.MediaType</td>
+                    <td>@DocumentUi.Size(f.SizeBytes)</td>
+                    <td><code title="@f.Sha256">@f.Sha256[..12]…</code></td>
+                    <td>
+                        @if (DownloadNumber is not null)
+                        {
+                            <a class="button secondary" href="@DocumentUi.DownloadUrl(DownloadNumber, f.Id)" download>Download (marked)</a>
+                        }
+                        @if (OnRemove.HasDelegate)
+                        {
+                            <button type="button" class="secondary" disabled="@Busy" @onclick="() => OnRemove.InvokeAsync(f.Id)">Remove</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<DocumentFileView> Files { get; set; }
+    /// <summary>Document number for download links; null hides them (working-copy files are not downloadable).</summary>
+    [Parameter] public string? DownloadNumber { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemove { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string Empty { get; set; } = "No files.";
+}
