@@ -4,11 +4,15 @@ using System.Security.Cryptography;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Keel.Documents.Scanning;
 
 namespace Keel.Documents.Vault;
 
-/// <summary>Content stored in the vault: its object key is <see cref="Sha256"/> (lowercase hex).</summary>
-public sealed record StoredContent(string Sha256, long SizeBytes);
+/// <summary>
+/// Content stored in the vault: its object key is <see cref="Sha256"/> (lowercase hex). <see cref="Scan"/> is what the upload scan found
+/// (null when the vault has no scanning configured: tools and tests).
+/// </summary>
+public sealed record StoredContent(string Sha256, long SizeBytes, ScanRecord? Scan = null);
 
 /// <summary>The upload exceeded <see cref="VaultOptions.MaxUploadBytes"/>; nothing was kept in the vault.</summary>
 public sealed class UploadTooLargeException(long limit) : Exception($"The file exceeds the maximum upload size of {limit} bytes.")
@@ -39,14 +43,22 @@ public sealed class ObjectVault : IDisposable
     private const string StagingPrefix = "staging/";
     private readonly AmazonS3Client _s3;
     private readonly VaultOptions _options;
+    private readonly UploadScanning? _scanning;
+    private readonly IVaultPendingGuard? _guard;
 
-    public ObjectVault(VaultOptions options)
+    /// <param name="scanning">Malware scanning policy (ADR-0026). Null: uploads are not scanned (tools, tests); the Seed tool is exempt this way.</param>
+    /// <param name="guard">Leaves the pending-upload marker the garbage collector honours (ADR-0026). Null: no marker (tools that never run beside a sweep).</param>
+    public ObjectVault(VaultOptions options, UploadScanning? scanning = null, IVaultPendingGuard? guard = null)
     {
         var errors = options.Validate();
         if (errors.Count > 0) throw new InvalidOperationException("Invalid vault configuration: " + string.Join(" ", errors));
         _options = options;
+        _scanning = scanning;
+        _guard = guard;
         _s3 = CreateClient(options);
     }
+
+    public UploadScanning? Scanning => _scanning;
 
     public VaultOptions Options => _options;
 
@@ -100,11 +112,16 @@ public sealed class ObjectVault : IDisposable
         }
     }
 
-    /// <summary>Streams <paramref name="content"/> into the vault and returns its SHA-256 and size.</summary>
+    /// <summary>
+    /// Streams <paramref name="content"/> into the vault and returns its SHA-256 and size. When scanning is configured the same buffers that
+    /// are hashed are fed to the scanner, and the verdict is awaited before the object is published under its content address: an infected
+    /// upload throws <see cref="UploadInfectedException"/> and leaves nothing under that key.
+    /// </summary>
     public async Task<StoredContent> PutAsync(Stream content, CancellationToken ct = default)
     {
         var partSize = _options.PartSizeBytes;
         var buffer = ArrayPool<byte>.Shared.Rent(partSize);
+        await using var tee = _scanning is null ? null : await _scanning.BeginAsync(ct);
         try
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -112,11 +129,14 @@ public sealed class ObjectVault : IDisposable
             long total = filled;
             if (total > _options.MaxUploadBytes) throw new UploadTooLargeException(_options.MaxUploadBytes);
             hash.AppendData(buffer, 0, filled);
+            if (tee is not null) await tee.FeedAsync(buffer.AsMemory(0, filled), ct);
 
             if (filled < partSize)
             {
                 // Small file: the hash is known before anything is sent, so it goes straight to its final key.
                 var sha = Convert.ToHexStringLower(hash.GetHashAndReset());
+                var scan = tee is null ? null : await tee.CompleteAsync(sha, total, ct);
+                await MarkPendingAsync(sha, ct);
                 if (!await ExistsAsync(sha, total, ct))
                 {
                     using var body = new MemoryStream(buffer, 0, filled, writable: false);
@@ -130,9 +150,9 @@ public sealed class ObjectVault : IDisposable
                         }), t);
                     }, ct);
                 }
-                return new StoredContent(sha, total);
+                return new StoredContent(sha, total, scan);
             }
-            return await PutLargeAsync(content, buffer, filled, total, hash, ct);
+            return await PutLargeAsync(content, buffer, filled, total, hash, tee, ct);
         }
         finally
         {
@@ -140,11 +160,13 @@ public sealed class ObjectVault : IDisposable
         }
     }
 
+    private Task MarkPendingAsync(string sha256, CancellationToken ct) => _guard?.MarkPendingAsync(sha256, ct) ?? Task.CompletedTask;
+
     /// <summary>
     /// Large file: the key (its hash) is unknown until the last byte, so it is uploaded in parts to a staging key,
     /// then copied server side to its content address and the staging object removed.
     /// </summary>
-    private async Task<StoredContent> PutLargeAsync(Stream content, byte[] buffer, int filled, long total, IncrementalHash hash, CancellationToken ct)
+    private async Task<StoredContent> PutLargeAsync(Stream content, byte[] buffer, int filled, long total, IncrementalHash hash, ScanTee? tee, CancellationToken ct)
     {
         var staging = StagingPrefix + Guid.CreateVersion7().ToString("N");
         var init = await CallAsync(t => _s3.InitiateMultipartUploadAsync(Encrypt(new InitiateMultipartUploadRequest
@@ -175,6 +197,7 @@ public sealed class ObjectVault : IDisposable
                 total += filled;
                 if (total > _options.MaxUploadBytes) throw new UploadTooLargeException(_options.MaxUploadBytes);
                 hash.AppendData(buffer, 0, filled);
+                if (tee is not null) await tee.FeedAsync(buffer.AsMemory(0, filled), ct);
             }
             await CallAsync(t => _s3.CompleteMultipartUploadAsync(new CompleteMultipartUploadRequest
             {
@@ -183,6 +206,9 @@ public sealed class ObjectVault : IDisposable
             completed = true;
 
             var sha = Convert.ToHexStringLower(hash.GetHashAndReset());
+            // The verdict comes before the copy: an infected file never reaches its content address (the staging object is deleted below).
+            var scan = tee is null ? null : await tee.CompleteAsync(sha, total, ct);
+            await MarkPendingAsync(sha, ct);
             if (!await ExistsAsync(sha, total, ct))
             {
                 await CallAsync(t => _s3.CopyObjectAsync(Encrypt(new CopyObjectRequest
@@ -191,7 +217,7 @@ public sealed class ObjectVault : IDisposable
                     ContentType = "application/octet-stream",
                 }), t), ct);
             }
-            return new StoredContent(sha, total);
+            return new StoredContent(sha, total, scan);
         }
         finally
         {
@@ -274,6 +300,50 @@ public sealed class ObjectVault : IDisposable
             throw new VaultIntegrityException(sha256, "the stored size differs from the recorded size");
         return bytes;
     }
+
+    // ---------------------------------------------------------------- listing and deletion (garbage collection, ADR-0026)
+
+    /// <summary>One object as the sweeper sees it.</summary>
+    public sealed record ObjectEntry(string Key, long SizeBytes, DateTimeOffset LastModified);
+
+    /// <summary>One page of the bucket listing in key order; <see cref="NextToken"/> continues it (null at the end).</summary>
+    public sealed record ObjectPage(IReadOnlyList<ObjectEntry> Objects, string? NextToken);
+
+    /// <summary>Lists the bucket in key order, <paramref name="pageSize"/> objects at a time, starting after <paramref name="startAfterKey"/>, optionally only keys with <paramref name="prefix"/>.</summary>
+    public async Task<ObjectPage> ListAsync(string? startAfterKey, int pageSize, string? prefix = null, CancellationToken ct = default)
+    {
+        var response = await CallAsync(t => _s3.ListObjectsV2Async(new ListObjectsV2Request
+        {
+            BucketName = _options.Bucket, MaxKeys = Math.Clamp(pageSize, 1, 1000), StartAfter = startAfterKey, Prefix = string.IsNullOrEmpty(prefix) ? null : prefix,
+        }, t), ct);
+        var objects = (response.S3Objects ?? []).Select(o => new ObjectEntry(o.Key, o.Size ?? 0, new DateTimeOffset(DateTime.SpecifyKind(o.LastModified ?? DateTime.UtcNow, DateTimeKind.Utc)))).ToList();
+        // The continuation is the last key listed: S3 lists in key order, so "start after" resumes exactly there.
+        return new ObjectPage(objects, response.IsTruncated == true && objects.Count > 0 ? objects[^1].Key : null);
+    }
+
+    /// <summary>Size and last-modified time of one object; null when it does not exist.</summary>
+    public async Task<ObjectEntry?> HeadAsync(string key, CancellationToken ct = default)
+    {
+        try
+        {
+            var head = await CallAsync(t => _s3.GetObjectMetadataAsync(_options.Bucket, key, t), ct);
+            return new ObjectEntry(key, head.ContentLength, new DateTimeOffset(DateTime.SpecifyKind(head.LastModified ?? DateTime.UtcNow, DateTimeKind.Utc)));
+        }
+        catch (AmazonS3Exception e) when (e.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Deletes one object. Only the garbage collector calls this, and only after its reference checks (ADR-0026).</summary>
+    public Task DeleteObjectAsync(string key, CancellationToken ct = default) =>
+        CallAsync(t => _s3.DeleteObjectAsync(_options.Bucket, key, t), ct);
+
+    /// <summary>True for an object key that is a content address (64 lowercase hex characters).</summary>
+    public static bool IsContentKey(string key) => key.Length == 64 && key.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
+
+    /// <summary>True for a key in the staging area of in-flight large uploads.</summary>
+    public static bool IsStagingKey(string key) => key.StartsWith(StagingPrefix, StringComparison.Ordinal);
 
     private T Encrypt<T>(T request) where T : AmazonWebServiceRequest
     {

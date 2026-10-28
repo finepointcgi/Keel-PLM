@@ -7,8 +7,19 @@ public sealed class VaultContentStore(ObjectVault vault) : IContentStore
 {
     public async Task<ContentInfo> PutAsync(Stream content, CancellationToken ct = default)
     {
-        var stored = await vault.PutAsync(content, ct);
-        return new ContentInfo(stored.Sha256, stored.SizeBytes);
+        try
+        {
+            var stored = await vault.PutAsync(content, ct);
+            return new ContentInfo(stored.Sha256, stored.SizeBytes);
+        }
+        catch (Scanning.UploadInfectedException e)
+        {
+            throw new ContentRejectedException($"the malware scanner detected {e.Signature} (sha256 {e.Sha256[..12]}...)", e);
+        }
+        catch (Scanning.UploadNotScannedException e)
+        {
+            throw new ContentRejectedException(e.Message, e);
+        }
     }
 
     public Task<bool> ExistsAsync(string sha256, long sizeBytes, CancellationToken ct = default) => vault.ExistsAsync(sha256, sizeBytes, ct);

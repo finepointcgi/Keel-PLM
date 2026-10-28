@@ -39,7 +39,14 @@ public sealed record DocumentSummary(
 
 public sealed record DocumentSearchResult(IReadOnlyList<DocumentSummary> Items, long Total, string PageBanner);
 
-public sealed record DocumentFileView(Guid Id, string Role, string FileName, string MediaType, long SizeBytes, string Sha256, DateTimeOffset AddedAt, string AddedBy);
+/// <summary><see cref="ScanStatus"/> and <see cref="Quarantined"/> are filled for the stored files of a document detail (ADR-0026); elsewhere they keep their defaults.</summary>
+public sealed record DocumentFileView(Guid Id, string Role, string FileName, string MediaType, long SizeBytes, string Sha256, DateTimeOffset AddedAt, string AddedBy)
+{
+    /// <summary>clean, infected, unscanned or skipped: the newest scan of these bytes.</summary>
+    public string ScanStatus { get; init; } = "unscanned";
+    /// <summary>The file was found infected after it was stored: downloads are refused, the bytes and audit trail are kept.</summary>
+    public bool Quarantined { get; init; }
+}
 
 public sealed record DocumentRevisionView(Guid Id, string Revision, string State, string StateLabel, bool IsLatest, bool IsLocked,
     int LatestIteration, DateTimeOffset CreatedAt, string CreatedBy, DateTimeOffset StateChangedAt, string StateChangedBy);

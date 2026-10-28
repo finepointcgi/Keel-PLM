@@ -23,6 +23,9 @@ public sealed class ApiFactory(TestDatabase db, string checkpointKeyPath, VaultO
     public const string Issuer = "https://idp.test/realms/keel";
     private static readonly ECDsaSecurityKey SigningKey = new(ECDsa.Create(ECCurve.NamedCurves.nistP256)) { KeyId = "test-key" };
 
+    /// <summary>Extra settings for tests that need a differently configured host (set before the first client is created).</summary>
+    public Dictionary<string, string?> ExtraSettings { get; } = [];
+
     public TestDatabase Database => db;
     public VaultOptions Vault => vault;
 
@@ -52,6 +55,7 @@ public sealed class ApiFactory(TestDatabase db, string checkpointKeyPath, VaultO
         builder.UseSetting("Keel:Vault:SecretKey", vault.SecretKey);
         builder.UseSetting("Keel:Vault:Bucket", vault.Bucket);
         builder.UseSetting("Keel:Vault:PartSizeBytes", vault.PartSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        foreach (var (key, value) in ExtraSettings) builder.UseSetting(key, value);
         builder.ConfigureTestServices(services =>
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
             {

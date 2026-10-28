@@ -126,6 +126,7 @@ Keel.Change.ChangeModule.AddKeelChange(builder.Services);
 builder.Services.AddKeelWorkflow(builder.Configuration);
 builder.Services.AddSingleton<Keel.Migration.BatchQueries>(); // Phase 3: read-only migration batch viewer (admin page); loading is the keel-import CLI
 Keel.Admin.AdminModule.AddKeelAdmin(builder.Services); // 2.2 administration and classification
+Keel.Siem.SiemModule.AddKeelSiem(builder.Services, builder.Configuration, options.Security.RequireFips, secretsDirectory); // 5.0 SIEM forwarding (off unless Keel:Siem:Enabled)
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -192,7 +193,8 @@ builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationM
 
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
-    .AddCheck<FipsHealthCheck>("fips", tags: ["ready"]);
+    .AddCheck<FipsHealthCheck>("fips", tags: ["ready"])
+    .AddCheck<SiemHealthCheck>("siem", tags: ["ready"]);
 
 var app = builder.Build();
 
@@ -223,6 +225,7 @@ app.MapStaticAssets().AllowAnonymous();
 app.MapKeelApi();
 app.MapPartEndpoints();
 app.MapDocumentEndpoints();
+app.MapComplianceEndpoints(); // 5.0 compliance: scan coverage, rescan, vault GC reports
 app.MapBomEndpoints(); // 1.4 BOM
 app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management

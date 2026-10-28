@@ -182,7 +182,10 @@ public static class ImportCli
         {
             var errors = vo.Validate();
             if (errors.Count > 0) { error.WriteLine("Vault settings: " + string.Join(" ", errors)); return null; }
-            vault = new ObjectVault(vo);
+            // Files imported while scanning is configured go through the same scanner as uploads (ADR-0026).
+            Keel.Documents.Scanning.UploadScanning? scanning = vo.Scanning.Mode == Keel.Documents.Scanning.ScanMode.Disabled ? null
+                : new Keel.Documents.Scanning.UploadScanning(new Keel.Documents.Scanning.ClamdScanner(vo.Scanning), vo.Scanning, TimeProvider.System);
+            vault = new ObjectVault(vo, scanning);
         }
         else if (vaultRequired)
         {

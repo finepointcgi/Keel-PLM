@@ -13,6 +13,9 @@ public static class OutcomeResults
         OutcomeKind.Forbidden => Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: "Forbidden",
             extensions: new Dictionary<string, object?> { ["reasons"] = o.Errors }),
         OutcomeKind.Conflict => Results.Problem(statusCode: StatusCodes.Status409Conflict, title: o.Errors[0]),
+        OutcomeKind.Unprocessable => Results.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: o.Errors[0],
+            extensions: o.Errors.Count > 1 ? new Dictionary<string, object?> { ["signature"] = o.Errors[1] } : null),
+        OutcomeKind.Unavailable => new UnavailableResult(o.Errors[0]),
         OutcomeKind.StepUpRequired => new StepUpRequiredResult(int.Parse(o.Errors[1], System.Globalization.CultureInfo.InvariantCulture)),
         _ => throw new InvalidOperationException($"Unhandled outcome {o.Kind}"),
     };
@@ -30,5 +33,15 @@ internal sealed class StepUpRequiredResult(int maxAgeSeconds) : IResult
             $"Bearer error=\"insufficient_user_authentication\", error_description=\"A fresh authentication is required to sign\", max_age=\"{maxAgeSeconds}\"";
         return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Step-up authentication required", type: "urn:keel:problem:step-up-required",
             extensions: new Dictionary<string, object?> { ["reason"] = "stepup.required", ["maxAgeSeconds"] = maxAgeSeconds }).ExecuteAsync(httpContext);
+    }
+}
+
+/// <summary>503 with <c>Retry-After</c>: a dependency (the malware scanner) is down; nothing was changed and the request can be repeated.</summary>
+internal sealed class UnavailableResult(string message) : IResult
+{
+    public Task ExecuteAsync(HttpContext httpContext)
+    {
+        httpContext.Response.Headers.RetryAfter = "5";
+        return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: message).ExecuteAsync(httpContext);
     }
 }

@@ -10,6 +10,10 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Keel.UnitTests" />
+    <InternalsVisibleTo Include="Keel.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- DejaVu Sans (Bitstream Vera license, see Marking/Fonts/DejaVu-LICENSE.txt): no system fonts needed on Linux/macOS. -->
     <EmbeddedResource Include="Marking\Fonts\DejaVuSans.ttf" LogicalName="Keel.Documents.Fonts.DejaVuSans.ttf" />
     <EmbeddedResource Include="Marking\Fonts\DejaVuSans-Bold.ttf" LogicalName="Keel.Documents.Fonts.DejaVuSans-Bold.ttf" />
