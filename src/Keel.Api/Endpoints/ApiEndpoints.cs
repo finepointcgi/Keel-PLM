@@ -15,6 +15,12 @@ public static class Policies
 
 public static class ApiEndpoints
 {
+    private static string? ActorName(string payload)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(payload);
+        return doc.RootElement.GetProperty("actor").TryGetProperty("name", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.String ? n.GetString() : null;
+    }
+
     public static void MapKeelApi(this IEndpointRouteBuilder app)
     {
         var v1 = app.MapGroup("/api/v1");
@@ -59,7 +65,7 @@ public static class ApiEndpoints
                     ("objectId", q.ObjectId), ("actor", q.Actor), ("returned", events.Count.ToString(CultureInfo.InvariantCulture))),
             }, ct);
             return events.Select(e => new AuditEventDto(e.Seq, e.Id, e.OccurredAt, e.Actor, e.Action, e.ObjectType, e.ObjectId,
-                e.Outcome.ToString(), e.CorrelationId, e.Payload, Convert.ToHexStringLower(e.Hash)));
+                e.Outcome.ToString(), e.CorrelationId, ActorName(e.Payload), e.Payload, Convert.ToHexStringLower(e.Hash)));
         }).RequireAuthorization(Policies.Auditor);
 
         audit.MapPost("/verify", async (HttpContext ctx, NpgsqlDataSource db, TrustedCheckpointKeys keys, IAuditLog log, CancellationToken ct) =>

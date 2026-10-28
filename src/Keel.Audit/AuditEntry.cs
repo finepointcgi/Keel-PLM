@@ -13,6 +13,7 @@ public enum AuditOutcome
 /// <summary>Security-relevant attributes of the actor at the time of the event.</summary>
 public sealed record ActorSnapshot(
     string Id,
+    string? Name,
     bool UsPerson,
     string? Citizenship,
     string? Org,
@@ -21,10 +22,10 @@ public sealed record ActorSnapshot(
     ImmutableSortedSet<string> Roles)
 {
     /// <summary>Actor for events raised by the system itself (migrations, checkpoints, background jobs).</summary>
-    public static readonly ActorSnapshot System = new("system:keel", true, null, null, [], [], []);
+    public static readonly ActorSnapshot System = new("system:keel", "Keel system", true, null, null, [], [], []);
 
     public static ActorSnapshot From(Subject s) =>
-        new(s.Id, s.UsPerson, s.Citizenship, s.Org, s.Programs, s.ExportAuthorizations, s.Roles);
+        new(s.Id, s.Username, s.UsPerson, s.Citizenship, s.Org, s.Programs, s.ExportAuthorizations, s.Roles);
 }
 
 /// <summary>

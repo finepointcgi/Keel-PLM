@@ -10,6 +10,8 @@ public sealed record Subject
 {
     public required string Id { get; init; }
     public required string DisplayName { get; init; }
+    /// <summary>Human-readable login name (IdP <c>preferred_username</c>); <see cref="Id"/> is the stable key.</summary>
+    public string? Username { get; init; }
     public bool UsPerson { get; init; }
     public string? Citizenship { get; init; }
     public string? Org { get; init; }

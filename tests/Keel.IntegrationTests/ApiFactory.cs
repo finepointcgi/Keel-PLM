@@ -68,6 +68,7 @@ public sealed class ApiFactory(TestDatabase db, string checkpointKeyPath) : WebA
         {
             ["sub"] = sub,
             ["name"] = "Alice Example",
+            ["preferred_username"] = sub.Replace("u-", "", StringComparison.Ordinal),
             ["org"] = "ENG",
             ["citizenship"] = "USA",
             ["roles"] = roles ?? ["plm-viewer"],

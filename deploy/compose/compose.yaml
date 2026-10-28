@@ -1,0 +1,31 @@
+# Keel PLM development stack. Dev-only credentials; NOT a production deployment (see docs/setup.md, ADR-0012).
+name: keel-dev
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: keel_superuser_dev
+    command: ["-c", "max_connections=300", "-c", "log_connections=on", "-c", "log_disconnections=on"]
+    ports: ["127.0.0.1:${KEEL_PG_PORT:-55432}:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d keel"]
+      interval: 5s
+      retries: 20
+
+  keycloak:
+    # Dev/demo identity provider only (ADR-0007). Production uses the site IdP with CAC/PIV.
+    image: quay.io/keycloak/keycloak:26.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: keel_kc_admin_dev
+      KC_HEALTH_ENABLED: "true"
+    ports: ["127.0.0.1:${KEEL_IDP_PORT:-18080}:8080"]
+    volumes:
+      - ./keycloak/keel-realm.json:/opt/keycloak/data/import/keel-realm.json:ro
+
+volumes:
+  pgdata:

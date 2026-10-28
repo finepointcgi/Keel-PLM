@@ -40,6 +40,7 @@ public static class AuditChain
             WriteNullable(w, "correlationId", e.CorrelationId);
             w.WriteStartObject("actor");
             w.WriteString("id", e.Actor.Id);
+            WriteNullable(w, "name", e.Actor.Name);
             w.WriteBoolean("usPerson", e.Actor.UsPerson);
             WriteNullable(w, "citizenship", e.Actor.Citizenship);
             WriteNullable(w, "org", e.Actor.Org);

@@ -1,0 +1,567 @@
+{
+  "realm": "keel",
+  "enabled": true,
+  "displayName": "Keel PLM (development)",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 900,
+  "ssoSessionMaxLifespan": 36000,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "passwordPolicy": "length(12)",
+  "roles": {
+    "realm": [
+      {
+        "name": "plm-viewer"
+      },
+      {
+        "name": "plm-author"
+      },
+      {
+        "name": "plm-approver"
+      },
+      {
+        "name": "plm-admin"
+      },
+      {
+        "name": "plm-auditor"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "keel-web",
+      "name": "Keel web app",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "us_person",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "us_person",
+            "claim.name": "us_person",
+            "jsonType.label": "boolean",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "citizenship",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "citizenship",
+            "claim.name": "citizenship",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "org",
+            "claim.name": "org",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "programs",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "programs",
+            "claim.name": "programs",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "export_authorizations",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "export_authorizations",
+            "claim.name": "export_authorizations",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "cui_categories",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "cui_categories",
+            "claim.name": "cui_categories",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "keel-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "keel-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "keel-dev-cli",
+      "name": "Keel dev smoke tests",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "us_person",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "us_person",
+            "claim.name": "us_person",
+            "jsonType.label": "boolean",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "citizenship",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "citizenship",
+            "claim.name": "citizenship",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "org",
+            "claim.name": "org",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "programs",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "programs",
+            "claim.name": "programs",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "export_authorizations",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "export_authorizations",
+            "claim.name": "export_authorizations",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "cui_categories",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "cui_categories",
+            "claim.name": "cui_categories",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "keel-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "keel-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Engineer",
+      "email": "alice@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "ENG"
+        ],
+        "programs": [
+          "ORCA"
+        ],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT",
+          "CTI"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-alice",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-viewer",
+        "plm-author"
+      ]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Approver",
+      "email": "bob@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "ENG"
+        ],
+        "programs": [
+          "ORCA"
+        ],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT",
+          "CTI"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-bob",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-viewer",
+        "plm-approver"
+      ]
+    },
+    {
+      "username": "carmen",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Carmen",
+      "lastName": "Manufacturing",
+      "email": "carmen@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "MFG"
+        ],
+        "programs": [],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-carmen",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-viewer",
+        "plm-author"
+      ]
+    },
+    {
+      "username": "farid",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Farid",
+      "lastName": "Partner",
+      "email": "farid@keel.test",
+      "attributes": {
+        "us_person": [
+          "false"
+        ],
+        "citizenship": [
+          "GBR"
+        ],
+        "org": [
+          "ENG"
+        ],
+        "programs": [
+          "ORCA"
+        ],
+        "export_authorizations": [
+          "TAA-0042"
+        ],
+        "cui_categories": [
+          "EXPT"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-farid",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-viewer",
+        "plm-author"
+      ]
+    },
+    {
+      "username": "lena",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Lena",
+      "lastName": "Contractor",
+      "email": "lena@keel.test",
+      "attributes": {
+        "us_person": [
+          "false"
+        ],
+        "citizenship": [
+          "DEU"
+        ],
+        "org": [
+          "ENG"
+        ],
+        "programs": [
+          "ORCA"
+        ],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-lena",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-viewer"
+      ]
+    },
+    {
+      "username": "audrey",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Audrey",
+      "lastName": "Auditor",
+      "email": "audrey@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "QA"
+        ],
+        "programs": [],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT",
+          "CTI"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-audrey",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-auditor"
+      ]
+    },
+    {
+      "username": "ada",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "email": "ada@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "IT"
+        ],
+        "programs": [
+          "ORCA"
+        ],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT",
+          "CTI"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-ada",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-admin",
+        "plm-viewer"
+      ]
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\": \"ADMIN_VIEW\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"validations\": {\"length\": {\"min\": 3, \"max\": 255}}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"validations\": {\"email\": {}}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
+          ]
+        }
+      }
+    ]
+  }
+}

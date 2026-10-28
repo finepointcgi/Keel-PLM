@@ -115,6 +115,7 @@ public sealed class ApiTests(PostgresFixture pg)
         var first = list.EnumerateArray().Single();
         Assert.Equal("access.denied", first.GetProperty("action").GetString());
         Assert.Equal("GET /api/v1/audit/events", first.GetProperty("objectId").GetString());
+        Assert.Equal("vic", first.GetProperty("actorName").GetString());
 
         var verify = await api.ClientFor(Auditor).PostAsync("/api/v1/audit/verify", null);
         using var v = JsonDocument.Parse(await verify.Content.ReadAsStringAsync());

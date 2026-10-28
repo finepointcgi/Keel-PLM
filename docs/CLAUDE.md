@@ -4,7 +4,7 @@ Keel is an on-prem, air-gapped PLM platform replacing Teamcenter/Windchill for `
 Read this file, then [assumptions.md](assumptions.md) and [adr/README.md](adr/README.md), before changing code.
 
 ## Status
-- **Phase 1, increment 1.1 (Foundations):** in progress. See "Increment log" at the bottom.
+- **Phase 1, increment 1.1 (Foundations):** done 2026-10-27. Next: **1.2 Parts**.
 - Phase plan: 1.1 Foundations → 1.2 Parts → 1.3 Documents and vault → 1.4 BOM → 1.5 Review and release → 1.6 Change → 1.7 Demo-ready.
   Later phases: 2 Configuration management, 3 Migration, 4 Integrations, 5 Production operations.
 
@@ -16,6 +16,7 @@ src/Keel.Audit       hash-chained audit log, checkpoints, verifier (ADR-0005)
 src/Keel.Api         ASP.NET Core host, auth, health, metrics, endpoints
 src/Keel.AuditCli    `keel-audit verify` command-line verifier
 db/migrations        plain SQL migrations, applied in order by the migrator (Keel.Api --migrate)
+scripts/             test.sh (CI entry point), smoke.sh (against running dev stack)
 web/                 React + TypeScript SPA
 deploy/compose       Docker Compose dev stack (Postgres, Keycloak with synthetic realm)
 tests/*              xUnit unit + integration (Testcontainers) tests
@@ -57,3 +58,21 @@ docs/                ADRs, assumptions, setup, this file
 See [setup.md](setup.md).
 
 ## Increment log
+
+### 1.1 Foundations (2026-10-27)
+**Delivered**
+- ADR-0001…0013, assumptions register A1–A21 (all user-approved defaults, unconfirmed).
+- `Markings` value object with ITAR/EAR/CUI/distribution invariants; `Subject`; `AccessPolicy` (in-memory `Evaluate` + SQL `BuildReadFilter`).
+- Hash-chained audit log (`audit.event`), immutability triggers, least-privilege `keel_app` role, ECDSA P-256 signed checkpoints, `AuditVerifier`, `keel-audit` CLI (keygen/verify).
+- API host: OIDC JWT validation, claim→Subject mapping (fail closed), role policies, audited role denials, correlation IDs, OWASP headers, JSON logs, `/health/live|ready` (DB, schema, FIPS posture), Prometheus `/metrics`, migrator.
+- Endpoints: `GET /api/v1/config`, `GET /api/v1/me`, `POST /api/v1/access/evaluate`, `GET /api/v1/audit/events`, `POST /api/v1/audit/verify`, `POST /api/v1/audit/checkpoints`.
+- Compose dev stack (Postgres 17, Keycloak 26.4 realm with 7 synthetic users), React shell with top/bottom marking banners, profile, access check, audit log pages.
+
+**Tests:** 22 unit, 21 integration (Testcontainers Postgres, incl. policy/SQL agreement over 288 subjects × valid marking combinations, tamper detection), 3 web, `scripts/smoke.sh` (9 checks against real Keycloak).
+
+**Known gaps / deferred (explicit)**
+- API and web are not yet containerized (UBI images, Helm): increment 1.7 / Phase 5.
+- E-signature step-up (`auth_time`) is designed (ADR-0007) but lands with signing in 1.5.
+- Architecture test enforcing module references and filter usage: added in 1.2 when the first marked table exists.
+- Unauthenticated (401) requests are logged, not chained into the audit log (flood resistance), per ADR-0005.
+- Tail deletion *after* the last checkpoint is only detectable via SIEM forwarding (Phase 5) — checkpoint interval bounds the window.

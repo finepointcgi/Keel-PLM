@@ -9,7 +9,7 @@ public sealed class AuditLogTests(PostgresFixture pg)
 {
     private static AuditEntry Entry(string action, string? objectId = null) => new()
     {
-        Actor = new ActorSnapshot("user-1", true, "USA", "ENG", ["ORCA"], [], ["plm-author"]),
+        Actor = new ActorSnapshot("user-1", "alice", true, "USA", "ENG", ["ORCA"], [], ["plm-author"]),
         Action = action,
         Outcome = AuditOutcome.Success,
         ObjectType = "part",

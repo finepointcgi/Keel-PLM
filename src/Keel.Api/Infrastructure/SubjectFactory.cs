@@ -16,6 +16,7 @@ public static class SubjectFactory
         {
             Id = sub,
             DisplayName = principal.FindFirst("name")?.Value ?? principal.FindFirst("preferred_username")?.Value ?? sub,
+            Username = principal.FindFirst("preferred_username")?.Value,
             // ASSUMPTION(A2): U.S.-person status comes only from the explicit claim, not inferred from citizenship
             // (lawful permanent residents are U.S. persons under ITAR 120.62).
             UsPerson = string.Equals(principal.FindFirst("us_person")?.Value, "true", StringComparison.OrdinalIgnoreCase),
