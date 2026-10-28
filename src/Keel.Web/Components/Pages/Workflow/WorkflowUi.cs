@@ -52,7 +52,12 @@ public static class WorkflowText
     public static string Due(DateTimeOffset? due, bool overdue) => due is null ? "No due date" : (overdue ? "Overdue since " : "Due ") + UiText.Utc(due.Value) + " UTC";
 
     /// <summary>Link to an object's own page, when its module has one.</summary>
-    public static string? ObjectLink(string objectType, string key) => objectType == "part" ? $"parts/{Uri.EscapeDataString(key)}" : null;
+    public static string? ObjectLink(string objectType, string key) => objectType switch
+    {
+        "part" => $"parts/{Uri.EscapeDataString(key)}",
+        "ecr" or "ecn" => $"changes/{Uri.EscapeDataString(key)}", // 1.6: change requests and change notices
+        _ => null,
+    };
 
     public static string Utc(DateTimeOffset t) => t.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " UTC";
 }

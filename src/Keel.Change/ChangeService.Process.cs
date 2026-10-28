@@ -138,18 +138,18 @@ public sealed partial class ChangeService
         _ => $"Moving to {targetLabel} is not available.",
     };
 
-    private static async Task<List<ReasonCodeView>> LoadReasonCodesAsync(NpgsqlConnection conn, NpgsqlTransaction? tx, string scope, CancellationToken ct)
+    private static async Task<List<ChangeReasonCode>> LoadReasonCodesAsync(NpgsqlConnection conn, NpgsqlTransaction? tx, string scope, CancellationToken ct)
     {
-        var list = new List<ReasonCodeView>();
+        var list = new List<ChangeReasonCode>();
         await using var cmd = new NpgsqlCommand("SELECT code, label FROM chg.reason_code WHERE scope = @s AND is_active ORDER BY sort_order", conn, tx);
         cmd.Parameters.AddWithValue("s", scope);
         await using var r = await cmd.ExecuteReaderAsync(ct);
-        while (await r.ReadAsync(ct)) list.Add(new ReasonCodeView(r.GetString(0), r.GetString(1)));
+        while (await r.ReadAsync(ct)) list.Add(new ChangeReasonCode(r.GetString(0), r.GetString(1)));
         return list;
     }
 
     /// <summary>Reason codes for leaving a lifecycle without completing it: <paramref name="verb"/> is "reject", "close" or "cancel".</summary>
-    public async Task<IReadOnlyList<ReasonCodeView>> ReasonCodesAsync(string type, string verb, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ChangeReasonCode>> ReasonCodesAsync(string type, string verb, CancellationToken ct = default)
     {
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         return await LoadReasonCodesAsync(conn, null, $"{ChangeTypes.ObjectTypeOf(type)}.{verb}", ct);

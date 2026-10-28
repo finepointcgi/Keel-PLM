@@ -1,0 +1,282 @@
+@page "/changes/{Number}"
+@inject CurrentUser Users
+@inject ChangeService Changes
+
+<PageFrame Banner="@Banner" Title="@(detail is null ? "Change" : ChangeUi.TypeName(detail.Type))">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is { } d)
+    {
+        <article class="stack">
+            <header class="part-header">
+                <div>
+                    <h2>@d.Number · @d.Title</h2>
+                    <p class="muted">Requested by @d.RequesterName on @UiText.Utc(d.CreatedAt) UTC · priority @d.Priority@(d.ChangeClass is null ? "" : $" · Class {d.ChangeClass}")</p>
+                </div>
+                <div class="badges">
+                    <span class="badge">@d.Type</span>
+                    @if (d.ChangeClass is not null) { <span class="badge">Class @d.ChangeClass</span> }
+                    <span class="badge @ChangeUi.StateClass(d.State)">@d.StateLabel</span>
+                    @if (d.IsLocked) { <span class="badge">Locked</span> }
+                </div>
+            </header>
+
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @foreach (var n in d.Notices) { <p class="notice" role="status">@n</p> }
+            @if (!d.Permissions.CanModify)
+            {
+                <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p>
+            }
+
+            <section class="panel" aria-labelledby="summary-heading">
+                <h3 id="summary-heading">Summary</h3>
+                @if (editing)
+                {
+                    <div class="grid-form">
+                        <label class="wide">Title * <input maxlength="200" @bind="editTitle" /></label>
+                        <label>Priority <select @bind="editPriority">@foreach (var level in ChangePriorities.All) { <option value="@level">@level</option> }</select></label>
+                        <label class="wide">Description <textarea rows="4" maxlength="8000" @bind="editDescription"></textarea></label>
+                        <label class="wide">Reason <textarea rows="2" maxlength="4000" @bind="editReason"></textarea></label>
+                    </div>
+                    <div class="toolbar">
+                        <button type="button" disabled="@busy" @onclick="SaveEdit">Save</button>
+                        <button type="button" class="secondary" @onclick="() => editing = false">Cancel</button>
+                    </div>
+                }
+                else
+                {
+                    <p>@(string.IsNullOrEmpty(d.Description) ? "No description" : d.Description)</p>
+                    @if (d.Reason.Length > 0) { <p><strong>Reason:</strong> @d.Reason</p> }
+                    <dl class="facts">
+                        @if (d.Source is { } s)
+                        {
+                            <dt>Created from</dt><dd><a href="@ChangeUi.Href(s.Number)">@s.Number</a> @s.Title (@s.StateLabel)</dd>
+                        }
+                        @if (d.Derived.Count > 0)
+                        {
+                            <dt>Led to</dt>
+                            <dd>@foreach (var x in d.Derived) { <span><a href="@ChangeUi.Href(x.Number)">@x.Number</a> (@x.StateLabel) </span> }</dd>
+                        }
+                        @if (d.CloseReasonCode is not null)
+                        {
+                            <dt>Closed because</dt><dd>@d.CloseReasonCode@(string.IsNullOrEmpty(d.CloseReason) ? "" : $": {d.CloseReason}")</dd>
+                        }
+                    </dl>
+                    @if (d.Permissions.Editable && d.Permissions.CanModify)
+                    {
+                        <button type="button" class="secondary" @onclick="BeginEdit">Edit</button>
+                    }
+                }
+            </section>
+
+            <section class="panel" aria-labelledby="actions-heading">
+                <h3 id="actions-heading">Actions</h3>
+                <div class="toolbar">
+                    @if (d.Type == ChangeTypes.Ecr && d.Permissions.Editable && d.Permissions.CanModify)
+                    {
+                        <label class="inline">Class
+                            <select aria-label="Class" value="@(d.ChangeClass ?? "")" @onchange="Classify">
+                                <option value="">Not classified</option>
+                                <option value="I">Class I (needs CCB approval)</option>
+                                <option value="II">Class II</option>
+                            </select>
+                        </label>
+                    }
+                    @if (d.Type == ChangeTypes.Pr && d.Permissions.CanModify && !d.IsFinal)
+                    {
+                        <button type="button" class="secondary" disabled="@busy" @onclick="() => Convert(ChangeTypes.Ecr)">Create change request</button>
+                    }
+                    @if (d.Type == ChangeTypes.Ecr && d.Permissions.CanModify && CanOpenNotice(d))
+                    {
+                        <button type="button" class="secondary" disabled="@busy" @onclick="() => Convert(ChangeTypes.Ecn)">Open change notice</button>
+                    }
+                    @foreach (var t in d.Transitions.Where(t => t.Via == "manual"))
+                    {
+                        <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason" @onclick="() => BeginTransition(t)">Move to @t.Label</button>
+                    }
+                </div>
+                @foreach (var t in d.Transitions.Where(t => !t.Allowed && t.Reason is not null))
+                {
+                    <p class="muted small">@t.Label: @t.Reason</p>
+                }
+                @if (pending is { } p)
+                {
+                    <div class="stack">
+                        <h4>Move to @p.Label</h4>
+                        @if (p.ReasonScope is not null)
+                        {
+                            <label>Reason *
+                                <select @bind="reasonCode">
+                                    <option value="">Choose a reason</option>
+                                    @foreach (var c in reasonCodes) { <option value="@c.Code">@c.Label</option> }
+                                </select>
+                            </label>
+                        }
+                        <label>Comment <input maxlength="2000" @bind="reasonText" /></label>
+                        <div class="toolbar">
+                            <button type="button" disabled="@busy" @onclick="ConfirmTransition">Move to @p.Label</button>
+                            <button type="button" class="secondary" @onclick="() => pending = null">Cancel</button>
+                        </div>
+                    </div>
+                }
+            </section>
+
+            <AffectedPanel Detail="d" OnUpdated="Apply" />
+
+            @* Increment 1.6: impact analysis; the page banner then also covers what the analysis shows. *@
+            <ImpactPanel Number="@d.Number" OnShown="m => impactShown = m" />
+
+            @if (d.Type == ChangeTypes.Ecn)
+            {
+                <ChangeTasksPanel Detail="d" OnUpdated="Apply" />
+            }
+
+            <ChangeReviewPanel Detail="d" OnChanged="Reload" />
+
+            <section class="panel" aria-labelledby="markings-heading">
+                <h3 id="markings-heading">Security markings</h3>
+                @if (editMarkings is null)
+                {
+                    var m = d.Markings;
+                    <dl class="facts">
+                        <dt>Export jurisdiction</dt>
+                        <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
+                        <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
+                        <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
+                        <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
+                        <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
+                        <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
+                    </dl>
+                    <p class="muted small">The markings of a change cover every object it lists.</p>
+                    @if (d.Permissions.Editable && d.Permissions.CanModify)
+                    {
+                        <button type="button" class="secondary" @onclick="() => editMarkings = MarkingsInput.From(d.Markings)">Change markings</button>
+                    }
+                }
+                else
+                {
+                    <div class="stack">
+                        <div class="grid-form">
+                            <MarkingsFields Value="editMarkings" />
+                            <label class="wide">Reason for change (required, audited) <input @bind="markingsReason" /></label>
+                        </div>
+                        <div class="toolbar">
+                            <button type="button" disabled="@busy" @onclick="SaveMarkings">Save markings</button>
+                            <button type="button" class="secondary" @onclick="() => editMarkings = null">Cancel</button>
+                        </div>
+                    </div>
+                }
+            </section>
+
+            <section class="panel" aria-labelledby="history-heading">
+                <h3 id="history-heading">History</h3>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">When (UTC)</th><th scope="col">Who</th><th scope="col">What</th><th scope="col">Detail</th></tr></thead>
+                    <tbody>
+                        @foreach (var h in d.History.Reverse())
+                        {
+                            <tr><td>@UiText.Utc(h.At)</td><td>@h.Actor</td><td>@h.Action</td><td>@h.Detail</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            </section>
+        </article>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private ChangeDetail? detail;
+    private IReadOnlyList<Markings> impactShown = [];
+    private bool notFound, busy, editing;
+    private string? error;
+    private string editTitle = "", editDescription = "", editReason = "", editPriority = "Medium", markingsReason = "", reasonCode = "", reasonText = "";
+    private MarkingsInput? editMarkings;
+    private ChangeTransitionView? pending;
+    private IReadOnlyList<ChangeReasonCode> reasonCodes = [];
+
+    private string Banner => detail is null ? UiText.Unclassified : Markings.AggregateBanner(detail.Shown.Concat(impactShown));
+
+    protected override Task OnParametersSetAsync() => Reload();
+
+    private async Task Reload()
+    {
+        var outcome = await Changes.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        impactShown = [];
+        detail = outcome.Value;
+    }
+
+    private Task Apply(ChangeDetail updated)
+    {
+        error = null;
+        detail = updated;
+        return Task.CompletedTask;
+    }
+
+    private static bool CanOpenNotice(ChangeDetail d) =>
+        d.ChangeClass is not null && (d.State == "Approved" || (d.ChangeClass == ChangeClasses.II && d.State == "Draft"));
+
+    private void BeginEdit()
+    {
+        (editTitle, editDescription, editReason, editPriority) = (detail!.Title, detail.Description, detail.Reason, detail.Priority);
+        editing = true;
+    }
+
+    private async Task<bool> Run(Func<Subject, Task<Outcome<ChangeDetail>>> op)
+    {
+        busy = true;
+        error = null;
+        var outcome = await op(await Users.GetAsync());
+        busy = false;
+        if (outcome.IsOk) { detail = outcome.Value; return true; }
+        error = ChangeUi.Message(outcome);
+        return false;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (await Run(s => Changes.UpdateAsync(s, Number, new UpdateChangeCommand(editTitle, editDescription, editPriority, editReason), CurrentUser.NewCorrelationId()))) editing = false;
+    }
+
+    private Task Classify(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        return value == "" ? Task.CompletedTask : Run(s => Changes.ClassifyAsync(s, Number, value, CurrentUser.NewCorrelationId()));
+    }
+
+    private async Task BeginTransition(ChangeTransitionView t)
+    {
+        reasonCode = reasonText = "";
+        reasonCodes = t.ReasonScope is { } scope ? await Changes.ReasonCodesAsync(detail!.Type, scope[(scope.IndexOf('.', StringComparison.Ordinal) + 1)..]) : [];
+        pending = t;
+    }
+
+    private async Task ConfirmTransition()
+    {
+        var target = pending!.To;
+        if (await Run(s => Changes.TransitionAsync(s, Number, target, reasonCode == "" ? null : reasonCode, reasonText, CurrentUser.NewCorrelationId()))) pending = null;
+    }
+
+    private async Task Convert(string targetType)
+    {
+        busy = true;
+        error = null;
+        var outcome = await Changes.CreateFromAsync(await Users.GetAsync(), Number, targetType, new CreateFromCommand(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) Nav.NavigateTo(ChangeUi.Href(outcome.Value!.Number));
+        else error = ChangeUi.Message(outcome);
+    }
+
+    private async Task SaveMarkings()
+    {
+        var m = editMarkings!.Effective().ToMarkings();
+        if (!m.IsSuccess) { error = string.Join(" ", m.Errors); return; }
+        if (await Run(s => Changes.ChangeMarkingsAsync(s, Number, m.Value, markingsReason, CurrentUser.NewCorrelationId()))) { editMarkings = null; markingsReason = ""; }
+    }
+
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+}

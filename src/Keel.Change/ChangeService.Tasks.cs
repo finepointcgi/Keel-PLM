@@ -179,7 +179,7 @@ public sealed partial class ChangeService
                 var m = MarkingColumns.Read(r, 8);
                 DateOnly? due = r.IsDBNull(5) ? null : DateOnly.FromDateTime(r.GetDateTime(5));
                 markings.Add(m);
-                items.Add(new MyChangeTask(r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), due, due is { } d && d < today, r.GetString(6), r.GetString(7), m.BannerText()));
+                items.Add(new MyChangeTask(r.GetGuid(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), due, due is { } d && d < today, r.GetString(6), r.GetString(7), m.BannerText(), m));
             }
         }
         await audit.AppendAsync(tx, ChangeStore.Entry(subject, "change.task_list", AuditOutcome.Success, "change_task", null, correlationId,

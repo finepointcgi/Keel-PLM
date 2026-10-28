@@ -135,12 +135,14 @@ public sealed record ChangeDetail(
     DateTimeOffset CreatedAt,
     DateTimeOffset StateChangedAt,
     /// <summary>One-off messages about what this call did beyond the request, e.g. that the change's markings were raised.</summary>
-    IReadOnlyList<string> Notices);
+    IReadOnlyList<string> Notices,
+    /// <summary>The markings of everything this view shows, so a page can compute an aggregate banner that also covers what it adds to it.</summary>
+    IReadOnlyList<Markings> Shown);
 
-public sealed record ReasonCodeView(string Code, string Label);
+public sealed record ChangeReasonCode(string Code, string Label);
 
 /// <summary>A change task the caller is assigned, with the change notice it belongs to.</summary>
-public sealed record MyChangeTask(Guid Id, string Number, string Title, string State, string StateLabel, DateOnly? DueDate, bool Overdue, string EcnNumber, string EcnTitle, string Banner);
+public sealed record MyChangeTask(Guid Id, string Number, string Title, string State, string StateLabel, DateOnly? DueDate, bool Overdue, string EcnNumber, string EcnTitle, string Banner, Markings Markings);
 
 public sealed record MyChangeTasks(IReadOnlyList<MyChangeTask> Items, string PageBanner);
 
@@ -159,4 +161,5 @@ public sealed record ImpactConflict(string Kind, string ChangeType, string Chang
 public sealed record ImpactSummary(
     int AffectedObjects, int HiddenObjects, int WhereUsedParents, int RedactedParents, int Documents, int RedactedDocuments, int OpenConflicts, int StructureChanges);
 
-public sealed record ImpactReport(string Number, IReadOnlyList<ImpactObject> Objects, IReadOnlyList<ImpactConflict> Conflicts, ImpactSummary Summary, string Banner);
+public sealed record ImpactReport(string Number, IReadOnlyList<ImpactObject> Objects, IReadOnlyList<ImpactConflict> Conflicts, ImpactSummary Summary, string Banner,
+    IReadOnlyList<Markings> Shown);

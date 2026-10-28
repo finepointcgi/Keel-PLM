@@ -1,0 +1,88 @@
+@inject CurrentUser Users
+@inject ChangeService Changes
+
+<section class="panel" aria-labelledby="affected-heading">
+    <h3 id="affected-heading">Affected and resulting objects</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Detail.Type == ChangeTypes.Ecn)
+    {
+        <p class="muted small">Revising a released part creates the next revision in work, bound to this notice. It is released with the notice, and the revision it replaces becomes Obsolete.</p>
+    }
+    @if (Detail.Affected.Count == 0)
+    {
+        <p class="muted">No objects listed yet.</p>
+    }
+    else
+    {
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Object</th><th scope="col">Name</th><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Action</th><th scope="col">Resulting revision</th><th scope="col">Markings</th><th scope="col"></th></tr></thead>
+            <tbody>
+                @foreach (var a in Detail.Affected)
+                {
+                    <tr>
+                        @if (a.Redacted)
+                        {
+                            <td colspan="3"><span class="redacted" title="You are not authorized to see this object">Restricted object</span></td>
+                            <td></td>
+                        }
+                        else
+                        {
+                            <td><a href="@ChangeUi.PartHref(a.Key!, a.Revision)">@a.Key</a></td>
+                            <td>@a.Name</td>
+                            <td>@a.Revision</td>
+                            <td>@a.State</td>
+                        }
+                        <td>@ChangeUi.ActionLabel(a.Action)</td>
+                        <td>
+                            @if (a.ResultingRevision is not null && !a.Redacted)
+                            {
+                                <a href="@ChangeUi.PartHref(a.Key!, a.ResultingRevision)">@a.ResultingRevision</a> <span class="muted">(@a.ResultingState)</span>
+                            }
+                        </td>
+                        <td>@if (a.Banner is not null) { <MarkingChip Text="@a.Banner" /> }</td>
+                        <td>
+                            @if (Detail.Permissions.Editable && Detail.Permissions.CanModify)
+                            {
+                                <button type="button" class="secondary" aria-label="Remove @(a.Key ?? "object")" disabled="@busy" @onclick="() => Remove(a)">Remove</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    }
+
+    @if (Detail.Permissions.Editable && Detail.Permissions.CanModify)
+    {
+        <h4>Add a part</h4>
+        <AffectedPicker OnAdd="Add" AllowRevision="@(Detail.Type != ChangeTypes.Pr)" ShowRaise="true" Busy="busy" />
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required ChangeDetail Detail { get; set; }
+    [Parameter] public EventCallback<ChangeDetail> OnUpdated { get; set; }
+
+    private bool busy;
+    private string? error;
+
+    private async Task Add(string key, string action, bool raise)
+    {
+        error = null;
+        busy = true;
+        var outcome = await Changes.AddAffectedAsync(await Users.GetAsync(), Detail.Number, new AddAffectedCommand("part", key, action, null, raise), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) await OnUpdated.InvokeAsync(outcome.Value);
+        else error = ChangeUi.Message(outcome);
+    }
+
+    private async Task Remove(AffectedObjectView row)
+    {
+        error = null;
+        busy = true;
+        var outcome = await Changes.RemoveAffectedAsync(await Users.GetAsync(), Detail.Number, row.Id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) await OnUpdated.InvokeAsync(outcome.Value);
+        else error = ChangeUi.Message(outcome);
+    }
+}

@@ -122,7 +122,7 @@ public sealed class ImpactAnalysisService(
             ("documents", docs.ToString(CultureInfo.InvariantCulture)), ("redactedDocuments", redactedDocs.ToString(CultureInfo.InvariantCulture)),
             ("conflicts", conflicts.Count.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
         await tx.CommitAsync(ct);
-        return Outcome<ImpactReport>.Ok(new ImpactReport(number, objects, [.. conflicts.Select(c => c.Conflict)], summary, banner));
+        return Outcome<ImpactReport>.Ok(new ImpactReport(number, objects, [.. conflicts.Select(c => c.Conflict)], summary, banner, shown));
     }
 
     private sealed record Found(ImpactConflict Conflict, Markings Markings);

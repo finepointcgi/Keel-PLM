@@ -1,0 +1,75 @@
+@inject CurrentUser Users
+@inject PartService Parts
+
+@* Searches the parts the current user may modify and lets them choose the action for one. Shared by the create page and the change page. *@
+<div class="stack picker">
+    <div class="toolbar">
+        <input aria-label="Find a part to add" placeholder="Part number or name" class="grow" @bind="query" @bind:event="oninput" @onkeydown="OnKey" />
+        <button type="button" class="secondary" disabled="@busy" @onclick="Find">Find parts</button>
+    </div>
+    @if (found is not null)
+    {
+        @if (found.Count == 0) { <p class="muted small">No part you may modify matches.</p> }
+        <ul class="candidates" aria-label="Parts you can add">
+            @foreach (var p in found)
+            {
+                var released = p.State == "Released";
+                var action = Chosen(p.Number, released);
+                <li>
+                    <strong>@p.Number</strong> @p.Name · revision @p.Revision (@StateLabel(p.State)) <MarkingChip Text="@p.Banner" />
+                    <select aria-label="Action for @p.Number" value="@action" @onchange="e => actions[p.Number] = e.Value?.ToString() ?? ChangeActions.None">
+                        @if (released && AllowRevision)
+                        {
+                            <option value="@ChangeActions.Revise">Revise (new revision)</option>
+                            <option value="@ChangeActions.Obsolete">Obsolete</option>
+                        }
+                        <option value="@ChangeActions.None">Reference only</option>
+                    </select>
+                    <button type="button" class="secondary" aria-label="Add @p.Number" disabled="@busy" @onclick="() => Add(p, action)">Add</button>
+                </li>
+            }
+        </ul>
+        @if (ShowRaise)
+        {
+            <label class="inline"><input type="checkbox" @bind="raise" /> Raise this change's markings if a part needs it (shown and recorded)</label>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>Called with the part number, the action and whether raising the markings was agreed.</summary>
+    [Parameter, EditorRequired] public required Func<string, string, bool, Task> OnAdd { get; set; }
+    /// <summary>False for problem reports: they only reference objects.</summary>
+    [Parameter] public bool AllowRevision { get; set; } = true;
+    [Parameter] public bool ShowRaise { get; set; }
+    [Parameter] public bool Busy { get; set; }
+
+    private string query = "";
+    private IReadOnlyList<PartSummary>? found;
+    private bool busy, raise;
+    private readonly Dictionary<string, string> actions = new(StringComparer.Ordinal);
+
+    private string Chosen(string number, bool released) =>
+        actions.TryGetValue(number, out var a) ? a : released && AllowRevision ? ChangeActions.Revise : ChangeActions.None;
+
+    private static string StateLabel(string state) => state switch { "InWork" => "In Work", "UnderReview" => "Under Review", _ => state };
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Find();
+    }
+
+    private async Task Find()
+    {
+        var subject = await Users.GetAsync();
+        var result = await Parts.SearchAsync(subject, query, null, 25, 0, CurrentUser.NewCorrelationId());
+        found = [.. result.Items.Where(p => AccessPolicy.Evaluate(subject, p.Markings, PlmAction.Modify).Permitted)];
+    }
+
+    private async Task Add(PartSummary part, string action)
+    {
+        busy = true;
+        try { await OnAdd(part.Number, action, raise); }
+        finally { busy = false; }
+    }
+}

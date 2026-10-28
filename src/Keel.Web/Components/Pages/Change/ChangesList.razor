@@ -1,0 +1,106 @@
+@page "/changes"
+@inject CurrentUser Users
+@inject ChangeService Changes
+
+<PageFrame Banner="@Banner" Title="Changes">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search changes" placeholder="Number or title" class="grow" @bind="text" />
+        <select aria-label="Type" @bind="type" @bind:after="() => Search(0)">
+            <option value="">All types</option>
+            <option value="PR">Problem reports</option>
+            <option value="ECR">Change requests</option>
+            <option value="ECN">Change notices</option>
+        </select>
+        <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
+            <option value="">Any state</option>
+            @foreach (var s in States) { <option value="@s.Key">@s.Value</option> }
+        </select>
+        <label class="inline"><input type="checkbox" @bind="openOnly" @bind:after="() => Search(0)" /> Open only</label>
+        <button type="submit">Search</button>
+        <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+            <a class="button secondary" href="@ChangeUi.NewHref("PR")">New problem report</a>
+            <a class="button secondary" href="@ChangeUi.NewHref("ECR")">New change request</a>
+            <a class="button secondary" href="@ChangeUi.NewHref("ECN")">New change notice</a>
+        </AuthorizeView>
+    </form>
+
+    @if (mine is { Items.Count: > 0 })
+    {
+        <section class="panel" aria-labelledby="my-tasks-heading">
+            <h3 id="my-tasks-heading">My change tasks</h3>
+            <div class="table-wrap"><table class="data">
+                <thead><tr><th scope="col">Task</th><th scope="col">Title</th><th scope="col">Change notice</th><th scope="col">State</th><th scope="col">Due</th></tr></thead>
+                <tbody>
+                    @foreach (var t in mine.Items)
+                    {
+                        <tr>
+                            <td>@t.Number</td>
+                            <td>@t.Title</td>
+                            <td><a href="@ChangeUi.Href(t.EcnNumber)">@t.EcnNumber</a> <span class="muted">@t.EcnTitle</span></td>
+                            <td>@t.StateLabel</td>
+                            <td class="@(t.Overdue ? "error" : null)">@ChangeUi.DueText(t.DueDate, t.Overdue)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+    }
+
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total change@(result.Total == 1 ? "" : "s") you can access</p>
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Number</th><th scope="col">Type</th><th scope="col">Title</th><th scope="col">Class</th><th scope="col">Priority</th><th scope="col">State</th><th scope="col">Requester</th><th scope="col">Markings</th></tr></thead>
+            <tbody>
+                @foreach (var c in result.Items)
+                {
+                    <tr>
+                        <td><a href="@ChangeUi.Href(c.Number)">@c.Number</a></td>
+                        <td>@c.Type</td>
+                        <td>@c.Title</td>
+                        <td>@(c.ChangeClass ?? "")</td>
+                        <td>@c.Priority</td>
+                        <td><span class="badge @ChangeUi.StateClass(c.State)">@c.StateLabel</span></td>
+                        <td>@c.RequesterName</td>
+                        <td><MarkingChip Text="@c.Banner" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        <div class="toolbar">
+            <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Search(Math.Max(0, offset - PageSize))">Previous</button>
+            <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Search(offset + PageSize)">Next</button>
+        </div>
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private string text = "", type = "", state = "";
+    private bool openOnly;
+    private int offset;
+    private ChangeSearchResult? result;
+    private MyChangeTasks? mine;
+
+    // Union of the states of all three lifecycles, for the filter; the data-defined lifecycles stay the source of truth.
+    private static readonly IReadOnlyDictionary<string, string> States = new Dictionary<string, string>
+    {
+        ["Open"] = "Open", ["Evaluating"] = "Evaluating", ["Draft"] = "Draft", ["UnderReview"] = "Under review", ["Approved"] = "Approved",
+        ["Released"] = "Released", ["Resolved"] = "Resolved", ["Rejected"] = "Rejected", ["Implemented"] = "Implemented", ["Closed"] = "Closed", ["Cancelled"] = "Cancelled",
+    };
+
+    private string Banner => Markings.AggregateBanner((result?.Items.Select(i => i.Markings) ?? []).Concat(mine?.Items.Select(t => t.Markings) ?? []));
+
+    protected override async Task OnInitializedAsync()
+    {
+        mine = await Changes.MyTasksAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        result = await Changes.SearchAsync(await Users.GetAsync(),
+            new ChangeSearchQuery(type == "" ? null : type, state == "" ? null : state, text, openOnly, PageSize, offset), CurrentUser.NewCorrelationId());
+    }
+}

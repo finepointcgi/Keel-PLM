@@ -272,6 +272,6 @@ public sealed partial class ChangeService
         return new ChangeDetail(row.Id, row.Type, row.Number, row.Title, row.Description, row.Priority, row.ChangeClass, row.Reason, row.RequesterName, row.RequesterUsername,
             row.State, lifecycle.State(row.State)?.Label ?? row.State, lifecycle.IsLocked(row.State), final, row.Markings, Markings.AggregateBanner(shown), source, derived, affected, tasks,
             history, transitions, new ChangePermissions(modify.Permitted, admin.Permitted, !lifecycle.IsLocked(row.State), modify.Reasons), row.CloseReasonCode, row.CloseReason,
-            row.Submission, row.CreatedAt, row.StateChangedAt, notices);
+            row.Submission, row.CreatedAt, row.StateChangedAt, notices, shown);
     }
 }
