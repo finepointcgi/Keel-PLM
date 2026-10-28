@@ -40,6 +40,7 @@ The `markings` are the markings of the event: handle the data as marked.
 | `change.released` | An engineering change notice is released | as above plus `resulting[objectType, number, revision, iteration]`, `obsoleted[]`, `retainedByEffectivity[]`, `releasedAt`; each `affected` item has `action` and `effectivity` |
 | `baseline.established` | A baseline is established | `baselineId, number, name, type, state, milestone, root{number,revision,iteration}, configuration, itemCount, documentCount, contentSha256, establishedAt, establishReason` |
 | `bom.published` | An assembly revision is released: its EBOM, one level, children at their latest released revision | `assembly{...}, spec, levels, lineCount, restrictedLineCount, lines[]` |
+| `mbom.released` | A manufacturing BOM revision of a part in a plant is released through the review workflow (not on check-in, submission or reconciliation) | `mbom{mbomId,number,plant,revision,iteration,state}, part{partId,number,name}, derivedFrom{ebomIteration,spec}, contentSha256, reconciliation{runId,status,sha256}, releasedAt, lineCount, restrictedLineCount, lines[]` |
 | `bom.structure.published` | Same, all levels, only for sinks that opted in (limited to a configured number of lines; a larger structure is skipped and audited, never truncated) | as above with `level, path, extendedQuantity` per line |
 
 `bom.published` example (`data`):
@@ -60,6 +61,37 @@ The `markings` are the markings of the event: handle the data as marked.
 A line with `restricted: true` is a **placeholder**: the markings of the assembly do not cover that child, so only find number, quantity and unit are given.
 Count them with `restrictedLineCount` and obtain the line with your own clearance through the pull API (`/api/v1/integration/boms/{number}`), which applies the
 caller's markings. A child with `unresolved: true` has no released revision yet. A later release of a child does not re-publish its parents: reconcile with the pull API.
+
+`mbom.released` example (`data`):
+
+```json
+{
+  "mbom": { "mbomId": "…", "number": "MBOM-000007", "plant": "PLANT-A", "revision": "A", "iteration": "A.2", "state": "Released" },
+  "part": { "partId": "…", "number": "P-000200", "name": "Pod" },
+  "derivedFrom": { "ebomIteration": "A.2", "spec": "Latest released revision (P-000200)" },
+  "contentSha256": "9c1f…", "reconciliation": { "runId": "…", "status": "Reconciled", "sha256": "41ab…" },
+  "releasedAt": "2026-10-28T14:03:11Z", "lineCount": 3, "restrictedLineCount": 1,
+  "lines": [
+    { "findNumber": 10, "alternate": 0, "quantity": 4.2, "unit": "EA", "restricted": false,
+      "child": { "partId": "…", "number": "P-000101", "name": "Bolt", "partType": "Component", "source": "Buy" },
+      "scrapFactor": 0.05, "phantom": false, "supplyType": "Buy", "operationReference": "OP-20", "mbomOnly": false,
+      "referenceDesignators": [], "notes": null, "effectivity": null,
+      "ebomLinks": [ { "ebomFindNumber": 10, "status": "quantity_adjusted", "reason": "Scrap allowance" } ], "childMbom": null },
+    { "findNumber": 30, "alternate": 0, "quantity": 2, "unit": "EA", "restricted": false,
+      "child": { "partId": "…", "number": "P-000150", "name": "Bracket assembly", "partType": "Assembly", "source": "Make" },
+      "scrapFactor": null, "phantom": false, "supplyType": "Make", "operationReference": null, "mbomOnly": false,
+      "referenceDesignators": [], "notes": null, "effectivity": "serial 101 and up (ORCA-POD)",
+      "ebomLinks": [ { "ebomFindNumber": 30, "status": "matched", "reason": null } ], "childMbom": { "number": "MBOM-000006", "revision": "A" } },
+    { "findNumber": 40, "alternate": 0, "quantity": 1, "unit": "EA", "restricted": true }
+  ]
+}
+```
+
+`mbom.released` follows the same release rules as `bom.published`: the event carries the markings of the MBOM, a sink whose profile does not clear them
+never receives it (it is withheld and audited), and a line whose child part the MBOM's markings do not cover is an explicit **placeholder** (`restricted: true`,
+only find number, alternate, quantity and unit; its EBOM links and child MBOM are not named). `ebomLinks[].status` is the declared relationship to the EBOM line
+(`matched`, `quantity_adjusted`, `substituted`); `childMbom` names the plant's released MBOM a Make sub-assembly resolves to. An ERP consumes the event as an upsert
+keyed by `mbom.number` and `mbom.revision`; the owner of routings and operations stays the ERP/MES (A18, `operationReference` is a free reference only).
 
 `change.released` example (`data`, abbreviated):
 
@@ -119,6 +151,7 @@ Authenticate with a token of a service account with role `plm-integration` and t
 |---|---|
 | `GET /api/v1/integration/events?cursor=&limit=&type=&aggregate=` | `{events:[{cursor, envelope}], nextCursor}` in commit order. Resume with `nextCursor`; an empty page means you are current. |
 | `GET /api/v1/integration/boms/{number}?revision=&spec=&depth=&baseline=` | Resolved children (revision, iteration, quantity, unit, find number, designators, effectivity). `spec`: `LatestReleased` (default), `Latest`, `Baseline`. Lines you may not read are placeholders. |
+| `GET /api/v1/integration/mboms/{number}?plant=&revision=` | The latest Released MBOM of the part `{number}` in the plant (or the named revision) at its latest iteration: lines with child, quantity, unit, scrap, phantom, supply type, operation reference, effectivity, EBOM links and the child MBOM of Make sub-assemblies, plus the reconciliation run and digest. `plant` is required. Lines you may not read are placeholders; an MBOM you may not read is `404`. |
 | `GET /api/v1/integration/changes/{number}` | A change with its affected and resulting revisions and effectivity. |
 
 Events appear in the pull only once no older transaction is still open, so a cursor never skips an event. The OpenAPI 3.1 document is at `/openapi/v1.json`
@@ -199,6 +232,7 @@ authorization. A profile is declared by your Keel administrator with your securi
 | Keel | Typical ERP object | Owner of the data |
 |---|---|---|
 | Part revision (`part.released`) | Material master / item revision | Keel owns number, name, description, type, unit, revision and engineering attributes; the ERP owns procurement, costing, planning and plant data |
+| Released MBOM (`mbom.released`) | Manufacturing bill of material per plant | Keel owns the MBOM structure, net quantities, scrap factors, supply type and the EBOM links; the ERP owns routings, operations, costing and planning (A18) |
 | Released EBOM (`bom.published`) | Bill of material (engineering) | Keel owns the structure, quantities, find numbers, designators and effectivity; the ERP owns the manufacturing BOM, routings and operations (A18) |
 | Change notice (`change.released`) | Engineering change number / change master | Keel owns the change content, the affected and resulting revisions and effectivity; the ERP owns the order-level execution |
 | Document revision (`document.released`) | Document info record | Keel owns the file and its revision; send the files through the TDP export or a controlled transfer: the event carries names and SHA-256, not bytes |

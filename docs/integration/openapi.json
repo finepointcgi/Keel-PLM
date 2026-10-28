@@ -115,6 +115,43 @@
         }
       }
     },
+    "/api/v1/integration/mboms/{number}": {
+      "get": {
+        "tags": [
+          "Integration pull API"
+        ],
+        "summary": "Latest released MBOM of a part in a plant (or the named revision), children resolved to the plant\u0027s released MBOMs. Lines you may not read are placeholders.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/integration/changes/{number}": {
       "get": {
         "tags": [

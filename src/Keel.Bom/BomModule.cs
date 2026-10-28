@@ -18,7 +18,7 @@ public static class BomModule
         services.AddSingleton<IWorkflowObjectGateway>(sp => new BaselineWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetService<IDomainEventSink>()));
         // ---- Increment 2.3: EBOM / MBOM and reconciliation (ADR-0024)
         services.AddSingleton<MbomService>();
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new MbomWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>()));
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new MbomWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetService<IDomainEventSink>()));
         services.AddSingleton<IManufacturingBomSource, MbomBomSource>();
         services.AddSingleton<IManufacturingImpactProvider, MbomImpactProvider>();
         // ---- end 2.3

@@ -13,7 +13,7 @@ namespace Keel.Bom;
 /// (and without warnings where the plant says so); the submission binds the iteration content digest and the reconciliation run, and the signatures cover a digest
 /// recomputed from the live rows, so editing a line, a link or the run after signing makes verification fail and the release refuse. All methods run in the engine's transaction.
 /// </summary>
-internal sealed class MbomWorkflowGateway(IAuditLog audit) : IWorkflowObjectGateway
+internal sealed class MbomWorkflowGateway(IAuditLog audit, IDomainEventSink? events = null) : IWorkflowObjectGateway
 {
     public const string ContentFormat = "mbom-content/1";
 
@@ -156,6 +156,8 @@ internal sealed class MbomWorkflowGateway(IAuditLog audit) : IWorkflowObjectGate
             await sup.ExecuteNonQueryAsync(ct);
         }
         await Audit(t, actor, "mbom.release", head, ("revision", head.Label), ("reconciliation", runId.ToString("D")), ("contentSha256", live), ("reviewSha256", bound));
+        // 4.0 follow-up: the ERP event, in this transaction (it exists exactly when the release committed; not emitted on check-in or submission).
+        await MbomEvents.EmitReleasedAsync(events, c, t, head with { State = MbomStates.Released }, live, runId, run.Status, run.Sha256, actor, now, null, ct);
         return GatewayResult.Ok;
     }
 

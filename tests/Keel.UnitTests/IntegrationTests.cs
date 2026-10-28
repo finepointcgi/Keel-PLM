@@ -441,7 +441,8 @@ public sealed class EnvelopeTests
     {
         Assert.All(EventTypes.All, t => Assert.Equal(1, EventTypes.CurrentVersion(t)));
         Assert.DoesNotContain(EventTypes.BomStructurePublished, EventTypes.Default);
-        Assert.Throws<ArgumentException>(() => EventTypes.CurrentVersion("mbom.released")); // added later by adding a type here, a schema and an emission point
+        Assert.Contains(EventTypes.MbomReleased, EventTypes.Default); // added by adding a type here, a schema and an emission point (FUP-1)
+        Assert.Throws<ArgumentException>(() => EventTypes.CurrentVersion("mbom.unreleased"));
     }
 
     [Fact]
