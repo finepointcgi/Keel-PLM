@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA1861;CA2000;CA1031;CA1822;CA1002;CA2227;CA1819</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Keel.Migration\Keel.Migration.csproj" />
+  </ItemGroup>
+</Project>

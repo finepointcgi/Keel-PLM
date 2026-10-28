@@ -1,0 +1,49 @@
+@page "/admin/migration"
+@attribute [Authorize(Policy = Policies.Admin)]
+@using Keel.Migration
+@inject BatchQueries Batches
+
+@* Batches carry counts, source ids, codes and hashes only: nothing here is marked data, so the page is UNCLASSIFIED (ADR-0023).
+   Imports are run with the keel-import command line; this page only shows what they did. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Migration batches">
+    <div class="stack">
+        <p class="muted">Batches are created by <code>keel-import load</code> and are never deleted. Open a batch for its load and reconciliation reports. The report files written by the command line are CUI-handling artifacts; this page shows counts and source ids only.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (batches is not null)
+        {
+            if (batches.Count == 0) { <p class="muted">No migration batches yet.</p> }
+            else
+            {
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Batch</th><th scope="col">Status</th><th scope="col">Source</th><th scope="col">Started (UTC)</th><th scope="col">By</th><th scope="col">Quarantine</th><th scope="col">Audit</th><th scope="col">Package SHA-256</th></tr></thead>
+                    <tbody>
+                        @foreach (var b in batches)
+                        {
+                            <tr>
+                                <td><a href="admin/migration/@b.Id">@b.Name</a></td>
+                                <td class="@(b.Status == "Completed" ? "outcome-success" : b.Status == "Failed" ? "outcome-failure" : "")">@b.Status</td>
+                                <td>@b.SourceSystem</td>
+                                <td>@UiText.Utc(b.StartedAt)</td>
+                                <td>@b.StartedBy</td>
+                                <td>@(b.Quarantine ? "on" : "off")</td>
+                                <td>@b.AuditGranularity</td>
+                                <td><code title="@b.PackageSha256">@b.PackageSha256[..12]</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+        }
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<BatchSummary>? batches;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { batches = await Batches.ListAsync(200, CancellationToken.None); }
+        catch (Npgsql.NpgsqlException) { error = "The migration tables could not be read."; }
+    }
+}

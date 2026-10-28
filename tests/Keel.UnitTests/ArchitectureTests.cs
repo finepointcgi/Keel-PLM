@@ -17,7 +17,9 @@ public sealed partial class ArchitectureTests
         ["Keel.Bom"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Change management reaches parts, BOM structure and documents only through Keel.Core interfaces implemented by their owners (ADR-0019).
         ["Keel.Change"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change"],
+        // Migration (ADR-0023) writes plm/chg/document rows with plain SQL through its own import writer; file bytes go through the Keel.Core IContentStore.
+        ["Keel.Migration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
@@ -52,6 +54,10 @@ public sealed partial class ArchitectureTests
             if (file.EndsWith("PartChangeGateway.cs", StringComparison.Ordinal)) continue;
             // The seed tool's one fresh-database probe (a yes/no administrative question with no end user); everything else it does goes through services.
             if (file.EndsWith("Keel.Seed" + Path.DirectorySeparatorChar + "DatabaseState.cs", StringComparison.Ordinal)) continue;
+            // The migration reconciler (ADR-0023) is an administrative comparison with no end user: it counts and hashes the objects of one import
+            // batch (ids, numbers, markings columns) and returns only counts and source ids, never names or descriptions. This is the ONLY file of the
+            // importer that selects from a marked table; every write goes through ImportWriter.
+            if (file.EndsWith("Keel.Migration" + Path.DirectorySeparatorChar + "Reconcile" + Path.DirectorySeparatorChar + "Reconciler.cs", StringComparison.Ordinal)) continue;
             var text = File.ReadAllText(file);
             foreach (Match m in SqlFromMarkedTable().Matches(text))
             {

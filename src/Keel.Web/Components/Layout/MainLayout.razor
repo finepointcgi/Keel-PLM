@@ -11,6 +11,7 @@
             <NavLink href="tasks" Match="NavLinkMatch.Prefix">My tasks</NavLink>
             <AuthorizeView Policy="@Policies.Admin">
                 <NavLink href="workflows" Match="NavLinkMatch.Prefix">Workflows</NavLink>
+                <NavLink href="admin/migration" Match="NavLinkMatch.Prefix">Migration</NavLink>
             </AuthorizeView>
             <NavLink href="access">Access check</NavLink>
             <AuthorizeView Policy="@Policies.Auditor">

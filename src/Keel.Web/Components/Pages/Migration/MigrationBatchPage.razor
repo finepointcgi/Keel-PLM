@@ -1,0 +1,111 @@
+@page "/admin/migration/{Id:guid}"
+@attribute [Authorize(Policy = Policies.Admin)]
+@using Keel.Migration
+@using Keel.Migration.Reports
+@using Keel.Migration.Reconcile
+@inject BatchQueries Batches
+@inject CurrentUser Users
+@inject IAuditLog Audit
+
+@* Counts, codes and source ids only. Object names, descriptions and problem messages (which can quote source values) are not shown:
+   they stay in the CLI report files, which are CUI-handling artifacts (ADR-0023). *@
+<PageFrame Banner="@UiText.Unclassified" Title="@(detail is null ? "Migration batch" : "Migration batch: " + detail.Batch.Name)">
+    <div class="stack">
+        <p><a href="admin/migration">All batches</a></p>
+        @if (notFound) { <p class="error" role="alert">There is no such batch.</p> }
+        @if (detail is not null)
+        {
+            var b = detail.Batch;
+            <dl class="facts">
+                <dt>Status</dt><dd>@b.Status</dd>
+                <dt>Source system</dt><dd>@b.SourceSystem</dd>
+                <dt>Started</dt><dd>@UiText.Utc(b.StartedAt) by @b.StartedBy</dd>
+                <dt>Completed</dt><dd>@(b.CompletedAt is null ? "not finished" : UiText.Utc(b.CompletedAt.Value))</dd>
+                <dt>Quarantine mode</dt><dd>@(b.Quarantine ? "on" : "off")</dd>
+                <dt>Audit granularity</dt><dd>@b.AuditGranularity</dd>
+                <dt>Package SHA-256</dt><dd><code>@b.PackageSha256</code></dd>
+                <dt>Mapping SHA-256</dt><dd><code>@b.MappingSha256</code></dd>
+            </dl>
+
+            @if (load is not null)
+            {
+                <h2>Load report</h2>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Entity</th><th scope="col">Planned</th><th scope="col">Created</th><th scope="col">Skipped (already imported)</th></tr></thead>
+                    <tbody>
+                        @foreach (var (key, planned) in load.Planned)
+                        {
+                            <tr><td>@key</td><td>@planned</td><td>@(load.Results.TryGetValue(key, out var r) ? r.Created : 0)</td><td>@(load.Results.TryGetValue(key, out var r2) ? r2.Skipped : 0)</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+                <p class="muted">@load.AuditEventsWritten audit events written; @load.Quarantined.Count objects not imported; defaulted markings: @load.DefaultedMarkings.Count (review them in the report file).</p>
+            }
+
+            @if (detail.Quarantine.Count > 0)
+            {
+                <h2>Objects not imported</h2>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Type</th><th scope="col">Source id</th><th scope="col">Code</th></tr></thead>
+                    <tbody>
+                        @foreach (var q in detail.Quarantine)
+                        {
+                            <tr><td>@q.EntityType</td><td>@q.SourceId</td><td>@q.Code</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+
+            @if (load is not null && load.Problems.Count > 0)
+            {
+                <h2>Problems (codes and source ids)</h2>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Severity</th><th scope="col">Code</th><th scope="col">Type</th><th scope="col">Source id</th><th scope="col">Fix hint</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in load.Problems.OrderByDescending(p => p.Severity).Take(500))
+                        {
+                            <tr><td>@p.Severity</td><td>@p.Code</td><td>@p.EntityType</td><td>@p.SourceId</td><td>@p.Hint</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+
+            @foreach (var rec in reconciles)
+            {
+                <h2>Reconciliation @UiText.Utc(rec.CreatedAt) <span class="@(rec.Ok ? "outcome-success" : "outcome-failure")">@(rec.Ok ? "reconciled" : $"{rec.Differences} differences")</span></h2>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Check</th><th scope="col">Source</th><th scope="col">Keel</th><th scope="col">Result</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in rec.Checks)
+                        {
+                            <tr><td>@c.Name</td><td>@c.Expected</td><td>@c.Actual</td><td class="@(c.Ok ? "outcome-success" : "outcome-failure")">@(c.Ok ? "ok" : "different")</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+            @if (load is null && reconciles.Count == 0) { <p class="muted">This batch has no stored reports yet.</p> }
+        }
+    </div>
+</PageFrame>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private BatchDetail? detail;
+    private MigrationReport? load;
+    private readonly List<ReconcileReport> reconciles = [];
+    private bool notFound;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        detail = await Batches.GetAsync(Id, CancellationToken.None);
+        notFound = detail is null;
+        if (detail is null) return;
+        load = detail.Reports.Where(r => r.Kind == "load").Select(r => MigrationReport.FromJson(r.ContentJson)).LastOrDefault();
+        reconciles.Clear();
+        reconciles.AddRange(detail.Reports.Where(r => r.Kind == "reconcile").Select(r => ReconcileReport.FromJson(r.ContentJson)));
+        // Viewing migration records is an administrative read: audit it like other single-object reads.
+        var user = await Users.GetAsync();
+        await Audit.AppendAsync(new AuditEntry { Actor = ActorSnapshot.From(user), Action = "migration.batch.view", Outcome = AuditOutcome.Success, ObjectType = "migration_batch", ObjectId = Id.ToString(), CorrelationId = CurrentUser.NewCorrelationId() });
+    }
+}
