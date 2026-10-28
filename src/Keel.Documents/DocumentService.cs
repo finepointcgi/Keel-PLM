@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Keel.Audit;
 using Keel.Core;
+using Keel.Documents.Scanning;
 using Keel.Documents.Vault;
 using Keel.Security;
 using Npgsql;
@@ -58,6 +59,8 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         {
             try { stored = await vault.PutAsync(primary.Content, ct); }
             catch (UploadTooLargeException e) { return Outcome<DocumentDetail>.Invalid([e.Message]); }
+            catch (UploadInfectedException e) { return await RefuseInfectedAsync<DocumentDetail>(subject, "document.create", cmd.Number, primary.FileName, e, correlationId, ct); }
+            catch (UploadNotScannedException e) { return await RefuseNotScannedAsync<DocumentDetail>(subject, "document.create", cmd.Number, primary.FileName, e, correlationId, ct); }
         }
 
         await using var conn = await dataSource.OpenConnectionAsync(ct);
@@ -251,6 +254,8 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         StoredContent stored;
         try { stored = await vault.PutAsync(upload.Content, ct); }
         catch (UploadTooLargeException e) { return Outcome<DocumentDetail>.Invalid([e.Message]); }
+        catch (UploadInfectedException e) { return await RefuseInfectedAsync<DocumentDetail>(subject, action, number, upload.FileName, e, correlationId, ct); }
+        catch (UploadNotScannedException e) { return await RefuseNotScannedAsync<DocumentDetail>(subject, action, number, upload.FileName, e, correlationId, ct); }
 
         return await MutateAsync(subject, number, action, correlationId, PlmAction.Modify, async (ctx, conn, tx) =>
         {
@@ -296,6 +301,8 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
             var files = await ReadFilesAsync(conn, tx,
                 "SELECT f.id, f.role, f.file_name, f.media_type, f.size_bytes, f.sha256, f.added_at, f.added_by FROM plm.document_checkout_file f WHERE f.revision_id = @owner",
                 ctx.RevisionId, ct);
+            if (await QuarantinedAmongAsync(conn, tx, ctx.MasterId, files.Select(f => f.Sha256).ToArray(), ct) is { } quarantinedFile)
+                return Fail($"The working copy contains a quarantined file ({quarantinedFile}); remove it before checking in.");
             // ASSUMPTION(A24): once an iteration has a primary file, every later iteration keeps one (it can be replaced, not dropped).
             if (ctx.LatestHasPrimary && files.All(f => f.Role != FileRoles.Primary))
                 return Fail("The previous iteration has a primary file; add a primary file before checking in.");
@@ -543,6 +550,7 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         cmd.Parameters.AddWithValue("at", at);
         cmd.Parameters.AddWithValue("by", by);
         await cmd.ExecuteNonQueryAsync(ct);
+        if (content.Scan is { } scan) await RecordScanAsync(conn, tx, content.Sha256, content.SizeBytes, scan, "upload", ct);
     }
 
     private static async Task<List<DocumentFileView>> ReadFilesAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sql, Guid owner, CancellationToken ct)
@@ -601,7 +609,9 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         var filesByIteration = new Dictionary<Guid, List<DocumentFileView>>();
         await using (var cmd = new NpgsqlCommand(
             """
-            SELECT f.iteration_id, f.id, f.role, f.file_name, f.media_type, f.size_bytes, f.sha256, f.added_at, f.added_by
+            SELECT f.iteration_id, f.id, f.role, f.file_name, f.media_type, f.size_bytes, f.sha256, f.added_at, f.added_by,
+                   COALESCE((SELECT x.status FROM plm.file_scan x WHERE x.sha256 = f.sha256 ORDER BY x.id DESC LIMIT 1), 'unscanned'),
+                   EXISTS (SELECT 1 FROM plm.file_quarantine q WHERE q.master_id = r.master_id AND q.sha256 = f.sha256 AND q.released_at IS NULL)
             FROM plm.document_file f JOIN plm.document_iteration i ON i.id = f.iteration_id JOIN plm.document_revision r ON r.id = i.revision_id
             WHERE r.master_id = @m ORDER BY f.role DESC, f.file_name
             """, conn, tx))
@@ -612,7 +622,7 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
             {
                 var key = r.GetGuid(0);
                 if (!filesByIteration.TryGetValue(key, out var list)) filesByIteration[key] = list = [];
-                list.Add(ReadFile(r, 1));
+                list.Add(ReadFile(r, 1) with { ScanStatus = r.GetString(9), Quarantined = r.GetBoolean(10) });
             }
         }
 

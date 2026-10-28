@@ -1,0 +1,86 @@
+@* The lock screen (NIST SP 800-171 3.1.10, ADR-0026). The layout renders THIS INSTEAD OF the page, so the page's components are gone and no data of
+   it remains in the DOM or in the circuit; it is not an overlay on top of the data. Unlocking is a fresh login at the IdP (prompt=login, max_age=0,
+   same person), which returns to the same address. This component shows nothing but static text. *@
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject TimeProvider Clock
+
+<PageTitle>Session locked · Keel PLM</PageTitle>
+<section @ref="panel" id="session-lock" class="lock-panel" role="dialog" aria-modal="true" aria-labelledby="lock-title" aria-describedby="lock-description"
+         tabindex="-1" data-phase="locked">
+    <h1 id="lock-title" tabindex="-1">Session locked</h1>
+    <p id="lock-description">
+        @(View?.LockReason == "manual" ? "You locked this session." : "This session locked after a period without activity.")
+        Nothing on this page can be read or changed until you sign in again. Your place is kept: you return to the page you were on.
+    </p>
+    @if (Remaining is { } remaining)
+    {
+        <p class="muted" data-lock-countdown>The session ends and you are signed out if it stays locked for another @remaining.</p>
+    }
+    <div class="lock-actions">
+        <button type="button" data-action="unlock" @onclick="Unlock">Sign in to unlock</button>
+        <form method="post" action="account/logout" class="inline">
+            <AntiforgeryToken />
+            <button type="submit" class="secondary" data-action="sign-out">Sign out</button>
+        </form>
+    </div>
+</section>
+
+@code {
+    private ElementReference panel;
+    private IJSObjectReference? module;
+    private ITimer? timer;
+
+    /// <summary>The session's lock state, for the countdown.</summary>
+    [Parameter] public SessionLockView? View { get; set; }
+
+    private string? Remaining
+    {
+        get
+        {
+            if (View?.TerminateAt is not { } end) return null;
+            var left = end - Clock.GetUtcNow();
+            if (left <= TimeSpan.Zero) return "a moment";
+            return left.TotalMinutes >= 1 ? $"{(int)Math.Ceiling(left.TotalMinutes)} min" : $"{(int)Math.Ceiling(left.TotalSeconds)} s";
+        }
+    }
+
+    protected override void OnInitialized() =>
+        timer = Clock.CreateTimer(_ => _ = InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)); // the countdown
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Keel.Web/session-lock.js");
+            await module.InvokeVoidAsync("trapFocus", panel);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private void Unlock()
+    {
+        // A full page load through the IdP; the return target is local and relative (KeelUi.LocalReturnUrl accepts nothing else).
+        var returnUrl = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        Nav.NavigateTo($"account/step-up?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        timer?.Dispose();
+        if (module is null) return;
+        try
+        {
+            await module.InvokeVoidAsync("releaseFocusTrap");
+            await module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

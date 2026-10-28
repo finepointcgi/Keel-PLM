@@ -67,6 +67,14 @@ public sealed partial class DocumentService
             documentName = r.GetString(10);
         }
 
+        if (await IsQuarantinedAsync(head.MasterId, file.Sha256, ct))
+        {
+            // The bytes and the trail stay; delivery is refused until an administrator releases the file (ADR-0026).
+            await audit.AppendAsync(Entry(subject, action, AuditOutcome.Failure, number, correlationId,
+                ("file", file.FileName), ("fileId", file.Id.ToString()), ("sha256", file.Sha256), ("reason", "file.quarantined")), ct);
+            return Outcome<MarkedDownload>.Conflict("This file is quarantined: the malware scanner flagged it after it was stored. Ask an administrator.");
+        }
+
         var ctx = new MarkingContext(head.Markings, number, documentName, iterationLabel, file.FileName, file.MediaType, file.SizeBytes, file.Sha256,
             DisplayId(subject), clock.GetUtcNow());
         var options = vault.Options;
@@ -113,6 +121,15 @@ public sealed partial class DocumentService
             ("file", file.FileName), ("fileId", file.Id.ToString()), ("sha256", file.Sha256), ("size", file.SizeBytes.ToString(CultureInfo.InvariantCulture)),
             ("iteration", iterationLabel), ("markings", ctx.Banner), ("format", result.Format), ("stampError", stampError)), ct);
         return Outcome<MarkedDownload>.Ok(result);
+    }
+
+    private async Task<bool> IsQuarantinedAsync(Guid masterId, string sha256, CancellationToken ct)
+    {
+        await using var conn = await dataSource.OpenConnectionAsync(ct);
+        await using var cmd = new NpgsqlCommand("SELECT 1 FROM plm.file_quarantine WHERE master_id = @m AND sha256 = @s AND released_at IS NULL", conn);
+        cmd.Parameters.AddWithValue("m", masterId);
+        cmd.Parameters.AddWithValue("s", sha256);
+        return await cmd.ExecuteScalarAsync(ct) is not null;
     }
 
     private static MarkedDownload Zip(MarkingContext ctx, Func<Stream, CancellationToken, Task> write) =>

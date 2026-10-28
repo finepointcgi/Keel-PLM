@@ -25,6 +25,10 @@ docker compose --env-file ../images.env --env-file .env -f compose.prod-example.
 ```
 Start order is enforced: postgres healthy, then `migrate` exits 0, then app healthy, then proxy.
 
+## Malware scanning, SIEM, session lock (increment 5.0; ClamAV override NOT RUN)
+With `KEEL_REQUIRE_FIPS=true` the app refuses to start unless scanning is configured: `KEEL_SCAN_MODE=Required` plus the override `-f compose.clamav.yaml` (clamav on the internal backend network, signatures from your offline mirror into the `clamav-db` volume, `KEEL_CLAMAV_IMAGE` pinned by digest),
+or the explicit `KEEL_SCAN_ACK_UNSCANNED=true`. Details: compliance-features.md. `verify-compose-example.sh` runs with `KEEL_REQUIRE_FIPS=false` and scanning disabled, as before; it was not re-run for this increment.
+
 ## Certificates
 Files needed in `prod-example/certs/`: `ca.crt` (CA chain that signed everything), `proxy.crt/.key` (public name), `postgres.crt/.key`
 (SAN `postgres`), `vault.crt/.key` (SAN `vault`). A real site issues them from its internal CA (DoD PKI or enterprise CA) as ECDSA

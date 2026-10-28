@@ -1,31 +1,45 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject SessionLockCoordinator Lock
+@inject NavigationManager Nav
 
 <div class="app">
     <SectionOutlet SectionName="@PageFrame.TopBanner" />
     <header class="topbar">
         <span class="brand">Keel PLM</span>
-        <nav aria-label="Main">
-            <NavLink href="parts" Match="NavLinkMatch.Prefix">Parts</NavLink>
-            <NavLink href="documents" Match="NavLinkMatch.Prefix">Documents</NavLink>
-            <NavLink href="changes" Match="NavLinkMatch.Prefix">Changes</NavLink>
-            <NavLink href="baselines" Match="NavLinkMatch.Prefix">Baselines</NavLink>
-            <NavLink href="mboms" Match="NavLinkMatch.Prefix">Manufacturing BOMs</NavLink>
-            <NavLink href="tasks" Match="NavLinkMatch.Prefix">My tasks</NavLink>
-            <AuthorizeView Policy="@Policies.Admin">
-                <NavLink href="workflows" Match="NavLinkMatch.Prefix">Workflows</NavLink>
-                <NavLink href="admin/migration" Match="NavLinkMatch.Prefix">Migration</NavLink>
-                <NavLink href="admin" Match="NavLinkMatch.Prefix">Administration</NavLink>
-            </AuthorizeView>
-            <NavLink href="access">Access check</NavLink>
-            <AuthorizeView Policy="@Policies.Auditor">
-                <NavLink href="audit">Audit log</NavLink>
-            </AuthorizeView>
-            <NavLink href="profile">My access</NavLink>
-        </nav>
+        @if (!locked)
+        {
+            <nav aria-label="Main">
+                <NavLink href="parts" Match="NavLinkMatch.Prefix">Parts</NavLink>
+                <NavLink href="documents" Match="NavLinkMatch.Prefix">Documents</NavLink>
+                <NavLink href="changes" Match="NavLinkMatch.Prefix">Changes</NavLink>
+                <NavLink href="baselines" Match="NavLinkMatch.Prefix">Baselines</NavLink>
+                <NavLink href="mboms" Match="NavLinkMatch.Prefix">Manufacturing BOMs</NavLink>
+                <NavLink href="tasks" Match="NavLinkMatch.Prefix">My tasks</NavLink>
+                <AuthorizeView Policy="@Policies.Admin">
+                    <NavLink href="workflows" Match="NavLinkMatch.Prefix">Workflows</NavLink>
+                    <NavLink href="admin/migration" Match="NavLinkMatch.Prefix">Migration</NavLink>
+                    <NavLink href="admin" Match="NavLinkMatch.Prefix">Administration</NavLink>
+                </AuthorizeView>
+                <NavLink href="access">Access check</NavLink>
+                <AuthorizeView Policy="@Policies.Auditor">
+                    <NavLink href="audit">Audit log</NavLink>
+                </AuthorizeView>
+                <NavLink href="profile">My access</NavLink>
+            </nav>
+        }
+        else
+        {
+            <span class="grow"></span>
+        }
         <AuthorizeView>
             <Authorized>
                 <span class="user">
-                    @(context.User.FindFirst("name")?.Value ?? context.User.Identity?.Name)
+                    @if (!locked)
+                    {
+                        @(context.User.FindFirst("name")?.Value ?? context.User.Identity?.Name)
+                        <SessionStatus />
+                    }
                     <form method="post" action="account/logout" class="inline">
                         <AntiforgeryToken />
                         <button type="submit" class="link">Sign out</button>
@@ -35,11 +49,45 @@
         </AuthorizeView>
     </header>
     <main>
-        @Body
+        @if (locked)
+        {
+            @* The page is not rendered while the session is locked: its components are disposed, so no data of it is left in the DOM (ADR-0026). *@
+            <LockedPanel View="Lock.View" />
+        }
+        else
+        {
+            @Body
+        }
     </main>
     <SectionOutlet SectionName="@PageFrame.BottomBanner" />
 </div>
+<SessionActivity />
 
 <div id="blazor-error-ui" role="alert">
     Something went wrong. <a href="." class="reload">Reload</a>
 </div>
+
+@code {
+    private bool locked;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Lock.InitializeAsync();
+        locked = Lock.IsLocked;
+        Lock.Changed += OnLockChanged;
+    }
+
+    private void OnLockChanged() => _ = InvokeAsync(() =>
+    {
+        // The session stayed locked too long: leave the circuit for the sign-out endpoint (cookie and IdP session are ended there).
+        if (Lock.IsTerminated)
+        {
+            Nav.NavigateTo(KeelUi.SessionEndedPath, forceLoad: true);
+            return;
+        }
+        locked = Lock.IsLocked;
+        StateHasChanged();
+    });
+
+    public void Dispose() => Lock.Changed -= OnLockChanged;
+}

@@ -35,6 +35,13 @@ x-app-env: &app-env
   Keel__Vault__ServerSideEncryption: "true"
   Keel__Audit__CheckpointPrivateKeyPath: /run/secrets/audit_checkpoint_key
   Keel__Audit__CheckpointPublicKeyPaths__0: /run/secrets/audit_checkpoint_key_pub
+  # Malware scanning of uploads (ADR-0026). Disabled is refused here while RequireFips is true unless the acknowledgement is set: add
+  # compose.clamav.yaml and set KEEL_SCAN_MODE=Required (docs/ops/compliance-features.md). Idle lock: Keel__Session__* (docs/ops/configuration.md).
+  Keel__Vault__Scanning__Mode: ${KEEL_SCAN_MODE:-Disabled}
+  Keel__Vault__Scanning__Host: clamav
+  Keel__Vault__Scanning__Port: "3310"
+  Keel__Vault__Scanning__AllowRemotePlaintext: "true"   # clamav is on the internal backend network, never routed out
+  Keel__Vault__Scanning__AcknowledgeUnscannedUploads: ${KEEL_SCAN_ACK_UNSCANNED:-false}
   Keel__Proxy__Enabled: "true"
   Keel__Proxy__KnownNetworks__0: 172.28.40.0/24   # the `edge` network below: only the proxy is on it with the app
 

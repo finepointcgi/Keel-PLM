@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Like every module: only the shared kernel, the policy and the audit log (ADR-0001). -->
+    <ProjectReference Include="..\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
+    <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Keel.UnitTests" />
+    <InternalsVisibleTo Include="Keel.IntegrationTests" />
+  </ItemGroup>
+</Project>

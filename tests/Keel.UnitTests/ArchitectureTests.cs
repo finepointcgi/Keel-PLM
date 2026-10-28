@@ -25,6 +25,8 @@ public sealed partial class ArchitectureTests
         ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        // SIEM forwarding (5.0) reads audit.event and audit.checkpoint; its status reaches the host and the UI through ISiemStatus in Keel.Core.
+        ["Keel.Siem"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
     [Fact]

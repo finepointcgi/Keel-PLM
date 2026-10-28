@@ -8,6 +8,7 @@
 #   default                                     the web host (UI + REST API) on :8080
 #   --migrate                                   apply db/migrations as keel_migrator, then exit (job)
 #   dotnet /app/audit/keel-audit.dll verify ... offline audit-chain verifier
+#   dotnet /app/vault/keel-vault.dll gc ...     vault garbage collection (dry run by default)
 #
 # The build uses the SDK that ships in the UBI image and ignores global.json (which pins the developer SDK feature band);
 # CI separately builds the solution with -warnaserror on the pinned SDK before an image is cut.
@@ -24,6 +25,8 @@ COPY db/migrations ./db/migrations
 RUN dotnet publish src/Keel.Api/Keel.Api.csproj -c Release -o /out/api --nologo \
         -p:UseAppHost=false -p:ContinuousIntegrationBuild=true -p:Deterministic=true -p:TreatWarningsAsErrors=false \
  && dotnet publish src/Keel.AuditCli/Keel.AuditCli.csproj -c Release -o /out/audit --nologo \
+        -p:UseAppHost=false -p:ContinuousIntegrationBuild=true -p:Deterministic=true -p:TreatWarningsAsErrors=false \
+ && dotnet publish src/Keel.VaultTool/Keel.VaultTool.csproj -c Release -o /out/vault --nologo \
         -p:UseAppHost=false -p:ContinuousIntegrationBuild=true -p:Deterministic=true -p:TreatWarningsAsErrors=false \
  # Dev-only credentials never ship (secrets come from the environment or mounted files).
  && rm -f /out/api/appsettings.Development.json /out/api/web.config \
@@ -56,6 +59,7 @@ RUN rm -f /usr/bin/microdnf /usr/bin/dnf /usr/bin/yum /usr/bin/curl \
 
 COPY --from=publish --chown=0:0 /out/api /app
 COPY --from=publish --chown=0:0 /out/audit /app/audit
+COPY --from=publish --chown=0:0 /out/vault /app/vault
 # Application files are read-only for the runtime user (owned by root, world-readable).
 RUN chmod -R a=rX /app
 

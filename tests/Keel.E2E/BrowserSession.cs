@@ -10,6 +10,8 @@ public sealed class UserPage
     public required string User { get; init; }
     public required IBrowserContext Context { get; init; }
     public required IPage Page { get; init; }
+    /// <summary>The host this identity is signed in to (the main host unless a test asked for another).</summary>
+    public string? BaseUrl { get; init; }
     /// <summary>When the Keycloak login completed (the <c>auth_time</c> of this session, to within a second).</summary>
     public DateTimeOffset SignedInAt { get; set; }
     public List<string> ConsoleErrors { get; } = [];
@@ -38,7 +40,7 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
         }
     }
 
-    public async Task<UserPage> SignInAsync(string user, int? width = null, int? height = null)
+    public async Task<UserPage> SignInAsync(string user, int? width = null, int? height = null, string? baseUrl = null)
     {
         var context = await fx.Browser.NewContextAsync(new BrowserNewContextOptions
         {
@@ -48,14 +50,15 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
         context.SetDefaultTimeout(30_000);
         await context.Tracing.StartAsync(new TracingStartOptions { Screenshots = true, Snapshots = true, Sources = false });
         var page = await context.NewPageAsync();
-        var up = new UserPage { User = user, Context = context, Page = page };
+        var host = baseUrl ?? fx.BaseUrl;
+        var up = new UserPage { User = user, Context = context, Page = page, BaseUrl = host };
         page.Console += (_, m) => { if (m.Type == "error") up.ConsoleErrors.Add(m.Text); };
         page.PageError += (_, e) => up.PageErrors.Add(e);
         _users.Add(up);
 
-        await page.GotoAsync(fx.BaseUrl + "/");
+        await page.GotoAsync(host + "/");
         await SubmitKeycloakAsync(page, user);
-        await page.WaitForURLAsync(url => url.StartsWith(fx.BaseUrl, StringComparison.Ordinal));
+        await page.WaitForURLAsync(url => url.StartsWith(host, StringComparison.Ordinal));
         await Expect(page.Locator("nav[aria-label='Main']")).ToBeVisibleAsync();
         // The shell is rendered by the Blazor circuit, so a visible nav means the circuit is live.
         up.SignedInAt = DateTimeOffset.UtcNow;
@@ -74,7 +77,7 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
 
     public async Task GotoAsync(UserPage up, string path)
     {
-        await up.Page.GotoAsync(fx.BaseUrl + path);
+        await up.Page.GotoAsync((up.BaseUrl ?? fx.BaseUrl) + path);
         await Expect(up.Page.Locator("h1")).ToBeVisibleAsync();
     }
 

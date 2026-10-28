@@ -94,6 +94,49 @@ Secret-bearing settings are marked **secret**: supply them as files, never in an
 | `Keel__Integration__TdpSigningKeyPath` | empty (export answers 503) | R for TDP | `/run/secrets/keel/tdp_signing_key.pem`: ECDSA P-256 PKCS#8 PEM. |
 | `Keel__Integration__TdpTrustedPublicKeyPaths__0..n` | none | O | Public keys trusted when verifying packages (retired signing keys). |
 | `Keel__Integration__TdpMaxParts` / `TdpMaxDocuments` | `2000` / `5000` | O | Larger packages are refused so they can be split. |
+### Vault malware scanning (`Keel:Vault:Scanning`, ADR-0026)
+| Setting | Default | Prod | Example / notes |
+|---|---|---|---|
+| `Keel__Vault__Scanning__Mode` | `Disabled` | R | `Required` (refuse uploads the scanner cannot judge), `BestEffort` (accept as `unscanned`), `Disabled`. **`Disabled` with `RequireFips=true` is a startup error** unless `AcknowledgeUnscannedUploads=true`. |
+| `Keel__Vault__Scanning__Host` / `Port` | `127.0.0.1` / `3310` | O | clamd TCP. A non-loopback host needs `AllowRemotePlaintext=true` (INSTREAM is not encrypted). |
+| `Keel__Vault__Scanning__UnixSocket` | empty | O | `/run/clamav/clamd.sock`; used instead of Host/Port when set. |
+| `Keel__Vault__Scanning__ConnectTimeoutSeconds` / `IoTimeoutSeconds` / `ResultTimeoutSeconds` | `5` / `30` / `120` | O | Bounds for connecting, each read/write, and the verdict after the last byte. |
+| `Keel__Vault__Scanning__MaxScanBytes` | `2147483648` | O | At most clamd `StreamMaxLength`. Larger files: refused (Required) or `skipped` (BestEffort). |
+| `Keel__Vault__Scanning__ChunkBytes` | `262144` | O | INSTREAM chunk size. |
+| `Keel__Vault__Scanning__AllowRemotePlaintext` | `false` | O | Acknowledges an unencrypted link to a scanner on another host. |
+| `Keel__Vault__Scanning__AcknowledgeUnscannedUploads` | `false` | O | The site accepts running production without scanning. |
+
+### Vault garbage collection (`Keel:Vault:Gc`, ADR-0026)
+| Setting | Default | Prod | Example / notes |
+|---|---|---|---|
+| `Keel__Vault__Gc__Enabled` | `false` | O | Run the sweeper as a hosted service. The CLI `keel-vault gc` needs no setting. |
+| `Keel__Vault__Gc__Mode` | `DryRun` | O | `Delete` makes the service delete. |
+| `Keel__Vault__Gc__IntervalHours` | `24` | O | 1 to 744. |
+| `Keel__Vault__Gc__GraceDays` | `7` | O | At least 1 (enforced). Unreferenced objects younger than this are kept. |
+| `Keel__Vault__Gc__MaxDeletionsPerRun` | `1000` | O | Caps candidates handled per run; a continuation token resumes. |
+| `Keel__Vault__Gc__PageSize` | `500` | O | 10 to 1000 objects per listing request. |
+
+### Session lock (`Keel:Session`, ADR-0026)
+| Setting | Default | Prod | Example / notes |
+|---|---|---|---|
+| `Keel__Session__IdleLockMinutes` | `15` | D | 1 to 120 in production; `0` (off) is refused when `RequireFips` is true or the environment is Production. |
+| `Keel__Session__WarningSeconds` | `60` | D | Shorter than the idle timeout. |
+| `Keel__Session__LockedTerminateMinutes` | `15` | D | Locked this long = session terminated and signed out. |
+| `Keel__Session__ActivityThrottleSeconds` | `5` | D | Browser activity report interval (1 to 60). |
+
+### SIEM forwarding (`Keel:Siem`, ADR-0026, siem-onboarding.md)
+| Setting | Default | Prod | Example / notes |
+|---|---|---|---|
+| `Keel__Siem__Enabled` | `false` | R (recommended) | Needs at least one destination. UDP is refused (NotSupportedException); plain TCP needs `AllowInsecureTcp` and is refused with `RequireFips=true`. |
+| `Keel__Siem__Hostname` / `AppName` / `Facility` | machine / `keel-plm` / `13` | O | Syslog header fields. |
+| `Keel__Siem__EnterpriseNumber` | `32473` | R | Private enterprise number of `[keel@PEN ...]`; 32473 is the documentation placeholder, replace it. |
+| `Keel__Siem__BatchSize` / `QueueBatches` / `PollIntervalMilliseconds` | `200` / `4` / `1000` | O | Batch, bounded read-ahead queue, idle poll. |
+| `Keel__Siem__Destinations__N__Name` / `Type` | required / `SyslogTls` | R | `SyslogTls` or `File`. |
+| `Keel__Siem__Destinations__N__Host` / `Port` / `ServerName` / `Transport` | / `6514` / Host / `Tls` | R | TLS 1.2/1.3 syslog with octet counting. |
+| `Keel__Siem__Destinations__N__CaBundlePath` | system store | R | PEM CA(s); relative paths resolve against `KEEL_SECRETS_DIR`. |
+| `Keel__Siem__Destinations__N__ClientCertificatePath` / `ClientKeyPath` / `ClientKeyPassword` | empty | O, **secret** (password) | mutual TLS. |
+| `Keel__Siem__Destinations__N__FilePath` | empty | | NDJSON sink for a forwarder. |
+| `Keel__Siem__Destinations__N__ConnectTimeoutSeconds` / `SendTimeoutSeconds` / `BackoffMinSeconds` / `BackoffMaxSeconds` | `10` / `30` / `1` / `60` | O | Delivery timing. |
 
 ### Workflow (`Keel:Workflow`)
 | Setting | Default | Prod | Example / notes |
@@ -120,6 +163,7 @@ Secret-bearing settings are marked **secret**: supply them as files, never in an
 | `Keel.Api.dll --migrate` | Applies `db/migrations` with the migrator connection and exits. Forward-only, hash-checked (`docs/ops/upgrade.md`). |
 | `Keel.Api.dll --healthcheck [url]` | Exit 0 when `/health/live` (default `http://127.0.0.1:8080/health/live`) answers 2xx. This is the image `HEALTHCHECK`; there is no curl in the image. |
 | `dotnet /app/audit/keel-audit.dll verify --public-key <pem>...` | Offline audit chain verifier; reads `KEEL_AUDIT_CONNECTION`. |
+| `dotnet /app/vault/keel-vault.dll gc [--dry-run \| --delete --confirm-bucket B] ...` | Vault garbage collection (compliance-features.md). No implicit database target. |
 
 ## Endpoints for operators
 

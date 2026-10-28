@@ -9,6 +9,10 @@ public enum OutcomeKind
     Conflict,
     /// <summary>The action needs a fresh authentication (e-signature step-up, A9). Errors[0] = reason code, Errors[1] = max age in seconds.</summary>
     StepUpRequired,
+    /// <summary>The request was understood but its content cannot be accepted (an upload the malware scanner flagged, ADR-0026). Errors[0] = message, Errors[1] = signature when there is one.</summary>
+    Unprocessable,
+    /// <summary>A dependency the request needs is unavailable right now (the malware scanner in Required mode); retry later. Errors[0] = message.</summary>
+    Unavailable,
 }
 
 /// <summary>Result of an application command or query, mapped by the API to HTTP status codes.</summary>
@@ -22,6 +26,8 @@ public sealed record Outcome<T>(OutcomeKind Kind, T? Value, IReadOnlyList<string
     public static Outcome<T> NotFound() => new(OutcomeKind.NotFound, default, []);
     public static Outcome<T> Forbidden(IEnumerable<string> reasons) => new(OutcomeKind.Forbidden, default, reasons.ToList());
     public static Outcome<T> Conflict(string message) => new(OutcomeKind.Conflict, default, [message]);
+    public static Outcome<T> Unprocessable(string message, string? signature = null) => new(OutcomeKind.Unprocessable, default, signature is null ? [message] : [message, signature]);
+    public static Outcome<T> Unavailable(string message) => new(OutcomeKind.Unavailable, default, [message]);
     public static Outcome<T> StepUpRequired(string reasonCode, int maxAgeSeconds) =>
         new(OutcomeKind.StepUpRequired, default, [reasonCode, maxAgeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
 }

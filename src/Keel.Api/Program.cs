@@ -130,6 +130,7 @@ builder.Services.AddSingleton<ITdpPartSource, Keel.Parts.PartTdpSource>(); // 4.
 builder.Services.AddSingleton<ITdpDocumentSource, Keel.Documents.TdpDocumentSource>();
 Keel.Integration.IntegrationModule.AddKeelIntegration(builder.Services, builder.Configuration); // 4.0 outbox, ERP sinks, TDP
 builder.Services.AddKeelIntegrationOpenApi();
+Keel.Siem.SiemModule.AddKeelSiem(builder.Services, builder.Configuration, options.Security.RequireFips, secretsDirectory); // 5.0 SIEM forwarding (off unless Keel:Siem:Enabled)
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -147,6 +148,7 @@ if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
 }
 builder.Services.AddSingleton(new TrustedCheckpointKeys(publicKeys));
 
+builder.Services.AddKeelSessionLock(options.Session, production: options.Security.RequireFips || builder.Environment.IsProduction()); // 5.0 idle session lock
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<VaultUnavailableExceptionHandler>();
@@ -197,7 +199,8 @@ builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationM
 
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
-    .AddCheck<FipsHealthCheck>("fips", tags: ["ready"]);
+    .AddCheck<FipsHealthCheck>("fips", tags: ["ready"])
+    .AddCheck<SiemHealthCheck>("siem", tags: ["ready"]);
 
 var app = builder.Build();
 
@@ -209,6 +212,7 @@ app.UseSecurityHeaders(Uri.TryCreate(options.Auth.Authority, UriKind.Absolute, o
 app.UseCorrelationId();
 app.UseHttpMetrics();
 app.UseAuthentication();
+app.UseKeelSessionLock(); // refuses cookie endpoints of a locked session
 app.UseAuthorization();
 app.UseKeelUserDirectory();
 app.UseAntiforgery();
@@ -228,6 +232,7 @@ app.MapStaticAssets().AllowAnonymous();
 app.MapKeelApi();
 app.MapPartEndpoints();
 app.MapDocumentEndpoints();
+app.MapComplianceEndpoints(); // 5.0 compliance: scan coverage, rescan, vault GC reports
 app.MapBomEndpoints(); // 1.4 BOM
 app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management

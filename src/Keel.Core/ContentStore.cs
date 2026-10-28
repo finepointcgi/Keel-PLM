@@ -19,6 +19,9 @@ public interface IContentStore
     Task VerifyAsync(string sha256, long sizeBytes, CancellationToken ct = default);
 }
 
+/// <summary>The store refused the content (malware scan found a signature, or scanning is required and could not complete). Nothing was stored.</summary>
+public sealed class ContentRejectedException(string message, Exception? inner = null) : Exception(message, inner);
+
 /// <summary>A classification assignment staged by the migration importer: an item (by Keel part number) gets a class and attribute values.</summary>
 public sealed record ClassAssignment(string PartNumber, string ClassCode, IReadOnlyDictionary<string, string?> Attributes);
 

@@ -352,7 +352,9 @@ internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentSto
         if (await store.ExistsAsync(f.Sha256, f.SizeBytes, ct)) { _res.FilesAlreadyInVault++; return; }
         if (_opt.DryRun) { _res.FilesUploaded++; _res.BytesUploaded += f.SizeBytes; return; } // would upload: counted, nothing written
         await using var s = _prep.Package.OpenRead(f.PackagePath);
-        var stored = await store.PutAsync(s, ct);
+        ContentInfo stored;
+        try { stored = await store.PutAsync(s, ct); }
+        catch (ContentRejectedException e) { throw new ImportRejectedException($"File '{f.PackagePath}' was rejected by the vault: {e.Message}"); }
         if (stored.Sha256 != f.Sha256 || stored.SizeBytes != f.SizeBytes)
             throw new ImportRejectedException($"File '{f.PackagePath}' changed while it was imported (expected {f.Sha256[..12]}..., stored {stored.Sha256[..12]}...). The package must not be modified during a load.");
         _res.FilesUploaded++; _res.BytesUploaded += stored.SizeBytes;

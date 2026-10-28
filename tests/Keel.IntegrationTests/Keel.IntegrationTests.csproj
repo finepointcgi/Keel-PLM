@@ -27,5 +27,6 @@
     <ProjectReference Include="..\Keel.Migration.Fixtures\Keel.Migration.Fixtures.csproj" />
     <ProjectReference Include="..\..\src\Keel.Admin\Keel.Admin.csproj" />
     <ProjectReference Include="..\..\src\Keel.Integration\Keel.Integration.csproj" />
+    <ProjectReference Include="..\..\src\Keel.VaultTool\Keel.VaultTool.csproj" />
   </ItemGroup>
 </Project>

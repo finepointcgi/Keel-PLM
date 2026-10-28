@@ -1,3 +1,5 @@
+using Keel.Documents.Scanning;
+
 namespace Keel.Documents.Vault;
 
 /// <summary>Configuration section <c>Keel:Vault</c> (ADR-0015). The store is reached through the S3 API only (A13).</summary>
@@ -28,6 +30,11 @@ public sealed class VaultOptions
     /// </summary>
     public int RequestTimeoutSeconds { get; set; } = 30;
 
+    /// <summary>Malware scanning of uploads (<c>Keel:Vault:Scanning</c>, ADR-0026).</summary>
+    public ScanningOptions Scanning { get; set; } = new();
+    /// <summary>Garbage collection of orphaned objects (<c>Keel:Vault:Gc</c>, ADR-0026).</summary>
+    public GcOptions Gc { get; set; } = new();
+
     public TimeSpan RequestTimeout => TimeSpan.FromSeconds(RequestTimeoutSeconds);
 
     public IReadOnlyList<string> Validate()
@@ -42,6 +49,45 @@ public sealed class VaultOptions
         if (PartSizeBytes < 5 * 1024 * 1024 || PartSizeBytes > 512 * 1024 * 1024) errors.Add("Keel:Vault:PartSizeBytes must be between 5 MiB and 512 MiB.");
         if (RequestTimeoutSeconds is < 1 or > 600) errors.Add("Keel:Vault:RequestTimeoutSeconds must be between 1 and 600.");
         if (MaxPdfStampBytes < 0) errors.Add("Keel:Vault:MaxPdfStampBytes must not be negative.");
+        errors.AddRange(Gc.Validate());
+        return errors;
+    }
+}
+
+public enum GcMode
+{
+    /// <summary>Reports what would be deleted; deletes nothing.</summary>
+    DryRun,
+    /// <summary>Deletes unreferenced objects older than the grace period (at most <see cref="GcOptions.MaxDeletionsPerRun"/> per run).</summary>
+    Delete,
+}
+
+/// <summary>Configuration section <c>Keel:Vault:Gc</c> (ADR-0026). The scheduled sweeper is off by default.</summary>
+public sealed class GcOptions
+{
+    public const int MinGraceDays = 1;
+
+    /// <summary>Run the sweeper as a hosted service. Off by default: the CLI (<c>keel-vault gc</c>) runs it on demand.</summary>
+    public bool Enabled { get; set; }
+    /// <summary>What the hosted service does. DryRun (default) only reports; Delete needs a deliberate setting.</summary>
+    public GcMode Mode { get; set; } = GcMode.DryRun;
+    public int IntervalHours { get; set; } = 24;
+    /// <summary>An unreferenced object younger than this is kept. At least one day: it covers every upload in flight and every failed upload still being investigated.</summary>
+    public int GraceDays { get; set; } = 7;
+    /// <summary>Upper bound of deletions in one run; the run reports a continuation token when more candidates remain.</summary>
+    public int MaxDeletionsPerRun { get; set; } = 1000;
+    /// <summary>Objects listed per request.</summary>
+    public int PageSize { get; set; } = 500;
+
+    public TimeSpan Grace => TimeSpan.FromDays(GraceDays);
+
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+        if (GraceDays < MinGraceDays) errors.Add($"Keel:Vault:Gc:GraceDays must be at least {MinGraceDays}.");
+        if (IntervalHours is < 1 or > 24 * 31) errors.Add("Keel:Vault:Gc:IntervalHours must be between 1 and 744.");
+        if (MaxDeletionsPerRun is < 1 or > 1_000_000) errors.Add("Keel:Vault:Gc:MaxDeletionsPerRun must be between 1 and 1000000.");
+        if (PageSize is < 10 or > 1000) errors.Add("Keel:Vault:Gc:PageSize must be between 10 and 1000.");
         return errors;
     }
 }

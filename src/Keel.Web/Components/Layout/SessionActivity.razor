@@ -1,0 +1,44 @@
+@* Starts the browser-side activity reporter (wwwroot/session-lock.js, ADR-0026). It renders nothing. The server owns the idle clock; this only tells it that
+   a person is using the page. *@
+@implements IAsyncDisposable
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@inject SessionLockCoordinator Lock
+
+@code {
+    private IJSObjectReference? module;
+    private DotNetObjectReference<SessionActivity>? self;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !Lock.Enabled) return;
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Keel.Web/session-lock.js");
+            self = DotNetObjectReference.Create(this);
+            await module.InvokeVoidAsync("start", self, Lock.Options.ActivityThrottleSeconds * 1000);
+        }
+        catch (JSDisconnectedException)
+        {
+            // the circuit ended while the module was loading
+        }
+    }
+
+    [JSInvokable] public void Activity() => Lock.ReportActivity();
+
+    [JSInvokable] public void Sync() => Lock.Refresh();
+
+    public async ValueTask DisposeAsync()
+    {
+        self?.Dispose();
+        if (module is null) return;
+        try
+        {
+            await module.InvokeVoidAsync("stop");
+            await module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

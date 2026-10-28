@@ -10,6 +10,8 @@ public sealed class KeelOptions
     public SecurityOptions Security { get; set; } = new();
     public DataProtectionOptions DataProtection { get; set; } = new();
     public ProxyOptions Proxy { get; set; } = new();
+    /// <summary>Idle lock and termination of UI sessions (<c>Keel:Session</c>, NIST 3.1.10/3.1.11, ADR-0026).</summary>
+    public Keel.Web.Services.SessionLockOptions Session { get; set; } = new();
 
     public sealed class DatabaseOptions
     {

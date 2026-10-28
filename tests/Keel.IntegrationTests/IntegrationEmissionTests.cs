@@ -313,7 +313,10 @@ public sealed class IntegrationEmissionTests(PostgresFixture pg)
         }
         var ids = (await env.EventsAsync()).Select(e => e.Id).ToList();
         Assert.All(ids, id => Assert.Equal('7', id.ToString("D")[14]));
-        Assert.Equal(ids.OrderBy(i => i).ToList(), ids);
+        // Guid.CreateVersion7 orders by its 48-bit millisecond timestamp only; the tail is random, so events committed within one
+        // millisecond may have ids in any order. Consumers order by the outbox sequence, which this test also checks.
+        var stamps = ids.Select(i => Convert.ToHexStringLower(i.ToByteArray(bigEndian: true)[..6])).ToList();
+        Assert.Equal(stamps.OrderBy(x => x, StringComparer.Ordinal).ToList(), stamps);
     }
 
     [Fact]
