@@ -22,7 +22,7 @@ namespace Keel.Seed
               --scenario demo|scale   demo: the ORCA sensor pod with changes in flight (through the real services, fully audited).
                                       scale: bulk synthetic structure for performance demos (wraps the test generator; bulk SQL, not audited per object).
               --allow-non-empty       run even though plm.part_master already has rows (otherwise the tool refuses).
-              --connection <cs>       app-role connection string (default: Keel__Database__AppConnectionString or src/Keel.Api/appsettings.Development.json).
+              --connection <cs>       app-role connection string (default: Keel__Database__AppConnectionString; the dev stack is used only with --use-dev-stack).
               --settings <file>       extra appsettings JSON (same keys as Keel.Api: Keel:Database, Keel:Vault).
               --public-key <pem>      trusted checkpoint public key, to verify checkpoint signatures as well as the hash chain.
               --manifest <file>       write the demo summary as JSON (the E2E tests read this).
@@ -47,7 +47,7 @@ namespace Keel.Seed
             }
             try
             {
-                var settings = SeedSettings.Resolve(opts.GetValueOrDefault("settings"), opts.GetValueOrDefault("connection"), opts.GetValueOrDefault("public-key"));
+                var settings = SeedSettings.Resolve(opts.GetValueOrDefault("settings"), opts.GetValueOrDefault("connection"), opts.GetValueOrDefault("public-key"), args.Contains("--use-dev-stack"));
                 await using var host = SeedHost.Create(settings);
                 if (!opts.ContainsKey("allow-non-empty") && await DatabaseState.HasPartsAsync(host.DataSource))
                 {

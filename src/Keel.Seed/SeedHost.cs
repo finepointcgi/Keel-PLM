@@ -17,20 +17,21 @@ namespace Keel.Seed;
 public sealed record SeedSettings(string AppConnectionString, VaultOptions Vault, string? CheckpointPublicKeyPath)
 {
     /// <summary>
-    /// Resolution order (later wins): <c>src/Keel.Api/appsettings.Development.json</c> found by walking up from the working directory,
-    /// an explicit <c>--settings</c> file, environment variables with the API's keys, then <c>--connection</c>.
+    /// Resolution order (later wins): an explicit <c>--settings</c> file, environment variables with the API's keys, then <c>--connection</c>.
+    /// The dev stack's <c>src/Keel.Api/appsettings.Development.json</c> is used ONLY with <paramref name="useDevStack"/> (<c>--use-dev-stack</c>):
+    /// seeding writes data, so it must never reach the shared dev database by omission.
     /// </summary>
-    public static SeedSettings Resolve(string? settingsFile, string? connection, string? publicKey)
+    public static SeedSettings Resolve(string? settingsFile, string? connection, string? publicKey, bool useDevStack = false)
     {
         var builder = new ConfigurationBuilder();
-        var dev = FindUp("src/Keel.Api/appsettings.Development.json");
+        var dev = useDevStack ? FindUp("src/Keel.Api/appsettings.Development.json") : null;
         if (dev is not null) builder.AddJsonFile(dev, optional: true);
         if (settingsFile is not null) builder.AddJsonFile(Path.GetFullPath(settingsFile), optional: false);
         builder.AddEnvironmentVariables();
         var config = builder.Build();
         var conn = connection ?? config["Keel:Database:AppConnectionString"]
             ?? throw new InvalidOperationException(
-                "No database connection. Set Keel__Database__AppConnectionString, pass --connection, or run from the repository so src/Keel.Api/appsettings.Development.json is found.");
+                "No database connection. Set Keel__Database__AppConnectionString, pass --connection, or pass --use-dev-stack to target the dev stack from src/Keel.Api/appsettings.Development.json.");
         var vault = config.GetSection(VaultOptions.Section).Get<VaultOptions>() ?? new VaultOptions();
         return new SeedSettings(conn, vault, publicKey);
     }

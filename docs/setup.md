@@ -77,7 +77,7 @@ KEEL_AUDIT_CONNECTION="Host=localhost;Port=55432;Database=keel;Username=keel_app
 ## Demo data (`keel-seed`, increment 1.7)
 `src/Keel.Seed` fills a **migrated** database with synthetic data, entirely through the module services (so every action is authorized, validated and audited, and the audit chain verifies at the end). It needs the vault (documents have real PDFs).
 ```bash
-scripts/seed.sh                                   # = dotnet run --project src/Keel.Seed -- --scenario demo
+scripts/seed.sh --use-dev-stack                   # = dotnet run --project src/Keel.Seed -- --scenario demo --use-dev-stack
 dotnet run --project src/Keel.Seed -- --scenario scale --lines 50000 --levels 8 --allow-non-empty   # bulk structure for performance demos (off by default)
 ```
 | Option | Meaning |
@@ -87,7 +87,7 @@ dotnet run --project src/Keel.Seed -- --scenario scale --lines 50000 --levels 8 
 | `--allow-non-empty` | The tool refuses when `plm.part_master` already has rows (exit code 2); this bypasses that explicitly. |
 | `--connection`, `--settings`, `--public-key`, `--manifest` | Override the connection, add an appsettings file, verify checkpoint signatures, write the summary as JSON. |
 
-The connection is resolved like the API's: `src/Keel.Api/appsettings.Development.json` (found from the working directory), then environment variables with the same keys (`Keel__Database__AppConnectionString`, `Keel__Vault__ServiceUrl`, …), then `--connection`. **It defaults to the dev stack, so set the variables when you mean another database.**
+The seeder writes data, so it has **no default target**: set environment variables with the API's keys (`Keel__Database__AppConnectionString`, `Keel__Vault__ServiceUrl`, …), pass `--connection`, or pass `--use-dev-stack` to read the dev stack's `src/Keel.Api/appsettings.Development.json`.
 Users come from the dev realm itself (the realm JSON is embedded in the tool, so ids and attributes cannot drift) and are recorded in `identity.user_directory` through the same upsert the application runs at sign-in; passwords are never read. One seed-only identity, `kraken-eng` (programs KRAKEN and ORCA), authors the KRAKEN part and is not a login. Exit codes: 0 ok, 1 failure, 2 refused (non-empty), 3 audit chain invalid.
 Reset the dev database before re-seeding: see "Reset" in [demo-script.md](demo-script.md).
 

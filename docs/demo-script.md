@@ -8,7 +8,7 @@ The "Contrast" column is general product knowledge for orientation, not a benchm
 modules and local configuration; confirm any statement against the customer's own deployment before using it in a comparison.
 
 ## Before the demo
-1. Stack up and seeded (see [Reset](#reset) for a clean run): `docker compose -f deploy/compose/compose.yaml up -d`, migrate, `scripts/seed.sh`.
+1. Stack up and seeded (see [Reset](#reset) for a clean run): `docker compose -f deploy/compose/compose.yaml up -d`, migrate, `scripts/seed.sh --use-dev-stack`.
 2. Start the API (`ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/Keel.Api`) and open <http://localhost:5080>.
 3. Open **four separate browser profiles or private windows** (they must not share cookies; the identity provider keeps a session per browser):
    alice (author), ada (reviewer and admin), bob (approver), and one window you reuse for lena, farid and audrey in turn (sign out between them).
@@ -62,7 +62,7 @@ Return to a clean, seeded state (this deletes dev data; it never touches anythin
 docker compose -f deploy/compose/compose.yaml down -v     # removes the dev database, Keycloak state and vault objects
 docker compose -f deploy/compose/compose.yaml up -d
 cd src/Keel.Api && ASPNETCORE_ENVIRONMENT=Development dotnet run -- --migrate && cd ../..
-scripts/seed.sh
+scripts/seed.sh --use-dev-stack
 ```
 `down -v` removes the compose project's volumes only. Without wiping, re-seeding is refused (the tool exits with code 2 when parts exist). For a different database set `Keel__Database__AppConnectionString` and the `Keel__Vault__*` variables first.
 
