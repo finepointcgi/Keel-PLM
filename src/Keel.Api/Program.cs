@@ -123,6 +123,7 @@ builder.Services.AddSingleton<IChangeObjectGateway, Keel.Parts.PartChangeGateway
 builder.Services.AddSingleton<ILinkedDocumentProvider, Keel.Documents.LinkedDocumentProvider>();
 Keel.Change.ChangeModule.AddKeelChange(builder.Services);
 builder.Services.AddKeelWorkflow(builder.Configuration);
+builder.Services.AddSingleton<Keel.Migration.BatchQueries>(); // Phase 3: read-only migration batch viewer (admin page); loading is the keel-import CLI
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))

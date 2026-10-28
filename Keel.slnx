@@ -7,6 +7,8 @@
     <Project Path="src/Keel.Change/Keel.Change.csproj" />
     <Project Path="src/Keel.Core/Keel.Core.csproj" />
     <Project Path="src/Keel.Documents/Keel.Documents.csproj" />
+    <Project Path="src/Keel.Import/Keel.Import.csproj" />
+    <Project Path="src/Keel.Migration/Keel.Migration.csproj" />
     <Project Path="src/Keel.Parts/Keel.Parts.csproj" />
     <Project Path="src/Keel.Security/Keel.Security.csproj" />
     <Project Path="src/Keel.Seed/Keel.Seed.csproj" />
@@ -17,6 +19,7 @@
     <Project Path="tests/Keel.E2E/Keel.E2E.csproj" />
     <Project Path="tests/Keel.BackupTestTool/Keel.BackupTestTool.csproj" />
     <Project Path="tests/Keel.IntegrationTests/Keel.IntegrationTests.csproj" />
+    <Project Path="tests/Keel.Migration.Fixtures/Keel.Migration.Fixtures.csproj" />
     <Project Path="tests/Keel.TestSupport/Keel.TestSupport.csproj" />
     <Project Path="tests/Keel.UnitTests/Keel.UnitTests.csproj" />
   </Folder>
