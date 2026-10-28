@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Keel.Api/Keel.Api.csproj" />
+    <Project Path="src/Keel.Audit/Keel.Audit.csproj" />
+    <Project Path="src/Keel.AuditCli/Keel.AuditCli.csproj" />
+    <Project Path="src/Keel.Core/Keel.Core.csproj" />
+    <Project Path="src/Keel.Security/Keel.Security.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Keel.IntegrationTests/Keel.IntegrationTests.csproj" />
+    <Project Path="tests/Keel.UnitTests/Keel.UnitTests.csproj" />
+  </Folder>
+</Solution>

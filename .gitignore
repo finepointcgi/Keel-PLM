@@ -1,0 +1,9 @@
+bin/
+obj/
+node_modules/
+web/dist/
+*.user
+.vs/
+.idea/
+deploy/compose/secrets/
+TestResults/

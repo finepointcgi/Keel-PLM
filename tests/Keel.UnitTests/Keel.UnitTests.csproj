@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA1861;CA2000;CA1849;xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Security\Keel.Security.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
+  </ItemGroup>
+</Project>
