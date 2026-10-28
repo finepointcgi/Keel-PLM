@@ -15,7 +15,9 @@ public sealed partial class ArchitectureTests
         // Documents reads part rows only through key lookups and the marking contract; it never references Keel.Parts.
         ["Keel.Documents"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Bom"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow"],
+        // Change management reaches parts, BOM structure and documents only through Keel.Core interfaces implemented by their owners (ADR-0019).
+        ["Keel.Change"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
@@ -45,6 +47,9 @@ public sealed partial class ArchitectureTests
             // PartWorkflowGateway loads ONE object by id for the workflow engine, which evaluates AccessPolicy on the
             // returned markings (live subject) before acting; its WHERE clause is appended by callers.
             if (file.EndsWith("PartWorkflowGateway.cs", StringComparison.Ordinal)) continue;
+            // PartChangeGateway does the same for change management: single objects by id (or a batch of ids for display) that the caller
+            // evaluates with AccessPolicy on the returned markings before showing anything.
+            if (file.EndsWith("PartChangeGateway.cs", StringComparison.Ordinal)) continue;
             var text = File.ReadAllText(file);
             foreach (Match m in SqlFromMarkedTable().Matches(text))
             {
@@ -85,6 +90,28 @@ public sealed partial class ArchitectureTests
         Assert.True(offenders.Count == 0, "Unfiltered BOM queries over plm.part_master:\n" + string.Join("\n", offenders));
     }
 
+    /// <summary>
+    /// Keel.Change owns the <c>chg</c> schema and uses the lifecycle tables of <c>plm</c>; it must never read another module's data tables
+    /// (parts, documents, BOM, workflow): those go through the gateways and providers in Keel.Core (ADR-0019). The only table of the
+    /// identity schema it reads is the user directory, to find task assignees.
+    /// </summary>
+    [Fact]
+    public void Change_module_never_reads_other_modules_data_tables()
+    {
+        var root = FindRepoRoot();
+        var offenders = new List<string>();
+        var files = 0;
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, "src", "Keel.Change"), "*.cs", SearchOption.AllDirectories)
+                     .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+        {
+            files++;
+            foreach (Match m in OtherModuleTables().Matches(File.ReadAllText(file)))
+                offenders.Add($"{Path.GetRelativePath(root, file)}: {m.Value}");
+        }
+        Assert.True(files > 5);
+        Assert.True(offenders.Count == 0, "Keel.Change touches other modules' tables:\n" + string.Join("\n", offenders));
+    }
+
     /// <summary>ADR-0014: every routable page renders through PageFrame, which requires a marking banner.</summary>
     [Fact]
     public void Every_page_renders_through_page_frame()
@@ -101,13 +128,17 @@ public sealed partial class ArchitectureTests
         Assert.True(offenders.Count == 0, "Pages without PageFrame: " + string.Join(", ", offenders));
     }
 
-    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance)\b[^\n]*", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change)\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlFromMarkedTable();
 
     [GeneratedRegex(@"(FROM|JOIN)\s+plm\.part_master\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlTouchesPartMaster();
 
-    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(plm\.(part_|document_|bom_)\w*|wf\.\w+)", RegexOptions.IgnoreCase)]
+    private static partial Regex OtherModuleTables();
+
+    // source_id: the objects created from one already-authorized change (counted by process rules; every list shown to a user carries the filter).
+    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key|source_id)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
     private static partial Regex KeyLookup();
 
     private static string FindRepoRoot()

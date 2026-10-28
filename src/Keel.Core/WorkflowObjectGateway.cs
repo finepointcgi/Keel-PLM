@@ -67,6 +67,13 @@ public interface IWorkflowObjectGateway
     /// <summary>Under Review → In Work (rejection or cancellation).</summary>
     Task<GatewayResult> ReturnToInWorkAsync(DbConnection conn, DbTransaction tx, WorkflowObject obj, Subject actor, DateTimeOffset now, CancellationToken ct);
 
+    /// <summary>
+    /// Under Review → returned because a reviewer rejected it (increment 1.6). Defaults to <see cref="ReturnToInWorkAsync"/>; objects with a
+    /// distinct rejected state (an ECR) override it.
+    /// </summary>
+    Task<GatewayResult> CompleteRejectionAsync(DbConnection conn, DbTransaction tx, WorkflowObject obj, Subject actor, DateTimeOffset now, CancellationToken ct) =>
+        ReturnToInWorkAsync(conn, tx, obj, actor, now, ct);
+
     /// <summary>The stored content of an iteration, for hashing and tamper verification.</summary>
     Task<IterationContent?> LoadIterationContentAsync(DbConnection conn, DbTransaction tx, Guid iterationId, CancellationToken ct);
 }

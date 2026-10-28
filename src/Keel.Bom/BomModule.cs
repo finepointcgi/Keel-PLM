@@ -10,6 +10,7 @@ public static class BomModule
     {
         services.AddSingleton<BomService>();
         services.AddSingleton<IPartIterationParticipant, BomParticipant>();
+        services.AddSingleton<IStructureImpactProvider, BomStructureImpactProvider>(); // 1.6 impact analysis
         return services;
     }
 }

@@ -18,6 +18,18 @@ public interface IPartIterationParticipant
     /// </summary>
     Task OnCheckInAsync(DbTransaction tx, Guid revisionId, Guid newIterationId, CancellationToken ct);
 
+    /// <summary>
+    /// Called when a change notice creates the next revision (increment 1.6), after the new iteration row exists. Copy the data the old
+    /// revision's latest iteration owns into the new iteration. Default: nothing to carry forward.
+    /// </summary>
+    Task OnReviseAsync(DbTransaction tx, Guid fromIterationId, Guid newIterationId, CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>
+    /// Stable, canonical text describing the data this participant owns for an iteration, included in the content fingerprint that
+    /// change-notice signatures cover. Null when the participant owns nothing that belongs in it.
+    /// </summary>
+    Task<string?> DescribeContentAsync(DbTransaction tx, Guid iterationId, CancellationToken ct) => Task.FromResult<string?>(null);
+
     /// <summary>Called before the check-out row is deleted by an undo. Working copies normally disappear by cascade; override only if needed.</summary>
     Task OnUndoCheckOutAsync(DbTransaction tx, Guid revisionId, CancellationToken ct) => Task.CompletedTask;
 }
