@@ -50,6 +50,7 @@ builder.Services.AddSingleton<AuditQueries>();
 builder.Services.AddSingleton<AuditLogService>();
 builder.Services.AddSingleton<Keel.Parts.PartService>();
 builder.Services.AddKeelDocuments(builder.Configuration);
+Keel.Bom.BomModule.AddKeelBom(builder.Services); // 1.4 BOM
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -144,6 +145,7 @@ app.MapStaticAssets().AllowAnonymous();
 app.MapKeelApi();
 app.MapPartEndpoints();
 app.MapDocumentEndpoints();
+app.MapBomEndpoints(); // 1.4 BOM
 app.MapKeelUi<App>();
 
 app.Run();

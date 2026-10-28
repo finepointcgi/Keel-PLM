@@ -1,0 +1,36 @@
+/* Increment 1.4: BOM tree grid, editor and where-used/compare pages. Colours come from the app.css tokens; no inline styles (CSP). */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.subhead { font-size: 18px; margin: 0 0 12px; }
+.bom-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.bom-heading h3 { margin: 0; }
+.bom-heading .toolbar { margin: 0; }
+.bom-controls { gap: 16px; }
+.inline-check { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 14px; }
+.inline-fieldset { display: inline-flex; gap: 12px; border: 0; padding: 0; margin: 0; }
+.form-errors { margin: 0; padding-left: 20px; }
+.bom-grid { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 14px; overflow-x: auto; }
+.bom-body { height: 480px; overflow-y: auto; min-width: 920px; }
+.bom-row { display: grid; grid-template-columns: 64px minmax(200px, 1.4fr) minmax(140px, 1.4fr) 110px 80px 56px 90px 130px minmax(160px, 1.6fr);
+  align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-bottom: 1px solid var(--border); white-space: nowrap; min-width: 920px; }
+.bom-row > span { overflow: hidden; text-overflow: ellipsis; }
+.bom-head { font-weight: 600; background: var(--bg); position: sticky; top: 0; z-index: 1; }
+.bom-row[role="row"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bom-row:not(.bom-head):hover { background: var(--bg); }
+.bom-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+.cell-part { display: flex; align-items: center; gap: 4px; }
+.cell-part[data-indent="1"] { padding-left: 16px; } .cell-part[data-indent="2"] { padding-left: 32px; }
+.cell-part[data-indent="3"] { padding-left: 48px; } .cell-part[data-indent="4"] { padding-left: 64px; }
+.cell-part[data-indent="5"] { padding-left: 80px; } .cell-part[data-indent="6"] { padding-left: 96px; }
+.cell-part[data-indent="7"] { padding-left: 112px; } .cell-part[data-indent="8"] { padding-left: 128px; }
+.cell-part[data-indent="9"] { padding-left: 144px; }
+.twisty { width: 22px; height: 22px; padding: 0; line-height: 1; background: transparent; color: var(--accent); border: 1px solid var(--border); flex: none; }
+.twisty-gap { width: 22px; flex: none; }
+.restricted { color: var(--muted); background: repeating-linear-gradient(135deg, transparent 0 8px, rgba(127,127,127,0.08) 8px 16px); }
+.restricted-label { font-style: italic; border: 1px dashed var(--muted); border-radius: 3px; padding: 0 6px; }
+.flag { color: var(--deny); font-weight: 600; font-size: 12px; }
+table.data tr.restricted td { color: var(--muted); }
+table.data tr.diff-added td:first-child { color: var(--permit); font-weight: 600; }
+table.data tr.diff-removed td:first-child { color: var(--deny); font-weight: 600; }
+table.data tr.diff-changed td:first-child { color: var(--accent); font-weight: 600; }
+table.bom-edit input, table.bom-edit select { max-width: 160px; }
+.bom-grid a, table.data a { color: var(--accent); }

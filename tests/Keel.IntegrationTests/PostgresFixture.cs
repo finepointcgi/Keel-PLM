@@ -85,6 +85,16 @@ public sealed record TestDatabase(string Name, string AppConnectionString, strin
 {
     public NpgsqlDataSource AppDataSource() => NpgsqlDataSource.Create(AppConnectionString);
 
+    /// <summary>Drops this database to free disk early; large synthetic datasets would otherwise live until the container is removed.</summary>
+    public async Task DropAsync()
+    {
+        NpgsqlConnection.ClearAllPools();
+        await using var conn = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(SuperuserConnectionString) { Database = "postgres" }.ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand($"DROP DATABASE IF EXISTS {Name} WITH (FORCE)", conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     public async Task ExecuteAsSuperuserAsync(string sql)
     {
         await using var conn = new NpgsqlConnection(SuperuserConnectionString);

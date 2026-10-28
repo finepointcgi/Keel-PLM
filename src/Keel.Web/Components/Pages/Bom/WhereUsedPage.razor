@@ -1,0 +1,67 @@
+@page "/parts/{Number}/where-used"
+@inject CurrentUser Users
+@inject BomService Bom
+
+<PageFrame Banner="@(result?.Banner ?? UiText.Unclassified)" Title="Where used">
+    <p><a href="parts/@Uri.EscapeDataString(Number)">Back to @Number</a></p>
+    <form class="toolbar" @onsubmit="Load" aria-label="Where-used options">
+        <label class="inline-check">
+            Levels up
+            <select aria-label="Levels up" @bind="levels" @bind:after="Load">
+                @for (var i = 1; i <= BomLimits.MaxDepth; i++) { <option value="@i">@(i == BomLimits.MaxDepth ? "All (10)" : i.ToString())</option> }
+            </select>
+        </label>
+    </form>
+
+    @if (error is not null)
+    {
+        <p class="error" role="alert">@error</p>
+    }
+    else if (result is not null)
+    {
+        <h2 class="subhead">@result.Number · @result.Name</h2>
+        <p class="muted" aria-live="polite">
+            @(result.Rows.Count == 0 ? "Not used in any assembly's latest structure." : $"{result.Rows.Count} usage{(result.Rows.Count == 1 ? "" : "s")}")
+            Parents are revisions whose latest iteration contains the part.
+        </p>
+        @if (result.Rows.Count > 0)
+        {
+            <div class="table-wrap"><table class="data">
+                <thead><tr><th scope="col">Level</th><th scope="col">Used in</th><th scope="col">Name</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Via</th><th scope="col">Find</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Markings</th></tr></thead>
+                <tbody>
+                @foreach (var r in result.Rows)
+                {
+                    <tr class="@(r.Redacted ? "restricted" : "")">
+                        <td>@r.Level</td>
+                        <td>@if (r.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="parts/@Uri.EscapeDataString(r.ParentNumber!)">@r.ParentNumber</a> }</td>
+                        <td>@r.ParentName</td>
+                        <td>@(r.Redacted ? "" : $"{r.ParentRevision}.{r.ParentIteration}")</td>
+                        <td>@r.ParentStateLabel</td>
+                        <td>@(r.Level > 1 ? r.UsedNumber : "")</td>
+                        <td>@r.FindNumber</td>
+                        <td>@r.Quantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)</td>
+                        <td>@r.Unit</td>
+                        <td>@if (r.Banner is not null) { <MarkingChip Text="@r.Banner" /> }</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    private WhereUsedResult? result;
+    private string? error;
+    private int levels = 1;
+
+    protected override Task OnParametersSetAsync() => Load();
+
+    private async Task Load()
+    {
+        var outcome = await Bom.WhereUsedAsync(await Users.GetAsync(), Number, levels, CurrentUser.NewCorrelationId());
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        result = outcome.Value;
+    }
+}

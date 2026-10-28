@@ -14,8 +14,12 @@ namespace Keel.Parts;
 /// Part commands and queries. Every call evaluates the access policy (ADR-0004) and writes an audit event in the same
 /// transaction as its change (ADR-0005), including denials. Per-part operations serialize on the master row.
 /// </summary>
-public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock)
+public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock,
+    IEnumerable<IPartIterationParticipant>? participants = null)
 {
+    // 1.4: modules owning per-iteration data (BOM links) hook into check-out/check-in/undo; empty when none are registered.
+    private readonly IPartIterationParticipant[] _participants = participants?.ToArray() ?? [];
+
     public const string ObjectType = "part";
     public const string DefaultLifecycle = "part-default";
     public const int MaxSearchLimit = 200;
@@ -205,6 +209,16 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
                 """, ctx.RevisionId,
                 "INSERT INTO plm.part_checkout_document_link (id, revision_id, link_type, document_master_id, document_revision_id, created_at, created_by) VALUES (@id, @dst, @t, @m, @r, @at, @by)",
                 ctx.RevisionId, ct);
+            // --- participant hook (1.4) ---
+            if (_participants.Length > 0)
+            {
+                await using var latest = new NpgsqlCommand("SELECT id FROM plm.part_iteration WHERE revision_id = @rid AND iteration = @n", conn, tx);
+                latest.Parameters.AddWithValue("rid", ctx.RevisionId);
+                latest.Parameters.AddWithValue("n", ctx.LatestIteration);
+                var latestId = (Guid)(await latest.ExecuteScalarAsync(ct))!;
+                foreach (var p in _participants) await p.OnCheckOutAsync(tx, ctx.RevisionId, latestId, ct);
+            }
+            // --- end participant hook ---
             return Done(("revision", $"{ctx.Revision}.{ctx.LatestIteration}"));
         }, ct);
 
@@ -251,15 +265,27 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
                 ctx.RevisionId,
                 "INSERT INTO plm.part_document_link (id, part_iteration_id, link_type, document_master_id, document_revision_id, created_at, created_by) VALUES (@id, @dst, @t, @m, @r, @at, @by)",
                 iterationId, ct);
-            // Deleting the check-out cascades to its working links.
-            await using var cmd = new NpgsqlCommand(
+            // --- participant hook (1.4): freeze module-owned working data into the new iteration before the check-out row goes ---
+            try
+            {
+                foreach (var p in _participants) await p.OnCheckInAsync(tx, ctx.RevisionId, iterationId, ct);
+            }
+            catch (IterationVetoException veto)
+            {
+                return Fail(veto.Message);
+            }
+            // --- end participant hook ---
+            // Deleting the check-out cascades to its working links and working BOM lines.
+            await using (var cmd = new NpgsqlCommand(
                 """
                 UPDATE plm.part_revision SET latest_iteration = @next WHERE id = @rid;
                 DELETE FROM plm.part_checkout WHERE revision_id = @rid;
-                """, conn, tx);
-            cmd.Parameters.AddWithValue("next", next);
-            cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
-            await cmd.ExecuteNonQueryAsync(ct);
+                """, conn, tx))
+            {
+                cmd.Parameters.AddWithValue("next", next);
+                cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
             return Done(("revision", $"{ctx.Revision}.{next}"), ("comment", comment));
         }, ct);
 
@@ -269,6 +295,7 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             if (ctx.CheckoutUser is null) return Fail("The part is not checked out.");
             var isAdmin = AccessPolicy.Evaluate(subject, ctx.Markings, PlmAction.Administer).Permitted;
             if (ctx.CheckoutUser != subject.Id && !isAdmin) return Forbid("checkout.not_owner");
+            foreach (var p in _participants) await p.OnUndoCheckOutAsync(tx, ctx.RevisionId, ct); // participant hook (1.4)
             await using var cmd = new NpgsqlCommand("DELETE FROM plm.part_checkout WHERE revision_id = @rid", conn, tx);
             cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
             await cmd.ExecuteNonQueryAsync(ct);

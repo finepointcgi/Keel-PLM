@@ -1,0 +1,82 @@
+@page "/parts/{Number}/compare"
+@inject CurrentUser Users
+@inject BomService Bom
+@inject PartService Parts
+
+<PageFrame Banner="@(result?.Banner ?? part?.Banner ?? UiText.Unclassified)" Title="Compare structure">
+    <p><a href="parts/@Uri.EscapeDataString(Number)">Back to @Number</a></p>
+    @if (part is null)
+    {
+        <p class="error" role="alert">Part @Number was not found, or you are not authorized to see it.</p>
+    }
+    else
+    {
+        <h2 class="subhead">@part.Number · @part.Name</h2>
+        <form class="toolbar" @onsubmit="Run" aria-label="Versions to compare">
+            <label class="inline-check">From
+                <select aria-label="From version" @bind="from">@foreach (var h in part.History) { <option value="@h.Label">@h.Label</option> }</select>
+            </label>
+            <label class="inline-check">To
+                <select aria-label="To version" @bind="to">@foreach (var h in part.History) { <option value="@h.Label">@h.Label</option> }</select>
+            </label>
+            <button type="submit">Compare</button>
+        </form>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (result is not null)
+        {
+            <p class="muted" aria-live="polite">
+                @(result.Lines.Count == 0 ? "No differences in direct components." : $"{result.Lines.Count} difference{(result.Lines.Count == 1 ? "" : "s")}")
+                · @result.Unchanged unchanged. Compares the direct components of @result.From and @result.To.
+            </p>
+            @if (result.Lines.Count > 0)
+            {
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Change</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Find</th><th scope="col">Qty</th><th scope="col">Details</th><th scope="col">Markings</th></tr></thead>
+                    <tbody>
+                    @foreach (var l in result.Lines)
+                    {
+                        <tr class="diff-@l.Kind.ToString().ToLowerInvariant() @(l.Redacted ? "restricted" : "")">
+                            <td>@l.Kind</td>
+                            <td>@if (l.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="parts/@Uri.EscapeDataString(l.Number!)">@l.Number</a> }</td>
+                            <td>@l.Name</td>
+                            <td>@Pair(l.FromFindNumber?.ToString(), l.ToFindNumber?.ToString())</td>
+                            <td>@Pair(l.FromQuantity is { } fq ? Q(fq) + " " + l.FromUnit : null, l.ToQuantity is { } tq ? Q(tq) + " " + l.ToUnit : null)</td>
+                            <td>@string.Join("; ", l.Changes)</td>
+                            <td>@if (l.Banner is not null) { <MarkingChip Text="@l.Banner" /> }</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table></div>
+            }
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    private PartDetail? part;
+    private BomComparison? result;
+    private string? error;
+    private string from = "", to = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var outcome = await Parts.GetAsync(await Users.GetAsync(), Number, null, CurrentUser.NewCorrelationId());
+        part = outcome.Value;
+        if (part is null) return;
+        // History is newest first: compare the previous version with the latest by default.
+        to = part.History[0].Label;
+        from = part.History.Count > 1 ? part.History[1].Label : to;
+        if (part.History.Count > 1) await Run();
+    }
+
+    private async Task Run()
+    {
+        var outcome = await Bom.CompareAsync(await Users.GetAsync(), Number, from, to, CurrentUser.NewCorrelationId());
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        result = outcome.Value;
+    }
+
+    private static string Q(decimal d) => d.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Pair(string? a, string? b) => a is null ? b ?? "" : b is null ? a : a == b ? a : $"{a} to {b}";
+}

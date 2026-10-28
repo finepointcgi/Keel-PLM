@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1515;CA2000</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql" />
+    <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Security\Keel.Security.csproj" />
+  </ItemGroup>
+</Project>

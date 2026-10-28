@@ -1,0 +1,154 @@
+@* BOM section of the part page (increment 1.4). Shows the checked-in structure of the displayed version, and the editor while the
+   signed-in user holds the check-out. The page banner is the aggregate of the part and every displayed row. *@
+@inject CurrentUser Users
+@inject BomService Bom
+
+<section class="panel stack" aria-labelledby="bom-heading">
+    <div class="bom-heading">
+        <h3 id="bom-heading">Bill of materials</h3>
+        <nav class="toolbar" aria-label="BOM views">
+            <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/where-used")">Where used</a>
+            <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/compare")">Compare versions</a>
+        </nav>
+    </div>
+
+    <div class="toolbar bom-controls">
+        <fieldset class="inline-fieldset">
+            <legend class="sr-only">Configuration</legend>
+            <label class="inline-check"><input type="radio" name="bom-spec" checked="@(spec == BomConfigSpec.Latest)" @onchange="() => SetSpec(BomConfigSpec.Latest)" /> Latest</label>
+            <label class="inline-check"><input type="radio" name="bom-spec" checked="@(spec == BomConfigSpec.LatestReleased)" @onchange="() => SetSpec(BomConfigSpec.LatestReleased)" /> Latest released</label>
+        </fieldset>
+        <label class="inline-check">
+            Levels
+            <select aria-label="Levels shown" @bind="levels" @bind:after="Reload">
+                @for (var i = 1; i <= BomLimits.MaxDepth; i++) { <option value="@i">@i</option> }
+                <option value="0">All</option>
+            </select>
+        </label>
+        <button type="button" class="secondary" @onclick="() => SetLevels(1)">Collapse all</button>
+        <button type="button" class="secondary" @onclick="() => SetLevels(0)">Expand all</button>
+        <label class="inline-check"><input type="radio" name="bom-view" checked="@(!summaryView)" @onchange="() => SetView(false)" /> Tree</label>
+        <label class="inline-check"><input type="radio" name="bom-view" checked="@summaryView" @onchange="() => SetView(true)" /> Purchasing summary</label>
+        @* A plain link, not a script: the cookie-authenticated route streams the CSV and sets Content-Disposition (CSP default-src 'self'). *@
+        <a class="button secondary" download data-enhance-nav="false" href="@ExportUrl()">Export CSV</a>
+    </div>
+
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (explosion is not null && !summaryView)
+    {
+        <p class="muted small" aria-live="polite">
+            @(explosion.Lines.Count == 0 ? "No components." : $"{rowsShown} line{(rowsShown == 1 ? "" : "s")} shown")
+            @if (explosion.RedactedCount > 0) { <text> · @explosion.RedactedCount restricted item@(explosion.RedactedCount == 1 ? "" : "s") you cannot see</text> }
+            @if (explosion.UnresolvedCount > 0) { <text> · @explosion.UnresolvedCount without a released revision</text> }
+            · @explosion.RootRevision.@explosion.RootIteration, @(spec == BomConfigSpec.Latest ? "latest" : "latest released") children
+        </p>
+        @if (explosion.Lines.Count > 0)
+        {
+            <BomTreeGrid Lines="explosion.Lines" LoadChildren="LoadChildren" OnVisibleChanged="OnVisible" />
+        }
+    }
+    @if (summary is not null && summaryView)
+    {
+        <label class="inline-check"><input type="checkbox" checked="@leavesOnly" @onchange="e => SetLeaves(e.Value is true)" /> Leaf parts only</label>
+        <div class="table-wrap"><table class="data">
+            <caption class="sr-only">Purchasing summary: extended quantities per distinct part</caption>
+            <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Rev</th><th scope="col">State</th><th scope="col">Total qty</th><th scope="col">Unit</th><th scope="col">Used on</th><th scope="col">Markings</th></tr></thead>
+            <tbody>
+            @foreach (var l in summary.Lines)
+            {
+                <tr class="@(l.Redacted ? "restricted" : "")">
+                    <td>@if (l.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="parts/@Uri.EscapeDataString(l.Number!)">@l.Number</a> }</td>
+                    <td>@l.Name</td><td>@l.Revision</td><td>@l.State</td>
+                    <td>@l.TotalQuantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)</td><td>@l.Unit</td>
+                    <td>@(l.Redacted ? $"line {l.Path}" : $"{l.Occurrences} line{(l.Occurrences == 1 ? "" : "s")}")</td>
+                    <td>@if (l.Banner is not null) { <MarkingChip Text="@l.Banner" /> }</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</section>
+
+@if (Part.Checkout?.IsMine == true && Part.PartType == "Assembly")
+{
+    <BomEditor Part="Part" OnMarkings="OnEditorMarkings" />
+}
+
+@code {
+    private BomConfigSpec spec = BomConfigSpec.Latest;
+    private int levels = 1; // 0 = all
+    private bool summaryView, leavesOnly = true;
+    private BomExplosion? explosion;
+    private BomSummary? summary;
+    private string? error, loadedFor;
+    private int rowsShown;
+    private IReadOnlyList<Markings> treeMarkings = [], editorMarkings = [];
+
+    [Parameter, EditorRequired] public required PartDetail Part { get; set; }
+    /// <summary>Raised with the page banner: the aggregate of the part and every displayed row.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Part.Id}:{Part.Revision.Revision}:{Part.Iteration.Iteration}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        await Reload();
+    }
+
+    private string ExportUrl() =>
+        $"ui/parts/{Uri.EscapeDataString(Part.Number)}/bom.csv?revision={Uri.EscapeDataString(Part.Revision.Revision)}&iteration={Part.Iteration.Iteration}&spec={spec}{(levels > 0 ? $"&depth={levels}" : "")}";
+
+    private BomQuery Query(int? depth, string? parentLine = null) =>
+        new(Part.Number, Part.Revision.Revision, Part.Iteration.Iteration, spec, depth, parentLine);
+
+    private async Task Reload()
+    {
+        error = null;
+        var subject = await Users.GetAsync();
+        if (summaryView)
+        {
+            var s = await Bom.SummaryAsync(subject, Query(levels == 0 ? null : levels), leavesOnly, Corr());
+            if (s.IsOk) { summary = s.Value; treeMarkings = [.. s.Value!.Lines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()]; }
+            else error = UiText.Message(s);
+        }
+        else
+        {
+            var e = await Bom.ExplodeAsync(subject, Query(levels == 0 ? null : levels), Corr());
+            if (e.IsOk) { explosion = e.Value; rowsShown = e.Value!.Lines.Count; treeMarkings = [.. e.Value.Lines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()]; }
+            else error = UiText.Message(e);
+        }
+        await PublishBanner();
+    }
+
+    private async Task SetSpec(BomConfigSpec next) { spec = next; await Reload(); }
+    private async Task SetView(bool toSummary) { summaryView = toSummary; await Reload(); }
+    private async Task SetLeaves(bool value) { leavesOnly = value; await Reload(); }
+    private async Task SetLevels(int next) { levels = next; await Reload(); }
+
+    private async Task<IReadOnlyList<BomLine>> LoadChildren(BomLine line)
+    {
+        var outcome = await Bom.ExplodeAsync(await Users.GetAsync(), Query(1, line.Path), Corr());
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return []; }
+        error = null;
+        return outcome.Value!.Lines;
+    }
+
+    private async Task OnVisible(IReadOnlyList<BomLine> rows)
+    {
+        rowsShown = rows.Count;
+        treeMarkings = [.. rows.Where(r => r.Markings is not null).Select(r => r.Markings!).Distinct()];
+        await PublishBanner();
+    }
+
+    private async Task OnEditorMarkings(IReadOnlyList<Markings> markings)
+    {
+        editorMarkings = markings;
+        await PublishBanner();
+    }
+
+    private Task PublishBanner() =>
+        OnBanner.InvokeAsync(Markings.AggregateBanner(treeMarkings.Concat(editorMarkings).Append(Part.Markings).Distinct()));
+}
