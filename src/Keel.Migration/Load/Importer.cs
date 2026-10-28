@@ -53,7 +53,7 @@ public sealed class ImportResult
 /// (chunked transactions, resumable). Per object, a savepoint isolates failures: with quarantine the object is listed and skipped, without it
 /// the load stops (earlier chunks stay committed; a rerun completes the rest, because everything written is recorded in <c>mig.id_map</c>).
 /// </summary>
-internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentStore? store, ReferenceData rd, TimeProvider clock)
+internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentStore? store, ReferenceData rd, TimeProvider clock, IClassificationLoader? classification = null)
 {
     private sealed record Mapped(Guid Id, string Hash);
 
@@ -96,6 +96,7 @@ internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentSto
             await RunPhaseAsync<int>("start", [0], (_, _) => Task.CompletedTask, startBatch: true, ct);
             await DocumentsAsync(ct);
             await PartMastersAsync(ct);
+            await ClassesAsync(ct);
             await PartChainsAsync(ct);
             await ChangesAsync(ct);
             await RecordQuarantineAsync(ct);
@@ -174,14 +175,14 @@ internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentSto
             await _w.ReleaseAsync("obj", ct);
             return true;
         }
-        catch (Exception e) when (e is PostgresException or ImportRejectedException)
+        catch (Exception e) when (e is PostgresException or ImportRejectedException or ClassificationLoadException)
         {
             await _w.RollbackToAsync("obj", ct);
             _pending.Clear();
             foreach (var (k, v) in before) _pending[k] = v;
             _res.Created = new SortedDictionary<string, long>(snapshot, StringComparer.Ordinal);
             _res.AuditEventsWritten = auditBefore;
-            var code = e is PostgresException pg ? "LOAD-DB-REJECTED" : "LOAD-REJECTED";
+            var code = e is PostgresException ? "LOAD-DB-REJECTED" : "LOAD-REJECTED";
             var message = e is PostgresException p2 ? $"The database rejected the object ({p2.SqlState}): {p2.MessageText}" : e.Message;
             _res.Problems.Add(new Problem(Severity.Error, code, entityType, sourceId, message, "Fix the source data or the mapping and rerun; objects already imported are skipped."));
             _res.Quarantined.Add((entityType, sourceId, code, message));
@@ -384,6 +385,21 @@ internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentSto
         }, false, ct);
     }
 
+    /// <summary>Creates the classes of the staged hierarchy that Keel does not have (parents first), in the transaction of the load (rolled back by a dry run).</summary>
+    private async Task ClassesAsync(CancellationToken ct)
+    {
+        var nodes = _prep.Plan.ClassesToCreate;
+        if (!_prep.Config.Classification.Load || nodes.Count == 0) return;
+        var loader = classification ?? throw new InvalidOperationException("classification.load needs a classification loader.");
+        await RunPhaseAsync("classes", [0], async (_, i) => await ObjectAsync("classes", "classification", "*", i, async () =>
+        {
+            var created = await loader.CreateMissingClassesAsync(_conn, _tx!, [.. nodes.Select(n => new ClassNodeSpec(n.Code, n.Name, n.Description, n.ParentCode, n.SortOrder, n.Attributes))], _opt.Operator, Now, ct);
+            Count("classes", created.Count);
+            Skip("classes", nodes.Count - created.Count);
+            await AuditAsync("migration.classification.classes", "classification", _batch.ToString(), new() { ["created"] = created.Count.ToString(), ["codes"] = string.Join(",", created.Take(50)), ["packageSha256"] = _prep.Manifest.Sha256 }, ct);
+        }, ct), false, ct);
+    }
+
     private async Task PartChainsAsync(CancellationToken ct)
     {
         var plan = _prep.Plan;
@@ -420,7 +436,8 @@ internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentSto
                 await _w.InsertPartIterationAsync(itId, revId, it, _batch, ct);
                 Count("partIterations");
                 var usages = new List<(PUsage, Guid)>();
-                foreach (var u in it.Usages)
+                // Lines of one find number are alternates; the insert trigger numbers them in insert order, so insert them in order of their range start (as the MBOM does).
+                foreach (var u in it.Usages.Any(x => x.Effectivity is not null) ? it.Usages.OrderBy(x => x.FindNumber).ThenBy(x => x.Effectivity?.From is null ? 0 : 1).ThenBy(x => x.Effectivity?.From ?? 0).ToList() : it.Usages)
                 {
                     if (!_ids.TryGetValue(("part", u.ChildSourceId), out var child))
                         throw new ImportRejectedException($"Part {p.Number} uses '{u.ChildSourceId}', which was not imported.");
@@ -428,6 +445,14 @@ internal sealed class Importer(NpgsqlDataSource ds, IAuditLog audit, IContentSto
                 }
                 await _w.InsertUsagesAsync(itId, usages, it.CreatedAt, it.CreatedBy, ct);
                 Count("bomUsages", usages.Count);
+                if (usages.Any(x => x.Item1.Effectivity is not null)) Count("effectivityLines", usages.Count(x => x.Item1.Effectivity is not null));
+                if (it.ClassCode is not null)
+                {
+                    // Class data is iteration-owned: written with the iteration, before the revision is locked by its final state.
+                    var loader = classification ?? throw new ImportRejectedException("classification.load needs a classification loader.");
+                    await loader.AssignAsync(_conn, _tx!, itId, new ClassAssignment(it.ClassCode, System.Text.Json.Nodes.JsonNode.Parse(it.ClassAttributesJson!)!.AsObject()), ct);
+                    Count("classifiedIterations");
+                }
                 foreach (var l in it.Links)
                 {
                     if (!_ids.TryGetValue(("document", l.DocumentSourceId), out var dm)) throw new ImportRejectedException($"Part {p.Number} links to document '{l.DocumentSourceId}', which was not imported.");

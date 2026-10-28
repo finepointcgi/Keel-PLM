@@ -66,9 +66,11 @@ public sealed class ReconcileReport
 /// that was changed in Keel. Compared: counts per entity, BOM structure (direct lines per iteration and an exploded Merkle checksum per
 /// assembly), file hashes (and vault presence), lifecycle and markings distributions, id-map completeness, and the audit chain.
 /// </summary>
-internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, TimeProvider clock)
+internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, TimeProvider clock, IClassificationLoader? classification = null)
 {
     private readonly List<ReconcileCheck> _checks = [];
+    private bool _effectivityLoad;
+    private bool _classificationLoad;
 
     private ReconcileCheck Add(string name, object expected, object actual, params string[] details)
     {
@@ -81,6 +83,8 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
     public async Task<ReconcileReport> RunAsync(PreparedMigration p, ReconcileOptions opt, CancellationToken ct)
     {
         var plan = p.Plan;
+        _effectivityLoad = p.Config.Effectivity.Load;
+        _classificationLoad = p.Config.Classification.Load;
         var system = plan.SourceSystem;
         await using var conn = await ds.OpenConnectionAsync(ct);
 
@@ -167,6 +171,7 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
         Add("workflow instances for imported objects (must be 0)", 0, await Scalar("SELECT count(*) FROM wf.instance w WHERE w.object_id = ANY(@ids)", ("ids", partIds.Concat(docIds).Concat(changeIds).ToArray())));
 
         await CheckBomAsync(conn, plan, ids, ct);
+        if (_classificationLoad) await CheckClassificationAsync(conn, plan, partIds, ct);
         await CheckFilesAsync(conn, plan, docIds, opt.DeepVault, ct);
         await CheckDistributionsAsync(conn, plan, partIds, docIds, changeIds, ct);
 
@@ -180,8 +185,22 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
 
     // ------------------------------------------------------------------------------------------------ BOM
     private static string Qty(decimal q) => q.ToString("0.######", CultureInfo.InvariantCulture);
-    private static string Line(int find, string child, decimal qty, string unit, IEnumerable<string> designators) =>
-        $"{find}|{child}|{Qty(qty)}|{unit}|{string.Join(',', designators.Order(StringComparer.Ordinal))}";
+    private static string Line(int find, string child, decimal qty, string unit, IEnumerable<string> designators, int alt, EffectivityRange? eff) =>
+        $"{find}|{child}|{Qty(qty)}|{unit}|{string.Join(',', designators.Order(StringComparer.Ordinal))}|{alt}|{(eff is null ? "" : $"{eff.Kind}:{eff.Context}:{eff.From}:{eff.To}")}";
+
+    /// <summary>True when a line (as written by <see cref="Line"/>) applies to a unit: no effectivity, or a serial range of the context that covers it.</summary>
+    private static bool AppliesTo(string line, string context, long serial)
+    {
+        var eff = line[(line.LastIndexOf('|') + 1)..];
+        if (eff.Length == 0) return true;
+        var f = eff.Split(':');
+        if (f[0] != EffectivityKinds.Serial || !string.Equals(f[1], context, StringComparison.Ordinal)) return false;
+        return (f[2].Length == 0 || long.Parse(f[2], CultureInfo.InvariantCulture) <= serial) && (f[3].Length == 0 || long.Parse(f[3], CultureInfo.InvariantCulture) >= serial);
+    }
+
+    /// <summary>The alternate ordinal the importer's insert order gives each line: lines of one find number by range start (open start first).</summary>
+    private static List<(PUsage Usage, int Alt)> WithAlternates(IEnumerable<PUsage> usages) =>
+        [.. usages.GroupBy(u => u.FindNumber).SelectMany(g => g.OrderBy(u => u.Effectivity?.From is null ? 0 : 1).ThenBy(u => u.Effectivity?.From ?? 0).Select((u, i) => (u, i)))];
     private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 
     private async Task CheckBomAsync(NpgsqlConnection conn, Plan plan, Dictionary<(string, string), Guid> ids, CancellationToken ct)
@@ -195,7 +214,7 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
             foreach (var r in part.Revisions)
                 foreach (var i in r.Iterations)
                     if (i.Usages.Count > 0)
-                        src[$"{part.Number}|{r.Label}|{i.Sequence}"] = i.Usages.Select(u => Line(u.FindNumber, numberOf[u.ChildSourceId], u.Quantity, u.Unit, u.Designators)).Order(StringComparer.Ordinal).ToList();
+                        src[$"{part.Number}|{r.Label}|{i.Sequence}"] = WithAlternates(i.Usages).Select(x => Line(x.Usage.FindNumber, numberOf[x.Usage.ChildSourceId], x.Usage.Quantity, x.Usage.Unit, x.Usage.Designators, x.Alt, x.Usage.Effectivity)).Order(StringComparer.Ordinal).ToList();
             var latest = part.Revisions[^1];
             srcLatest[part.Number] = $"{part.Number}|{latest.Label}|{latest.Iterations.Max(i => i.Sequence)}";
         }
@@ -203,7 +222,7 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
         var partIds = plan.Parts.Where(x => ids.ContainsKey(("part", x.SourceId))).Select(x => ids[("part", x.SourceId)]).ToArray();
         var dst = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         await using (var c = new NpgsqlCommand("""
-            SELECT m.number, r.revision, i.iteration, u.find_number, c.number, u.quantity, u.unit, u.reference_designators
+            SELECT m.number, r.revision, i.iteration, u.find_number, c.number, u.quantity, u.unit, u.reference_designators, u.alt, u.eff_kind, u.eff_context, u.eff_from, u.eff_to
             FROM plm.bom_usage u
             JOIN plm.part_iteration i ON i.id = u.parent_iteration_id
             JOIN plm.part_revision r ON r.id = i.revision_id
@@ -218,7 +237,8 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
             {
                 var key = $"{rd.GetString(0)}|{rd.GetString(1)}|{rd.GetInt32(2)}";
                 if (!dst.TryGetValue(key, out var list)) dst[key] = list = [];
-                list.Add(Line(rd.GetInt32(3), rd.GetString(4), rd.GetDecimal(5), rd.GetString(6), rd.GetFieldValue<string[]>(7)));
+                list.Add(Line(rd.GetInt32(3), rd.GetString(4), rd.GetDecimal(5), rd.GetString(6), rd.GetFieldValue<string[]>(7), rd.GetInt32(8),
+                    rd.IsDBNull(9) ? null : new EffectivityRange(rd.GetString(9), rd.IsDBNull(10) ? null : rd.GetString(10), rd.IsDBNull(11) ? null : rd.GetInt64(11), rd.IsDBNull(12) ? null : rd.GetInt64(12))));
             }
         }
         var differences = new List<string>();
@@ -230,16 +250,16 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
         Add("BOM direct structure per assembly iteration (checksum compared for each)", src.Count, Math.Max(0, src.Count - differences.Count), [.. differences]);
 
         // exploded structure per assembly, "as imported" = every master resolved to its latest revision's latest iteration (Merkle hash)
-        string? Exploded(Dictionary<string, List<string>> direct, Dictionary<string, string> latestKey, string number, Dictionary<string, string> memo, HashSet<string> path)
+        string? Exploded(Dictionary<string, List<string>> direct, Dictionary<string, string> latestKey, string number, Dictionary<string, string> memo, HashSet<string> path, Func<string, bool>? keep = null)
         {
             if (memo.TryGetValue(number, out var h)) return h;
             if (!path.Add(number)) return "cycle";
             var lines = latestKey.TryGetValue(number, out var key) && direct.TryGetValue(key, out var l) ? l : [];
             var parts = new List<string>();
-            foreach (var line in lines)
+            foreach (var line in lines.Where(l => keep is null || keep(l)))
             {
                 var child = line.Split('|')[1];
-                parts.Add(line + "|" + Exploded(direct, latestKey, child, memo, path));
+                parts.Add(line + "|" + Exploded(direct, latestKey, child, memo, path, keep));
             }
             path.Remove(number);
             return memo[number] = Hash(string.Join('\n', parts.Order(StringComparer.Ordinal)));
@@ -265,6 +285,97 @@ internal sealed class Reconciler(NpgsqlDataSource ds, IContentStore? store, Time
             if (a != b) bad.Add($"{number}: exploded structure checksum source {a?[..12]} differs from Keel {b?[..12]}");
         }
         Add("BOM exploded structure checksum per assembly (as imported)", assemblies.Count, assemblies.Count - bad.Count, [.. bad]);
+
+        // effectivity: line counts and the as-of-serial explosion at serials sampled from the data (every range boundary and its neighbour)
+        var effExpected = plan.Parts.Sum(x => x.Revisions.Sum(r => r.Iterations.Sum(i => i.Usages.Count(u => u.Effectivity is not null))));
+        if (effExpected > 0 || _effectivityLoad)
+        {
+            long effActual;
+            await using (var c = new NpgsqlCommand("SELECT count(*) FROM plm.bom_usage u JOIN plm.part_iteration i ON i.id = u.parent_iteration_id JOIN plm.part_revision r ON r.id = i.revision_id WHERE r.master_id = ANY(@ids) AND i.imported_batch_id IS NOT NULL AND u.eff_kind IS NOT NULL", conn))
+            {
+                c.Parameters.AddWithValue("ids", partIds);
+                effActual = Convert.ToInt64(await c.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture);
+            }
+            Add("BOM lines with effectivity (serial, lot, date ranges)", effExpected, effActual);
+            // As-of-serial structures resolve the Released revisions (as the native effectivity spec does); an item without one falls back to its latest revision.
+            var srcReleased = new Dictionary<string, string>(srcLatest, StringComparer.Ordinal);
+            foreach (var part in plan.Parts)
+                if (part.Revisions.LastOrDefault(r => r.State == "Released") is { } rel) srcReleased[part.Number] = $"{part.Number}|{rel.Label}|{rel.Iterations.Max(i => i.Sequence)}";
+            var dstReleased = new Dictionary<string, string>(dstLatest, StringComparer.Ordinal);
+            await using (var c = new NpgsqlCommand("""
+                SELECT DISTINCT ON (m.number) m.number, r.revision, r.latest_iteration FROM plm.part_revision r JOIN plm.part_master m ON m.id = r.master_id
+                WHERE m.id = ANY(@ids) AND r.lifecycle_state = 'Released' AND r.imported_batch_id IS NOT NULL ORDER BY m.number, length(r.revision) DESC, r.revision DESC
+                """, conn))
+            {
+                c.Parameters.AddWithValue("ids", partIds);
+                await using var rd = await c.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct)) dstReleased[rd.GetString(0)] = $"{rd.GetString(0)}|{rd.GetString(1)}|{rd.GetInt32(2)}";
+            }
+            foreach (var (context, serials) in plan.EffectivitySerials)
+                foreach (var serial in serials)
+                {
+                    var a = new Dictionary<string, string>(StringComparer.Ordinal);
+                    var b = new Dictionary<string, string>(StringComparer.Ordinal);
+                    bool Keep(string line) => AppliesTo(line, context, serial);
+                    var aHash = Hash(string.Join('\n', assemblies.Select(n => n + "=" + Exploded(src, srcReleased, n, a, [], Keep))));
+                    var bHash = Hash(string.Join('\n', assemblies.Select(n => n + "=" + Exploded(dst, dstReleased, n, b, [], Keep))));
+                    Add($"as-of-serial explosion checksum (context {context}, serial {serial}) over {assemblies.Count} assemblies", aHash[..12], bHash[..12]);
+                }
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------------ classification
+    /// <summary>Canonical text of class values (sorted keys, numbers without trailing zeros) so the package's JSON and the stored jsonb compare equal.</summary>
+    private static string Canon(string json)
+    {
+        var o = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+        return string.Join(';', o.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Key + "=" + kv.Value switch
+        {
+            System.Text.Json.Nodes.JsonValue v when v.TryGetValue<decimal>(out var d) => d.ToString("0.############", CultureInfo.InvariantCulture),
+            System.Text.Json.Nodes.JsonValue v when v.TryGetValue<bool>(out var b) => b ? "true" : "false",
+            var other => other?.GetValue<string>() ?? "",
+        }));
+    }
+
+    private async Task CheckClassificationAsync(NpgsqlConnection conn, Plan plan, Guid[] partIds, CancellationToken ct)
+    {
+        var loader = classification ?? throw new InvalidOperationException("classification.load needs a classification loader.");
+        // source side: (part number, Keel revision label, iteration) -> class and values
+        var src = new Dictionary<string, (string Class, string Values, int Count)>(StringComparer.Ordinal);
+        foreach (var part in plan.Parts)
+            foreach (var r in part.Revisions)
+                foreach (var i in r.Iterations.Where(i => i.ClassCode is not null))
+                    src[$"{part.Number}|{r.Label}|{i.Sequence}"] = (i.ClassCode!, Canon(i.ClassAttributesJson!), System.Text.Json.Nodes.JsonNode.Parse(i.ClassAttributesJson!)!.AsObject().Count);
+        // Keel side
+        var keys = new Dictionary<Guid, string>();
+        await using (var c = new NpgsqlCommand("SELECT i.id, m.number, r.revision, i.iteration FROM plm.part_iteration i JOIN plm.part_revision r ON r.id = i.revision_id JOIN plm.part_master m ON m.id = r.master_id WHERE m.id = ANY(@ids) AND i.imported_batch_id IS NOT NULL", conn))
+        {
+            c.Parameters.AddWithValue("ids", partIds);
+            await using var rd = await c.ExecuteReaderAsync(ct);
+            while (await rd.ReadAsync(ct)) keys[rd.GetGuid(0)] = $"{rd.GetString(1)}|{rd.GetString(2)}|{rd.GetInt32(3)}";
+        }
+        var stored = await loader.ReadAsync(conn, keys.Keys, ct);
+        var dst = stored.ToDictionary(x => keys[x.IterationId], x => (Class: x.ClassCode, Values: Canon(x.AttributesJson), Count: x.ValueRows), StringComparer.Ordinal);
+
+        Add("classified part iterations", src.Count, dst.Count);
+        var perClassSrc = src.Values.GroupBy(v => v.Class).ToDictionary(g => g.Key, g => (long)g.Count());
+        var perClassDst = dst.Values.GroupBy(v => v.Class).ToDictionary(g => g.Key, g => (long)g.Count());
+        var classDiffs = perClassSrc.Keys.Union(perClassDst.Keys).Where(k => perClassSrc.GetValueOrDefault(k) != perClassDst.GetValueOrDefault(k))
+            .Select(k => $"class {k}: source {perClassSrc.GetValueOrDefault(k)}, Keel {perClassDst.GetValueOrDefault(k)}").Order(StringComparer.Ordinal).ToArray();
+        Add("class assignments per class (iterations)", src.Count, dst.Count, classDiffs);
+        Add("class attribute values (typed rows)", src.Values.Sum(v => v.Count), dst.Values.Sum(v => v.Count));
+        var diffs = new List<string>();
+        foreach (var k in src.Keys.Union(dst.Keys).Order(StringComparer.Ordinal))
+        {
+            var a = src.TryGetValue(k, out var x); var b = dst.TryGetValue(k, out var y);
+            if (!a || !b || x.Class != y.Class || x.Values != y.Values)
+                diffs.Add($"{k.Replace('|', ' ')}: source {(a ? Hash(x.Class + "|" + x.Values)[..12] : "-")} ({(a ? x.Class : "none")}), Keel {(b ? Hash(y.Class + "|" + y.Values)[..12] : "-")} ({(b ? y.Class : "none")})");
+        }
+        Add("class and values per iteration (checksum compared for each; values hash)", src.Count, Math.Max(0, src.Count - diffs.Count), [.. diffs]);
+        var wanted = plan.Classifications.Where(c => c.KeelClassCode is not null).Select(c => c.KeelClassCode!).Concat(plan.ClassesToCreate.Select(c => c.Code)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var existing = (await loader.LoadDefinitionsAsync(conn, null, ct)).Select(d => d.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = wanted.Where(c => !existing.Contains(c)).ToArray();
+        Add("classes used or created exist in Keel", wanted.Count, wanted.Count - missing.Length, [.. missing.Select(m => $"class {m} does not exist")]);
     }
 
     // ------------------------------------------------------------------------------------------------ files

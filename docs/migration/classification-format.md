@@ -4,6 +4,9 @@ Used to load a classification hierarchy (for example from Teamcenter classificat
 Service: `ClassificationService.ImportHierarchyAsync` / `ExportHierarchyAsync` in `Keel.Admin`; API: `GET /api/v1/admin/classification/export?format=json|csv`,
 `POST /api/v1/admin/classification/import?format=json|csv&dryRun=true|false&reason=...` (plm-admin only); UI: Administration, Classification.
 
+## Migration {#migration}
+`keel-import` reads the same JSON as the optional file `classification.json` at the root of a package (any source format), so a Teamcenter or Windchill classification export converted to this format travels with the package and is covered by its hash. With `classification.load` the importer creates the classes that Keel lacks (it uses the import code below, restricted to missing classes: **existing classes are never updated**; a different parent or attribute type is reported as a conflict, other differences as warnings) and writes the class and values of each part onto its iterations. A class with status `retired` in the file is not created. Class assignments themselves come from the source's classification rows (`UserData type="Classification"` in PLM XML, `classifications.json|csv` in Windchill, `classifications` in the canonical package). See [mapping-reference.md](mapping-reference.md#classification).
+
 ## Semantics
 - Classes are identified by **code** (case-insensitive, `[A-Za-z0-9][A-Za-z0-9._-]{0,39}`), attributes by **name** within a class (`[a-z][a-z0-9_]{0,62}`).
 - Import creates missing classes (parents before children, any order in the file) and updates name, description, sort order and attributes of existing ones.

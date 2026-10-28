@@ -194,7 +194,9 @@ public static class ImportCli
         }
         output.WriteLine($"Target database: {settings.DescribeTarget()}" + (settings.Vault is null ? "; vault: not configured" : $"; vault: {settings.Vault.ServiceUrl}/{settings.Vault.Bucket}"));
         var ds = NpgsqlDataSource.Create(settings.ConnectionString);
-        var pipeline = new MigrationPipeline(ds, new PostgresAuditLog(ds, TimeProvider.System), vault is null ? null : new VaultContentStore(vault), TimeProvider.System);
+        var auditLog = new PostgresAuditLog(ds, TimeProvider.System);
+        var classification = new Keel.Admin.MigrationClassificationLoader(new Keel.Admin.ClassificationService(new Keel.Admin.AdminRunner(ds, auditLog, TimeProvider.System), auditLog));
+        var pipeline = new MigrationPipeline(ds, auditLog, vault is null ? null : new VaultContentStore(vault), TimeProvider.System, classification);
         return new Host(ds, vault, pipeline, settings);
     }
 

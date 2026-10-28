@@ -24,15 +24,16 @@ internal sealed class MbomEnv
     public NpgsqlDataSource Ds => C.Ds;
     public TestDatabase Db => C.Db;
 
-    public static async Task<MbomEnv> CreateAsync(PostgresFixture pg)
+    /// <summary>With an existing <paramref name="config"/> (for example the one of an <see cref="IntegrationEnv"/>) the MBOM gateway and the part gateway report to its outbox sink.</summary>
+    public static async Task<MbomEnv> CreateAsync(PostgresFixture pg, ConfigEnv? config = null)
     {
-        var c = await ConfigEnv.CreateAsync(pg);
+        var c = config ?? await ConfigEnv.CreateAsync(pg);
         var audit = new PostgresAuditLog(c.Ds, c.Clock);
         return new MbomEnv
         {
             C = c,
             Mbom = new MbomService(c.Ds, audit, c.Clock),
-            Flow = new WorkflowService(c.Ds, audit, [new PartWorkflowGateway([new ChangeBindingGuard()]), new MbomWorkflowGateway(audit)], new WorkflowOptions(), c.Clock),
+            Flow = new WorkflowService(c.Ds, audit, [new PartWorkflowGateway([new ChangeBindingGuard()], null, c.Sink), new MbomWorkflowGateway(audit, c.Sink)], new WorkflowOptions(), c.Clock),
             Source = new MbomBomSourceHandle(new MbomBomSource(c.Ds, audit), new MbomImpactProvider(c.Ds, audit)),
             Impact = new ImpactAnalysisService(c.Ds, audit, [new PartChangeGateway([new BomParticipant()])], [new BomStructureImpactProvider(c.Bom, c.Ds)], [], [new MbomImpactProvider(c.Ds, audit)]),
         };

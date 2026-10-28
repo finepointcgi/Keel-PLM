@@ -44,6 +44,7 @@ public sealed class CanonicalPackageReader : IPackageReader
         foreach (var o in header.Documents) sink.Add(o, true);
         foreach (var c in header.Changes) sink.Add(c);
         foreach (var c in header.Classifications) sink.Add(c);
+        foreach (var n in header.ClassNodes) sink.Add(n);
         foreach (var u in header.Users) sink.Add(u);
 
         await ReadLinesAsync<CObject>(package, "items.jsonl", sink, o => sink.Add(o, false), ct);

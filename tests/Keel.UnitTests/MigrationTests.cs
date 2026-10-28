@@ -57,7 +57,7 @@ public sealed class MigrationTests : IDisposable
         Assert.Equal(5, c["files"]);
         Assert.Equal(3, c["documentLinks"]);
         Assert.Equal(2, c["affectedObjects"]);
-        Assert.Equal(folder == "plmxml" ? 0 : 1, c.GetValueOrDefault("classifications"));
+        Assert.Equal(1, c.GetValueOrDefault("classifications")); // PLM XML carries it as UserData type Classification on the last revision element
     }
 
     [Fact]
@@ -421,16 +421,6 @@ public sealed class MigrationTests : IDisposable
     {
         var r = new MigrationReport { Problems = [new Problem(Severity.Error, "X", "part", "=cmd|' /C calc'!A0", "m")] };
         Assert.Contains("'=cmd", r.ToCsv(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Classification_loading_is_not_supported_until_phase_2b()
-    {
-        var cfg = Samples.Mapping();
-        cfg.Classification.Load = true;
-        WriteAll();
-        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Prepare(Dir("canonical"), cfg));
-        Assert.Contains("Phase 2b", ex.Message, StringComparison.Ordinal);
     }
 
     private static bool ReportBuilder_Succeeded(PreparedMigration p) =>

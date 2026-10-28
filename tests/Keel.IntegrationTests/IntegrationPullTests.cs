@@ -278,6 +278,7 @@ public sealed class IntegrationApiTests(PostgresFixture pg)
         var paths = json["paths"]!.AsObject().Select(p => p.Key).ToList();
         Assert.Contains("/api/v1/integration/events", paths);
         Assert.Contains("/api/v1/integration/boms/{number}", paths);
+        Assert.Contains("/api/v1/integration/mboms/{number}", paths);
         Assert.Contains("/api/v1/integration/changes/{number}", paths);
         Assert.Contains("/api/v1/tdp", paths);
         Assert.DoesNotContain(paths, p => p.StartsWith("/api/v1/parts", StringComparison.Ordinal)); // only the integration surface is published

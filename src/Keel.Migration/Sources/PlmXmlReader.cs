@@ -48,7 +48,9 @@ public sealed class PlmXmlReader : IPackageReader
     }
 
     private sealed class View { public string Id = "", RevisionRef = ""; public List<string> InstanceRefs = []; }
-    private sealed class Inst { public string Id = "", PartRef = ""; public decimal Qty = 1; public int? Find; public string? Unit, Notes, Effectivity; public List<string> Designators = []; public Dictionary<string, string?> Extra = []; }
+    private sealed class Inst { public string Id = "", PartRef = ""; public decimal Qty = 1; public int? Find; public string? Unit, Notes, Effectivity; public List<string> Designators = [], EffRefs = []; public Dictionary<string, string?> Extra = []; }
+    private readonly Dictionary<string, string> _contextNames = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string Kind, string Context, string? Start, string? End, string? EndCondition)> _effs = new(StringComparer.Ordinal);
     private sealed class DataSet { public string Id = "", Name = "", Type = ""; public List<CFile> Files = []; public Dictionary<string, string?> Props = []; }
 
     private readonly Dictionary<string, Prod> _products = new(StringComparer.Ordinal);
@@ -113,7 +115,8 @@ public sealed class PlmXmlReader : IPackageReader
             switch (name)
             {
                 case "Product": case "ProductRevision": case "ProductRevisionView": case "ProductInstance":
-                case "DataSet": case "Form": case "Person": case "Role":
+                case "DataSet": case "Form": case "Person": case "Role": case "ConfigurationContext":
+                case "SerialNumberEffectivity": case "LotEffectivity": case "DateEffectivity":
                     Handle((XElement)XNode.ReadFrom(xr), name, file, sink);
                     break;
                 default:
@@ -167,6 +170,18 @@ public sealed class PlmXmlReader : IPackageReader
                 break;
             }
             case "Role": sink.Ignored("Role"); break;
+            case "ConfigurationContext":
+                // Still ignored as a configuration, but its name resolves the contextRef of an effectivity (our subset, plmxml-subset.md).
+                if (A(e, "id") is { Length: > 0 } cid) _contextNames[cid] = A(e, "name") ?? cid;
+                sink.Ignored(name);
+                break;
+            case "SerialNumberEffectivity" or "LotEffectivity" or "DateEffectivity":
+            {
+                var id = A(e, "id");
+                if (string.IsNullOrEmpty(id)) { sink.Report(Severity.Error, "SRC-NO-ID", "effectivity", file, $"{name} without id."); break; }
+                _effs[id] = (name switch { "SerialNumberEffectivity" => "serial", "LotEffectivity" => "lot", _ => "date" }, StripRef(A(e, "contextRef")), A(e, "start"), A(e, "end"), A(e, "endCondition"));
+                break;
+            }
         }
     }
 
@@ -265,7 +280,7 @@ public sealed class PlmXmlReader : IPackageReader
     {
         var id = A(e, "id");
         if (string.IsNullOrEmpty(id)) { sink.Report(Severity.Error, "SRC-NO-ID", "usage", file, "ProductInstance without id."); return; }
-        var i = new Inst { Id = id, PartRef = StripRef(A(e, "partRef")) };
+        var i = new Inst { Id = id, PartRef = StripRef(A(e, "partRef")), EffRefs = Refs(A(e, "effectivityRefs")) };
         if (A(e, "quantity") is { } q)
         {
             if (decimal.TryParse(q, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)) i.Qty = d;
@@ -414,6 +429,12 @@ public sealed class PlmXmlReader : IPackageReader
                             var child = MasterOf(inst.PartRef);
                             if (child is null) { sink.Report(Severity.Error, "SRC-DANGLING-REF", "usage", inst.Id, $"ProductInstance {inst.Id} refers to '{inst.PartRef}', which is neither a Product nor a ProductRevision of the package.", "Re-export the child, or remove the instance."); child = inst.PartRef; }
                             var u = new CUsage { ChildSourceId = child, Quantity = inst.Qty, Unit = inst.Unit, FindNumber = inst.Find, ReferenceDesignators = inst.Designators, Notes = inst.Notes, Effectivity = inst.Effectivity };
+                            foreach (var eref in inst.EffRefs)
+                            {
+                                if (!_effs.TryGetValue(eref, out var eff)) { sink.Report(Severity.Error, "SRC-DANGLING-REF", "usage", inst.Id, $"ProductInstance {inst.Id} refers to effectivity '{eref}', which is not in the package."); continue; }
+                                var unit = eff.Context.Length == 0 ? null : _contextNames.TryGetValue(eff.Context, out var cn) ? cn : eff.Context;
+                                u.EffectivityRanges.Add(new CEffectivity { Kind = eff.Kind, Unit = unit, From = eff.Start, To = eff.End, EndCondition = eff.EndCondition });
+                            }
                             foreach (var kv in inst.Extra) it.Properties[$"usage[{inst.Id}].{kv.Key}"] = kv.Value;
                             it.Usages.Add(u);
                         }

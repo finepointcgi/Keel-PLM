@@ -5,7 +5,7 @@ namespace Keel.Core;
 
 /// <summary>
 /// The event types of the ERP-facing contract (ADR-0025). Each type is versioned: a payload change that is not additive publishes a new
-/// <see cref="CurrentVersion"/> and keeps the old schema under docs/integration/schemas. Adding a type (for example <c>mbom.released</c>)
+/// <see cref="CurrentVersion"/> and keeps the old schema under docs/integration/schemas. Adding a type (<c>mbom.released</c> was added this way)
 /// is additive: put it here, give it a schema file and an emission point.
 /// </summary>
 public static class EventTypes
@@ -20,11 +20,13 @@ public static class EventTypes
     public const string BomPublished = "bom.published";
     /// <summary>Optional multi-level snapshot, delivered only to sinks that opted in (<c>full_structure</c>).</summary>
     public const string BomStructurePublished = "bom.structure.published";
+    /// <summary>A manufacturing BOM revision was released through the review workflow (additive, FUP-1).</summary>
+    public const string MbomReleased = "mbom.released";
 
     public static readonly IReadOnlyList<string> All =
     [
         PartReleased, PartObsoleted, DocumentReleased, DocumentObsoleted, ChangeApproved, ChangeReleased,
-        BaselineEstablished, BomPublished, BomStructurePublished,
+        BaselineEstablished, BomPublished, BomStructurePublished, MbomReleased,
     ];
 
     /// <summary>Types a sink with an empty subscription list receives.</summary>

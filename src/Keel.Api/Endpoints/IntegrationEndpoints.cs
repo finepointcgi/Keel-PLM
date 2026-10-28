@@ -20,6 +20,17 @@ public sealed record BomSnapshotLine(
 public sealed record BomSnapshot(string Number, string Name, string Revision, string Iteration, string Spec, string? Configuration, string Banner, int RestrictedLines, int UnresolvedLines,
     IReadOnlyList<BomSnapshotLine> Lines);
 
+/// <summary>One line of the released-MBOM snapshot of the pull API. A line the caller may not read carries find number, quantity and unit only (A4).</summary>
+public sealed record MbomSnapshotLine(
+    int FindNumber, int Alternate, bool Restricted, decimal Quantity, string Unit, string? Number, string? Name, string? Source, decimal? ScrapFactor, bool Phantom, string? SupplyType,
+    string? OperationReference, bool MbomOnly, IReadOnlyList<string> ReferenceDesignators, string? Notes, string? Effectivity, IReadOnlyList<MbomSnapshotLink> EbomLinks, string? ChildMbom, string? ChildMbomRevision);
+
+public sealed record MbomSnapshotLink(int EbomFindNumber, string Status, string? Reason);
+
+public sealed record MbomSnapshot(
+    string MbomNumber, string PartNumber, string PartName, string Plant, string Revision, string Iteration, string State, string? DerivedFromEbom, string ContentSha256,
+    Guid? ReconciliationRunId, string? ReconciliationStatus, string Banner, int RestrictedLines, IReadOnlyList<MbomSnapshotLine> Lines);
+
 public sealed record ChangeSnapshotAffected(string ObjectType, string? Number, string? Name, string? Revision, string Action, string? ResultingRevision, string? Effectivity, bool Restricted);
 
 public sealed record ChangeSnapshotDto(string Type, string Number, string Title, string State, string? ChangeClass, string Priority, string Reason, string Banner, string? SourceChange,
@@ -56,6 +67,18 @@ public static class IntegrationEndpoints
                 [.. e.Lines.Select(l => new BomSnapshotLine(l.Level, l.Path, l.FindNumber, l.Quantity, l.ExtendedQuantity, l.Unit, l.Redacted, l.Unresolved, l.Number, l.Name, l.PartType, l.Revision,
                     l.Revision is null ? null : $"{l.Revision}.{l.Iteration}", l.StateLabel, l.ReferenceDesignators, l.Notes, l.EffectivityText, l.Banner))])));
         }).WithSummary("Released EBOM snapshot of an assembly revision (children resolved at the requested configuration spec).");
+
+        pull.MapGet("/mboms/{number}", async (string number, string? plant, string? revision, HttpContext c, IManufacturingBomSource mboms, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(plant))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["plant"] = ["Name the plant: an MBOM exists per part and plant."] });
+            var o = await mboms.GetReleasedAsync(Who(c), number, plant, string.IsNullOrWhiteSpace(revision) ? null : revision, Corr(c), ct);
+            return o.ToHttp(m => Results.Ok(new MbomSnapshot(m.MbomNumber, m.PartNumber, m.PartName, m.Plant, m.Revision, $"{m.Revision}.{m.Iteration}", m.State, m.DerivedFromEbom, m.ContentSha256,
+                m.ReconciliationRunId, m.ReconciliationStatus, m.Banner, m.Lines.Count(l => l.Redacted),
+                [.. m.Lines.Select(l => new MbomSnapshotLine(l.FindNumber, l.Alt, l.Redacted, l.Quantity, l.Unit, l.ChildNumber, l.ChildName, l.ChildSource, l.ScrapFactor, l.Phantom, l.SupplyType,
+                    l.OperationReference, l.MbomOnly, l.ReferenceDesignators, l.Notes, l.Effectivity?.Describe(), [.. l.EbomLinks.Select(k => new MbomSnapshotLink(k.EbomFindNumber, k.Status, k.Reason))],
+                    l.ChildMbomNumber, l.ChildMbomRevision))])));
+        }).WithSummary("Latest released MBOM of a part in a plant (or the named revision), children resolved to the plant's released MBOMs. Lines you may not read are placeholders.");
 
         pull.MapGet("/changes/{number}", async (string number, HttpContext c, ChangeService changes, CancellationToken ct) =>
             (await changes.GetAsync(Who(c), number, Corr(c), ct)).ToHttp(d => Results.Ok(new ChangeSnapshotDto(d.Type, d.Number, d.Title, d.StateLabel, d.ChangeClass, d.Priority, d.Reason, d.Banner, d.Source?.Number,

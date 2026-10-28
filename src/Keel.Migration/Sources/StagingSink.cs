@@ -104,6 +104,12 @@ public sealed class StagingSink(bool retain = true)
         if (Retain) Package.Classifications.Add(c);
     }
 
+    public void Add(CClassNode n)
+    {
+        Inventory.Bump(Inventory.Counts, "classNodes");
+        if (Retain) Package.ClassNodes.Add(n);
+    }
+
     public void Add(CUser u)
     {
         Inventory.Bump(Inventory.Counts, "users");

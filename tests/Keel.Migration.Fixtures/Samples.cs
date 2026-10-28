@@ -158,6 +158,83 @@ public static class Samples
         return new SampleProduct { Package = pkg, Files = files };
     }
 
+    // ------------------------------------------------------------------------------------------------ classification and effectivity samples
+    private static CClassNode Node(string code, string name, string? parent, params CClassAttribute[] attributes) =>
+        new() { Code = code, Name = name, Parent = parent, SortOrder = 10, Attributes = [.. attributes] };
+
+    /// <summary>
+    /// The sample product with a classification hierarchy (MECH > FASTENERS > FASTENERS.BRACKET; ELEC > ELEC.RES; attributes grade, width, coating, voltage) and class assignments
+    /// for P-2001 (bracket: width 20, grade 316) and P-2005 (resistor: voltage 5). Source attribute names are capitalized ("Width"): the mapping renames them.
+    /// </summary>
+    public static SampleProduct BuildClassified(string salt = "")
+    {
+        var p = Build(salt: salt);
+        var pkg = p.Package;
+        pkg.ClassNodes.AddRange(
+        [
+            Node("MECH", "Mechanical", null, new CClassAttribute { Name = "grade", Label = "Material grade", DataType = "enum", EnumValues = ["304", "316"] }),
+            Node("FASTENERS", "Fasteners", "MECH"),
+            Node("FASTENERS.BRACKET", "Brackets", "FASTENERS",
+                new CClassAttribute { Name = "width", Label = "Width", DataType = "number", Unit = "mm", Min = 1, Max = 500, Required = true },
+                new CClassAttribute { Name = "coating", Label = "Coating", DataType = "string", MaxLength = 20 }),
+            Node("ELEC", "Electronics", null),
+            Node("ELEC.RES", "Resistors", "ELEC", new CClassAttribute { Name = "voltage", Label = "Rated voltage", DataType = "number", Unit = "V", Min = 0, Max = 1000 }),
+        ]);
+        pkg.Classifications.Clear();
+        pkg.Classifications.Add(new CClassAssignment { ItemSourceId = "P-2001", ClassCode = "FASTENERS.BRACKET", Attributes = { ["Width"] = "20", ["grade"] = "316" } });
+        pkg.Classifications.Add(new CClassAssignment { ItemSourceId = "P-2005", ClassCode = "ELEC.RES", Attributes = { ["voltage"] = "5" } });
+        return p;
+    }
+
+    /// <summary>The mapping that loads the classified sample: attribute "Width" becomes "width".</summary>
+    public static MappingConfig ClassificationMapping()
+    {
+        var cfg = Mapping();
+        cfg.Classification.Load = true;
+        cfg.Classification.Attributes["*"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Width"] = "width" };
+        return cfg;
+    }
+
+    public static CEffectivity Serial(string unit, string? from, string? to, string? endCondition = null) => new() { Kind = "serial", Unit = unit, From = from, To = to, EndCondition = endCondition };
+    public static CEffectivity Lot(string unit, string from, string? to = null) => new() { Kind = "lot", Unit = unit, From = from, To = to ?? from };
+    public static CEffectivity DateRange(string? from, string? to) => new() { Kind = "date", From = from, To = to };
+
+    public const string EndItem = "POD-END-ITEM";
+
+    /// <summary>
+    /// The sample product with effectivity on BOM lines: A-1000 A.1 find 30 has two alternates by serial (P-2001 for serials 1-100, P-2003 from 101, open ended); A-1000 B.2 find 40
+    /// is a date range (2027-03-01 to 2027-06-30, written as a date-time); A-1200 find 10 alternates by block (lot "Block 1" and "Block 2"); A-1100 find 20 carries effectivity as text only.
+    /// </summary>
+    public static SampleProduct BuildEffective(string salt = "")
+    {
+        var p = Build(salt: salt);
+        var pkg = p.Package;
+        CObject Item(string n) => pkg.Items.First(i => i.Number == n);
+        var a1 = Item("A-1000").Revisions[0].Iterations[0];
+        a1.Usages.RemoveAll(u => u.FindNumber == 30);
+        a1.Usages.Add(new CUsage { ChildSourceId = "P-2001", Quantity = 4, FindNumber = 30, Unit = "each", EffectivityRanges = [Serial(EndItem, "1", "100", "stockOut")] });
+        a1.Usages.Add(new CUsage { ChildSourceId = "P-2003", Quantity = 4, FindNumber = 30, Unit = "each", EffectivityRanges = [Serial(EndItem, "101", null, "openEnded")] });
+        var b2 = Item("A-1000").Revisions[1].Iterations[1];
+        b2.Usages.RemoveAll(u => u.FindNumber == 40);
+        b2.Usages.Add(new CUsage { ChildSourceId = "P-2002", Quantity = 1, FindNumber = 40, Unit = "each", EffectivityRanges = [DateRange("2027-03-01T00:00:00Z", "2027-06-30T00:00:00Z")] });
+        var a12 = Item("A-1200").Revisions[0].Iterations[0];
+        a12.Usages.RemoveAll(u => u.FindNumber == 10);
+        a12.Usages.Add(new CUsage { ChildSourceId = "P-2004", Quantity = 1, FindNumber = 10, Unit = "each", EffectivityRanges = [Lot(EndItem, "Block 1")] });
+        a12.Usages.Add(new CUsage { ChildSourceId = "P-2005", Quantity = 1, FindNumber = 10, Unit = "each", EffectivityRanges = [Lot(EndItem, "Block 2")] });
+        Item("A-1100").Revisions[0].Iterations[0].Usages.First(u => u.FindNumber == 20).Effectivity = "units 1-50 only (free text)";
+        return p;
+    }
+
+    /// <summary>The mapping that loads the effectivity of <see cref="BuildEffective"/>: the source end item maps to the Keel context ORCA-POD, block names to lots 1 and 2.</summary>
+    public static MappingConfig EffectivityMapping()
+    {
+        var cfg = Mapping();
+        cfg.Effectivity.Load = true;
+        cfg.Effectivity.Contexts[EndItem] = "ORCA-POD";
+        cfg.Effectivity.Blocks["ORCA-POD"] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Block 1"] = 1, ["Block 2"] = 2 };
+        return cfg;
+    }
+
     private static void Apply(CanonicalPackage pkg, Dictionary<string, byte[]> files, Defect d)
     {
         CObject Item(string n) => pkg.Items.First(i => i.Number == n);
@@ -238,6 +315,16 @@ public static class Samples
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
+    private static readonly JsonSerializerOptions HierarchyJson = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+
+    /// <summary>The staged classification hierarchy as the sidecar file classification.json (format keel-classification/1); the canonical package carries it inline instead.</summary>
+    public static void WriteHierarchy(SampleProduct p, string dir)
+    {
+        if (p.Package.ClassNodes.Count == 0) return;
+        var doc = new Dictionary<string, object?> { ["format"] = "keel-classification/1", ["nodes"] = p.Package.ClassNodes };
+        File.WriteAllText(Path.Combine(dir, "classification.json"), JsonSerializer.Serialize(doc, HierarchyJson));
+    }
+
     private static string Iso(DateTimeOffset? t) => t?.ToString("O", CultureInfo.InvariantCulture) ?? "";
 
     public static void WritePlmXml(SampleProduct p, string dir, Defect defects = Defect.None)
@@ -246,6 +333,7 @@ public static class Samples
         using (var w = XmlWriter.Create(Path.Combine(dir, "export.plmxml"), new XmlWriterSettings { Indent = true }))
             WritePlmXmlTo(p.Package, w, defects);
         WriteFiles(p, dir);
+        WriteHierarchy(p, dir);
     }
 
     private static void UserData(XmlWriter w, string type, IEnumerable<KeyValuePair<string, string?>> values)
@@ -283,6 +371,7 @@ public static class Samples
         var viewCounter = 0;
         var instanceCounter = 0;
         var datasetCounter = 0;
+        var contexts = new HashSet<string>(StringComparer.Ordinal);
         void WriteObject(CObject o, bool isDoc)
         {
             w.WriteStartElement("Product");
@@ -308,6 +397,9 @@ public static class Samples
                     UserData(w, "Attributes", a);
                     if (it == r.Iterations[^1])
                         foreach (var s in r.States) UserData(w, "ReleaseStatus", [new("name", s.Name), new("date_released", Iso(s.At)), new("user", s.By)]);
+                    if (!isDoc && r == o.Revisions[^1] && it == r.Iterations[^1])
+                        foreach (var cl in pkg.Classifications.Where(c => c.ItemSourceId == o.SourceId))
+                            UserData(w, "Classification", new[] { new KeyValuePair<string, string?>("class", cl.ClassCode) }.Concat(cl.Attributes));
                     foreach (var l in it.DocLinks) UserData(w, "DocumentLink", [new("document", l.DocumentSourceId), new("type", l.Type), new("revision", l.DocumentRevisionLabel)]);
                     var dsIds = new List<string>();
                     if (it.Files.Count > 0)
@@ -345,12 +437,30 @@ public static class Samples
                         for (var i = 0; i < it.Usages.Count; i++)
                         {
                             var u = it.Usages[i];
+                            var effIds = new List<string>();
+                            foreach (var e in u.EffectivityRanges)
+                            {
+                                var effId = $"EF{instIds[i]}-{effIds.Count + 1}";
+                                effIds.Add(effId);
+                                var kind = e.Kind.ToLowerInvariant();
+                                w.WriteStartElement(kind switch { "serial" => "SerialNumberEffectivity", "lot" => "LotEffectivity", _ => "DateEffectivity" });
+                                w.WriteAttributeString("id", effId);
+                                if (!string.IsNullOrEmpty(e.Unit)) w.WriteAttributeString("contextRef", "#CC-" + e.Unit);
+                                if (e.From is not null) w.WriteAttributeString("start", e.From);
+                                if (e.To is not null) w.WriteAttributeString("end", e.To);
+                                if (e.EndCondition is not null) w.WriteAttributeString("endCondition", e.EndCondition);
+                                w.WriteEndElement();
+                                if (!string.IsNullOrEmpty(e.Unit) && contexts.Add(e.Unit)) { w.WriteStartElement("ConfigurationContext"); w.WriteAttributeString("id", "CC-" + e.Unit); w.WriteAttributeString("name", e.Unit); w.WriteEndElement(); }
+                            }
                             w.WriteStartElement("ProductInstance"); w.WriteAttributeString("id", instIds[i]);
+                            if (effIds.Count > 0) w.WriteAttributeString("effectivityRefs", string.Join(' ', effIds.Select(x => "#" + x)));
                             var part = defects.HasFlag(Defect.DanglingIdRef) && !danglingDone ? "#missing-product" : "#" + u.ChildSourceId;
                             danglingDone |= defects.HasFlag(Defect.DanglingIdRef);
                             w.WriteAttributeString("partRef", part);
                             w.WriteAttributeString("quantity", u.Quantity.ToString(CultureInfo.InvariantCulture));
-                            UserData(w, "Occurrence", [new("sequence_no", u.FindNumber?.ToString(CultureInfo.InvariantCulture)), new("unit", u.Unit)]);
+                            UserData(w, "Occurrence", u.Effectivity is null
+                                ? [new("sequence_no", u.FindNumber?.ToString(CultureInfo.InvariantCulture)), new("unit", u.Unit)]
+                                : [new("sequence_no", u.FindNumber?.ToString(CultureInfo.InvariantCulture)), new("unit", u.Unit), new("effectivity", u.Effectivity)]);
                             w.WriteStartElement("Transform"); w.WriteString("1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"); w.WriteEndElement();
                             foreach (var dsg in u.ReferenceDesignators)
                             {
@@ -382,11 +492,6 @@ public static class Samples
             foreach (var a in c.Affected) UserData(w, "ChangeAffected", [new("item", a.ItemSourceId), new("revision", a.RevisionLabel), new("resulting_revision", a.ResultingRevisionLabel), new("action", a.Action)]);
             w.WriteEndElement();
         }
-        foreach (var cl in pkg.Classifications)
-        {
-            // classification is carried as UserData on the item's last ProductRevision in real exports; the sample keeps it simple and omits it from PLM XML
-            _ = cl;
-        }
         w.WriteEndElement();
         w.WriteEndDocument();
     }
@@ -415,7 +520,13 @@ public static class Samples
                     foreach (var (k, v) in it.Properties) row[k] = v;
                     t.Parts.Add(row);
                     foreach (var u in it.Usages)
-                        t.Uses.Add(new() { ["ParentNumber"] = o.Number, ["ParentVersion"] = r.Label, ["ParentIteration"] = it.Sequence.ToString(CultureInfo.InvariantCulture), ["ChildNumber"] = u.ChildSourceId, ["Quantity"] = u.Quantity.ToString(CultureInfo.InvariantCulture), ["Unit"] = u.Unit, ["FindNumber"] = u.FindNumber?.ToString(CultureInfo.InvariantCulture), ["ReferenceDesignators"] = string.Join(',', u.ReferenceDesignators), ["Notes"] = u.Notes });
+                        foreach (var e in u.EffectivityRanges.Count == 0 ? [null] : u.EffectivityRanges.Select(x => (CEffectivity?)x))
+                        {
+                            var use = new Dictionary<string, object?> { ["ParentNumber"] = o.Number, ["ParentVersion"] = r.Label, ["ParentIteration"] = it.Sequence.ToString(CultureInfo.InvariantCulture), ["ChildNumber"] = u.ChildSourceId, ["Quantity"] = u.Quantity.ToString(CultureInfo.InvariantCulture), ["Unit"] = u.Unit, ["FindNumber"] = u.FindNumber?.ToString(CultureInfo.InvariantCulture), ["ReferenceDesignators"] = string.Join(',', u.ReferenceDesignators), ["Notes"] = u.Notes };
+                            if (u.Effectivity is not null) use["Effectivity"] = u.Effectivity;
+                            if (e is not null) { use["EffectivityType"] = e.Kind; use["EffectivityUnit"] = e.Unit; use["EffectivityFrom"] = e.From; use["EffectivityTo"] = e.To; use["EffectivityEndCondition"] = e.EndCondition; }
+                            t.Uses.Add(use);
+                        }
                     foreach (var l in it.DocLinks)
                         t.Links.Add(new() { ["PartNumber"] = o.Number, ["PartVersion"] = r.Label, ["PartIteration"] = it.Sequence.ToString(CultureInfo.InvariantCulture), ["DocumentNumber"] = l.DocumentSourceId, ["DocumentVersion"] = l.DocumentRevisionLabel, ["LinkType"] = l.Type == "references" ? "Reference" : "Describe" });
                 }
@@ -479,6 +590,7 @@ public static class Samples
         Write("users.json", t.Users);
         Write("classifications.json", t.Classes);
         WriteFiles(p, dir);
+        WriteHierarchy(p, dir);
     }
 
     public static void WriteWindchillCsv(SampleProduct p, string dir)
@@ -499,6 +611,7 @@ public static class Samples
         Write("part_doc_links.csv", t.Links); Write("problem_reports.csv", t.Prs); Write("change_requests.csv", t.Ecrs); Write("change_notices.csv", t.Ecns);
         Write("change_affected.csv", t.Affected); Write("users.csv", t.Users); Write("classifications.csv", t.Classes);
         WriteFiles(p, dir);
+        WriteHierarchy(p, dir);
     }
 
     private static string CsvCell(string? v)

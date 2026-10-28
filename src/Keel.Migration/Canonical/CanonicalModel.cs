@@ -20,6 +20,8 @@ public sealed class CanonicalPackage
     public List<CObject> Documents { get; set; } = [];
     public List<CChange> Changes { get; set; } = [];
     public List<CClassAssignment> Classifications { get; set; } = [];
+    /// <summary>The source's classification hierarchy (optional; from package.json "classNodes" or the sidecar file classification.json).</summary>
+    public List<CClassNode> ClassNodes { get; set; } = [];
     public List<CUser> Users { get; set; } = [];
 
     public static readonly JsonSerializerOptions Json = new()
@@ -95,6 +97,55 @@ public sealed class CUsage
     public string? Notes { get; set; }
     /// <summary>Raw source effectivity text. Effectivity loads with Phase 2a; until then it is preserved in the usage notes and reported.</summary>
     public string? Effectivity { get; set; }
+    /// <summary>
+    /// Structured source effectivity (serial, lot or date ranges inside a source end item). One line may carry several ranges; each becomes one Keel line (an alternate of the same
+    /// find number). Loaded only when the mapping enables effectivity; otherwise it is rendered into the usage notes.
+    /// </summary>
+    public List<CEffectivity> EffectivityRanges { get; set; } = [];
+}
+
+/// <summary>A source effectivity range as the source spells it; the mapping decides the Keel context, block names and date handling.</summary>
+public sealed class CEffectivity
+{
+    /// <summary>"serial", "lot" or "date" (case-insensitive).</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>The source end item or effectivity unit (for example a Teamcenter end item or Windchill product/serial scope); null for dates.</summary>
+    public string? Unit { get; set; }
+    /// <summary>First unit: a whole number, a lot/block name, or an ISO 8601 date or date-time (read as UTC).</summary>
+    public string? From { get; set; }
+    public string? To { get; set; }
+    /// <summary>"openEnded" (no upper end whatever <see cref="To"/> says) or "stockOut"/empty (<see cref="To"/> is the last unit), as in PLM XML.</summary>
+    public string? EndCondition { get; set; }
+}
+
+/// <summary>A class of the staged classification hierarchy (format keel-classification/1, docs/migration/classification-format.md).</summary>
+public sealed class CClassNode
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    public string? Parent { get; set; }
+    public int SortOrder { get; set; }
+    public string Status { get; set; } = "active";
+    public List<CClassAttribute> Attributes { get; set; } = [];
+}
+
+public sealed class CClassAttribute
+{
+    public string Name { get; set; } = "";
+    public string? Label { get; set; }
+    public string DataType { get; set; } = "string";
+    public string? Unit { get; set; }
+    public List<string>? EnumValues { get; set; }
+    public bool Required { get; set; }
+    public int? MaxLength { get; set; }
+    public string? Pattern { get; set; }
+    public decimal? Min { get; set; }
+    public decimal? Max { get; set; }
+    public string? HelpText { get; set; }
+    public string? Group { get; set; }
+    public int SortOrder { get; set; }
+    public bool Retired { get; set; }
 }
 
 public sealed class CDocLink

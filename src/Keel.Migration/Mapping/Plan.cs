@@ -20,6 +20,10 @@ public sealed class ReferenceData
     public Dictionary<string, HashSet<string>> LifecycleStates { get; init; } = new(StringComparer.Ordinal);
     public Dictionary<string, AttributeDef> PartAttributes { get; init; } = new(StringComparer.Ordinal);
     public Dictionary<string, (string Sub, string Username)> Directory { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Classes that exist in Keel (code to definition); empty when classification is not loaded or the data comes from the offline defaults.</summary>
+    public Dictionary<string, ClassDefinition> Classes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Effectivity contexts that exist in Keel (id to named blocks).</summary>
+    public Dictionary<string, Dictionary<string, int>> EffectivityContexts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
     public static readonly string[] PartTypes = ["Assembly", "Component", "Standard", "RawMaterial"];
     public static readonly string[] DocumentTypes = ["Specification", "Drawing", "CAD", "Report", "Procedure", "Other"];
@@ -45,9 +49,21 @@ public sealed class ReferenceData
         },
     };
 
-    public static async Task<ReferenceData> LoadAsync(NpgsqlDataSource ds, CancellationToken ct)
+    public static async Task<ReferenceData> LoadAsync(NpgsqlDataSource ds, CancellationToken ct, IClassificationLoader? classification = null)
     {
         var rd = new ReferenceData { FromDatabase = true };
+        await using (var c = ds.CreateCommand("SELECT c.id, b.name, b.number FROM cfg.effectivity_context c LEFT JOIN cfg.effectivity_block b ON b.context_id = c.id"))
+        await using (var r = await c.ExecuteReaderAsync(ct))
+            while (await r.ReadAsync(ct))
+            {
+                if (!rd.EffectivityContexts.TryGetValue(r.GetString(0), out var blocks)) rd.EffectivityContexts[r.GetString(0)] = blocks = new(StringComparer.OrdinalIgnoreCase);
+                if (!r.IsDBNull(1)) blocks[r.GetString(1)] = r.GetInt32(2);
+            }
+        if (classification is not null)
+        {
+            await using var conn = await ds.OpenConnectionAsync(ct);
+            foreach (var d in await classification.LoadDefinitionsAsync(conn, null, ct)) rd.Classes[d.Code] = d;
+        }
         await using (var c = ds.CreateCommand("SELECT lifecycle_id, state FROM plm.lifecycle_state"))
         await using (var r = await c.ExecuteReaderAsync(ct))
             while (await r.ReadAsync(ct))
@@ -74,6 +90,14 @@ public sealed class Plan
     public List<PDocument> Documents { get; set; } = [];
     public List<PChange> Changes { get; set; } = [];
     public List<ClassAssignmentPlan> Classifications { get; set; } = [];
+    /// <summary>Classes the load creates, parents first (dry-run reports exactly these).</summary>
+    public List<PClassNode> ClassesToCreate { get; set; } = [];
+    /// <summary>Serial numbers per Keel context chosen from the data for the reconciliation's as-of-serial explosion check.</summary>
+    public SortedDictionary<string, List<long>> EffectivitySerials { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>BOM lines (rows) that carry a serial effectivity range after mapping.</summary>
+    public int EffectivityLines { get; set; }
+    /// <summary>Per Keel class code: how many part iterations will carry it.</summary>
+    public SortedDictionary<string, long> ClassIterations { get; set; } = new(StringComparer.Ordinal);
     public List<Problem> Problems { get; set; } = [];
     /// <summary>(entity type, top-level source id) of every object with at least one error: these are not imported.</summary>
     public HashSet<string> Failed { get; set; } = new(StringComparer.Ordinal);
@@ -100,7 +124,15 @@ public sealed class ExistingKeys
 
 public sealed record DefaultedMarking(string EntityType, string SourceId, string Number, string Banner);
 public sealed record RevisionMapEntry(string ItemNumber, string SourceLabel, string KeelLabel, int Position);
-public sealed record ClassAssignmentPlan(string ItemSourceId, string PartNumber, string ClassCode, Dictionary<string, string?> Attributes);
+public sealed record ClassAssignmentPlan(string ItemSourceId, string PartNumber, string ClassCode, Dictionary<string, string?> Attributes)
+{
+    /// <summary>The Keel class (after class mapping) and the validated, canonical values; null when the assignment is only staged or failed.</summary>
+    public string? KeelClassCode { get; set; }
+    public string? AttributesJson { get; set; }
+}
+
+/// <summary>A class the load would create: from the staged hierarchy, not yet in Keel.</summary>
+public sealed record PClassNode(string Code, string Name, string? Description, string? ParentCode, int SortOrder, IReadOnlyList<AttributeSpec> Attributes);
 
 public sealed class PPart
 {
@@ -141,6 +173,11 @@ public sealed class PIteration
     public string Description { get; set; } = "";
     public string AttributesJson { get; set; } = "{}";
     public string LegacyJson { get; set; } = "{}";
+    /// <summary>Keel class the iteration is frozen with (classification.load), with its validated values.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ClassCode { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ClassAttributesJson { get; set; }
     public List<PUsage> Usages { get; set; } = [];
     public List<PLink> Links { get; set; } = [];
 }
@@ -153,6 +190,9 @@ public sealed class PUsage
     public int FindNumber { get; set; }
     public List<string> Designators { get; set; } = [];
     public string? Notes { get; set; }
+    /// <summary>Effectivity range of this line (an alternate of its find number); null = applies to every unit.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EffectivityRange? Effectivity { get; set; }
 }
 
 public sealed class PLink

@@ -22,6 +22,7 @@ internal sealed class MigrationKit : IDisposable
     public required PostgresAuditLog Audit { get; init; }
     public required MigrationPipeline Pipeline { get; init; }
     public required string Root { get; init; }
+    public required Keel.Admin.ClassificationService Classes { get; init; }
     public PartService Parts => new(Ds, Audit, TimeProvider.System, [new BomParticipant()]);
 
     public static async Task<MigrationKit> Create(PostgresFixture pg)
@@ -32,7 +33,9 @@ internal sealed class MigrationKit : IDisposable
         var vault = new ObjectVault(await VaultContainer.OptionsAsync());
         var root = Path.Combine(Path.GetTempPath(), "keel-mig-it-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        return new MigrationKit { Db = db, Ds = ds, Vault = vault, Audit = audit, Pipeline = new MigrationPipeline(ds, audit, new VaultContentStore(vault), TimeProvider.System), Root = root };
+        var classes = new Keel.Admin.ClassificationService(new Keel.Admin.AdminRunner(ds, audit, TimeProvider.System), audit);
+        var pipeline = new MigrationPipeline(ds, audit, new VaultContentStore(vault), TimeProvider.System, new Keel.Admin.MigrationClassificationLoader(classes));
+        return new MigrationKit { Db = db, Ds = ds, Vault = vault, Audit = audit, Pipeline = pipeline, Root = root, Classes = classes };
     }
 
     public void Dispose()

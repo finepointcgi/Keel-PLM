@@ -22,7 +22,9 @@
 | `ExternalFile` | one file | `locationRef` (path in the package), optional `format` (media type when it contains `/`), `sha256`, `size` |
 | `Form` | extra properties | `id`, `name`, `UserData`; values become properties `form:<name>.<title>` of every iteration that references the form |
 | `Person` | user | `userName`, `name`, `Role` children / `role` attribute |
-| `Header`, `Transform`, `Bound`, `ConfigurationContext`, `Representation`, `View`, `Site` | **ignored, counted** | geometry and presentation: not migrated |
+| `SerialNumberEffectivity`, `LotEffectivity`, `DateEffectivity` | an effectivity range, see [Effectivity](#effectivity) | `id`, `contextRef`, `start`, `end`, `endCondition` |
+| `ConfigurationContext` | **ignored as a configuration, counted**; its `name` resolves the `contextRef` of an effectivity | `id`, `name` |
+| `Header`, `Transform`, `Bound`, `Representation`, `View`, `Site` | **ignored, counted** | geometry and presentation: not migrated |
 | anything else | **unknown**: counted, first path recorded; when it is inside a Product, ProductRevision, ProductInstance or DataSet its XML (up to 16 KB) is preserved as property `xml:<Name>[n]` | |
 
 ## UserData / UserValue conventions (our assumption)
@@ -33,7 +35,7 @@
 | Product / ProductRevision | `creation_date` (ISO 8601), `owning_user` | created at / by |
 | Product | `uom` or `unit`, `make_buy` | unit of measure, make/buy |
 | ProductRevision | `sequence_id`, `comment` | iteration number (Teamcenter's revision sequence id) and its comment; without `sequence_id`, iterations are numbered 1, 2, ... in file order |
-| ProductInstance (`type="Occurrence"` or plain) | `sequence_no` or `find_number`, `unit` or `uom`, `reference_designators` (comma/semicolon separated), `notes`, `effectivity` | BOM line fields. Effectivity is **not loaded** (Phase 2a); its text is preserved in the line's notes and reported. |
+| ProductInstance (`type="Occurrence"` or plain) | `sequence_no` or `find_number`, `unit` or `uom`, `reference_designators` (comma/semicolon separated), `notes`, `effectivity` | BOM line fields. `effectivity` is free text: it is kept in the line's notes (and reported); structured effectivity is read from `effectivityRefs` (below). |
 | DataSet | `sha256`, `size_bytes`, `media_type` | applied to the first ExternalFile |
 
 Special `UserData` types on a ProductRevision:
@@ -43,13 +45,23 @@ Special `UserData` types on a ProductRevision:
 | `ReleaseStatus` | `name`, `date_released`, `user` | one lifecycle status; several allowed, ordered by date; the last is the current state |
 | `DocumentLink` | `document` (Product id or number), `type` (`describes` or `references`), `revision` (source label, optional) | part-document link of that iteration |
 | `ChangeAffected` | `item`, `revision`, `resulting_revision`, `action` (`revise`, `obsolete`, `none`) | affected object of a change |
-| `Classification` | `class` + any attributes | classification assignment (staged, not loaded: Phase 2b) |
+| `Classification` | `class` + any attributes | classification assignment (loaded with `classification.load`; the sample writer puts it on the last revision element of the item; a repeated identical assignment on several revision elements counts once). The hierarchy comes from `classification.json` ([classification-format.md](classification-format.md#migration)). |
 
 For change Products, `change_class`, `priority`, `reason` and `parent` (the source change this one descends from) are read from the revision's properties.
+
+## Effectivity {#effectivity}
+Public schema (see [sources.md](sources.md)): `Effectivity` is an abstract element with the concrete types `SerialNumberEffectivity` (attributes `start` and `end` as strings, `endCondition` `stockOut` or `openEnded`), `DateEffectivity` (`start` and `end` as `xsd:dateTime`, `endCondition`) and `LotEffectivity` (derived from the same base; its own attributes were not documented where we looked, so **we assume `start`, `end` and `endCondition` as for serial numbers**). All carry `id` and an optional `contextRef`, which limits an effectivity to a Structure, StructureRevision or ConfigurationContext.
+
+What our reader does with it (the parts marked **assumed** are not in the public documentation and must be confirmed with real exports):
+* The three elements are read as top-level elements. `contextRef` names the end item: when it refers to a `ConfigurationContext` of the package, that element's `name` is the end item, otherwise the reference text is. Dates have no end item.
+* A `ProductInstance` lists its ranges in an `effectivityRefs` attribute (IDREFS). **Assumed:** the public schema documents `effectivityRefs` on `ReleaseStatus` and revision types; its use on instances is our convention. Several refs make several ranges; lines that share a find number are alternates.
+* `endCondition="openEnded"`: no upper end (an `end` value is ignored with a warning). `stockOut` or absent: `end` is the last unit. **Assumed:** a date `end` is inclusive of its UTC day.
+* Revision-level effectivity (`ReleaseStatus/@effectivityRefs`) is not read; it is not migrated (FUP-3).
+* Mapping: end items to Keel contexts, block names to lots, UTC day handling: [mapping-reference.md](mapping-reference.md#effectivity).
 
 ## Documents and datasets
 * A `Product` with a document `subType` is a document; its datasets' files belong to the iteration of the `ProductRevision` that lists them. The first file of the first dataset is the primary file; the others are attachments.
 * **Decision (MIG-14):** a dataset attached to a *part* revision (a CAD file on an item) becomes a synthetic document numbered `<part number>-FILES` (type Other, same markings inputs as the part) and the part iteration gets a `describes` link to it. Nothing is lost, but the structure is ours: check it against real exports.
 
 ## Not supported (reported, not guessed)
-Variants and configuration contexts, product views other than the structure view, occurrence transforms and positions (ignored), classification import beyond staging, workflow objects, markup, access-control lists, multi-site references.
+Variants and configuration contexts beyond naming an effectivity's end item, product views other than the structure view, occurrence transforms and positions (ignored), classification beyond the `Classification` UserData above, workflow objects, markup, access-control lists, multi-site references.

@@ -30,16 +30,18 @@
 | Iterations | the original iteration sequence, author, time, comment, description; attributes mapped to Keel attribute definitions; every other property in `legacy_properties` |
 | Lifecycle | the current state is loaded directly (Released revisions arrive locked with their original release date and user); the source's full state history is kept in the revision's `legacy_properties`. Under Review is imported without a workflow instance (warning). |
 | BOM | usage lines on the correct parent iteration (quantity, unit, find number, reference designators); find numbers are assigned when missing (counted) |
+| Effectivity | with `effectivity.load`: structured serial, lot and date ranges become real line effectivity (alternates of one find number, ordinals in range order); text-only effectivity stays in the line notes ([mapping-reference.md](mapping-reference.md#effectivity)) |
 | Files | streamed into the vault, content-addressed, SHA-256 verified against the package (computed and reported when the source gives none) |
 | Part-document links | `describes` pinned to the matching document revision, `references` to the master |
 | Change history | PR / ECR / ECN as historical records: state and class as in the source, affected and resulting objects, the PR -> ECR -> ECN chain, original dates and authors; flagged by `imported_batch_id` and a history entry "migrated record, signatures not reproduced"; no workflow instances, no tasks, no signatures |
 | Users | names only, mapped to Keel usernames (or the flagged fallback user `migration`); the original name stays in `legacy_properties` |
 | Markings | from your rules, fail closed |
-| Classification | staged and counted, not loaded (Phase 2b) |
+| Classification | with `classification.load`: missing classes are created from the staged hierarchy (`classification.json`), existing classes are never changed, and the class and its values are written onto the part iterations before their revision is locked, in the same rows native check-in writes ([classification-format.md](classification-format.md#migration)) |
 
 ## What is NOT migrated yet
-* **Effectivity** until Phase 2a is merged: source effectivity text on BOM lines is preserved in the line's notes and reported (`effectivity-preserved-in-notes`).
-* **Classification** until Keel.Admin (Phase 2b) provides services: assignments are staged and counted; `IClassificationLoader` throws `NotSupportedException` naming the phase.
+* **Revision-level effectivity** (the effectivity a change notice gives a released revision): no supported source format specifies it, so `effectivity.revisionLevel: true` is refused with `NotSupportedException` (FUP-3). Line effectivity is migrated; see the mapping reference.
+* **Effectivity and classification are opt-in** (`effectivity.load`, `classification.load`): with the options off, source effectivity text stays in the line notes (`effectivity-preserved-in-notes`) and class assignments are only staged and counted (`CLASS-STAGED`).
+* **Class hierarchy deltas**: an import creates missing classes but never moves, retires or alters existing ones (conflicts are reported); effectivity contexts are never created by an import (create them in Administration first).
 * **Workflow history and signatures** (Teamcenter workflow tasks, Windchill workflow history): not reproduced, by design; imported changes carry the "signatures not reproduced" flag.
 * **Change tasks.**
 * **Intermediate lifecycle states and iteration-level states:** only the current state is loaded (history kept in `legacy_properties`).
@@ -81,7 +83,7 @@ Synthetic samples are not a substitute. Please provide **sanitized** (markings-r
 5. Users and groups, and the list of custom attributes with types.
 6. A large extract for a performance check.
 
-**Both:** which scope is to be migrated (all released data, active programs, a date cut-off), whether Phase 2a effectivity and Phase 2b classification data must come along, the parallel-run and cutover plan, and who signs off the markings rules.
+**Both:** which scope is to be migrated (all released data, active programs, a date cut-off), whether line effectivity (serial, lot, date ranges per end item) and classification (hierarchy, assignments, attribute values) must come along, the parallel-run and cutover plan, and who signs off the markings rules.
 
 ## Measured behavior
 Numbers measured on the development machine (Apple silicon, Docker Postgres 17 on tmpfs and SeaweedFS): 10,000 parts, 18,000 revisions, 26,000 iterations, 40,000 BOM lines and 500 files load in about 33 s (about 3,000 rows per second), the dry-run takes about 32 s, parsing and mapping 0.7 s, reconciliation 0.5 s. Details and caveats: [../increments/3.0-migration.md](../increments/3.0-migration.md). Real throughput depends on your database host, the vault and the size of the files.

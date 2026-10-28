@@ -13,7 +13,7 @@ namespace Keel.Migration.Mapping;
 /// codes and fix hints. Pure (no database, no clock): the same package and mapping always give the same plan, which is what the dry-run
 /// report hash relies on. An object with an error is listed in <see cref="Plan.Failed"/> and is never loaded.
 /// </summary>
-public sealed class Mapper(MappingConfig cfg, ReferenceData rd, PackageManifest manifest)
+public sealed partial class Mapper(MappingConfig cfg, ReferenceData rd, PackageManifest manifest)
 {
     /// <summary>Keel numbers that belong to other objects; a source number among them is a collision.</summary>
     public ExistingKeys Existing { get; init; } = new();
@@ -99,6 +99,7 @@ public sealed class Mapper(MappingConfig cfg, ReferenceData rd, PackageManifest 
         }
         foreach (var u in cfg.Users.Map.Values.Concat(cfg.Users.Default is null ? [] : [cfg.Users.Default]))
             if (string.IsNullOrWhiteSpace(u)) E("MAP-USER", "User mapping targets must not be empty.");
+        ValidateClassificationAndEffectivityConfig(cfg, rd, E);
         if (cfg.Limits.MaxPropertyValueChars < 1 || cfg.Limits.MaxLegacyJsonChars < 1 || cfg.Limits.MaxUsagesPerIteration < 1) E("MAP-LIMITS", "Limits must be positive.");
         return p;
     }
@@ -133,19 +134,15 @@ public sealed class Mapper(MappingConfig cfg, ReferenceData rd, PackageManifest 
         var srcItems = pkg.Items.GroupBy(d => d.SourceId).Select(g => g.First()).ToDictionary(i => i.SourceId, StringComparer.Ordinal);
         foreach (var i in srcItems.Values) { var pp = MapPart(i); if (pp is not null) partIds[i.SourceId] = pp; }
 
+        MapClassification(pkg, srcItems, partIds);
         CheckNumbers(pkg);
         CheckStructures(srcItems, partIds, docIds);
         Cascade(partIds, docIds);
+        FinishClassification(partIds);
+        FinishEffectivity(partIds);
         _plan.Parts = partIds.Values.OrderBy(p => p.Number, StringComparer.Ordinal).ToList();
         _plan.Documents = docIds.Values.OrderBy(p => p.Number, StringComparer.Ordinal).ToList();
         MapChanges(pkg, srcItems, partIds);
-        foreach (var c in pkg.Classifications)
-        {
-            if (!partIds.TryGetValue(c.ItemSourceId, out var part)) { Warn("classification", c.ItemSourceId, "CLASS-ITEM-MISSING", $"Classification '{c.ClassCode}' refers to item '{c.ItemSourceId}', which is not planned for import; it is skipped."); continue; }
-            _plan.Classifications.Add(new ClassAssignmentPlan(c.ItemSourceId, part.Number, c.ClassCode, c.Attributes));
-        }
-        if (_plan.Classifications.Count > 0)
-            Warn("classification", "*", "CLASS-STAGED", $"{_plan.Classifications.Count} classification assignments are staged but not loaded: classification services arrive with Phase 2b (Keel.Admin).");
         return _plan;
     }
 
@@ -531,32 +528,7 @@ public sealed class Mapper(MappingConfig cfg, ReferenceData rd, PackageManifest 
                 pi.LegacyJson = LegacyJson(T, id, new { createdBy = it.CreatedBy }, it.Properties);
                 contexts.Add(Overlay(Merge(o.Properties, r.Properties, it.Properties), Virtual(o)));
                 if (it.Usages.Count > cfg.Limits.MaxUsagesPerIteration) Err(T, id, "BOM-TOO-MANY", $"{o.Number} {r.Label}.{it.Sequence} has {it.Usages.Count} BOM lines (limit {cfg.Limits.MaxUsagesPerIteration}).");
-                var usedFind = it.Usages.Where(u => u.FindNumber is > 0).Select(u => u.FindNumber!.Value).ToList();
-                var dupFind = usedFind.GroupBy(x => x).FirstOrDefault(g => g.Count() > 1);
-                if (dupFind is not null) Err(T, id, "BOM-DUP-FIND", $"{o.Number} {r.Label}.{it.Sequence}: find number {dupFind.Key} is used {dupFind.Count()} times.", "Renumber in the source; find numbers are unique per parent iteration.");
-                var nextFind = (usedFind.Count == 0 ? 0 : usedFind.Max()) + 1;
-                var designators = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var u in it.Usages)
-                {
-                    var pu = new PUsage { ChildSourceId = u.ChildSourceId, Quantity = u.Quantity, Designators = u.ReferenceDesignators, Unit = u.Unit ?? "" };
-                    var where = $"{o.Number} {r.Label}.{it.Sequence} -> {u.ChildSourceId}";
-                    if (u.Quantity <= 0) Err(T, id, "BOM-QTY", $"{where}: quantity {u.Quantity} must be greater than 0.");
-                    if (u.FindNumber is { } f && f <= 0) Err(T, id, "BOM-FIND", $"{where}: find number must be positive.");
-                    pu.FindNumber = u.FindNumber is > 0 ? u.FindNumber.Value : nextFind++;
-                    if (u.FindNumber is null) Decide("find-number-assigned");
-                    foreach (var d in u.ReferenceDesignators)
-                        if (!designators.Add(d)) Err(T, id, "BOM-DUP-DESIGNATOR", $"{where}: reference designator '{d}' is used twice under one parent iteration.");
-                    var unitText = u.Unit is null ? null : UnitFor(u.Unit, T, id, where);
-                    pu.Unit = unitText ?? "";
-                    pu.Notes = u.Notes;
-                    if (!string.IsNullOrWhiteSpace(u.Effectivity))
-                    {
-                        var note = (u.Notes is null ? "" : u.Notes + " | ") + "Source effectivity (not loaded, Phase 2a): " + u.Effectivity;
-                        pu.Notes = note.Length > 1000 ? note[..1000] : note;
-                        Decide("effectivity-preserved-in-notes");
-                    }
-                    pi.Usages.Add(pu);
-                }
+                MapUsages(o, r, it, pi, id, T);
                 foreach (var l in it.DocLinks) pi.Links.Add(new PLink { Type = l.Type, DocumentSourceId = l.DocumentSourceId, DocumentRevisionLabel = l.DocumentRevisionLabel });
                 pr.Iterations.Add(pi);
             }

@@ -93,7 +93,8 @@ public sealed class AdminTests(E2EFixture fx)
 
             // ---- search by class and attribute
             await session.GotoAsync(alice, "/parts/classification");
-            await ap.GetByRole(AriaRole.Treeitem, new PageGetByRoleOptions { Name = "Fasteners" }).ClickAsync();
+            // The seeded demo tree also has a class named "Fasteners" (code FASTENERS): pick the one this test created by its code.
+            await ap.GetByRole(AriaRole.Treeitem, new PageGetByRoleOptions { NameRegex = new System.Text.RegularExpressions.Regex(@"^Fasteners FAST \d") }).ClickAsync();
             await Expect(ap.Locator("table.data tbody")).ToContainTextAsync(part);
             await BrowserSession.FillAsync(ap.GetByLabel("From", new PageGetByLabelOptions { Exact = true }), "5");
             await BrowserSession.FillAsync(ap.GetByLabel("To", new PageGetByLabelOptions { Exact = true }), "10");

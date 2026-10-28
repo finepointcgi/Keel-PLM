@@ -1,10 +1,12 @@
 using System.Text.Json;
 using Keel.Audit;
+using Keel.Admin;
 using Keel.Bom;
 using Keel.Change;
 using Keel.Core;
 using Keel.Documents;
 using Keel.Documents.Vault;
+using Keel.Integration;
 using Keel.Parts;
 using Keel.Workflow;
 using Microsoft.Extensions.Configuration;
@@ -55,8 +57,9 @@ public sealed record SeedSettings(string AppConnectionString, VaultOptions Vault
 public sealed class SeedHost : IAsyncDisposable
 {
     private readonly ServiceProvider _services;
+    private readonly string? _tempDirectory;
 
-    private SeedHost(ServiceProvider services) => _services = services;
+    private SeedHost(ServiceProvider services, string? tempDirectory) { _services = services; _tempDirectory = tempDirectory; }
 
     public NpgsqlDataSource DataSource => _services.GetRequiredService<NpgsqlDataSource>();
     public PartService Parts => _services.GetRequiredService<PartService>();
@@ -67,6 +70,13 @@ public sealed class SeedHost : IAsyncDisposable
     public WorkflowService Workflow => _services.GetRequiredService<WorkflowService>();
     public UserDirectory Directory => _services.GetRequiredService<UserDirectory>();
     public ObjectVault Vault => _services.GetRequiredService<ObjectVault>();
+    public ClassificationService Classification => _services.GetRequiredService<ClassificationService>();
+    public BaselineService Baselines => _services.GetRequiredService<BaselineService>();
+    public EffectivityService Effectivity => _services.GetRequiredService<EffectivityService>();
+    public MbomService Mbom => _services.GetRequiredService<MbomService>();
+    public TdpService Tdp => _services.GetRequiredService<TdpService>();
+    public IntegrationAdminService IntegrationAdmin => _services.GetRequiredService<IntegrationAdminService>();
+    public OutboxQueries Outbox => _services.GetRequiredService<OutboxQueries>();
 
     public static SeedHost Create(SeedSettings settings)
     {
@@ -87,7 +97,25 @@ public sealed class SeedHost : IAsyncDisposable
         services.AddSingleton<ILinkedDocumentProvider, LinkedDocumentProvider>();
         ChangeModule.AddKeelChange(services);
         services.AddKeelWorkflow(new ConfigurationBuilder().Build());
-        return new SeedHost(services.BuildServiceProvider());
+        // Phase 2 and 4 modules, registered like the API host (the seed goes through the real services). The ERP outbox sink is registered, so releases
+        // write events; no dispatcher runs here and no webhook sink is created. The TDP signing key and the file-drop root are throwaway: a temp directory
+        // that disappears with the seed (the demo host configures its own).
+        var temp = Path.Combine(Path.GetTempPath(), "keel-seed-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(temp);
+        using (var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256))
+            File.WriteAllText(Path.Combine(temp, "tdp-signing.pem"), key.ExportPkcs8PrivateKeyPem());
+        var integration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Keel:Integration:FileDropRoot"] = Path.Combine(temp, "drop"),
+            ["Keel:Integration:TdpSigningKeyPath"] = Path.Combine(temp, "tdp-signing.pem"),
+        }).Build();
+        System.IO.Directory.CreateDirectory(Path.Combine(temp, "drop"));
+        services.AddSingleton<IDocumentPinProvider, DocumentPinProvider>();
+        AdminModule.AddKeelAdmin(services);
+        services.AddSingleton<ITdpPartSource, PartTdpSource>();
+        services.AddSingleton<ITdpDocumentSource, TdpDocumentSource>();
+        IntegrationModule.AddKeelIntegration(services, integration);
+        return new SeedHost(services.BuildServiceProvider(), temp);
     }
 
     /// <summary>Records the realm users in <c>identity.user_directory</c>, the same upsert the application runs at sign-in.</summary>
@@ -109,7 +137,14 @@ public sealed class SeedHost : IAsyncDisposable
         return (long)(await cmd.ExecuteScalarAsync())!;
     }
 
-    public async ValueTask DisposeAsync() => await _services.DisposeAsync();
+    /// <summary>Events in the outbox as an administrator sees them (through the service, not a table read).</summary>
+    public async Task<long> OutboxCountAsync(Subject admin) => (await Outbox.ListForAdminAsync(admin, null, null, null, 1000, null)).Must("list the outbox").Count;
+
+    public async ValueTask DisposeAsync()
+    {
+        await _services.DisposeAsync();
+        if (_tempDirectory is not null) try { System.IO.Directory.Delete(_tempDirectory, true); } catch (IOException) { }
+    }
 }
 
 /// <summary>A seed step failed through a service: the message carries the service's own reasons.</summary>

@@ -18,7 +18,8 @@ public sealed class MbomTests(E2EFixture fx)
         await using var session = new BrowserSession(fx, nameof(An_mbom_is_generated_from_the_ebom_reconciled_and_read_side_by_side));
         await session.RunAsync(async () =>
         {
-            var top = fx.Manifest.TopAssembly;
+            // The seed already holds MBOMs of the pod and of the drive module (PLANT-A); the gimbal assembly has none, so the wizard has something to generate.
+            var top = fx.Manifest.GimbalAssembly;
             var alice = await session.SignInAsync("alice");
             var page = alice.Page;
 

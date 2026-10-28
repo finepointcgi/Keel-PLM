@@ -49,6 +49,8 @@ public sealed record DemoManifest
     public bool AuditChainValid { get; set; }
     public long AuditEventsChecked { get; set; }
     public IReadOnlyList<string> AuditFailures { get; set; } = [];
+    /// <summary>Classification, baselines, effectivity, MBOMs, TDP export and integration administration data (FUP-4).</summary>
+    public DemoExtras? Extras { get; set; }
 }
 
 /// <summary>
@@ -56,7 +58,7 @@ public sealed record DemoManifest
 /// review, signature, change object and task is authorized, validated and audited exactly like a click in the UI. The one thing the seed
 /// does that a person would do through the identity provider is the fresh login: signers carry an <c>auth_time</c> of now.
 /// </summary>
-public sealed class DemoSeeder(SeedHost host, IReadOnlyDictionary<string, Subject> realmUsers, TextWriter log)
+public sealed partial class DemoSeeder(SeedHost host, IReadOnlyDictionary<string, Subject> realmUsers, TextWriter log)
 {
     private const string Reviewer = "ada";
     private const string Approver = "bob";
@@ -78,8 +80,10 @@ public sealed class DemoSeeder(SeedHost host, IReadOnlyDictionary<string, Subjec
 
         await CreatePartsAsync();
         await CreateDocumentsAsync();
+        await CreateClassificationTreeAsync();
         await BuildAndReleaseAsync();
         var changes = await CreateChangesAsync();
+        var extras = await RunExtrasAsync();
 
         var audit = await host.AuditEventCountAsync();
         return new DemoManifest
@@ -92,7 +96,7 @@ public sealed class DemoSeeder(SeedHost host, IReadOnlyDictionary<string, Subjec
             CadPlaceholder = _doc["cad-bracket"], TorqueStandard = _doc["std-torque"],
             ProblemReportEvaluating = changes.Pr1, ProblemReportOpen = changes.Pr2, EcrAwaitingCcb = changes.Ecr1, EcrClassIIDraft = changes.Ecr2,
             EcnDraftInWork = changes.Ecn1, EcnUnderReview = changes.Ecn2, EcnRejected = changes.Ecn3, ChangeTasks = changes.Tasks,
-            Parts = _part.Count, Released = _released, Documents = _doc.Count, BomLines = _lines, Changes = _changes, Signatures = _signatures, AuditEvents = audit,
+            Parts = _part.Count, Released = _released, Documents = _doc.Count, BomLines = _lines, Changes = _changes, Signatures = _signatures, AuditEvents = audit, Extras = extras,
         };
     }
 
@@ -135,7 +139,8 @@ public sealed class DemoSeeder(SeedHost host, IReadOnlyDictionary<string, Subjec
             var number = _part[def.Key];
             var hasLines = DemoCatalog.Structure.TryGetValue(def.Key, out var lines);
             var hasLinks = DemoCatalog.Links.TryGetValue(def.Key, out var links);
-            if (hasLines || hasLinks)
+            var classify = DemoClassification.Assignments.ContainsKey(def.Key);
+            if (hasLines || hasLinks || classify)
             {
                 (await host.Parts.CheckOutAsync(author, number, Corr())).Must($"check out {number}");
                 if (hasLines)
@@ -147,7 +152,8 @@ public sealed class DemoSeeder(SeedHost host, IReadOnlyDictionary<string, Subjec
                 if (hasLinks)
                     foreach (var (doc, type) in links!)
                         (await host.Documents.AddLinkToWorkingCopyAsync(author, number, _doc[doc], type, null, Corr())).Must($"link {doc} to {number}");
-                (await host.Parts.CheckInAsync(author, number, hasLines ? "Structure and documents" : "Documents linked", Corr())).Must($"check in {number}");
+                if (classify) await ClassifyAsync(author, def.Key, number);
+                (await host.Parts.CheckInAsync(author, number, hasLines ? "Structure and documents" : hasLinks ? "Documents linked" : "Classified", Corr())).Must($"check in {number}");
             }
 
             switch (def.Fate)

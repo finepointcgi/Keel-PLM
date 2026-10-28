@@ -1,0 +1,333 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/mbom.released.v1.json",
+  "title": "mbom.released v1",
+  "description": "A manufacturing BOM revision of a part in a plant was released through the review workflow. Lines whose child part the event's markings do not cover are placeholders (restricted): find number, alternate, quantity and unit only.",
+  "type": "object",
+  "properties": {
+    "mbom": {
+      "type": "object",
+      "properties": {
+        "mbomId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "number": {
+          "type": "string"
+        },
+        "plant": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "iteration": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "const": "Released"
+        }
+      },
+      "required": [
+        "mbomId",
+        "number",
+        "plant",
+        "revision",
+        "iteration",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "part": {
+      "type": "object",
+      "properties": {
+        "partId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "number": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "partId",
+        "number",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "derivedFrom": {
+      "type": "object",
+      "properties": {
+        "ebomIteration": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spec": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ebomIteration",
+        "spec"
+      ],
+      "additionalProperties": false
+    },
+    "contentSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "reconciliation": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "runId",
+        "status",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "releasedAt": {
+      "type": "string"
+    },
+    "lineCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "restrictedLineCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "findNumber": {
+                "type": "integer"
+              },
+              "alternate": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "quantity": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "restricted": {
+                "const": true
+              }
+            },
+            "required": [
+              "findNumber",
+              "alternate",
+              "quantity",
+              "unit",
+              "restricted"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "findNumber": {
+                "type": "integer"
+              },
+              "alternate": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "quantity": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "restricted": {
+                "const": false
+              },
+              "child": {
+                "type": "object",
+                "properties": {
+                  "partId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "number": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "partType": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "partId",
+                  "number",
+                  "name",
+                  "partType",
+                  "source"
+                ],
+                "additionalProperties": false
+              },
+              "scrapFactor": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "phantom": {
+                "type": "boolean"
+              },
+              "supplyType": {
+                "type": "string"
+              },
+              "operationReference": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mbomOnly": {
+                "type": "boolean"
+              },
+              "referenceDesignators": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "notes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "effectivity": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ebomLinks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ebomFindNumber": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "matched",
+                        "quantity_adjusted",
+                        "substituted"
+                      ]
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ebomFindNumber",
+                    "status",
+                    "reason"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "childMbom": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "number": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "number",
+                      "revision"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "findNumber",
+              "alternate",
+              "quantity",
+              "unit",
+              "restricted",
+              "child",
+              "scrapFactor",
+              "phantom",
+              "supplyType",
+              "operationReference",
+              "mbomOnly",
+              "referenceDesignators",
+              "notes",
+              "effectivity",
+              "ebomLinks",
+              "childMbom"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "mbom",
+    "part",
+    "derivedFrom",
+    "contentSha256",
+    "reconciliation",
+    "releasedAt",
+    "lineCount",
+    "restrictedLineCount",
+    "lines"
+  ],
+  "additionalProperties": false
+}
