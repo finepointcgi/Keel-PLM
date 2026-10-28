@@ -1,0 +1,23 @@
+# ClamAV for upload scanning (ADR-0026). NOT RUN in this increment: the image was not pulled and this file was not started.
+# Use as an override of the production example:
+#   docker compose --env-file ../images.env --env-file .env -f compose.prod-example.yaml -f compose.clamav.yaml up -d
+# Image: clamav/clamav (Cisco Talos, GPL-2.0), pin by digest in your registry like the other images. Air gap: freshclam is OFF; load signature
+# databases (main.cvd, daily.cvd/cld, bytecode.cvd) from your offline mirror into the clamav-db volume and repeat that on your update cadence.
+# The link app -> clamd is plain TCP on the internal `backend` network (INSTREAM is not encrypted); see docs/ops/compliance-features.md.
+services:
+  clamav:
+    image: ${KEEL_CLAMAV_IMAGE:?pin clamav/clamav:<version>@sha256:<digest> in your registry}
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "true"        # no internet: signatures come from the offline mirror
+    volumes:
+      - clamav-db:/var/lib/clamav
+      - ./prod-example/clamd.conf:/etc/clamav/clamd.conf:ro
+    networks: [backend]
+  app:
+    depends_on:
+      clamav: { condition: service_started }
+volumes:
+  clamav-db:

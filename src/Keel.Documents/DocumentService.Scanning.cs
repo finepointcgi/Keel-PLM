@@ -155,18 +155,17 @@ public sealed partial class DocumentService
     /// <summary>Quarantines <paramref name="sha256"/> for every document that holds it; one audit event per newly flagged document. Returns how many were flagged.</summary>
     private async Task<long> QuarantineAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Subject subject, string sha256, string signature, string? correlationId, CancellationToken ct)
     {
-        var flagged = new List<string>();
+        var flagged = new List<Guid>();
         await using (var cmd = new NpgsqlCommand(
             """
             INSERT INTO plm.file_quarantine (master_id, sha256, signature, quarantined_at, quarantined_by)
-            SELECT DISTINCT m.id, @sha, @sig, @at, @by
+            SELECT DISTINCT r.master_id, @sha, @sig, @at, @by
             FROM plm.document_file f
             JOIN plm.document_iteration i ON i.id = f.iteration_id
             JOIN plm.document_revision r ON r.id = i.revision_id
-            JOIN plm.document_master m ON m.id = r.master_id
             WHERE f.sha256 = @sha
-              AND NOT EXISTS (SELECT 1 FROM plm.file_quarantine q WHERE q.master_id = m.id AND q.sha256 = @sha AND q.released_at IS NULL)
-            RETURNING (SELECT number FROM plm.document_master WHERE id = master_id)
+              AND NOT EXISTS (SELECT 1 FROM plm.file_quarantine q WHERE q.master_id = r.master_id AND q.sha256 = @sha AND q.released_at IS NULL)
+            RETURNING master_id
             """, conn, tx))
         {
             cmd.Parameters.AddWithValue("sha", sha256);
@@ -174,11 +173,17 @@ public sealed partial class DocumentService
             cmd.Parameters.AddWithValue("at", clock.GetUtcNow());
             cmd.Parameters.AddWithValue("by", subject.Id);
             await using var r = await cmd.ExecuteReaderAsync(ct);
-            while (await r.ReadAsync(ct)) flagged.Add(r.GetString(0));
+            while (await r.ReadAsync(ct)) flagged.Add(r.GetGuid(0));
         }
-        foreach (var number in flagged)
+        foreach (var masterId in flagged)
+        {
+            // The document number, a key lookup: an identifier for the audit trail, not a list over marked data.
+            await using var numberCmd = new NpgsqlCommand("SELECT number FROM plm.document_master WHERE id = @id", conn, tx);
+            numberCmd.Parameters.AddWithValue("id", masterId);
+            var number = (string)(await numberCmd.ExecuteScalarAsync(ct))!;
             await audit.AppendAsync(tx, Entry(subject, "document.quarantine", AuditOutcome.Success, number, correlationId,
                 ("sha256", sha256), ("signature", signature), ("source", "rescan")), ct);
+        }
         return flagged.Count;
     }
 

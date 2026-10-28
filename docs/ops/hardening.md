@@ -30,12 +30,14 @@ SCAP/OpenSCAP scans against your environment.
 | Key management | Audit checkpoint private key offline with two custodians; separate keys per environment; rotate by adding a new key and keeping every retired **public** key (`CheckpointPublicKeyPaths`). Database, vault and OIDC credentials rotate by replacing the secret files and restarting; the example `gen-secrets.sh` never overwrites existing secrets. Bundle signing key: the customer's own. |
 | IdP | CAC/PIV, MFA, account lockout, password policy, session policy and SSO lifetime are enforced by the IdP; Keel does not implement them (ADR-0007). Never reissue a user's `sub`. |
 | Patching cadence | Rebuild and rescan monthly on the UBI refresh, within 72 hours for critical CVEs in the image or the .NET runtime (proposal; set by the site's ISSM). Patching means a new signed bundle through `upgrade.sh`; PostgreSQL, vault, OS and Kubernetes follow the site's schedule. |
-| Logging | JSON logs with correlation ids on stdout; collect with the site log pipeline (RFC 5424 forwarding of audit events is Phase 5, A20). `/metrics` only from the monitoring network. |
+| Logging | JSON logs with correlation ids on stdout; collect with the site log pipeline (audit events: RFC 5424 over TLS or NDJSON file via `Keel:Siem`, see siem-onboarding.md). `/metrics` only from the monitoring network. |
+| ClamAV | Run clamd as a localhost sidecar or on a UNIX socket (INSTREAM is unencrypted); `StreamMaxLength` >= `MaxScanBytes`; carry signature databases in by the transfer process and reload; image `clamav/clamav` pinned by digest (not run here). |
+| SIEM | TLS 1.2+ collector with a certificate from the internal CA (mTLS recommended); retention and access separate from DB admins; alert on `siem.chain_break` and gaps (siem-onboarding.md). |
 | Backups | backup-restore.md; encrypted media; tested restores. |
 
 ## Known gaps in this increment
 - The UBI image was not built or scanned in this environment; scan it with the site scanner before accrediting.
-- Idle session lock (NIST 3.1.10) is not implemented beyond the 8 h absolute cookie lifetime (ADR-0014 note); IdP session policy applies.
-- No malware scanning of uploads (ADR-0015, Phase 5).
+- Idle session lock, upload malware scanning, vault garbage collection and SIEM forwarding are implemented (increment 5.0, compliance-features.md). Still the operator's: ClamAV signature updates, the SIEM, sticky sessions (the lock registry is in memory; database-backed is Phase 5).
+- Production must set `Keel__Vault__Scanning__Mode` (or `AcknowledgeUnscannedUploads`) and cannot set `Keel__Session__IdleLockMinutes=0`; hosts that start without them are refused.
 - Proxy-to-app hop is unencrypted by default (see above).
 - The compose example's PostgreSQL and proxy images are the tested open-source ones, not RHEL-based FIPS builds.

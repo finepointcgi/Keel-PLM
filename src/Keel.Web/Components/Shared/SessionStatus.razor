@@ -1,0 +1,50 @@
+@* The session hint, "Lock now", and the warning before the idle lock (ADR-0026). Display only: the idle clock and the lock are the server's. *@
+@implements IDisposable
+@inject SessionLockCoordinator Lock
+@inject TimeProvider Clock
+
+@if (Lock.AbsoluteExpiry is { } expiry)
+{
+    <span class="session-hint" data-session-hint>Session expires in @Remaining(expiry)</span>
+}
+@if (Lock.Enabled && Lock.View is { Phase: SessionPhase.Active } view)
+{
+    <button type="button" class="link" data-action="lock-now" @onclick="LockNowAsync">Lock now</button>
+    @if (view.WarningSecondsLeft(Clock.GetUtcNow()) is { } seconds)
+    {
+        <div class="session-warning" role="alert" aria-live="assertive" data-session-warning>
+            <span>Locking in @seconds s because there has been no activity.</span>
+            <button type="button" data-action="stay" @onclick="Stay">Stay signed in</button>
+        </div>
+    }
+}
+
+@code {
+    private ITimer? timer;
+
+    protected override void OnInitialized()
+    {
+        Lock.Changed += OnChanged;
+        // Once a second: the countdown of the warning and the minutes of the hint. Re-rendering an unchanged hint sends nothing to the browser.
+        timer = Clock.CreateTimer(_ => OnChanged(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private string Remaining(DateTimeOffset expiry)
+    {
+        var left = expiry - Clock.GetUtcNow();
+        if (left <= TimeSpan.Zero) return "0 min";
+        return left.TotalMinutes >= 1 ? $"{(int)Math.Ceiling(left.TotalMinutes)} min" : $"{(int)Math.Ceiling(left.TotalSeconds)} s";
+    }
+
+    private Task LockNowAsync() => Lock.LockNowAsync();
+
+    private void Stay() => Lock.ReportActivity();
+
+    public void Dispose()
+    {
+        Lock.Changed -= OnChanged;
+        timer?.Dispose();
+    }
+}

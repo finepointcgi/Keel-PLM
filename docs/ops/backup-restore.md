@@ -37,6 +37,9 @@ Three things must be backed up together, because the audit chain, the document r
   (interval 15 min by default); a restore that loses WAL beyond the last checkpoint loses those events, which is why WAL
   archiving matters.
 
+## SIEM cursor
+`siem.cursor` (forwarding position per destination) and `vault.pending_upload` / `vault.gc_run` are ordinary tables in the database backup; nothing else to save. After a restore the forwarder resumes from the restored cursor and re-sends events the SIEM already has (deduplicate on `seq`+`id`, siem-onboarding.md); if the restored cursor is ahead of the restored log, the tail check reports `tail_changed`: investigate, then replay or clear as described there. Scan results (`plm.file_scan`) and quarantines (`plm.file_quarantine`) are restored with the documents.
+
 ## Restore procedure
 1. Provision a fresh PostgreSQL server (same major version) and, if needed, a fresh vault bucket restored from replica.
 2. Unpack the base backup into an empty data directory; set `restore_command` to fetch archived WAL; create `recovery.signal`; for PITR

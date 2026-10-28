@@ -41,6 +41,9 @@ public sealed class E2EFixture : IAsyncLifetime
 
     private readonly List<IAsyncDisposable> _containers = [];
     private Process? _api;
+    private Process? _lockApi;
+    private Func<int, Dictionary<string, string>>? _envFor;
+    private string _apiBin = "";
     private IPlaywright? _playwright;
     private StreamWriter? _log;
     private string _workDir = "";
@@ -48,6 +51,14 @@ public sealed class E2EFixture : IAsyncLifetime
     public string RepoRoot { get; } = FindRepoRoot();
     public string ResultsDir => Path.Combine(RepoRoot, "TestResults", "e2e");
     public string BaseUrl { get; private set; } = "";
+    /// <summary>
+    /// A second host on the same database, vault and Keycloak with a short idle lock (12 s idle, 4 s warning, 24 s until a locked session ends),
+    /// started on first use so that the other tests, which idle for longer than that while they wait, are never locked.
+    /// </summary>
+    public string LockHostUrl { get; private set; } = "";
+    public const double LockIdleMinutes = 0.2;
+    public const int LockWarningSeconds = 4;
+    public const double LockTerminateMinutes = 0.4;
     public string IdpUrl { get; private set; } = "";
     public DemoManifest Manifest { get; private set; } = null!;
     public IBrowser Browser { get; private set; } = null!;
@@ -62,12 +73,14 @@ public sealed class E2EFixture : IAsyncLifetime
         try
         {
             var appPort = FreePort();
+            var lockPort = FreePort();
             BaseUrl = $"http://localhost:{appPort}";
+            LockHostUrl = $"http://localhost:{lockPort}";
 
             // Start the three containers side by side; they do not depend on each other.
             var postgres = StartPostgresAsync();
             var vault = StartVaultAsync();
-            var keycloak = StartKeycloakAsync(appPort);
+            var keycloak = StartKeycloakAsync(appPort, lockPort);
             await Task.WhenAll(postgres, vault, keycloak);
             var (appCs, migratorCs) = await postgres;
             var vaultOptions = await vault;
@@ -75,9 +88,11 @@ public sealed class E2EFixture : IAsyncLifetime
             Log($"Postgres, vault and Keycloak are up (idp {IdpUrl}).");
 
             var apiBin = ApiOutputDirectory();
+            _apiBin = apiBin;
             var keyPath = Path.Combine(_workDir, "checkpoint.pem");
             using (var key = CheckpointKeys.Generate()) await File.WriteAllTextAsync(keyPath, key.ExportPkcs8PrivateKeyPem());
-            var env = ApiEnvironment(appPort, appCs, migratorCs, vaultOptions, keyPath);
+            _envFor = port => ApiEnvironment(port, appCs, migratorCs, vaultOptions, keyPath);
+            var env = _envFor(appPort);
 
             await RunToCompletionAsync(apiBin, ["Keel.Api.dll", "--migrate"], env, "migrate");
             Log("Migrations applied.");
@@ -124,6 +139,11 @@ public sealed class E2EFixture : IAsyncLifetime
             try { _api.Kill(entireProcessTree: true); await _api.WaitForExitAsync(); } catch (InvalidOperationException) { }
         }
         _api?.Dispose();
+        if (_lockApi is { HasExited: false })
+        {
+            try { _lockApi.Kill(entireProcessTree: true); await _lockApi.WaitForExitAsync(); } catch (InvalidOperationException) { }
+        }
+        _lockApi?.Dispose();
         if (AppDb is not null) await AppDb.DisposeAsync();
         foreach (var c in _containers) { try { await c.DisposeAsync(); } catch (Exception e) { Log("container cleanup: " + e.Message); } }
         _containers.Clear();
@@ -192,15 +212,16 @@ public sealed class E2EFixture : IAsyncLifetime
         }
     }
 
-    private async Task<string> StartKeycloakAsync(int appPort)
+    private async Task<string> StartKeycloakAsync(int appPort, int lockPort)
     {
         // The dev realm with this run's redirect URIs (the app port is random); everything else is the shipped realm, users included.
         var realm = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(RepoRoot, "deploy/compose/keycloak/keel-realm.json")))!;
         var client = realm["clients"]!.AsArray().Single(c => c!["clientId"]!.GetValue<string>() == "keel-web")!;
         var origin = $"http://localhost:{appPort}";
-        client["redirectUris"] = new JsonArray($"{origin}/signin-oidc");
-        client["webOrigins"] = new JsonArray(origin);
-        client["attributes"]!["post.logout.redirect.uris"] = $"{origin}/signout-callback-oidc";
+        var lockOrigin = $"http://localhost:{lockPort}";
+        client["redirectUris"] = new JsonArray($"{origin}/signin-oidc", $"{lockOrigin}/signin-oidc");
+        client["webOrigins"] = new JsonArray(origin, lockOrigin);
+        client["attributes"]!["post.logout.redirect.uris"] = $"{origin}/signout-callback-oidc##{lockOrigin}/signout-callback-oidc";
         var patched = Path.Combine(_workDir, "keel-realm.json");
         await File.WriteAllTextAsync(patched, realm.ToJsonString());
 
@@ -260,6 +281,36 @@ public sealed class E2EFixture : IAsyncLifetime
         _api.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (apiLog) apiLog.WriteLine("ERR " + e.Data); };
         _api.BeginOutputReadLine();
         _api.BeginErrorReadLine();
+    }
+
+    /// <summary>Starts the short-idle-lock host (once) and waits until it is ready.</summary>
+    public async Task EnsureLockHostAsync()
+    {
+        if (_lockApi is not null) return;
+        var port = int.Parse(LockHostUrl[(LockHostUrl.LastIndexOf(':') + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+        var env = _envFor!(port);
+        env["Keel__Session__IdleLockMinutes"] = LockIdleMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        env["Keel__Session__WarningSeconds"] = LockWarningSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        env["Keel__Session__LockedTerminateMinutes"] = LockTerminateMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        env["Keel__Session__ActivityThrottleSeconds"] = "1";
+        // The checkpoint timer of the main host is enough; keep the second host quiet.
+        _lockApi = Process.Start(NewStart(_apiBin, ["Keel.Api.dll"], env)) ?? throw new InvalidOperationException("Could not start the lock host.");
+        var log = new StreamWriter(Path.Combine(ResultsDir, "api-lock.log")) { AutoFlush = true };
+        _lockApi.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (log) log.WriteLine(e.Data); };
+        _lockApi.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (log) log.WriteLine("ERR " + e.Data); };
+        _lockApi.BeginOutputReadLine();
+        _lockApi.BeginErrorReadLine();
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_lockApi.HasExited) throw new InvalidOperationException($"The lock host exited with code {_lockApi.ExitCode}; see {Path.Combine(ResultsDir, "api-lock.log")}.");
+            try { if ((await http.GetAsync($"{LockHostUrl}/health/ready")).IsSuccessStatusCode) { Log("The lock host is ready."); return; } }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
+            await Task.Delay(500);
+        }
+        throw new TimeoutException("The lock host did not become ready within 90 seconds.");
     }
 
     private static ProcessStartInfo NewStart(string workDir, string[] args, Dictionary<string, string> env)

@@ -51,6 +51,19 @@ The chart refuses to render without the required values (also enforced by `value
 - **PodDisruptionBudget** (`minAvailable: 1`), optional **ServiceMonitor** (needs the Prometheus Operator CRDs; kubeconform skipped its
   schema), service account without token.
 
+## Malware scanning, SIEM and session settings (increment 5.0; NOT RUN on a cluster)
+The chart templates are unchanged by this increment; the new settings go in through `config.extraEnv` (plain) or the Secret (secrets). A production install (`requireFips: true`) is **refused at startup** unless scanning is configured or acknowledged:
+```yaml
+config:
+  extraEnv:
+    Keel__Vault__Scanning__Mode: Required
+    Keel__Vault__Scanning__Host: 127.0.0.1        # clamd as a sidecar in the same pod (loopback, no network exposure)
+    Keel__Session__IdleLockMinutes: "15"
+    # Keel__Siem__Enabled: "true" ... see docs/ops/siem-onboarding.md (certificates as files in the application Secret)
+```
+ClamAV image: `clamav/clamav` (pin by digest in the site registry; not pulled or run here). The chart has no `extraContainers` value yet, so add the sidecar by patching the Deployment (container `clamav`, image above, `CLAMAV_NO_FRESHCLAMD=true`,
+a volume with the offline signature databases, `clamd.conf` from `deploy/compose/prod-example/clamd.conf`), or run clamd as a separate Service and set `Host` plus `AllowRemotePlaintext: "true"` (and allow the egress in the NetworkPolicy; the link is unencrypted). The idle lock needs the cookie affinity annotations the chart already sets.
+
 ## Dev / test cluster
 `values-dev.yaml` (`dev.enabled=true`) adds throwaway in-cluster PostgreSQL and SeaweedFS with random credentials, no TLS and no
 persistence, and runs the migration as a plain per-revision Job that retries until the database is up. Use release name `keel`

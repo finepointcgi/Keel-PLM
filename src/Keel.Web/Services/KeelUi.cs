@@ -35,6 +35,11 @@ public static class KeelUi
     public const string CookieScheme = CookieAuthenticationDefaults.AuthenticationScheme;
     public const string OidcScheme = OpenIdConnectDefaults.AuthenticationScheme;
     public const string SessionExpiresClaim = "keel_session_expires";
+    /// <summary>Identifies one sign-in (kept across a step-up): the key of the idle lock, shared by every tab of the session (ADR-0026).</summary>
+    public const string SessionIdClaim = "keel_session_id";
+    /// <summary>Added to the circuit's principal while its session is locked.</summary>
+    public const string LockedClaim = "keel_session_locked";
+    public const string SessionEndedPath = "/account/session-ended";
     /// <summary>Authentication property marking an OIDC challenge as an e-signature step-up (prompt=login, max_age=0).</summary>
     public const string StepUpItem = "keel.step_up";
     public const string StepUpPath = "/account/step-up";
@@ -61,6 +66,16 @@ public static class KeelUi
             o.SlidingExpiration = false;
             o.ForwardChallenge = OidcScheme;
             o.AccessDeniedPath = "/access-denied";
+            // A session that was locked for too long is over (3.1.11): its cookie is refused and removed on the next request, whichever tab or client sends it.
+            o.Events.OnValidatePrincipal = async ctx =>
+            {
+                var registry = ctx.HttpContext.RequestServices.GetService<SessionLockRegistry>();
+                if (registry is { Enabled: true } && ctx.Principal?.FindFirst(SessionIdClaim)?.Value is { } id && registry.IsTerminated(id))
+                {
+                    ctx.RejectPrincipal();
+                    await ctx.HttpContext.SignOutAsync(CookieScheme);
+                }
+            };
         });
 
         auth.AddOpenIdConnect(OidcScheme, o =>
@@ -120,6 +135,8 @@ public static class KeelUi
 
         var expires = DateTimeOffset.UtcNow.Add(options.SessionLifetime).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
         var services = ctx.HttpContext.RequestServices;
+        var sessionId = Guid.NewGuid().ToString("N");
+        string? unlockSessionId = null;
         var fresh = SubjectClaims.FromPrincipal(ctx.Principal);
         if (ctx.Properties?.Items.ContainsKey(StepUpItem) == true)
         {
@@ -140,6 +157,8 @@ public static class KeelUi
             }
             // A step-up proves recent authentication; it does not extend the absolute session lifetime.
             expires = previous?.FindFirst(SessionExpiresClaim)?.Value ?? expires;
+            // The session keeps its identity across the step-up, so the lock of this session (and of every tab of it) can be released by it.
+            if (previous?.FindFirst(SessionIdClaim)?.Value is { Length: > 0 } carried) { sessionId = carried; unlockSessionId = carried; }
             if (fresh is not null && services.GetService<IAuditLog>() is { } log)
                 await log.AppendAsync(new AuditEntry
                 {
@@ -148,6 +167,10 @@ public static class KeelUi
                 });
         }
         identity.AddClaim(new Claim(SessionExpiresClaim, expires));
+        identity.AddClaim(new Claim(SessionIdClaim, sessionId));
+        // Re-authentication at the IdP (prompt=login, max_age=0, same subject: verified above) is what clears an idle lock (3.1.10, ADR-0026).
+        if (unlockSessionId is not null && services.GetService<SessionLockRegistry>() is { } locks)
+            await locks.UnlockAsync(unlockSessionId, "step-up");
         // The user directory learns who signed in (and their current attributes) for participant pickers (A50).
         if (fresh is not null && services.GetService<UserDirectory>() is { } directory) await directory.UpsertAsync(fresh);
     };
@@ -164,6 +187,23 @@ public static class KeelUi
         // session cookie (same subject required, see OnTokenValidated) and records the new auth_time.
         app.MapGet(StepUpPath, (string? returnUrl) => Results.Challenge(
             new AuthenticationProperties(new Dictionary<string, string?> { [StepUpItem] = "1" }) { RedirectUri = LocalReturnUrl(returnUrl) }, [OidcScheme])).AllowAnonymous();
+
+        // The end of a session that stayed locked too long: sign out here (cookie and IdP session) so the next visit needs a full login. Only a session the
+        // registry has terminated is signed out; anything else is sent home, so this cannot be used to log somebody out.
+        app.MapGet(SessionEndedPath, async (HttpContext ctx) =>
+        {
+            var registry = ctx.RequestServices.GetService<SessionLockRegistry>();
+            // The cookie of a terminated session no longer authenticates (OnValidatePrincipal), so read its ticket directly: it is ours (encrypted and signed
+            // with the host's data protection keys), and what matters is only whether its session is the one the registry ended.
+            var cookieOptions = ctx.RequestServices.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(CookieScheme);
+            var protectedTicket = ctx.Request.Cookies[cookieOptions.Cookie.Name ?? "keel.session"];
+            var principal = protectedTicket is null ? null : cookieOptions.TicketDataFormat.Unprotect(protectedTicket)?.Principal;
+            var id = principal?.FindFirst(SessionIdClaim)?.Value;
+            if (registry is null || id is null || !registry.IsTerminated(id)) return Results.Redirect("/");
+            await ctx.SignOutAsync(CookieScheme);
+            await ctx.SignOutAsync(OidcScheme, new AuthenticationProperties { RedirectUri = "/" });
+            return Results.Empty;
+        }).AllowAnonymous();
 
         app.MapPost("/account/logout", async (HttpContext ctx, IAntiforgery antiforgery) =>
         {
@@ -182,11 +222,16 @@ public static class KeelUi
 }
 
 /// <summary>Per-circuit access to the signed-in user.</summary>
-public sealed class CurrentUser(AuthenticationStateProvider auth)
+public sealed class CurrentUser(AuthenticationStateProvider auth, SessionLockCoordinator? sessionLock = null)
 {
+    /// <summary>
+    /// The signed-in user of this circuit. Every UI service call starts here, so a locked session fails closed: nothing is read or changed
+    /// until the user has signed in again (ADR-0026), whatever the page in the browser still shows.
+    /// </summary>
     public async Task<Subject> GetAsync()
     {
         var state = await auth.GetAuthenticationStateAsync();
+        sessionLock?.ThrowIfLocked(state.User);
         return SubjectClaims.FromPrincipal(state.User) ?? throw new InvalidOperationException("No signed-in user in this circuit.");
     }
 
@@ -198,13 +243,33 @@ public sealed class CurrentUser(AuthenticationStateProvider auth)
 /// Ends a Blazor circuit's authentication when the session lifetime recorded at sign-in has passed; the cookie
 /// alone isn't re-checked by a long-lived circuit.
 /// </summary>
-public sealed class SessionRevalidatingStateProvider(ILoggerFactory loggerFactory, TimeProvider clock)
+public sealed class SessionRevalidatingStateProvider(ILoggerFactory loggerFactory, TimeProvider clock, SessionLockRegistry? locks = null)
     : RevalidatingServerAuthenticationStateProvider(loggerFactory)
 {
     protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(1);
 
-    protected override Task<bool> ValidateAuthenticationStateAsync(AuthenticationState authenticationState, CancellationToken cancellationToken) =>
-        Task.FromResult(IsValid(authenticationState.User, clock.GetUtcNow()));
+    protected override Task<bool> ValidateAuthenticationStateAsync(AuthenticationState authenticationState, CancellationToken cancellationToken)
+    {
+        var user = authenticationState.User;
+        if (!IsValid(user, clock.GetUtcNow())) return Task.FromResult(false);
+        if (locks is not { Enabled: true }) return Task.FromResult(true);
+        // With the idle lock on, a session that cannot be identified (a cookie from before the lock existed) or that was terminated is not valid.
+        var id = user.FindFirst(KeelUi.SessionIdClaim)?.Value;
+        return Task.FromResult(id is not null && !locks.IsTerminated(id));
+    }
+
+    /// <summary>The circuit's principal, marked <see cref="KeelUi.LockedClaim"/> while its session is locked, so components and guards can see it.</summary>
+    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+    {
+        var state = await base.GetAuthenticationStateAsync();
+        if (locks is { Enabled: true } && state.User.FindFirst(KeelUi.SessionIdClaim)?.Value is { } id && locks.IsLocked(id) && !state.User.HasClaim(c => c.Type == KeelUi.LockedClaim))
+        {
+            var marked = new ClaimsPrincipal(state.User.Identities.Select(i => i.Clone()));
+            marked.AddIdentity(new ClaimsIdentity([new Claim(KeelUi.LockedClaim, "true")]));
+            return new AuthenticationState(marked);
+        }
+        return state;
+    }
 
     internal static bool IsValid(ClaimsPrincipal user, DateTimeOffset now) =>
         long.TryParse(user.FindFirst(KeelUi.SessionExpiresClaim)?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var exp)

@@ -144,6 +144,7 @@ if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
 }
 builder.Services.AddSingleton(new TrustedCheckpointKeys(publicKeys));
 
+builder.Services.AddKeelSessionLock(options.Session, production: options.Security.RequireFips || builder.Environment.IsProduction()); // 5.0 idle session lock
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<VaultUnavailableExceptionHandler>();
@@ -206,6 +207,7 @@ app.UseSecurityHeaders(Uri.TryCreate(options.Auth.Authority, UriKind.Absolute, o
 app.UseCorrelationId();
 app.UseHttpMetrics();
 app.UseAuthentication();
+app.UseKeelSessionLock(); // refuses cookie endpoints of a locked session
 app.UseAuthorization();
 app.UseKeelUserDirectory();
 app.UseAntiforgery();
