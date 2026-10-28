@@ -29,5 +29,3 @@ public sealed record MeResponse(
 
 public sealed record AuditEventDto(long Seq, Guid Id, DateTimeOffset OccurredAt, string Actor, string Action, string? ObjectType,
     string? ObjectId, string Outcome, string? CorrelationId, string? ActorName, string Payload, string Hash);
-
-public sealed record ClientConfig(string Authority, string ClientId, string Audience);

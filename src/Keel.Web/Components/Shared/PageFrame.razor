@@ -1,0 +1,20 @@
+@* Every routable page renders through PageFrame, which requires the marking banner of the data it shows (ADR-0014).
+   An architecture test fails the build for any page that doesn't. *@
+<SectionContent SectionName="@TopBanner">
+    <MarkingBanner Text="@Banner" Position="top" />
+</SectionContent>
+<SectionContent SectionName="@BottomBanner">
+    <MarkingBanner Text="@Banner" Position="bottom" />
+</SectionContent>
+<PageTitle>@Title · Keel PLM</PageTitle>
+<h1 tabindex="-1">@Title</h1>
+@ChildContent
+
+@code {
+    public const string TopBanner = "keel-banner-top";
+    public const string BottomBanner = "keel-banner-bottom";
+
+    [Parameter, EditorRequired] public required string Banner { get; set; }
+    [Parameter, EditorRequired] public required string Title { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

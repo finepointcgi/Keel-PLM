@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="_content/Keel.Web/app.css" />
+    <HeadOutlet @rendermode="Mode" />
+</head>
+<body>
+    <Routes @rendermode="Mode" />
+    <noscript>Keel PLM requires JavaScript.</noscript>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>
+
+@code {
+    // ADR-0014: interactive server without prerendering, so each page loads (and is audited) exactly once.
+    private static readonly IComponentRenderMode Mode = new InteractiveServerRenderMode(prerender: false);
+}

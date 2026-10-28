@@ -14,11 +14,11 @@ src/Keel.Core        domain primitives shared by all modules (Subject, Markings,
 src/Keel.Security    ABAC policy: in-memory evaluator + SQL filter builder (ADR-0004)
 src/Keel.Audit       hash-chained audit log, checkpoints, verifier (ADR-0005)
 src/Keel.Parts       parts: master/revision/iteration, lifecycle, attributes, check-out/check-in, search
-src/Keel.Api         ASP.NET Core host, auth, health, metrics, endpoints
+src/Keel.Api         ASP.NET Core host: REST API + Blazor UI, auth, health, metrics
+src/Keel.Web         Blazor (Interactive Server) UI components and pages (ADR-0014)
 src/Keel.AuditCli    `keel-audit verify` command-line verifier
 db/migrations        plain SQL migrations, applied in order by the migrator (Keel.Api --migrate)
 scripts/             test.sh (CI entry point), smoke.sh (against running dev stack)
-web/                 React + TypeScript SPA
 deploy/compose       Docker Compose dev stack (Postgres, Keycloak with synthetic realm)
 tests/*              xUnit unit + integration (Testcontainers) tests
 docs/                ADRs, assumptions, setup, this file
@@ -26,6 +26,7 @@ docs/                ADRs, assumptions, setup, this file
 
 ## Conventions
 - .NET 10, C# latest, nullable enabled, warnings as errors. File-scoped namespaces. `sealed` by default.
+- UI is Blazor Interactive Server without prerendering (ADR-0014). Pages call module services in-process with `CurrentUser.GetAsync()`; every page renders through `<PageFrame Banner=… Title=…>` (enforced by an architecture test). Never put business rules in components.
 - Modules reference `Keel.Core` only; `Keel.Api` composes them. Do not reference one module's internals from another.
 - SQL: hand-written migrations in `db/migrations/NNNN_name.sql`, forward-only, applied by the migrator role `keel_migrator`. The app runs as `keel_app` with least privilege.
 - Every read path over marked data **must** use `AccessPolicy.BuildReadFilter`. Every single-object action **must** call `AccessPolicy.Evaluate` and write an audit event (including denials).
@@ -101,3 +102,11 @@ See [setup.md](setup.md).
 **Deferred**
 - Revision-level marking overrides (ADR-0002) are not yet stored; markings live on the master.
 - Attribute definitions are seeded by migration; the admin UI is Phase 2.
+
+### UI moved to Blazor (2026-10-27, product owner direction)
+- ADR-0014 supersedes ADR-0010: Blazor Interactive Server (no prerender) in `Keel.Web`, hosted by `Keel.Api`. React app and Node toolchain removed.
+- UI auth: server-side OIDC code + PKCE (+ PAR) as confidential client `keel-web`, HTTP-only `keel.session` cookie (SameSite=Lax, 8 h absolute, revalidated in-circuit every minute). API keeps JWT bearer; policy scheme `keel` routes `/api/*` and bearer requests to JWT.
+- Shared services extracted so UI and API can't diverge: `SubjectClaims` (Keel.Security), `AuditLogService` + `TrustedCheckpointKeys` (Keel.Audit), `Policies` (Keel.Core). `/api/v1/config` (SPA bootstrap) removed. Audit queries support newest-first.
+- Security fixes found while porting: CSP `form-action` now includes the IdP origin (sign-out redirect), `base-uri 'self'`; logout validates antiforgery explicitly (minimal APIs don't enforce it); forbidden UI navigation lands on `/access-denied` (audited once); dev realm users have fixed IDs.
+- Tests: bUnit component tests (banner placement via sections, attribute/markings fields), web service tests, architecture rule "every page uses PageFrame", UI auth integration tests (IdP redirect with PKCE, API 401 not redirect, framework script served, logout CSRF rejected).
+- Deferred: idle-session lock (NIST 3.1.10) beyond the absolute lifetime; Playwright E2E (1.7).

@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "keel-web",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "web", "run", "dev"],
-      "port": 5173
+      "name": "keel",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/Keel.Api", "--launch-profile", "Keel.Api"],
+      "port": 5080
     }
   ]
 }

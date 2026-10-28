@@ -1,0 +1,26 @@
+@page "/profile"
+@inject CurrentUser Users
+
+<PageFrame Banner="@UiText.Unclassified" Title="My access">
+    @if (me is not null)
+    {
+        <p class="muted">These attributes come from your identity provider and decide which controlled data you can see. Contact your security office if they are wrong.</p>
+        <dl class="facts">
+            <dt>Name</dt><dd>@me.DisplayName</dd>
+            <dt>Login</dt><dd>@(me.Username ?? me.Id)</dd>
+            <dt>U.S. person</dt><dd>@(me.UsPerson ? "Yes" : "No")</dd>
+            <dt>Citizenship</dt><dd>@(me.Citizenship ?? "Not provided")</dd>
+            <dt>Organization</dt><dd>@(me.Org ?? "Not provided")</dd>
+            <dt>Programs</dt><dd>@List(me.Programs)</dd>
+            <dt>Export authorizations</dt><dd>@List(me.ExportAuthorizations)</dd>
+            <dt>CUI categories</dt><dd>@List(me.CuiCategories)</dd>
+            <dt>Roles</dt><dd>@List(me.Roles)</dd>
+        </dl>
+    }
+</PageFrame>
+
+@code {
+    private Subject? me;
+    protected override async Task OnInitializedAsync() => me = await Users.GetAsync();
+    private static string List(IEnumerable<string> items) => items.Any() ? string.Join(", ", items) : "None";
+}

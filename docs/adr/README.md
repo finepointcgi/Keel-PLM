@@ -14,7 +14,8 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0007](0007-authentication-and-esignature.md) | OIDC authentication and e-signature step-up | Accepted |
 | [0008](0008-cryptography-fips.md) | Cryptography and FIPS 140-3 posture | Accepted |
 | [0009](0009-search.md) | Search on PostgreSQL first | Accepted |
-| [0010](0010-frontend.md) | React SPA and large-tree rendering | Accepted |
+| [0010](0010-frontend.md) | React SPA and large-tree rendering | Superseded by 0014 |
 | [0011](0011-integration-outbox.md) | Integration through REST plus transactional outbox | Accepted |
 | [0012](0012-packaging-and-deployment.md) | Packaging, deployment and offline install | Accepted |
 | [0013](0013-testing-strategy.md) | Testing strategy | Accepted |
+| [0014](0014-blazor-server-ui.md) | Blazor (Interactive Server) user interface | Accepted |

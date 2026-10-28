@@ -1,0 +1,54 @@
+<label>
+    Export jurisdiction
+    <InputSelect @bind-Value="Value.ExportJurisdiction">
+        <option value="@ExportJurisdiction.None">None</option>
+        <option value="@ExportJurisdiction.Ear">EAR</option>
+        <option value="@ExportJurisdiction.Itar">ITAR</option>
+    </InputSelect>
+</label>
+<label>
+    ECCN (EAR)
+    <InputText @bind-Value="Value.Eccn" placeholder="EAR99 or e.g. 9E610.a" disabled="@(Value.ExportJurisdiction != ExportJurisdiction.Ear)" />
+</label>
+<label>
+    USML category (ITAR)
+    <InputText @bind-Value="Value.UsmlCategory" disabled="@(Value.ExportJurisdiction != ExportJurisdiction.Itar)" />
+</label>
+<label>
+    CUI categories (comma-separated)
+    <InputText @bind-Value="Value.CuiCategories" />
+</label>
+<label>
+    Distribution statement
+    <InputSelect @bind-Value="Value.DistributionStatement">
+        @foreach (var s in Enum.GetValues<DistributionStatement>())
+        {
+            <option value="@s">@s</option>
+        }
+    </InputSelect>
+</label>
+<label>
+    Controlling office
+    <InputText @bind-Value="Value.ControllingOffice" />
+</label>
+<label>
+    Distribution reason
+    <InputText @bind-Value="Value.DistributionReason" />
+</label>
+<label>
+    Program
+    <InputText @bind-Value="Value.Program" />
+</label>
+<label>
+    Owning organization
+    <InputText @bind-Value="Value.OwningOrg" />
+</label>
+<label>
+    Export authorizations (comma-separated)
+    <InputText @bind-Value="Value.ExportAuthorizations" placeholder="e.g. TAA-0042" disabled="@(Value.ExportJurisdiction == ExportJurisdiction.None)" />
+</label>
+
+@code {
+    /// <summary>Edited in place; the parent owns the instance.</summary>
+    [Parameter, EditorRequired] public required MarkingsInput Value { get; set; }
+}

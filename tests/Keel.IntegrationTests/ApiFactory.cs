@@ -39,6 +39,7 @@ public sealed class ApiFactory(TestDatabase db, string checkpointKeyPath, VaultO
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.UseStaticWebAssets(); // serve Keel.Web and framework assets from the build output, as in Development
         builder.UseSetting("Keel:Database:AppConnectionString", db.AppConnectionString);
         builder.UseSetting("Keel:Auth:Authority", Issuer);
         builder.UseSetting("Keel:Auth:Audience", "keel-api");

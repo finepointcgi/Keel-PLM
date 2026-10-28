@@ -1,0 +1,35 @@
+@inherits LayoutComponentBase
+
+<div class="app">
+    <SectionOutlet SectionName="@PageFrame.TopBanner" />
+    <header class="topbar">
+        <span class="brand">Keel PLM</span>
+        <nav aria-label="Main">
+            <NavLink href="parts" Match="NavLinkMatch.Prefix">Parts</NavLink>
+            <NavLink href="access">Access check</NavLink>
+            <AuthorizeView Policy="@Policies.Auditor">
+                <NavLink href="audit">Audit log</NavLink>
+            </AuthorizeView>
+            <NavLink href="profile">My access</NavLink>
+        </nav>
+        <AuthorizeView>
+            <Authorized>
+                <span class="user">
+                    @(context.User.FindFirst("name")?.Value ?? context.User.Identity?.Name)
+                    <form method="post" action="account/logout" class="inline">
+                        <AntiforgeryToken />
+                        <button type="submit" class="link">Sign out</button>
+                    </form>
+                </span>
+            </Authorized>
+        </AuthorizeView>
+    </header>
+    <main>
+        @Body
+    </main>
+    <SectionOutlet SectionName="@PageFrame.BottomBanner" />
+</div>
+
+<div id="blazor-error-ui" role="alert">
+    Something went wrong. <a href="." class="reload">Reload</a>
+</div>

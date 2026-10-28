@@ -1,0 +1,61 @@
+@page "/parts"
+@inject CurrentUser Users
+@inject PartService Parts
+
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Parts">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search parts" placeholder="Number or name" class="grow" @bind="query" />
+        <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
+            <option value="">Any state</option>
+            <option value="InWork">In Work</option>
+            <option value="UnderReview">Under Review</option>
+            <option value="Released">Released</option>
+            <option value="Obsolete">Obsolete</option>
+        </select>
+        <button type="submit">Search</button>
+        <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+            <a class="button secondary" href="parts/new">New part</a>
+        </AuthorizeView>
+    </form>
+
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total part@(result.Total == 1 ? "" : "s") you can access</p>
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
+            <tbody>
+                @foreach (var p in result.Items)
+                {
+                    <tr>
+                        <td><a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a></td>
+                        <td>@p.Name</td>
+                        <td>@p.PartType</td>
+                        <td>@p.Revision.@p.Iteration</td>
+                        <td>@p.State</td>
+                        <td><MarkingChip Text="@p.Banner" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        <div class="toolbar">
+            <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Search(Math.Max(0, offset - PageSize))">Previous</button>
+            <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Search(offset + PageSize)">Next</button>
+        </div>
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private string query = "";
+    private string state = "";
+    private int offset;
+    private PartSearchResult? result;
+
+    protected override Task OnInitializedAsync() => Search(0);
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        result = await Parts.SearchAsync(await Users.GetAsync(), query, state == "" ? null : state, PageSize, offset, CurrentUser.NewCorrelationId());
+    }
+}

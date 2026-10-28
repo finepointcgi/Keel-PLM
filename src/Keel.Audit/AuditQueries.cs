@@ -2,7 +2,7 @@ using Npgsql;
 
 namespace Keel.Audit;
 
-public sealed record AuditQuery(long? AfterSeq = null, string? ObjectType = null, string? ObjectId = null, string? Actor = null, int Limit = 100);
+public sealed record AuditQuery(long? AfterSeq = null, string? ObjectType = null, string? ObjectId = null, string? Actor = null, int Limit = 100, bool NewestFirst = false);
 
 public sealed class AuditQueries(NpgsqlDataSource dataSource)
 {
@@ -11,6 +11,7 @@ public sealed class AuditQueries(NpgsqlDataSource dataSource)
     public async Task<IReadOnlyList<AuditRecord>> ListAsync(AuditQuery q, CancellationToken ct = default)
     {
         var limit = Math.Clamp(q.Limit, 1, MaxLimit);
+        var order = q.NewestFirst ? "DESC" : "";
         await using var cmd = dataSource.CreateCommand(
             $"""
             SELECT {Columns} FROM audit.event
@@ -18,7 +19,7 @@ public sealed class AuditQueries(NpgsqlDataSource dataSource)
               AND (@otype::text IS NULL OR object_type = @otype)
               AND (@oid::text IS NULL OR object_id = @oid)
               AND (@actor::text IS NULL OR actor = @actor)
-            ORDER BY seq
+            ORDER BY seq {order}
             LIMIT @limit
             """);
         cmd.Parameters.AddWithValue("after", q.AfterSeq ?? 0);

@@ -5,6 +5,8 @@ using Keel.Api.Endpoints;
 using Keel.Api.Infrastructure;
 using Keel.Audit;
 using Keel.Core;
+using Keel.Web.Components;
+using Keel.Web.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -45,6 +47,7 @@ builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(options.Database.AppC
 builder.Services.AddSingleton<PostgresAuditLog>();
 builder.Services.AddSingleton<IAuditLog, MeteredAuditLog>();
 builder.Services.AddSingleton<AuditQueries>();
+builder.Services.AddSingleton<AuditLogService>();
 builder.Services.AddSingleton<Keel.Parts.PartService>();
 builder.Services.AddKeelDocuments(builder.Configuration);
 
@@ -67,8 +70,28 @@ builder.Services.AddSingleton(new TrustedCheckpointKeys(publicKeys));
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 
+// Two ways in (ADR-0014): browsers use the OIDC cookie session; API clients use JWT bearer. The "keel" policy scheme
+// routes /api/* and any request carrying a bearer token to JWT, everything else to the cookie (whose challenge
+// redirects to the IdP).
+const string SmartScheme = "keel";
+var uiOptions = new KeelUiOptions
+{
+    Authority = options.Auth.Authority,
+    ClientId = options.Auth.WebClientId,
+    ClientSecret = options.Auth.WebClientSecret,
+    RequireHttpsMetadata = options.Auth.RequireHttpsMetadata,
+};
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(o =>
+    {
+        o.DefaultScheme = SmartScheme;
+        o.DefaultChallengeScheme = SmartScheme;
+    })
+    .AddPolicyScheme(SmartScheme, "API bearer or UI cookie", o => o.ForwardDefaultSelector = ctx =>
+        ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? JwtBearerDefaults.AuthenticationScheme
+            : KeelUi.CookieScheme)
+    .AddKeelUi(uiOptions, secureCookies: !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
     .AddJwtBearer(o =>
     {
         o.Authority = options.Auth.Authority;
@@ -99,11 +122,12 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 if (!app.Environment.IsDevelopment()) app.UseHsts();
-app.UseSecurityHeaders();
+app.UseSecurityHeaders(Uri.TryCreate(options.Auth.Authority, UriKind.Absolute, out var idp) ? idp.GetLeftPart(UriPartial.Authority) : null);
 app.UseCorrelationId();
 app.UseHttpMetrics();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseAntiforgery();
 
 // Liveness says only that the process serves requests; readiness gates traffic on DB + schema + FIPS posture.
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
@@ -116,9 +140,11 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 // ASSUMPTION(A12): /metrics is reachable only from the cluster network (NetworkPolicy / host firewall), see docs/setup.md.
 app.MapMetrics().AllowAnonymous();
 
+app.MapStaticAssets().AllowAnonymous();
 app.MapKeelApi();
 app.MapPartEndpoints();
 app.MapDocumentEndpoints();
+app.MapKeelUi<App>();
 
 app.Run();
 

@@ -1,0 +1,41 @@
+@inject CurrentUser Users
+@inject IAuditLog Audit
+@inject NavigationManager Nav
+
+<PageFrame Banner="@UiText.Unclassified" Title="@(signedIn ? "Not authorized" : "Session ended")">
+    @if (signedIn)
+    {
+        <p>You are not authorized to open this page. The attempt has been recorded.</p>
+    }
+    else
+    {
+        <p>Your session has ended. <a href="@Nav.Uri" target="_top" @onclick="Reload" @onclick:preventDefault>Sign in again</a>.</p>
+    }
+</PageFrame>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    /// <summary>False when the HTTP middleware already audited this denial (direct navigation).</summary>
+    [Parameter] public bool RecordDenial { get; set; } = true;
+    private bool signedIn;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthState!).User;
+        signedIn = SessionRevalidatingStateProvider.IsValid(user, DateTimeOffset.UtcNow) && SubjectClaims.FromPrincipal(user) is not null;
+        if (!signedIn || !RecordDenial) return;
+        // In-circuit navigation is authorized by AuthorizeRouteView, not the HTTP middleware, so audit the denial here.
+        await Audit.AppendAsync(new AuditEntry
+        {
+            Actor = ActorSnapshot.From(await Users.GetAsync()),
+            Action = "access.denied",
+            Outcome = AuditOutcome.Denied,
+            ObjectType = "page",
+            ObjectId = "/" + Nav.ToBaseRelativePath(Nav.Uri),
+            CorrelationId = CurrentUser.NewCorrelationId(),
+            Details = AuditDetails.Of(("reason", "role.missing")),
+        });
+    }
+
+    private void Reload() => Nav.NavigateTo(Nav.Uri, forceLoad: true);
+}

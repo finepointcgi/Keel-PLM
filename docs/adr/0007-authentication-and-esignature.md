@@ -3,6 +3,8 @@
 **Status:** Accepted · 2026-10-27
 
 ## Decision
+> **Amended by ADR-0014:** the UI is now a server-side Blazor app using a confidential OIDC client and an HTTP-only session cookie; the SPA token-handling bullets below apply only to external API clients.
+
 - The SPA uses OIDC authorization code + PKCE against the site IdP (A1). The API is a resource server validating JWT access tokens: issuer, audience, signature (keys from the IdP JWKS, fetched on-prem), and lifetime with ≤ 60 s clock skew.
 - Claims map to a `Subject` (A2). Missing security attributes fail closed (no `us_person` claim means not a U.S. person).
 - SAML-only IdPs are fronted by the IdP broker (e.g. Keycloak brokering SAML), so the app speaks one protocol.

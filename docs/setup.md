@@ -5,7 +5,6 @@ macOS/Windows development hosts are not FIPS-validated (ADR-0008); that's expect
 
 ## Prerequisites
 - .NET SDK 10.0.402+ (`global.json` pins the feature band)
-- Node.js 22+ and npm
 - Docker (Desktop or Engine) with Compose v2
 
 ## 1. Start the dev stack
@@ -46,13 +45,11 @@ dotnet run --project src/Keel.AuditCli -- keygen --out deploy/compose/secrets
 ```bash
 cd src/Keel.Api && ASPNETCORE_ENVIRONMENT=Development dotnet run -- --migrate && ASPNETCORE_ENVIRONMENT=Development dotnet run
 ```
-The API listens on `http://localhost:5080`. Health: `/health/live`, `/health/ready` (shows FIPS posture). Metrics: `/metrics`.
+The host serves both the Blazor UI and the REST API on `http://localhost:5080` (ADR-0014).
+Open `http://localhost:5080` and sign in at the dev Keycloak. Health: `/health/live`, `/health/ready` (shows FIPS posture). Metrics: `/metrics`.
 
-## 4. Run the web app
-```bash
-npm --prefix web install && npm --prefix web run dev
-```
-Open `http://localhost:5173`. The Vite dev server proxies `/api` to the API so the browser sees a single origin.
+The UI signs in server-side as the confidential OIDC client `keel-web` (dev secret `keel-web-dev-secret`, configured in
+`appsettings.Development.json` and the dev realm). In production supply `Keel__Auth__WebClientSecret` from a secret store.
 
 ## Synthetic users
 Password for every user is `keel-dev-<username>` (dev realm only).
@@ -80,5 +77,7 @@ KEEL_AUDIT_CONNECTION="Host=localhost;Port=55432;Database=keel;Username=keel_app
 ## Production notes (summary; full ops guide is Phase 5)
 - Set `Keel__Security__RequireFips=true` (the default in `appsettings.json`) on FIPS-mode RHEL hosts.
 - Restrict `/metrics` to the monitoring network (NetworkPolicy / host firewall).
+- Persist and share ASP.NET Data Protection keys across replicas (cookie sessions and antiforgery depend on them), and use sticky sessions for Blazor circuits.
+- Dev realm users have fixed IDs (`sub`) so re-importing the realm keeps audit records and check-outs attributable; production IdPs must likewise never reissue a user's `sub`.
 - Enable pgAudit on PostgreSQL so superuser actions that bypass audit triggers are themselves recorded.
 - Supply connection strings and key paths through environment variables or mounted secrets, never images.

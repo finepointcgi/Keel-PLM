@@ -24,8 +24,10 @@ public sealed class KeelOptions
         public string Authority { get; set; } = "";
         public string Audience { get; set; } = "keel-api";
         public bool RequireHttpsMetadata { get; set; } = true;
-        /// <summary>SPA client id, published to the web app through /api/v1/config.</summary>
+        /// <summary>Confidential OIDC client used by the Blazor UI (ADR-0014).</summary>
         public string WebClientId { get; set; } = "keel-web";
+        /// <summary>Client secret for <see cref="WebClientId"/>; supply via environment/secret, never in images.</summary>
+        public string WebClientSecret { get; set; } = "";
     }
 
     public sealed class AuditOptions
