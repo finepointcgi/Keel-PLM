@@ -1,3 +1,6 @@
+using System.Data.Common;
+using System.Text.Json.Nodes;
+
 namespace Keel.Core;
 
 /// <summary>A stored blob: its SHA-256 (lowercase hex) is its address.</summary>
@@ -22,23 +25,39 @@ public interface IContentStore
 /// <summary>The store refused the content (malware scan found a signature, or scanning is required and could not complete). Nothing was stored.</summary>
 public sealed class ContentRejectedException(string message, Exception? inner = null) : Exception(message, inner);
 
-/// <summary>A classification assignment staged by the migration importer: an item (by Keel part number) gets a class and attribute values.</summary>
-public sealed record ClassAssignment(string PartNumber, string ClassCode, IReadOnlyDictionary<string, string?> Attributes);
+/// <summary>A class of the classification hierarchy as it exists in Keel: its own attributes (the effective set adds the ancestors').</summary>
+public sealed record ClassDefinition(string Code, string? ParentCode, bool Active, IReadOnlyList<AttributeSpec> OwnAttributes);
+
+/// <summary>A class the migration wants created (from the staged hierarchy, format keel-classification/1).</summary>
+public sealed record ClassNodeSpec(string Code, string Name, string? Description, string? ParentCode, int SortOrder, IReadOnlyList<AttributeSpec> Attributes);
+
+/// <summary>The classification a part iteration is frozen with.</summary>
+public sealed record ClassAssignment(string ClassCode, JsonObject Attributes);
+
+/// <summary>The stored class data of one part iteration (class code, canonical values JSON, number of typed value rows), for reconciliation.</summary>
+public sealed record ClassifiedIteration(Guid IterationId, string ClassCode, string AttributesJson, int ValueRows);
+
+/// <summary>The loader refused an assignment (unknown or retired class, invalid values). The importer turns it into a rejected object.</summary>
+public sealed class ClassificationLoadException(string message) : Exception(message);
 
 /// <summary>
-/// Loads migrated classification assignments. Classification itself is delivered with the admin module (Phase 2b); until it exists
-/// the registered implementation throws <see cref="NotSupportedException"/> naming the phase (ADR-0023).
+/// Loads migrated classification into Keel (ADR-0023, ADR-0022), implemented by Keel.Admin against the real classification tables so imported rows are the same
+/// rows native check-in writes. All calls run in the importer's transaction (the dry run's transaction is rolled back).
 /// </summary>
 public interface IClassificationLoader
 {
-    Task LoadAsync(Guid batchId, IReadOnlyList<ClassAssignment> assignments, CancellationToken ct = default);
-}
+    /// <summary>The classes and their own attributes that exist now, for validation and conflict reports.</summary>
+    Task<IReadOnlyList<ClassDefinition>> LoadDefinitionsAsync(DbConnection conn, DbTransaction? tx, CancellationToken ct);
 
-/// <summary>Default <see cref="IClassificationLoader"/>: classification is not available yet.</summary>
-public sealed class UnsupportedClassificationLoader : IClassificationLoader
-{
-    public Task LoadAsync(Guid batchId, IReadOnlyList<ClassAssignment> assignments, CancellationToken ct = default) =>
-        throw new NotSupportedException(
-            "Loading classification assignments needs the classification services of Phase 2b (Keel.Admin). " +
-            "The assignments are staged and counted in the report; load them after Keel.Admin is merged by registering an IClassificationLoader.");
+    /// <summary>Creates the classes (and their attributes) that do not exist yet, parents first. Existing classes are never changed. Returns the codes created.</summary>
+    Task<IReadOnlyList<string>> CreateMissingClassesAsync(DbConnection conn, DbTransaction tx, IReadOnlyList<ClassNodeSpec> nodes, string actor, DateTimeOffset at, CancellationToken ct);
+
+    /// <summary>
+    /// Freezes class and values into a part iteration (the class data is iteration-owned): the class row and one typed value row per value, exactly as check-in does.
+    /// Must be called before the revision is locked. Values are validated against the class's effective attribute set again.
+    /// </summary>
+    Task AssignAsync(DbConnection conn, DbTransaction tx, Guid partIterationId, ClassAssignment assignment, CancellationToken ct);
+
+    /// <summary>The stored class data of the given iterations (iterations without a class are not returned), for reconciliation.</summary>
+    Task<IReadOnlyList<ClassifiedIteration>> ReadAsync(DbConnection conn, IReadOnlyCollection<Guid> partIterationIds, CancellationToken ct);
 }

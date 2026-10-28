@@ -66,6 +66,12 @@ internal static class WindchillBuilder
                 else sink.Report(Severity.Error, "SRC-BAD-NUMBER", "usage", $"{parent}->{child}", $"Find number '{find}' is not an integer.");
             }
             u.ReferenceDesignators = (r.Get("ReferenceDesignators") ?? "").Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            // Structured effectivity (one range per row; rows with the same find number are alternates): EffectivityType serial|lot|date, EffectivityUnit, From, To, EndCondition.
+            if (r.Get("EffectivityType") is { } effType)
+                u.EffectivityRanges.Add(new CEffectivity
+                {
+                    Kind = effType, Unit = r.Get("EffectivityUnit", "EffectivityContext"), From = r.Get("EffectivityFrom"), To = r.Get("EffectivityTo"), EndCondition = r.Get("EffectivityEndCondition"),
+                });
             it.Usages.Add(u);
         }
 
@@ -221,7 +227,7 @@ public sealed class WindchillJsonReader : IPackageReader
         sink.Inventory.Format = Format;
         var t = new WindchillTables();
         var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "parts.json", "part-uses.json", "documents.json", "part-doc-links.json", "change-notices.json", "change-requests.json", "problem-reports.json", "users.json", "classifications.json" };
+            { "parts.json", "part-uses.json", "documents.json", "part-doc-links.json", "change-notices.json", "change-requests.json", "problem-reports.json", "users.json", "classifications.json", ClassificationHierarchyReader.FileName };
         foreach (var f in package.ListFiles().Where(f => f.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && !f.Contains('/')))
             if (!known.Contains(f)) sink.Unknown("file:" + f, f, preserved: false);
 

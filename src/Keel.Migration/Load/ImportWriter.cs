@@ -130,8 +130,8 @@ internal sealed class ImportWriter(NpgsqlConnection conn)
         foreach (var (u, child) in usages)
         {
             var cmd = new NpgsqlBatchCommand("""
-                INSERT INTO plm.bom_usage (id, parent_iteration_id, child_master_id, quantity, unit, find_number, reference_designators, notes, created_at, created_by)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                INSERT INTO plm.bom_usage (id, parent_iteration_id, child_master_id, quantity, unit, find_number, reference_designators, notes, created_at, created_by, eff_kind, eff_context, eff_from, eff_to)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                 """);
             cmd.Parameters.Add(new NpgsqlParameter { Value = Guid.CreateVersion7() });
             cmd.Parameters.Add(new NpgsqlParameter { Value = iterationId });
@@ -143,6 +143,10 @@ internal sealed class ImportWriter(NpgsqlConnection conn)
             cmd.Parameters.Add(new NpgsqlParameter { Value = (object?)u.Notes ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Text });
             cmd.Parameters.Add(new NpgsqlParameter { Value = at.UtcDateTime });
             cmd.Parameters.Add(new NpgsqlParameter { Value = by });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = (object?)u.Effectivity?.Kind ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Text });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = (object?)u.Effectivity?.Context ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Text });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = (object?)u.Effectivity?.From ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Bigint });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = (object?)u.Effectivity?.To ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Bigint });
             batch.BatchCommands.Add(cmd);
         }
         await batch.ExecuteNonQueryAsync(ct);

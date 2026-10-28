@@ -33,6 +33,7 @@ public sealed class MappingConfig
     public MarkingsMapping Markings { get; set; } = new();
     public ChangeMapping Changes { get; set; } = new();
     public ClassificationMapping Classification { get; set; } = new();
+    public EffectivityMapping Effectivity { get; set; } = new();
     public LimitsMapping Limits { get; set; } = new();
 
     public static readonly JsonSerializerOptions Json = new()
@@ -72,6 +73,10 @@ public sealed class MappingConfig
         DocumentTypes.Map = Ci(DocumentTypes.Map);
         Attributes.Map = Ci(Attributes.Map);
         Users.Map = Ci(Users.Map);
+        Classification.ClassMap = Ci(Classification.ClassMap);
+        Classification.Attributes = new Dictionary<string, Dictionary<string, string>>(Classification.Attributes.ToDictionary(k => k.Key, k => Ci(k.Value)), StringComparer.OrdinalIgnoreCase);
+        Effectivity.Contexts = Ci(Effectivity.Contexts);
+        Effectivity.Blocks = new Dictionary<string, Dictionary<string, int>>(Effectivity.Blocks.ToDictionary(k => k.Key, k => Ci(k.Value)), StringComparer.OrdinalIgnoreCase);
         Changes.Types.Map = Ci(Changes.Types.Map);
         Changes.ClassMap = Ci(Changes.ClassMap);
         Changes.States = new Dictionary<string, Dictionary<string, string>>(Changes.States.ToDictionary(k => k.Key, k => Ci(k.Value)), StringComparer.OrdinalIgnoreCase);
@@ -185,8 +190,33 @@ public sealed class ChangeMapping
 
 public sealed class ClassificationMapping
 {
-    /// <summary>true is refused until classification services exist (Phase 2b): NotSupportedException.</summary>
+    /// <summary>true loads the staged class assignments (and creates missing classes from the staged hierarchy); false (default) only stages and counts them.</summary>
     public bool Load { get; set; }
+    /// <summary>true (default): classes of the staged hierarchy that Keel does not have are created. false: every class an assignment uses must already exist.</summary>
+    public bool CreateMissingClasses { get; set; } = true;
+    /// <summary>"allIterations" (default: the item-level class of the source is written to every imported iteration) or "latestIteration" (only the last iteration of the last revision).</summary>
+    public string Scope { get; set; } = "allIterations";
+    /// <summary>Source class code (case-insensitive) to the Keel class code. Unmapped codes are used as they are.</summary>
+    public Dictionary<string, string> ClassMap { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Source attribute name to class attribute name, per source class code; the key "*" applies to every class. A class-specific entry wins over "*". Unmapped names are used as they are
+    /// (and are errors when the class has no such attribute).
+    /// </summary>
+    public Dictionary<string, Dictionary<string, string>> Attributes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class EffectivityMapping
+{
+    /// <summary>true loads structured source effectivity into real effectivity on the BOM lines; false (default) keeps its text in the line notes (as before).</summary>
+    public bool Load { get; set; }
+    /// <summary>Source end item / effectivity unit (case-insensitive) to the id of a Keel effectivity context (cfg.effectivity_context). Unmapped units are errors.</summary>
+    public Dictionary<string, string> Contexts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Keel context id to lot/block names and their ordinals ("Block 2" -> 2); added to the blocks the context already has in Keel.</summary>
+    public Dictionary<string, Dictionary<string, int>> Blocks { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>true is refused: no supported source specifies revision-level effectivity (NotSupportedException, FUP-3).</summary>
+    public bool RevisionLevel { get; set; }
+    /// <summary>How many serial numbers per context the reconciliation samples to compare the as-of-serial explosion (chosen from the data; default 5).</summary>
+    public int SampleSerials { get; set; } = 5;
 }
 
 public sealed class LimitsMapping

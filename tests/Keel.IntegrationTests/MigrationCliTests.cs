@@ -149,16 +149,16 @@ public sealed class MigrationCliTests(PostgresFixture pg)
     }
 
     [Fact]
-    public async Task Classification_loading_exits_with_6_naming_the_phase()
+    public async Task Revision_level_effectivity_exits_with_6_naming_the_follow_up()
     {
         using var k = await MigrationKit.Create(pg);
         var dir = k.Package(Samples.Build(salt: MigrationKit.Salt()));
         var cfg = Samples.Mapping();
-        cfg.Classification.Load = true;
+        cfg.Effectivity.RevisionLevel = true;
         var mapping = Path.Combine(k.Root, "mapping.json");
         File.WriteAllText(mapping, Samples.MappingJson(cfg));
         var r = await Cli(null, "validate", dir, "--mapping", mapping, "--offline", "--out", Path.Combine(k.Root, "o"));
         Assert.Equal(ExitCodes.NotSupported, r.Code);
-        Assert.Contains("Phase 2b", r.Err, StringComparison.Ordinal);
+        Assert.Contains("FUP-3", r.Err, StringComparison.Ordinal);
     }
 }

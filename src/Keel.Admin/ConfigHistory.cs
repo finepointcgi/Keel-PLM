@@ -84,6 +84,7 @@ public static class AdminModule
         services.AddSingleton<ConfigTransferService>();
         services.AddSingleton<ConfigHistoryService>();
         services.AddSingleton<IPartIterationParticipant, ClassificationParticipant>();
+        services.AddSingleton<IClassificationLoader, MigrationClassificationLoader>(); // migration importer (FUP-2)
         return services;
     }
 }

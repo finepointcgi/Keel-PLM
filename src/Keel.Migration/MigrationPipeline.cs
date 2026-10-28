@@ -33,7 +33,7 @@ public sealed class LoadRefusedException(string message) : Exception(message);
 /// Parse -> canonical staging model -> map -> validate -> dry-run -> load -> reconcile -> report (ADR-0023). The database is needed for
 /// everything except <see cref="InspectAsync"/> and the offline validation of <see cref="PrepareAsync(string, string?, MappingConfig, ReferenceData?, CancellationToken)"/>.
 /// </summary>
-public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IContentStore? store, TimeProvider clock)
+public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IContentStore? store, TimeProvider clock, IClassificationLoader? classification = null)
 {
     /// <summary>Reads the package into the staging model only to count it (streaming: nothing is retained).</summary>
     public static async Task<InspectResult> InspectAsync(string path, string? format, CancellationToken ct)
@@ -42,6 +42,7 @@ public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IC
         var fmt = format ?? PackageReaders.Detect(package);
         var sink = new StagingSink(retain: false);
         await PackageReaders.Create(fmt).ReadAsync(package, sink, ct);
+        await ClassificationHierarchyReader.ReadAsync(package, sink, ct);
         return new InspectResult(fmt, package.ComputeManifest(), sink.Inventory, sink.Problems);
     }
 
@@ -54,7 +55,11 @@ public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IC
 
     private async Task<PreparedMigration> PrepareCoreAsync(string path, string? format, MappingConfig cfg, ReferenceData? offline, CancellationToken ct)
     {
-        if (cfg.Classification.Load) await new UnsupportedClassificationLoader().LoadAsync(Guid.Empty, [], ct);
+        if (cfg.Effectivity.RevisionLevel)
+            throw new NotSupportedException("Revision-level effectivity (the effectivity a change notice gives a released revision) is not imported: none of the supported source formats specifies it (FUP-3). " +
+                "Line-level effectivity on BOM lines is imported with effectivity.load; set effectivity.revisionLevel to false.");
+        if (cfg.Classification.Load && offline is null && classification is null)
+            throw new NotSupportedException("classification.load needs an IClassificationLoader (Keel.Admin's MigrationClassificationLoader); this host did not provide one.");
         var package = PackageSource.Open(path);
         try
         {
@@ -62,9 +67,10 @@ public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IC
             var sink = new StagingSink(retain: true);
             var reader = PackageReaders.Create(fmt);
             await reader.ReadAsync(package, sink, ct);
+            await ClassificationHierarchyReader.ReadAsync(package, sink, ct);
             if (string.IsNullOrEmpty(sink.Package.SourceSystem)) sink.Package.SourceSystem = reader.DefaultSourceSystem;
             var manifest = package.ComputeManifest();
-            var rd = offline ?? await ReferenceData.LoadAsync(ds ?? throw new InvalidOperationException("A database connection is required."), ct);
+            var rd = offline ?? await ReferenceData.LoadAsync(ds ?? throw new InvalidOperationException("A database connection is required."), ct, cfg.Classification.Load ? classification : null);
             var existing = offline is null ? await ExistingKeysAsync(sink.Package, ct) : new ExistingKeys();
             var plan = new Mapper(cfg, rd, manifest) { Existing = existing }.Map(sink.Package);
             plan.Problems.InsertRange(0, sink.Problems);
@@ -126,7 +132,7 @@ public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IC
         opt.DryRun = true;
         var pre = ReportBuilder.Build(p, "dry-run", null, opt, clock.GetUtcNow());
         if (!pre.Succeeded) return pre;
-        var importer = new Importer(ds ?? throw new InvalidOperationException("A database connection is required."), audit!, store, p.Reference, clock);
+        var importer = new Importer(ds ?? throw new InvalidOperationException("A database connection is required."), audit!, store, p.Reference, clock, classification);
         ImportResult result;
         try { result = await importer.RunAsync(p, opt, ct); }
         catch (LoadAbortedException) { result = importer.Result; }
@@ -151,7 +157,7 @@ public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IC
         if (!pre.Succeeded) throw new LoadRefusedException("The package no longer validates against the target: " + string.Join(" ", pre.Blocking));
         if (pre.Hash != dryRun.Hash) throw new LoadRefusedException("The validation result differs from the dry-run report (the target database changed since). Run the dry-run again.");
         opt.DryRunHash = dryRun.Hash;
-        var importer = new Importer(ds!, audit!, store ?? throw new InvalidOperationException("A vault is required to load files."), p.Reference, clock);
+        var importer = new Importer(ds!, audit!, store ?? throw new InvalidOperationException("A vault is required to load files."), p.Reference, clock, classification);
         ImportResult result;
         try { result = await importer.RunAsync(p, opt, ct); }
         catch (LoadAbortedException) { result = importer.Result; var failed = ReportBuilder.Build(p, "load", result, opt, clock.GetUtcNow()); failed.Blocking.Add("The load stopped; rerun to complete it."); failed.Succeeded = false; throw new LoadFailedException(failed); }
@@ -167,7 +173,7 @@ public sealed class MigrationPipeline(NpgsqlDataSource? ds, IAuditLog? audit, IC
 
     public async Task<ReconcileReport> ReconcileAsync(PreparedMigration p, ReconcileOptions opt, CancellationToken ct)
     {
-        var report = await new Reconciler(ds ?? throw new InvalidOperationException("A database connection is required."), store, clock).RunAsync(p, opt, ct);
+        var report = await new Reconciler(ds ?? throw new InvalidOperationException("A database connection is required."), store, clock, classification).RunAsync(p, opt, ct);
         if (report.BatchId is { } batch)
         {
             await using var conn = await ds.OpenConnectionAsync(ct);

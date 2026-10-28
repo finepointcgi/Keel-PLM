@@ -72,6 +72,12 @@ public sealed class MigrationReport
     public SortedDictionary<string, SortedDictionary<string, long>> StateDistribution { get; set; } = new(StringComparer.Ordinal);
     public SortedDictionary<string, long> MarkingsDistribution { get; set; } = new(StringComparer.Ordinal);
     public FileChecks Files { get; set; } = new();
+    /// <summary>Classes the load creates from the staged hierarchy ("code (under parent)"), parents first; empty unless classification.load.</summary>
+    public List<string> ClassesToCreate { get; set; } = [];
+    /// <summary>Per Keel class: part iterations that carry it after the load.</summary>
+    public SortedDictionary<string, long> ClassIterations { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>Serial numbers per context sampled for the reconciliation of the as-of-serial explosion.</summary>
+    public SortedDictionary<string, List<long>> EffectivitySerials { get; set; } = new(StringComparer.Ordinal);
     public long EstimatedRows { get; set; }
     public long EstimatedUploadBytes { get; set; }
     public double EstimatedLoadSeconds { get; set; }
@@ -159,6 +165,19 @@ public sealed class MigrationReport
         Table("Unmapped properties (kept in legacy_properties)", UnmappedProperties);
         Table("Users replaced by the fallback user", UserFallbacks);
         Table("Mapping decisions", Decisions);
+        if (ClassesToCreate.Count > 0)
+        {
+            sb.AppendLine("## Classes that would be created").AppendLine();
+            foreach (var c in ClassesToCreate) sb.AppendLine("- " + c);
+            sb.AppendLine();
+        }
+        Table("Classified part iterations per class (planned)", ClassIterations);
+        if (EffectivitySerials.Count > 0)
+        {
+            sb.AppendLine("## Serial numbers sampled for the as-of-serial reconciliation").AppendLine();
+            foreach (var (ctx, serials) in EffectivitySerials) sb.AppendLine($"- {ctx}: {string.Join(", ", serials)}");
+            sb.AppendLine();
+        }
         Table("Markings distribution (planned)", MarkingsDistribution);
         foreach (var (k, v) in StateDistribution) Table($"Lifecycle states (planned): {k}", v);
         if (Inventory.UnknownElements.Count > 0)
@@ -233,6 +252,18 @@ internal static class ReportBuilder
         r.Planned["changes"] = plan.Changes.Count;
         r.Planned["affectedObjects"] = plan.Changes.Sum(c => c.Affected.Count);
         r.Planned["classificationsStaged"] = plan.Classifications.Count;
+        if (prep.Config.Classification.Load)
+        {
+            r.Planned["classesToCreate"] = plan.ClassesToCreate.Count;
+            r.Planned["classifiedIterations"] = plan.ClassIterations.Values.Sum();
+            r.ClassesToCreate = [.. plan.ClassesToCreate.Select(c => c.ParentCode is null ? c.Code : $"{c.Code} (under {c.ParentCode})")];
+            r.ClassIterations = new SortedDictionary<string, long>(plan.ClassIterations, StringComparer.Ordinal);
+        }
+        if (prep.Config.Effectivity.Load)
+        {
+            r.Planned["effectivityLines"] = plan.Parts.Sum(p => p.Revisions.Sum(x => x.Iterations.Sum(i => i.Usages.Count(u => u.Effectivity is not null))));
+            r.EffectivitySerials = new SortedDictionary<string, List<long>>(plan.EffectivitySerials, StringComparer.Ordinal);
+        }
 
         var codes = r.Problems.Where(p => p.Severity == Severity.Error).GroupBy(p => p.Code).ToDictionary(g => g.Key, g => g.Count());
         r.Files = new FileChecks
@@ -277,7 +308,7 @@ internal static class ReportBuilder
                 r.Quarantined.Add(new QuarantinedObject { EntityType = parts[0], SourceId = parts[1], Code = first?.Code ?? "VALIDATION", Reason = first?.Message ?? "Validation error." });
             }
         }
-        r.EstimatedRows = r.Planned.Where(kv => kv.Key is not ("fileBytes" or "classificationsStaged")).Sum(kv => kv.Value);
+        r.EstimatedRows = r.Planned.Where(kv => kv.Key is not ("fileBytes" or "classificationsStaged" or "classifiedIterations" or "effectivityLines" or "classesToCreate")).Sum(kv => kv.Value);
 
         // blocking: package- or mapping-level errors, source (reader) errors, and, unless quarantine is on, any rejected object
         if (plan.IsFailed("mapping", "mapping")) r.Blocking.Add("The mapping file has errors (MAP-* codes).");
