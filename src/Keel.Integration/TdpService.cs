@@ -21,6 +21,9 @@ public sealed class TdpService(
     ITdpPartSource parts, ITdpStructureSource structures, ITdpDocumentSource documents, IEnumerable<ILinkedDocumentProvider> linkedProviders)
 {
     public const string Format = "keel-tdp/1";
+
+    /// <summary>False until a TDP signing key is configured (Keel:Integration:TdpSigningKeyPath); packages are never exported unsigned.</summary>
+    public bool CanExport => signer.CanSign;
     private readonly ILinkedDocumentProvider? _linked = linkedProviders.FirstOrDefault(p => p.ObjectType == "part");
 
     // ---------------------------------------------------------------- plan (preview and the basis of the export)

@@ -19,6 +19,7 @@ public static class OpenApiSetup
                 (p.StartsWith("api/v1/integration", StringComparison.Ordinal) || p.StartsWith("api/v1/tdp", StringComparison.Ordinal) || p.StartsWith("api/v1/admin/integration", StringComparison.Ordinal));
             o.AddDocumentTransformer((doc, _, _) =>
             {
+                doc.Servers = [new OpenApiServer { Url = "/" }]; // the document must not depend on the host that generated it
                 doc.Info = new OpenApiInfo
                 {
                     Title = "Keel PLM integration API",

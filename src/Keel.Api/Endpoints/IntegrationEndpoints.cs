@@ -126,15 +126,10 @@ public static class IntegrationEndpoints
 
     private static async Task<IResult> ExportAsync(HttpContext c, TdpService svc, TdpRequest request, CancellationToken ct)
     {
-        Outcome<TdpDownload> outcome;
-        try
-        {
-            outcome = await svc.PrepareAsync(SubjectFactory.Require(c), request, CorrelationId.Get(c), ct);
-        }
-        catch (InvalidOperationException e) when (e.Message.Contains("TDP export is not configured", StringComparison.Ordinal))
-        {
-            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "TDP export is not configured", detail: e.Message);
-        }
+        if (!svc.CanExport)
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "TDP export is not configured",
+                detail: "No signing key is configured (Keel:Integration:TdpSigningKeyPath); packages are never exported unsigned.");
+        var outcome = await svc.PrepareAsync(SubjectFactory.Require(c), request, CorrelationId.Get(c), ct);
         if (!outcome.IsOk) return outcome.ToHttp();
         var download = outcome.Value!;
         c.Response.Headers[DocumentEndpoints.MarkingsHeader] = DocumentEndpoints.HeaderValue(download.Banner);
