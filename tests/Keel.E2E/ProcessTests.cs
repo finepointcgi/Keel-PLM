@@ -88,7 +88,7 @@ public sealed class ProcessTests(E2EFixture fx)
             await Expect(page.GetByText("Fasten the cover").First).ToBeVisibleAsync();
             await Expect(page.GetByText("Warning (safety):")).ToBeVisibleAsync();
             await BrowserSession.OpenTabAsync(page, "Flow");
-            await Expect(page.GetByRole(AriaRole.Group, new PageGetByRoleOptions { Name = "Routing flow" })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Group, new PageGetByRoleOptions { Name = "Routing flow" }).First).ToBeVisibleAsync();
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Table", Exact = true }).ClickAsync();
             await Expect(page.GetByRole(AriaRole.Table, new PageGetByRoleOptions { Name = "Routing flow as a table" })).ToBeVisibleAsync();
             await BrowserSession.OpenTabAsync(page, "Components");
