@@ -100,6 +100,9 @@ public sealed partial class ArchitectureTests
             // (SourcingArchitectureTests checks the module's own statements); RequestService reads the parts and recipients of ONE request, keyed by its id, after the caller
             // was checked against the request's markings and each part again.
             if (file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "EntryStore.cs", StringComparison.Ordinal) || file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "RequestService.cs", StringComparison.Ordinal)) continue;
+            // Process planning (8.7, ADR-0042): the calibration job is a system read of tool due dates (no end user; it writes audit events and pointer-only notifications), and the tool-use index
+            // copies pointer rows for tool ids the caller's save already validated through the read filter. ProcessArchitectureTests checks every other statement of the module.
+            if (file.EndsWith("Keel.Process" + Path.DirectorySeparatorChar + "CalibrationExpiry.cs", StringComparison.Ordinal) || file.EndsWith("Keel.Process" + Path.DirectorySeparatorChar + "ProcessToolUse.cs", StringComparison.Ordinal)) continue;
             var text = File.ReadAllText(file);
             foreach (Match m in SqlFromMarkedTable().Matches(text))
             {
@@ -314,7 +317,7 @@ public sealed partial class ArchitectureTests
     private static partial Regex OtherModuleTables();
 
     // source_id: the objects created from one already-authorized change (counted by process rules; every list shown to a user carries the filter).
-    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key|source_id|part_master_id)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key|source_id|part_master_id|mbom_number)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
     private static partial Regex KeyLookup();
 
     private static string FindRepoRoot()

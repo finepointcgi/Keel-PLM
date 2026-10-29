@@ -47,7 +47,7 @@ public sealed partial class ProcessPlanService(
         MbomForProcess? mbom = read.Permitted ? await mboms.FindAsync(subject, head.MbomNumber, correlationId, ct) : null;
         if (!read.Permitted || mbom is null)
         {
-            await audit.AppendAsync(tx, Entry(subject, action, AuditOutcome.Denied, number, correlationId, ("reasons", read.Permitted ? "mbom.not_readable" : string.Join(",", read.Reasons))), ct);
+            await audit.AppendAsync(tx, Entry(subject, action, AuditOutcome.Denied, number, correlationId, ("reasons", read.Permitted ? "mbom_not_readable" : string.Join(",", read.Reasons))), ct);
             await tx.CommitAsync(ct);
             return Outcome<T>.NotFound();
         }
@@ -70,7 +70,7 @@ public sealed partial class ProcessPlanService(
         MbomForProcess? mbom = read.Permitted ? await mboms.FindAsync(subject, head.MbomNumber, correlationId, ct) : null;
         if (!read.Permitted || mbom is null)
         {
-            await audit.AppendAsync(tx, Entry(subject, action, AuditOutcome.Denied, number, correlationId, ("reasons", read.Permitted ? "mbom.not_readable" : string.Join(",", read.Reasons))), ct);
+            await audit.AppendAsync(tx, Entry(subject, action, AuditOutcome.Denied, number, correlationId, ("reasons", read.Permitted ? "mbom_not_readable" : string.Join(",", read.Reasons))), ct);
             await tx.CommitAsync(ct);
             return Outcome<T>.NotFound();
         }
@@ -206,7 +206,7 @@ public sealed partial class ProcessPlanService(
         var mbom = string.IsNullOrWhiteSpace(cmd.MbomNumber) ? null : await mboms.FindAsync(subject, cmd.MbomNumber.Trim(), correlationId, ct);
         Outcome<PlanDetail>? refusal = null;
         string? denial = null;
-        if (mbom is null) { refusal = Outcome<PlanDetail>.Invalid([$"MBOM '{cmd.MbomNumber}' was not found, or you are not authorized to see it."]); denial = "mbom.not_readable"; }
+        if (mbom is null) { refusal = Outcome<PlanDetail>.Invalid([$"MBOM '{cmd.MbomNumber}' was not found, or you are not authorized to see it."]); denial = "mbom_not_readable"; }
         else if (!AccessPolicy.HasRoleFor(subject, PlmAction.Modify)) { refusal = Outcome<PlanDetail>.Invalid(["Your roles do not permit creating a process plan."]); denial = AccessPolicy.RoleMissing; }
         if (refusal is not null)
         {
@@ -433,14 +433,14 @@ public sealed partial class ProcessPlanService(
         var workCenters = await ProcessStore.ActiveWorkCentersAsync(conn, tx, head.Plant, ct);
         findings.AddRange(ProcessRules.Validate(content, workCenters).Select(e => new PlanFinding(Severities.Error, "structure", e)));
         if (linesKnown) findings.AddRange(ProcessRules.Coverage(content, lines));
-        else findings.Add(new PlanFinding(Severities.Warning, "mbom.lines_unavailable", "The lines of the bound MBOM revision could not be read, so component assignments were not checked."));
+        else findings.Add(new PlanFinding(Severities.Warning, "lines_unavailable", "The lines of the bound MBOM revision could not be read, so component assignments were not checked."));
         if (mbom is not null)
         {
             var stale = ProcessRules.StalenessOf(head.BoundRevision, head.BoundSha, mbom.LatestReleased);
             if (stale == Staleness.Stale)
-                findings.Add(new PlanFinding(Severities.Warning, "mbom.stale", $"The plan is written against MBOM revision {head.BoundRevision}; revision {mbom.LatestReleased!.Revision} is now released. Review the plan and rebind it."));
+                findings.Add(new PlanFinding(Severities.Warning, "stale_mbom", $"The plan is written against MBOM revision {head.BoundRevision}; revision {mbom.LatestReleased!.Revision} is now released. Review the plan and rebind it."));
             else if (stale == Staleness.NoReleasedMbom)
-                findings.Add(new PlanFinding(Severities.Warning, "mbom.none_released", "The MBOM has no released revision."));
+                findings.Add(new PlanFinding(Severities.Warning, "no_released_mbom", "The MBOM has no released revision."));
         }
         // Tools: counts only, so a tool the reader may not see is not named.
         var toolIds = content.Routings.SelectMany(r => r.Operations).SelectMany(o => o.Tools.Concat(o.Steps.SelectMany(s => s.Tools))).Distinct().ToArray();

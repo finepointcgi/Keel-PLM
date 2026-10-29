@@ -31,7 +31,7 @@ public sealed partial class ProcessPlanService
                 ins.Parameters.AddWithValue("at", clock.GetUtcNow());
                 await ins.ExecuteNonQueryAsync(ct);
             }
-            await RebuildToolUseAsync(conn, tx, head.RevisionId, next, ProcessRules.Deserialize(head.ContentJson), ct);
+            await ProcessToolUse.RebuildAsync(conn, tx, head.RevisionId, next, ProcessRules.Deserialize(head.ContentJson), ct);
             var fresh = (await ProcessStore.LoadByNumberAsync(conn, tx, number, null, false, ct))!;
             return Step<PlanDetail>.Done(await BuildDetailAsync(conn, tx, subject, fresh, mbom, correlationId, ct), ("revision", $"{head.Revision}.{Fmt(next)}"));
         }, ct);
@@ -124,34 +124,12 @@ public sealed partial class ProcessPlanService
                 upd.Parameters.AddWithValue("i", head.IterationId);
                 await upd.ExecuteNonQueryAsync(ct);
             }
-            await RebuildToolUseAsync(conn, tx, head.RevisionId, head.LatestIteration, normalized, ct);
+            await ProcessToolUse.RebuildAsync(conn, tx, head.RevisionId, head.LatestIteration, normalized, ct);
             var fresh = (await ProcessStore.LoadByNumberAsync(conn, tx, number, null, false, ct))!;
             var ops = normalized.Routings.SelectMany(r => r.Operations).ToList();
             return Step<PlanDetail>.Done(await BuildDetailAsync(conn, tx, subject, fresh, mbom, correlationId, ct),
                 ("revision", head.Label), ("routings", Fmt(normalized.Routings.Count)), ("operations", Fmt(ops.Count)), ("steps", Fmt(ops.Sum(o => o.Steps.Count))));
         }, ct);
-
-    private static async Task RebuildToolUseAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Guid revisionId, int iteration, PlanContent content, CancellationToken ct)
-    {
-        Guid iterationId;
-        await using (var q = new NpgsqlCommand("SELECT id FROM proc.plan_iteration WHERE revision_id = @r AND iteration = @n", conn, tx))
-        {
-            q.Parameters.AddWithValue("r", revisionId);
-            q.Parameters.AddWithValue("n", iteration);
-            iterationId = (Guid)(await q.ExecuteScalarAsync(ct))!;
-        }
-        await using (var del = new NpgsqlCommand("DELETE FROM proc.tool_use WHERE iteration_id = @i", conn, tx))
-        {
-            del.Parameters.AddWithValue("i", iterationId);
-            await del.ExecuteNonQueryAsync(ct);
-        }
-        var ids = content.Routings.SelectMany(r => r.Operations).SelectMany(o => o.Tools.Concat(o.Steps.SelectMany(s => s.Tools))).Distinct().ToArray();
-        if (ids.Length == 0) return;
-        await using var ins = new NpgsqlCommand("INSERT INTO proc.tool_use (iteration_id, tool_id) SELECT @i, t.id FROM proc.tool t WHERE t.id = ANY(@ids) ON CONFLICT DO NOTHING", conn, tx);
-        ins.Parameters.AddWithValue("i", iterationId);
-        ins.Parameters.AddWithValue("ids", ids);
-        await ins.ExecuteNonQueryAsync(ct);
-    }
 
     /// <summary>Checks the working copy in: it becomes an immutable iteration with its digest.</summary>
     public Task<Outcome<PlanDetail>> CheckInAsync(Subject subject, string number, string? comment, string? correlationId, CancellationToken ct = default) =>
@@ -229,7 +207,7 @@ public sealed partial class ProcessPlanService
                 ins.Parameters.AddWithValue("content", head.ContentJson);
                 await ins.ExecuteNonQueryAsync(ct);
             }
-            await RebuildToolUseAsync(conn, tx, rid, 1, ProcessRules.Deserialize(head.ContentJson), ct);
+            await ProcessToolUse.RebuildAsync(conn, tx, rid, 1, ProcessRules.Deserialize(head.ContentJson), ct);
             var fresh = (await ProcessStore.LoadByNumberAsync(conn, tx, number, null, false, ct))!;
             return Step<PlanDetail>.Done(await BuildDetailAsync(conn, tx, subject, fresh, mbom, correlationId, ct), ("from", head.Revision), ("to", next), ("mbomRevision", mbom.LatestReleased.Revision));
         }, ct);

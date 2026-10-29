@@ -168,7 +168,7 @@ public sealed class ProcessPlanTests(PostgresFixture pg)
         var stale = await env.GetAsync(number);
         Assert.Equal(Staleness.Stale, stale.Summary.Stale);
         Assert.Equal(PlanStates.Released, stale.Summary.State); // flagged, never changed
-        Assert.Contains(stale.Findings, f => f.Code == "mbom.stale");
+        Assert.Contains(stale.Findings, f => f.Code == "stale_mbom");
         Assert.Single((await env.Plans.SearchAsync(ProcEnv.Alice, new PlanSearch(StaleOnly: true), "c")).Value!.Items);
 
         ProcEnv.Ok(await env.Plans.ReviseAsync(ProcEnv.Alice, number, "c"));
