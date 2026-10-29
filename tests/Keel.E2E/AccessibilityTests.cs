@@ -45,7 +45,9 @@ public sealed class AccessibilityTests(E2EFixture fx)
         Assert.True(carried.Count == 0, "axe must not be under src/: " + string.Join(", ", carried));
         var dockerfile = File.ReadAllText(Path.Combine(root, "Dockerfile"));
         Assert.DoesNotContain("tests/Keel.E2E/vendor", dockerfile, StringComparison.Ordinal);
-        Assert.DoesNotContain("COPY tests", dockerfile, StringComparison.Ordinal);
+        // Only the shared test-support project may be copied (the demo image builds the seeder, which uses it); never the E2E project that holds the library.
+        var copiedTests = dockerfile.Split('\n').Where(l => l.TrimStart().StartsWith("COPY tests", StringComparison.Ordinal)).ToList();
+        Assert.All(copiedTests, l => Assert.StartsWith("COPY tests/Keel.TestSupport", l.TrimStart(), StringComparison.Ordinal));
     }
 
     [E2EFact(Timeout = 1_500_000)]
