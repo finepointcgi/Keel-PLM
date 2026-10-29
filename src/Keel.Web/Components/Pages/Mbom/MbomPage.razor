@@ -1,10 +1,13 @@
 @page "/mboms/{Number}"
 @inject CurrentUser Users
 @inject MbomService Mbom
+@inject LifecycleSteps Lifecycles
+@inject ToastService Toasts
+@inject NavigationManager Nav
 
 @* One manufacturing BOM (ADR-0024): header, lines with EBOM-link indicators, working-copy editing, reconciliation, update from the EBOM, release review and structure.
    The page banner is the aggregate of the MBOM and every row any panel displays (ADR-0014). *@
-<PageFrame Banner="@BannerMerge.Union(detail?.Summary.Banner ?? UiText.Unclassified, linesBanner, reconBanner, BannerOf(structureMarkings), BannerOf(editorMarkings))" Title="Manufacturing BOM">
+<PageFrame Banner="@BannerMerge.Union(detail?.Summary.Banner ?? UiText.Unclassified, linesBanner, reconBanner, BannerOf(structureMarkings), BannerOf(editorMarkings))" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
     @if (notFound)
     {
         <p class="error" role="alert">The manufacturing BOM @Number was not found, or you are not authorized to see it.</p>
@@ -14,18 +17,7 @@
         var d = detail;
         var s = d.Summary;
         <article class="stack">
-            <header class="part-header">
-                <div>
-                    <h2>@s.Number · @s.PartName</h2>
-                    <p class="muted">Manufacturing BOM of <a href="parts/@Uri.EscapeDataString(s.PartNumber)">@s.PartNumber</a> for plant @d.Plant.Code (@d.Plant.Name) · part is at @d.PartState</p>
-                </div>
-                <div class="badges">
-                    <span class="badge">Version @d.Displayed.Revision.@d.Iteration.Iteration</span>
-                    <span class="badge @MbomUiText.StateClass(d.Displayed.State)">@d.Displayed.StateLabel</span>
-                    @if (s.ReconciliationStatus is { } rs) { <span class="badge @MbomUiText.StatusClass(rs)">@ReconcileStatuses.Label(rs)</span> }
-                    <MarkingChip Text="@s.Banner" />
-                </div>
-            </header>
+            <ViewTracker Kind="@ObjectKinds.Mbom" Number="@s.Number" />
 
             @if (d.Revisions.Count > 1)
             {
@@ -39,6 +31,11 @@
             @if (error is not null) { <p class="error" role="alert">@error</p> }
             @if (!d.Permissions.CanModify) { <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p> }
 
+            <TabSet Tabs="Tabs" Active="@tab" ActiveChanged="OnTabChanged" Label="Manufacturing BOM sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
             <dl class="facts">
                 <dt>Derived from EBOM</dt><dd>@(d.Iteration.DerivedFrom ?? "none (manual MBOM)")@(d.Iteration.DerivedSpec is null ? "" : $" · {d.Iteration.DerivedSpec}")</dd>
                 <dt>Lines</dt><dd>@d.Iteration.LineCount lines, @d.Iteration.LinkCount EBOM link@(d.Iteration.LinkCount == 1 ? "" : "s")</dd>
@@ -81,7 +78,14 @@
                 </section>
             }
 
-            <MbomReviewPanel Detail="d" OnChanged="Reload" />
+                        </div>
+                        break;
+                    case "review":
+                        <MbomReviewPanel Detail="d" OnChanged="Reload" />
+                        break;
+                    case "lines":
+                        <div class="stack">
+
 
             <section class="panel stack" aria-labelledby="mbom-lines-heading">
                 <div class="bom-heading">
@@ -102,6 +106,10 @@
                 <MbomEditor Number="@s.Number" OnChanged="Reload" OnMarkings="m => editorMarkings = m" />
             }
 
+                        </div>
+                        break;
+                    case "reconciliation":
+                        <div class="stack">
             <ReconciliationPanel Detail="d" OnChanged="Reload" OnBanner="b => reconBanner = b" />
 
             @if (d.Displayed.IsLatest && d.Displayed.State == "InWork" && d.Checkout is null && d.Permissions.CanModify)
@@ -109,14 +117,55 @@
                 <RegenerationPanel Detail="d" OnChanged="Reload" />
             }
 
+                        </div>
+                        break;
+                    case "structure":
             <MbomStructure Detail="d" OnMarkings="m => structureMarkings = m" />
+                        break;
+                }
+            </TabSet>
         </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the manufacturing BOM" />
     }
 </PageFrame>
 
 @code {
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery(Name = "revision")] public string? Revision { get; set; }
+
+    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure"];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure")];
+    private string tab = "overview";
+    private IReadOnlyList<LifecycleState> steps = [];
+    private string PageTitle => detail is null ? "Manufacturing BOM" : $"{detail.Summary.Number} · {detail.Summary.PartName} ({detail.Plant.Code})";
+    private IReadOnlyList<Crumb> Crumbs => [new("Manufacturing BOMs", "mboms"), new(detail?.Summary.Number ?? Number)];
+
+    private RenderFragment HeaderFragment(MbomDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Summary.Banner"
+              Subtitle="@($"Manufacturing BOM of {d.Summary.PartNumber} for plant {d.Plant.Code} ({d.Plant.Name}) · part is at {d.PartState}")">
+        <Badges>
+            <span class="badge">Version @d.Displayed.Revision.@d.Iteration.Iteration</span>
+            <span class="badge @MbomUiText.StateClass(d.Displayed.State)">@d.Displayed.StateLabel</span>
+            @if (d.Summary.ReconciliationStatus is { } rs) { <span class="badge @MbomUiText.StatusClass(rs)">@ReconcileStatuses.Label(rs)</span> }
+            <FavoriteButton Kind="@ObjectKinds.Mbom" Number="@d.Summary.Number" />
+        </Badges>
+        <Steps>
+            @if (steps.Count > 0)
+            {
+                <Stepper States="steps" Current="@d.Displayed.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Manufacturing BOM lifecycle" />
+            }
+        </Steps>
+    </ObjectHeader>;
+
+    private void OnTabChanged(string id)
+    {
+        tab = id;
+        // Panels of a tab that is no longer shown no longer contribute to the banner.
+        reconBanner = null;
+        structureMarkings = editorMarkings = [];
+    }
 
     private MbomDetail? detail;
     private MbomLines? lines;
@@ -137,6 +186,8 @@
         if (!outcome.IsOk) { notFound = outcome.Kind == OutcomeKind.NotFound; error = notFound ? null : UiText.Message(outcome); detail = null; return; }
         notFound = false;
         detail = outcome.Value;
+        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
+        if (steps.Count == 0) steps = await Lifecycles.StatesAsync("mbom-default");
         var l = await Mbom.GetLinesAsync(subject, Number, detail!.Displayed.IsLatest ? null : detail.Displayed.Revision, null, Corr());
         lines = l.IsOk ? l.Value : null;
         linesBanner = lines?.Banner;

@@ -74,7 +74,7 @@ public sealed partial class ViewerCspAndAssetsTests
     [InlineData("/documents", null)]
     [InlineData("/downloads/documents/D-000001/files/x", null)]
     [InlineData("/api/v1/documents", null)]
-    [InlineData("/_content/Keel.Web/app.css", null)]
+    [InlineData("/_content/Keel.Web/css/tokens.css", null)]
     [InlineData("/_framework/blazor.web.js", null)]
     [InlineData("/viewerx/anything", null)]
     [InlineData("/", null)]

@@ -34,7 +34,7 @@
             <section class="panel">
                 <h3>@view.Definition.Name · version @view.Definition.Version @(view.IsCurrent ? "(current)" : "")</h3>
                 <p class="muted">Applies to <strong>@info.ObjectType</strong> objects. @(view.Definition.ChangeNote is null ? "" : $"Change note: {view.Definition.ChangeNote}") @view.TotalRevisions revision(s) use this version.</p>
-                @if (!info.Editable) { <p class="notice">This lifecycle is tied to change-process rules in code and database triggers; it can be viewed here. Its editor is planned for Phase 5.</p> }
+                @if (!info.Editable) { <p class="notice">This lifecycle is tied to change-process rules in code and database triggers; it can be viewed here. Its editor is not available yet.</p> }
                 <div class="table-wrap"><table class="data">
                     <caption class="visually-hidden">States of version @view.Definition.Version</caption>
                     <thead><tr><th scope="col">State</th><th scope="col">Label</th><th scope="col">Locked</th><th scope="col">Initial</th><th scope="col">Final</th><th scope="col">Revisions in state</th></tr></thead>

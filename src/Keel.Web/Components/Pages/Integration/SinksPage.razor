@@ -41,7 +41,7 @@
             <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <label>Name * <input @bind="name" maxlength="41" readonly="@editing" required /></label>
                 <label>Label * <input @bind="label" maxlength="120" required /></label>
-                <label>Kind <select @bind="kind" disabled="@editing"><option value="webhook">Webhook</option><option value="filedrop">File drop</option><option value="broker">Message broker (Phase 4b)</option></select></label>
+                <label>Kind <select @bind="kind" disabled="@editing"><option value="webhook">Webhook</option><option value="filedrop">File drop</option><option value="broker">Message broker (not available yet)</option></select></label>
                 <label>Clearance profile <select @bind="profile">@foreach (var p in profiles) { <option value="@p.Name">@p.Label (@p.Name)</option> }</select></label>
                 @if (kind == "webhook")
                 {

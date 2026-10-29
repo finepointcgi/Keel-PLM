@@ -1,0 +1,27 @@
+@* Renders the toast queue in two live regions: polite for confirmations and information, assertive for warnings and errors. The regions are always in
+   the page, so assistive technology announces what is added. Toasts never take focus. *@
+@implements IDisposable
+@inject ToastService Toasts
+
+<div class="toasts">
+    <div aria-live="polite" aria-atomic="false" data-toast-region="polite">
+        @foreach (var t in Toasts.Toasts.Where(t => t.Severity is ToastSeverity.Success or ToastSeverity.Info))
+        {
+            <ToastItem @key="t.Id" Toast="t" />
+        }
+    </div>
+    <div aria-live="assertive" aria-atomic="false" data-toast-region="assertive">
+        @foreach (var t in Toasts.Toasts.Where(t => t.Severity is ToastSeverity.Warning or ToastSeverity.Error))
+        {
+            <ToastItem @key="t.Id" Toast="t" />
+        }
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized() => Toasts.Changed += OnChanged;
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Toasts.Changed -= OnChanged;
+}

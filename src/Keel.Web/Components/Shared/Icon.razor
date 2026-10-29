@@ -1,0 +1,7 @@
+@* An icon from the inline SVG sprite served by this application (wwwroot/icons.svg). Decorative: the text beside it, or an aria-label on the button, carries the meaning. *@
+<svg class="icon @Class" aria-hidden="true" focusable="false"><use href="_content/Keel.Web/icons.svg#i-@Name"></use></svg>
+
+@code {
+    [Parameter, EditorRequired] public required string Name { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

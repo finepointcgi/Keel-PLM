@@ -3,7 +3,7 @@
 @inject MbomService Mbom
 
 @* Manufacturing BOMs the signed-in user may read, with the plant selector. The page banner is the aggregate of the rows shown (ADR-0014, ADR-0024). *@
-<PageFrame Banner="@(page?.PageBanner ?? UiText.Unclassified)" Title="Manufacturing BOMs">
+<PageFrame Banner="@(page?.PageBanner ?? UiText.Unclassified)" Title="Manufacturing BOMs" Crumbs="@Crumbs">
     <form class="toolbar" @onsubmit="Search" aria-label="Search manufacturing BOMs">
         <input aria-label="Search text" placeholder="MBOM number, part number or name" class="grow" @bind="text" />
         <label class="inline-check">Plant
@@ -27,28 +27,13 @@
     @if (page is not null)
     {
         <p class="muted" aria-live="polite">@(page.Total == 0 ? "No manufacturing BOMs match." : $"{page.Total} manufacturing BOM{(page.Total == 1 ? "" : "s")}")</p>
-        @if (page.Items.Count > 0)
-        {
-            <div class="table-wrap"><table class="data">
-                <caption class="sr-only">Manufacturing BOMs</caption>
-                <thead><tr><th scope="col">MBOM</th><th scope="col">Part</th><th scope="col">Plant</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Derived from EBOM</th><th scope="col">Reconciliation</th><th scope="col">Markings</th></tr></thead>
-                <tbody>
-                @foreach (var m in page.Items)
-                {
-                    <tr>
-                        <td><a href="@MbomUiText.Href(m.Number)">@m.Number</a></td>
-                        <td><a href="parts/@Uri.EscapeDataString(m.PartNumber)">@m.PartNumber</a> @m.PartName</td>
-                        <td>@m.Plant</td>
-                        <td>@m.Revision.@m.Iteration</td>
-                        <td><span class="badge @MbomUiText.StateClass(m.State)">@m.StateLabel</span>@(m.CheckedOutBy is null ? "" : $" (checked out by {m.CheckedOutBy})")</td>
-                        <td>@(m.DerivedFrom ?? "none")</td>
-                        <td>@if (m.ReconciliationStatus is { } s) { <span class="badge @MbomUiText.StatusClass(s)">@ReconcileStatuses.Label(s)</span> } else { <span class="muted">Not run</span> }</td>
-                        <td><MarkingChip Text="@m.Banner" /></td>
-                    </tr>
-                }
-                </tbody>
-            </table></div>
-        }
+        <DataTable TItem="MbomSummary" TableId="mboms" Items="page.Items" Columns="Columns" Caption="Manufacturing BOMs">
+            <Empty>
+                <EmptyState Title="No manufacturing BOMs match" IconName="mbom" ActionHref="mboms/generate" ActionText="Generate from EBOM">
+                    A manufacturing BOM is built per plant from a released engineering BOM. Generate one, or change the search.
+                </EmptyState>
+            </Empty>
+        </DataTable>
     }
 
     <AuthorizeView Policy="@Policies.Admin">
@@ -88,6 +73,20 @@
     private string text = "", plant = "", state = "", pCode = "", pName = "";
     private bool pActive = true, pWarn = true;
     private string? error, plantError;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Manufacturing BOMs")];
+
+    private static readonly IReadOnlyList<DataColumn<MbomSummary>> Columns =
+    [
+        new() { Key = "mbom", Title = "MBOM", Required = true, SortValue = m => m.Number, Cell = m => @<a href="@MbomUiText.Href(m.Number)">@m.Number</a> },
+        new() { Key = "part", Title = "Part", SortValue = m => m.PartNumber, Cell = m => @<text><a href="parts/@Uri.EscapeDataString(m.PartNumber)">@m.PartNumber</a> @m.PartName</text> },
+        new() { Key = "plant", Title = "Plant", SortValue = m => m.Plant, Text = m => m.Plant },
+        new() { Key = "version", Title = "Version", Text = m => $"{m.Revision}.{m.Iteration}" },
+        new() { Key = "state", Title = "State", SortValue = m => m.StateLabel, Cell = m => @<text><span class="badge @MbomUiText.StateClass(m.State)">@m.StateLabel</span>@(m.CheckedOutBy is null ? "" : $" (checked out by {m.CheckedOutBy})")</text> },
+        new() { Key = "derived", Title = "Derived from EBOM", Text = m => m.DerivedFrom ?? "none", DefaultHidden = true },
+        new() { Key = "reconciliation", Title = "Reconciliation", Cell = m => @<text>@if (m.ReconciliationStatus is { } s) { <span class="badge @MbomUiText.StatusClass(s)">@ReconcileStatuses.Label(s)</span> } else { <span class="muted">Not run</span> }</text> },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = m => @<MarkingChip Text="@m.Banner" /> },
+    ];
 
     protected override async Task OnInitializedAsync()
     {

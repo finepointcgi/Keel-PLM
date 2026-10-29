@@ -1,5 +1,6 @@
-@* Every routable page renders through PageFrame, which requires the marking banner of the data it shows (ADR-0014).
-   An architecture test fails the build for any page that doesn't. *@
+@* Every routable page renders through PageFrame, which requires the marking banner of the data it shows (ADR-0014). An architecture test fails the
+   build for any page that doesn't. UX-1 (ADR-0028) adds optional breadcrumbs and an optional page header; Banner and Title stay required.
+   The page has exactly one h1, the page title: either the plain one rendered here, or the one inside Header (object pages put the number and name there). *@
 <SectionContent SectionName="@TopBanner">
     <MarkingBanner Text="@Banner" Position="top" />
 </SectionContent>
@@ -7,14 +8,28 @@
     <MarkingBanner Text="@Banner" Position="bottom" />
 </SectionContent>
 <PageTitle>@Title · Keel PLM</PageTitle>
-<h1 tabindex="-1">@Title</h1>
+@if (Crumbs is { Count: > 0 }) { <Breadcrumbs Items="Crumbs" /> }
+@if (Header is not null)
+{
+    @Header
+}
+else
+{
+    <h1 tabindex="-1">@Title</h1>
+}
 @ChildContent
 
 @code {
     public const string TopBanner = "keel-banner-top";
     public const string BottomBanner = "keel-banner-bottom";
 
+    /// <summary>The marking banner of everything the page shows (the aggregate; "UNCLASSIFIED" when nothing controlled is shown).</summary>
     [Parameter, EditorRequired] public required string Banner { get; set; }
+    /// <summary>The page title: the document title and the h1. For an object page: its number and name.</summary>
     [Parameter, EditorRequired] public required string Title { get; set; }
+    /// <summary>Levels between Home and this page (the last is the page itself). Omit on pages that sit directly under Home.</summary>
+    [Parameter] public IReadOnlyList<Crumb>? Crumbs { get; set; }
+    /// <summary>Replaces the plain h1 (object pages render the h1 of <c>ObjectHeader</c> here). It must contain the page's single h1.</summary>
+    [Parameter] public RenderFragment? Header { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 }

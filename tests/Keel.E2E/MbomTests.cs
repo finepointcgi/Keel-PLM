@@ -34,12 +34,14 @@ public sealed class MbomTests(E2EFixture fx)
             await link.ClickAsync();
 
             // The MBOM page: header, virtualized lines with EBOM link indicators, banners.
-            await Expect(page.Locator("h2")).ToContainTextAsync(mbom);
+            await Expect(page.Locator("h1")).ToContainTextAsync(mbom);
+            await BrowserSession.OpenTabAsync(page, "Lines");
             await Expect(page.Locator(".mbom-grid [role=row]").Nth(2)).ToBeVisibleAsync();
             await Expect(page.Locator(".mbom-grid .cell-ebom").First).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
 
             // Reconcile: the findings appear grouped by severity and the coverage is stated.
+            await BrowserSession.OpenTabAsync(page, "Reconciliation");
             await page.GetByLabel("Reconcile against: EBOM selection").SelectOptionAsync("Latest");
             await BrowserSession.ClickAsync(page, "Reconcile");
             var panel = page.Locator("section[aria-labelledby='recon-heading']");
@@ -47,22 +49,26 @@ public sealed class MbomTests(E2EFixture fx)
             await Expect(panel.Locator(".badge").First).ToBeVisibleAsync();
 
             // The structure, expanded, shows more than one level.
+            await BrowserSession.OpenTabAsync(page, "Structure");
             await page.GetByLabel("Levels shown").SelectOptionAsync("0");
             await Expect(page.Locator("section[aria-labelledby='mbom-structure-heading'] .bom-grid .bom-row").Nth(3)).ToBeVisibleAsync();
 
             // Side by side: EBOM lines and the MBOM lines that implement them.
+            await BrowserSession.OpenTabAsync(page, "Lines");
             await page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "EBOM and MBOM side by side" }).First.ClickAsync();
             await Expect(page.Locator("table.side-by-side tbody tr").First).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
 
             // The part page lists the MBOM per plant.
             await session.GotoAsync(alice, "/parts/" + top);
+            await BrowserSession.OpenTabAsync(page, "Structure");
             var section = page.Locator("section[aria-labelledby='mbom-section-heading']");
             await Expect(section).ToContainTextAsync(mbom);
             await Expect(section).ToContainTextAsync("PLANT-A");
 
             // Keyboard: Tab reaches the lines grid's first row.
             await session.GotoAsync(alice, "/mboms/" + mbom);
+            await BrowserSession.OpenTabAsync(page, "Lines");
             await Expect(page.Locator(".mbom-grid [role=row][tabindex='0']").First).ToBeVisibleAsync();
 
             Assert.DoesNotContain(alice.PageErrors, e => true);

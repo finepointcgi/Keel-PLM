@@ -132,6 +132,7 @@ builder.Services.AddSingleton<ITdpDocumentSource, Keel.Documents.TdpDocumentSour
 Keel.Integration.IntegrationModule.AddKeelIntegration(builder.Services, builder.Configuration); // 4.0 outbox, ERP sinks, TDP
 builder.Services.AddKeelIntegrationOpenApi();
 Keel.Siem.SiemModule.AddKeelSiem(builder.Services, builder.Configuration, options.Security.RequireFips, secretsDirectory); // 5.0 SIEM forwarding (off unless Keel:Siem:Enabled)
+Keel.Workspace.WorkspaceModule.AddKeelWorkspace(builder.Services); // UX-1 personal workspace data (preferences, recent items, favorites, saved searches)
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))

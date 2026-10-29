@@ -1,0 +1,27 @@
+@* The header of an object page: the number and name as the page's h1, then the markings chip(s), version and state badges, a subtitle and the lifecycle stepper.
+   The marking chip is always shown (it is the object's own marking; the page banner above is the aggregate of everything on the page). *@
+<header class="page-header">
+    <div class="title-row">
+        <div>
+            <h1 tabindex="-1">@Title</h1>
+            @if (Subtitle is not null) { <p class="subtitle">@Subtitle</p> }
+        </div>
+        <div class="badges">
+            @if (Banner is not null) { <MarkingChip Text="@Banner" /> }
+            @Badges
+        </div>
+    </div>
+    @Steps
+    @ChildContent
+</header>
+
+@code {
+    /// <summary>Number and name, e.g. "P-000123 · Bracket". Also the page title.</summary>
+    [Parameter, EditorRequired] public required string Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    /// <summary>The object's own marking text (its chip).</summary>
+    [Parameter] public string? Banner { get; set; }
+    [Parameter] public RenderFragment? Badges { get; set; }
+    [Parameter] public RenderFragment? Steps { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,59 @@
+@* One toast. It dismisses itself after its lifetime; hovering over it or focusing inside it pauses the countdown (WCAG 2.2.1: time to read). *@
+@implements IDisposable
+@inject ToastService Toasts
+@inject TimeProvider Clock
+
+<div class="toast @Toast.Severity.ToString().ToLowerInvariant()" data-toast="@Toast.Severity.ToString().ToLowerInvariant()"
+     @onmouseenter="Pause" @onmouseleave="Resume" @onfocusin="Pause" @onfocusout="Resume">
+    <Icon Name="@IconName" />
+    <div class="body">
+        @if (Toast.Title is not null) { <span class="title">@Toast.Title</span> }
+        @Toast.Message
+    </div>
+    <button type="button" class="dismiss" aria-label="Dismiss message" @onclick="() => Toasts.Dismiss(Toast.Id)">×</button>
+</div>
+
+@code {
+    private ITimer? timer;
+    private TimeSpan remaining;
+    private DateTimeOffset startedAt;
+
+    [Parameter, EditorRequired] public required Toast Toast { get; set; }
+
+    private string IconName => Toast.Severity switch
+    {
+        ToastSeverity.Success => "check",
+        ToastSeverity.Warning => "warning",
+        ToastSeverity.Error => "error",
+        _ => "info",
+    };
+
+    protected override void OnInitialized()
+    {
+        remaining = ToastService.Lifetime(Toast.Severity);
+        Start();
+    }
+
+    private void Start()
+    {
+        timer?.Dispose();
+        startedAt = Clock.GetUtcNow();
+        timer = Clock.CreateTimer(_ => Toasts.Dismiss(Toast.Id), null, remaining, Timeout.InfiniteTimeSpan);
+    }
+
+    private void Pause()
+    {
+        if (timer is null) return;
+        timer.Dispose();
+        timer = null;
+        remaining -= Clock.GetUtcNow() - startedAt;
+        if (remaining < TimeSpan.FromSeconds(2)) remaining = TimeSpan.FromSeconds(2); // a paused toast always gets a moment to be read after the pointer leaves
+    }
+
+    private void Resume()
+    {
+        if (timer is null) Start();
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

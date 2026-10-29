@@ -1,10 +1,42 @@
 @page "/"
-@inject NavigationManager Nav
+@using Keel.Web.Components.Pages.Dashboard
+@inject WorkspaceReads Reads
+@inject WorkspaceService Workspace
+@inject CurrentUser Users
 
-<PageFrame Banner="@UiText.Unclassified" Title="Keel PLM">
-    <p>Opening parts…</p>
+<PageFrame Banner="@PageBanner" Title="Home">
+    <p class="muted">Your work at a glance: what needs you, what you opened recently and what changed in your programs. Everything here is limited to what you are allowed to see.</p>
+    <div class="cards">
+        <AttentionCard OnBanner="SetBanner" />
+        <ObjectCard Id="recent" Title="Recently viewed" IconName="clock" Load="() => Reads.RecentAsync()" OnBanner="SetBanner" ShowDate="true"
+                    EmptyTitle="Nothing viewed yet" EmptyText="Parts, documents and changes you open will be listed here so you can get back to them." />
+        <ObjectCard @ref="favoritesCard" Id="favorites" Title="Favorites" IconName="star" Load="() => Reads.FavoritesAsync()" OnBanner="SetBanner" Removable="true" OnRemove="RemoveFavoriteAsync"
+                    EmptyTitle="No favorites yet" EmptyText="Use the star on a part, document or change to keep it handy." />
+        <ObjectCard Id="programs" Title="Changes in my programs" IconName="change" Load="() => Reads.ProgramChangesAsync()" OnBanner="SetBanner"
+                    EmptyTitle="No open changes" EmptyText="Open change requests and notices of the programs you belong to appear here." />
+        <ObjectCard Id="released" Title="Recently released" IconName="rocket" Load="() => Reads.RecentlyReleasedAsync()" OnBanner="SetBanner" ShowDate="true"
+                    EmptyTitle="Nothing released recently" EmptyText="Parts and documents released in the last 30 days that you can read are listed here." />
+        <QuickActionsCard />
+    </div>
 </PageFrame>
 
 @code {
-    protected override void OnInitialized() => Nav.NavigateTo("parts", replace: true);
+    // The banner of the page is the aggregate of what its cards show now (an empty or still-loading dashboard is UNCLASSIFIED).
+    private readonly Dictionary<string, string?> banners = [];
+
+    private ObjectCard? favoritesCard;
+
+    private async Task RemoveFavoriteAsync(ResolvedItem item)
+    {
+        await Workspace.RemoveFavoriteAsync(await Users.GetAsync(), item.Kind, item.Number);
+        if (favoritesCard is not null) await favoritesCard.ReloadCardAsync();
+    }
+
+    private string PageBanner => BannerMerge.Union(banners.Values.ToArray());
+
+    private void SetBanner((string Id, string? Banner) update)
+    {
+        banners[update.Id] = update.Banner;
+        StateHasChanged();
+    }
 }

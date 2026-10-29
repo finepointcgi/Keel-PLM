@@ -13,13 +13,23 @@ public static class UiText
         ["checkout.not_owner"] = "Only the user who checked it out (or an administrator) can do this.",
         ["number.explicit_requires_admin"] = "Only administrators may assign explicit numbers.",
         ["document.read_denied"] = "You are not authorized to see the linked document.",
+        ["child.not_readable"] = "You are not authorized to see a part this change would involve.",
+        ["stepup.required"] = "Signing needs a fresh sign-in. You will be asked to sign in again.",
     };
+
+    // A machine reason code looks like "area.some_reason" (optionally with ":detail"); it is never shown to people as it is.
+    private static readonly System.Text.RegularExpressions.Regex CodeShape = new(@"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+(:.*)?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>True when the text is a machine reason code rather than a sentence.</summary>
+    public static bool IsReasonCode(string text) => CodeShape.IsMatch(text);
 
     public static string Reason(string code)
     {
         if (code.StartsWith("new_markings:", StringComparison.Ordinal)) return "With the new markings: " + Reason(code["new_markings:".Length..]);
         if (code.StartsWith("cui.category_missing:", StringComparison.Ordinal)) return $"You are not authorized for CUI category {code.Split(':')[1]}.";
-        return Reasons.TryGetValue(code, out var text) ? text : code;
+        if (Reasons.TryGetValue(code, out var text)) return text;
+        // A code nobody wrote text for is still not shown raw: the audit log has the exact code for support.
+        return IsReasonCode(code) ? "You are not allowed to do this." : code;
     }
 
     public static string Message<T>(Outcome<T> o) => o.Kind switch

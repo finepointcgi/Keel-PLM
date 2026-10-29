@@ -1,0 +1,51 @@
+@* The star of an object page: keeps (or drops) the object in the user's favorites. Only the object type and number are stored, and the star is shown only on a page the
+   user could open, so it can only name something they may read. *@
+@inject CurrentUser Users
+@inject WorkspaceService Workspace
+@inject ToastService Toasts
+
+<button type="button" class="secondary icon-button bordered" aria-pressed="@(isFavorite ? "true" : "false")" data-action="favorite" @onclick="ToggleAsync"
+        aria-label="@(isFavorite ? $"Remove {Number} from favorites" : $"Add {Number} to favorites")" title="@(isFavorite ? "Remove from favorites" : "Add to favorites")">
+    <Icon Name="star" Class="@(isFavorite ? "filled" : null)" /> <span class="label">@(isFavorite ? "Favorite" : "Add to favorites")</span>
+</button>
+
+@code {
+    private bool isFavorite;
+    private string? loadedKey;
+
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Kind + "|" + Number;
+        if (key == loadedKey) return;
+        loadedKey = key;
+        try { isFavorite = await Workspace.IsFavoriteAsync(await Users.GetAsync(), Kind, Number); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { isFavorite = false; }
+    }
+
+    private async Task ToggleAsync()
+    {
+        try
+        {
+            var me = await Users.GetAsync();
+            if (isFavorite)
+            {
+                await Workspace.RemoveFavoriteAsync(me, Kind, Number);
+                isFavorite = false;
+                Toasts.Info($"{Number} removed from your favorites.");
+            }
+            else if (await Workspace.AddFavoriteAsync(me, Kind, Number))
+            {
+                isFavorite = true;
+                Toasts.Success($"{Number} added to your favorites.");
+            }
+            else Toasts.Warning($"You can keep up to {WorkspaceLimits.Favorites} favorites. Remove one to add another.");
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            Toasts.Error("Your favorites could not be changed right now.");
+        }
+    }
+}

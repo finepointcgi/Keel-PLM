@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Keel.Migration\Keel.Migration.csproj" />
     <ProjectReference Include="..\Keel.Admin\Keel.Admin.csproj" />
     <ProjectReference Include="..\Keel.Integration\Keel.Integration.csproj" />
+    <ProjectReference Include="..\Keel.Workspace\Keel.Workspace.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
   </ItemGroup>
   <ItemGroup>

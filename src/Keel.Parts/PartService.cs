@@ -565,8 +565,8 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
 
     private static string ViaMessage(string via, string targetLabel) => via switch
     {
-        "workflow" => $"{targetLabel} is reached only through an approved review workflow (increment 1.5).",
-        "change" => $"{targetLabel} is reached only through a released change notice (increment 1.6).",
+        "workflow" => $"{targetLabel} is reached through an approved review. Submit the part for review to release it.",
+        "change" => $"{targetLabel} is reached only through a released change notice.",
         _ => $"Transition to {targetLabel} is not available.",
     };
 

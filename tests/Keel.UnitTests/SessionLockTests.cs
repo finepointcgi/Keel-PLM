@@ -306,6 +306,9 @@ public sealed class SessionLockTests : BunitContext
         Services.AddScoped<SessionLockCoordinator>();
         JSInterop.Mode = JSRuntimeMode.Loose;
         JSInterop.SetupModule("./_content/Keel.Web/session-lock.js");
+        // The shell (UX-1) also needs its own module, preference store, search provider and toast queue.
+        _ = ShellTestKit.Register(this, Roles.Viewer, Roles.Admin, Roles.Auditor);
+        Services.AddSingleton<AuthenticationStateProvider>(auth); // the session's principal, not the kit's default
         var coordinator = Services.GetRequiredService<SessionLockCoordinator>();
         coordinator.InitializeAsync().GetAwaiter().GetResult();
         return (registry, clock, coordinator);
@@ -381,6 +384,28 @@ public sealed class SessionLockTests : BunitContext
         await registry.UnlockAsync("s1", "step-up");
         cut.WaitForAssertion(() => Assert.Contains("Bracket P-000123", cut.Markup, StringComparison.Ordinal));
         Assert.Empty(cut.FindAll("[role=dialog]"));
+    }
+
+    [Fact]
+    public async Task The_shell_has_a_skip_link_landmarks_and_a_palette_that_the_lock_takes_away()
+    {
+        var (registry, _, _) = Setup();
+        var cut = RenderLayout("page body");
+
+        Assert.EndsWith("#main", cut.Find("a.skip-link").GetAttribute("href"), StringComparison.Ordinal);
+        Assert.NotNull(cut.Find("header.topbar"));
+        Assert.NotNull(cut.Find("main#main"));
+        Assert.NotNull(cut.Find("nav[aria-label=Main]"));
+        Assert.NotNull(cut.Find("[data-action=open-palette]"));
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "registerShortcuts"); // Ctrl/Cmd+K is listened for while unlocked
+
+        await registry.LockNowAsync("s1");
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-phase=locked]")));
+
+        Assert.Empty(cut.FindAll("[data-action=open-palette]")); // no search while locked
+        Assert.Empty(cut.FindAll("[data-palette]"));
+        Assert.Empty(cut.FindAll("#user-menu-button")); // no user menu (roles, name) while locked
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "unregisterShortcuts"); // the shortcut listener is gone
     }
 
     [Fact]

@@ -1,0 +1,15 @@
+@* A placeholder shown while a card or table loads (the real content replaces it; nothing marked is in it). Announced once to assistive technology. *@
+<div class="skeleton" role="status" aria-busy="true">
+    <span class="visually-hidden">@Label</span>
+    @for (var i = 0; i < Lines; i++)
+    {
+        <div class="bar @Widths[i % Widths.Length]"></div>
+    }
+</div>
+
+@code {
+    private static readonly string[] Widths = ["w-90", "w-70", "w-100", "w-50", "w-70"];
+
+    [Parameter] public int Lines { get; set; } = 3;
+    [Parameter] public string Label { get; set; } = "Loading";
+}

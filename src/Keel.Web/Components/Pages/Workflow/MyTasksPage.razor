@@ -2,44 +2,29 @@
 @inject CurrentUser Users
 @inject WorkflowService Flow
 
-<PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="My tasks">
+<PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="My tasks" Crumbs="@Crumbs">
     @if (tasks is not null)
     {
-        @if (tasks.Items.Count == 0)
-        {
-            <p class="muted">You have no open tasks.</p>
-        }
-        else
-        {
-            <p class="muted">@tasks.Items.Count open task@(tasks.Items.Count == 1 ? "" : "s")</p>
-            <div class="table-wrap"><table class="data">
-                <thead><tr><th scope="col">Task</th><th scope="col">Item</th><th scope="col">Markings</th><th scope="col">Started by</th><th scope="col">Due</th></tr></thead>
-                <tbody>
-                    @foreach (var t in tasks.Items)
-                    {
-                        <tr>
-                            <td><a href="tasks/@t.Id">@t.Name</a></td>
-                            @if (t.Redacted || t.Target is null)
-                            {
-                                <td colspan="3" class="muted">Restricted item. You are no longer eligible to see it; the task cannot be signed.</td>
-                            }
-                            else
-                            {
-                                <td>@t.Target.Key · @t.Target.Name <span class="muted">rev @t.Target.Revision</span></td>
-                                <td><MarkingChip Text="@t.Target.Banner" /></td>
-                                <td>@t.StartedByName</td>
-                            }
-                            <td class="@(t.Overdue ? "error" : null)">@WorkflowText.Due(t.DueAt, t.Overdue)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table></div>
-        }
+        <p class="muted">@tasks.Items.Count open task@(tasks.Items.Count == 1 ? "" : "s")</p>
+        <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="My open tasks">
+            <Empty><EmptyState Title="You have no open tasks" IconName="check">Reviews and approvals that are waiting for you will be listed here.</EmptyState></Empty>
+        </DataTable>
     }
 </PageFrame>
 
 @code {
     private MyTasks? tasks;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("My tasks")];
+
+    private static readonly IReadOnlyList<DataColumn<TaskSummary>> Columns =
+    [
+        new() { Key = "task", Title = "Task", Required = true, SortValue = t => t.Name, Cell = t => @<a href="tasks/@t.Id">@t.Name</a> },
+        new() { Key = "item", Title = "Item", Cell = t => @<text>@if (t.Redacted || t.Target is null) { <span class="muted">Restricted item. You are no longer eligible to see it; the task cannot be signed.</span> } else { @t.Target.Key <text>·</text> @t.Target.Name <span class="muted">rev @t.Target.Revision</span> }</text> },
+        new() { Key = "markings", Title = "Markings", Cell = t => @<text>@if (!t.Redacted && t.Target is not null) { <MarkingChip Text="@t.Target.Banner" /> }</text> },
+        new() { Key = "started", Title = "Started by", SortValue = t => t.StartedByName, Text = t => t.Redacted ? "" : t.StartedByName },
+        new() { Key = "due", Title = "Due", SortValue = t => t.DueAt, Cell = t => @<span class="@(t.Overdue ? "error" : null)">@WorkflowText.Due(t.DueAt, t.Overdue)</span> },
+    ];
 
     protected override async Task OnInitializedAsync() =>
         tasks = await Flow.MyTasksAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());

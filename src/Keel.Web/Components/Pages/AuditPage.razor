@@ -4,7 +4,7 @@
 @inject AuditLogService AuditLog
 
 @* ASSUMPTION(A20): audit records reveal who accessed export-controlled data, so the audit view is marked CUI. *@
-<PageFrame Banner="CUI" Title="Audit log">
+<PageFrame Banner="CUI" Title="Audit log" Crumbs="@Crumbs">
     <div class="toolbar">
         <button type="button" @onclick="Verify" disabled="@busy">Verify chain</button>
         <button type="button" class="secondary" @onclick="Load" disabled="@busy">Refresh</button>
@@ -20,23 +20,9 @@
     @if (error is not null) { <p class="error" role="alert">@error</p> }
     @if (events is not null)
     {
-        <div class="table-wrap"><table class="data">
-            <thead><tr><th scope="col">Seq</th><th scope="col">Time (UTC)</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Object</th><th scope="col">Outcome</th><th scope="col">Hash</th></tr></thead>
-            <tbody>
-                @foreach (var e in events)
-                {
-                    <tr>
-                        <td>@e.Seq</td>
-                        <td>@UiText.Utc(e.OccurredAt)</td>
-                        <td title="@e.Actor">@(AuditLogService.ActorName(e) ?? e.Actor)</td>
-                        <td>@e.Action</td>
-                        <td>@e.ObjectType @e.ObjectId</td>
-                        <td class="outcome-@e.Outcome.ToString().ToLowerInvariant()">@e.Outcome</td>
-                        <td><code title="@Convert.ToHexStringLower(e.Hash)">@Convert.ToHexStringLower(e.Hash)[..12]</code></td>
-                    </tr>
-                }
-            </tbody>
-        </table></div>
+        <DataTable TItem="AuditRecord" TableId="audit" Items="events" Columns="Columns" Caption="Audit events">
+            <Empty><EmptyState Title="No audit events" IconName="audit">Events are recorded as people work. Nothing has been recorded yet.</EmptyState></Empty>
+        </DataTable>
     }
 </PageFrame>
 
@@ -46,6 +32,19 @@
     private VerificationResult? verification;
     private string? error;
     private bool busy;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Audit log")];
+
+    private static readonly IReadOnlyList<DataColumn<AuditRecord>> Columns =
+    [
+        new() { Key = "seq", Title = "Seq", Required = true, SortValue = e => e.Seq, Text = e => e.Seq.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+        new() { Key = "time", Title = "Time (UTC)", SortValue = e => e.OccurredAt, Text = e => UiText.Utc(e.OccurredAt) },
+        new() { Key = "actor", Title = "Actor", SortValue = e => AuditLogService.ActorName(e) ?? e.Actor, Cell = e => @<span title="@e.Actor">@(AuditLogService.ActorName(e) ?? e.Actor)</span> },
+        new() { Key = "action", Title = "Action", SortValue = e => e.Action, Text = e => e.Action },
+        new() { Key = "object", Title = "Object", Text = e => $"{e.ObjectType} {e.ObjectId}" },
+        new() { Key = "outcome", Title = "Outcome", SortValue = e => e.Outcome.ToString(), Cell = e => @<span class="outcome-@e.Outcome.ToString().ToLowerInvariant()">@e.Outcome</span> },
+        new() { Key = "hash", Title = "Hash", DefaultHidden = true, Cell = e => @<code title="@Convert.ToHexStringLower(e.Hash)">@Convert.ToHexStringLower(e.Hash)[..12]</code> },
+    ];
 
     protected override Task OnInitializedAsync() => Load();
 

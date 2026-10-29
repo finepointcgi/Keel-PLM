@@ -1,0 +1,78 @@
+@* Tabs for object pages (WAI-ARIA tabs pattern, automatic activation): Left/Right/Home/End move between tabs, the selected tab is the one in the tab order.
+   The selected tab is mirrored into the address-bar fragment (#documents), so a tab is deep-linkable and survives a reload; selecting a tab never reloads the page
+   or loses scroll position. The page decides what each panel contains (ChildContent renders the panel of the Active tab). *@
+@inject ShellJs Shell
+
+<div class="tabs">
+    <div class="tablist" role="tablist" aria-label="@Label">
+        @foreach (var tab in Tabs)
+        {
+            var selected = tab.Id == Active;
+            <button type="button" role="tab" class="tab" id="@TabId(tab.Id)" aria-selected="@(selected ? "true" : "false")" aria-controls="@PanelId"
+                    tabindex="@(selected ? 0 : -1)" data-tab="@tab.Id" @onclick="() => SelectAsync(tab.Id, focus: false)" @onkeydown="e => OnKey(e, tab.Id)">
+                @tab.Title
+                @if (tab.Count is { } n) { <span class="count" aria-label="@(n) items">@n</span> }
+            </button>
+        }
+    </div>
+    <div class="tabpanel" role="tabpanel" id="@PanelId" aria-labelledby="@TabId(Active)" tabindex="0">
+        <h2 class="visually-hidden">@(Tabs.FirstOrDefault(t => t.Id == Active)?.Title)</h2>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    private string? focusAfterRender;
+
+    private string PanelId => "tabpanel-" + Active;
+    private static string TabId(string id) => "tab-" + id;
+
+    [Parameter, EditorRequired] public required IReadOnlyList<TabInfo> Tabs { get; set; }
+    [Parameter, EditorRequired] public required string Active { get; set; }
+    [Parameter] public EventCallback<string> ActiveChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Sections";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>The tab a URL names (its fragment), when it is one of <paramref name="ids"/>; otherwise <paramref name="fallback"/>.</summary>
+    public static string FromUri(string uri, IEnumerable<string> ids, string fallback)
+    {
+        var hash = uri.IndexOf('#', StringComparison.Ordinal);
+        if (hash < 0) return fallback;
+        var name = Uri.UnescapeDataString(uri[(hash + 1)..]);
+        return ids.Contains(name, StringComparer.Ordinal) ? name : fallback;
+    }
+
+    private async Task SelectAsync(string id, bool focus)
+    {
+        if (id != Active)
+        {
+            Active = id;
+            await ActiveChanged.InvokeAsync(id);
+            await Shell.InvokeVoidAsync("setHash", id);
+        }
+        if (focus) focusAfterRender = TabId(id);
+    }
+
+    private async Task OnKey(KeyboardEventArgs e, string current)
+    {
+        var index = Tabs.ToList().FindIndex(t => t.Id == current);
+        var next = e.Key switch
+        {
+            "ArrowRight" => (index + 1) % Tabs.Count,
+            "ArrowLeft" => (index - 1 + Tabs.Count) % Tabs.Count,
+            "Home" => 0,
+            "End" => Tabs.Count - 1,
+            _ => -1,
+        };
+        if (next >= 0) await SelectAsync(Tabs[next].Id, focus: true);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusAfterRender is { } id)
+        {
+            focusAfterRender = null;
+            await Shell.InvokeVoidAsync("focusSelector", "#" + id);
+        }
+    }
+}

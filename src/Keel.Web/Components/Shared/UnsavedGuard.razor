@@ -1,0 +1,23 @@
+@* While a form has edits that are not saved, asks the browser to confirm before the page is closed or reloaded (the beforeunload handler lives in wwwroot/js/shell.js:
+   no inline script). Renders nothing. *@
+@implements IAsyncDisposable
+@inject ShellJs Js
+
+@code {
+    private bool? applied;
+
+    /// <summary>True while there are unsaved edits.</summary>
+    [Parameter] public bool Dirty { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (applied == Dirty) return;
+        applied = Dirty;
+        await Js.InvokeVoidAsync("guardUnsaved", Dirty);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (applied == true) await Js.InvokeVoidAsync("guardUnsaved", false);
+    }
+}

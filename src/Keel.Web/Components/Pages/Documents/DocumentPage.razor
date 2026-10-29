@@ -5,9 +5,11 @@
 @inject DocumentService Docs
 @inject VaultOptions Vault
 @inject NpgsqlDataSource Db
+@inject ToastService Toasts
+@inject NavigationManager Nav
 @using Npgsql
 
-<PageFrame Banner="@(doc?.Banner ?? UiText.Unclassified)" Title="Document">
+<PageFrame Banner="@(doc?.Banner ?? UiText.Unclassified)" Title="@PageTitle" Crumbs="@Crumbs" Header="@(doc is not null ? HeaderFragment(doc) : null)">
     @if (notFound)
     {
         <p class="error" role="alert">Document @Number was not found, or you are not authorized to see it.</p>
@@ -15,19 +17,241 @@
     else if (doc is not null)
     {
         var d = doc;
+        var co = d.Checkout;
         <article class="stack">
-            <header class="part-header">
-                <div>
-                    <h2>@d.Number · @d.Name</h2>
-                    <p class="muted">@d.DocumentType · created by @d.CreatedBy</p>
-                </div>
-                <div class="badges">
-                    <span class="badge">Version @d.Iteration.Label</span>
-                    <span class="badge state-@d.Revision.State.ToLowerInvariant()">@d.Revision.StateLabel</span>
-                    @if (d.Revision.IsLocked) { <span class="badge">Locked</span> }
-                </div>
-            </header>
+            <ViewTracker Kind="@ObjectKinds.Document" Number="@d.Number" />
+            <UnsavedGuard Dirty="@(co?.IsMine == true && workingDescription != (co.Description ?? ""))" />
 
+            <div class="action-bar" role="toolbar" aria-label="Document actions">
+                @if (d.Revision.IsLatest)
+                {
+                    @if (co is null && d.Permissions.CanModify && !d.Revision.IsLocked)
+                    {
+                        <button type="button" disabled="@busy" @onclick='() => Run(s => Docs.CheckOutAsync(s, Number, Corr()), "Checked out. Your changes stay private until you check in.")'>Check out</button>
+                    }
+                    @if (co?.IsMine == true)
+                    {
+                        <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save working copy</button>
+                        <input aria-label="Check-in comment" placeholder="Check-in comment" class="grow" @bind="comment" />
+                        <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
+                    }
+                    @if (co is not null && (co.IsMine || d.Permissions.CanAdminister))
+                    {
+                        <button type="button" class="secondary" disabled="@busy" @onclick="() => confirmUndo = true">Undo check-out</button>
+                    }
+                    @foreach (var t in d.Transitions)
+                    {
+                        <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
+                                @onclick='() => Run(s => Docs.SetStateAsync(s, Number, t.To, null, false, Corr()), $"Moved to {t.Label}.")'>Move to @t.Label</button>
+                    }
+                }
+            </div>
+
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (co is not null && !co.IsMine)
+            {
+                <p class="notice">Checked out by @(co.UserName ?? co.UserId) since @UiText.Utc(co.CheckedOutAt).</p>
+            }
+            @if (!d.Permissions.CanModify)
+            {
+                <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p>
+            }
+            @foreach (var t in d.Transitions.Where(t => !t.Allowed && t.Reason is not null))
+            {
+                <p class="muted small">@t.Label: @t.Reason</p>
+            }
+
+            <TabSet Tabs="Tabs" Active="@tab" ActiveChanged="id => tab = id" Label="Document sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            @if (co?.IsMine == true)
+                            {
+                                <section class="panel" aria-labelledby="work-heading">
+                                    <h3 id="work-heading">Edit working copy</h3>
+                                    <p class="muted">You have this document checked out. Changes stay private until you check in.</p>
+                                    <label class="grid-form">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label>
+                                    <h4>Working files</h4>
+                                    <DocumentFileList Files="co.Files ?? []" OnRemove="RemoveFile" Busy="busy" Empty="The working copy has no files." />
+                                    <div class="toolbar">
+                                        <select aria-label="File role" @bind="uploadRole">
+                                            <option value="primary">Primary (replaces the current primary)</option>
+                                            <option value="attachment">Attachment</option>
+                                        </select>
+                                        <InputFile OnChange="Upload" disabled="@busy" aria-label="Add file" />
+                                        @if (uploading is not null) { <span class="muted">Uploading @uploading…</span> }
+                                    </div>
+                                </section>
+                            }
+                            <section class="panel" aria-labelledby="iteration-heading">
+                                <h3 id="iteration-heading">Version @d.Iteration.Label</h3>
+                                <p>@(string.IsNullOrEmpty(d.Iteration.Description) ? "No description" : d.Iteration.Description)</p>
+                                @if (!d.Permissions.CanDownload) { <p class="muted">You may view this document but not download its files.</p> }
+                                <DocumentFileList Files="d.Iteration.Files" DownloadNumber="@(d.Permissions.CanDownload ? d.Number : null)" Empty="No files yet." />
+                                <p class="muted small">Downloads are marked: PDFs are stamped with the banner and notices on every page; other files arrive in a ZIP with a marking cover sheet.</p>
+                            </section>
+                            @if (d.Permissions.CanAdminister && d.Revision.IsLatest)
+                            {
+                                <details class="admin">
+                                    <summary>Administrator: set state</summary>
+                                    <div class="toolbar">
+                                        <select aria-label="Target state" @bind="overrideState">
+                                            @foreach (var s in lifecycleStates) { <option value="@s.State">@s.Label</option> }
+                                        </select>
+                                        <button type="button" class="secondary" disabled="@(busy || overrideState == d.Revision.State)" @onclick="() => confirmOverride = true">Set state…</button>
+                                    </div>
+                                </details>
+                            }
+                        </div>
+                        break;
+                    case "usedby":
+                        <section class="panel" aria-labelledby="usedby-heading">
+                            <h3 id="usedby-heading">Used by parts</h3>
+                            @if (parts is null || parts.Parts.Count == 0)
+                            {
+                                <EmptyState Title="Not used by any part" IconName="part">No part's latest version links to this document. Link it from the Documents tab of a part that is checked out.</EmptyState>
+                            }
+                            else
+                            {
+                                <div class="table-wrap"><table class="data">
+                                    <thead><tr><th scope="col">Link</th><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Version</th><th scope="col">Markings</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var p in parts.Parts)
+                                        {
+                                            <tr>
+                                                <td>@DocumentUi.LinkTypeLabel(p.LinkType)</td>
+                                                @if (p.Redacted)
+                                                {
+                                                    <td colspan="4" class="muted redacted">Restricted part: you are not authorized to see it.</td>
+                                                }
+                                                else
+                                                {
+                                                    <td><a href="parts/@Uri.EscapeDataString(p.PartNumber!)">@p.PartNumber</a></td>
+                                                    <td>@p.PartName</td>
+                                                    <td>@p.IterationLabel</td>
+                                                    <td><MarkingChip Text="@(p.Banner ?? "")" /></td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table></div>
+                            }
+                        </section>
+                        break;
+                    case "history":
+                        <section class="panel" aria-labelledby="history-heading">
+                            <h3 id="history-heading">Version history</h3>
+                            <div class="table-wrap"><table class="data">
+                                <thead><tr><th scope="col">Version</th><th scope="col">Checked in (UTC)</th><th scope="col">By</th><th scope="col">Comment</th><th scope="col">Files</th></tr></thead>
+                                <tbody>
+                                    @foreach (var h in d.History)
+                                    {
+                                        <tr>
+                                            <td>@h.Label</td><td>@UiText.Utc(h.CreatedAt)</td><td>@h.CreatedBy</td><td>@h.Comment</td>
+                                            <td>
+                                                @foreach (var f in h.Files)
+                                                {
+                                                    @if (d.Permissions.CanDownload)
+                                                    {
+                                                        <a href="@DocumentUi.DownloadUrl(d.Number, f.Id)" download>@f.FileName</a><br />
+                                                    }
+                                                    else
+                                                    {
+                                                        @f.FileName<br />
+                                                    }
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table></div>
+                        </section>
+                        break;
+                    case "security":
+                        <section class="panel" aria-labelledby="markings-heading">
+                            <h3 id="markings-heading">Security markings</h3>
+                            @if (editMarkings is null)
+                            {
+                                var m = d.Markings;
+                                <dl class="facts">
+                                    <dt>Export jurisdiction</dt>
+                                    <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
+                                    <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
+                                    <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
+                                    <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
+                                    <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
+                                    <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
+                                </dl>
+                                @if (d.Permissions.CanModify && d.Revision.IsLatest && !d.Revision.IsLocked)
+                                {
+                                    <button type="button" class="secondary" @onclick="() => editMarkings = MarkingsInput.From(d.Markings)">Change markings</button>
+                                }
+                            }
+                            else
+                            {
+                                <div class="stack">
+                                    <div class="grid-form">
+                                        <MarkingsFields Value="editMarkings" />
+                                        <label class="wide">Reason for change (required, audited) <input @bind="markingsReason" /></label>
+                                    </div>
+                                    <div class="toolbar">
+                                        <button type="button" disabled="@busy" @onclick="SaveMarkings">Save markings</button>
+                                        <button type="button" class="secondary" @onclick="() => editMarkings = null">Cancel</button>
+                                    </div>
+                                </div>
+                            }
+                        </section>
+                        break;
+                }
+            </TabSet>
+        </article>
+
+        <ConfirmDialog @bind-Open="confirmUndo" Title="Undo check-out?" Destructive="true" ConfirmText="Undo check-out" OnConfirm='_ => Run(s => Docs.UndoCheckOutAsync(s, Number, Corr()), "Check-out undone. Unsaved changes were discarded.")'>
+            <p>The working copy of @d.Number is discarded: edits and files you have not checked in are lost. The last checked-in version stays as it is.</p>
+        </ConfirmDialog>
+        <ConfirmDialog @bind-Open="confirmOverride" Title="@($"Set the state to {lifecycleStates.FirstOrDefault(s => s.State == overrideState)?.Label ?? overrideState}?")" Destructive="true" ConfirmText="Set state"
+                       ReasonLabel="Reason for this override" ReasonRequired="true"
+                       OnConfirm='reason => Run(s => Docs.SetStateAsync(s, Number, overrideState, reason, true, Corr()), "State set.")'>
+            <p>This bypasses the normal steps. The reason and your name are recorded in the audit log.</p>
+        </ConfirmDialog>
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading the document" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    [SupplyParameterFromQuery] public string? Revision { get; set; }
+
+    private static readonly string[] TabIds = ["overview", "usedby", "history", "security"];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("usedby", "Used by"), new("history", "History"), new("security", "Security markings")];
+
+    private DocumentDetail? doc;
+    private DocumentPartLinks? parts;
+    private IReadOnlyList<LifecycleState> lifecycleStates = [];
+    private bool notFound, busy, confirmUndo, confirmOverride;
+    private string? error, uploading;
+    private string tab = "overview";
+    private string workingDescription = "", comment = "", overrideState = "", markingsReason = "", uploadRole = FileRoles.Primary;
+    private MarkingsInput? editMarkings;
+
+    private string PageTitle => doc is null ? "Document" : $"{doc.Number} · {doc.Name}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Documents", "documents"), new(doc?.Number ?? Number)];
+
+    private RenderFragment HeaderFragment(DocumentDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Banner" Subtitle="@($"{d.DocumentType} · created by {d.CreatedBy}")">
+        <Badges>
+            <span class="badge">Version @d.Iteration.Label</span>
+            <span class="badge state-@d.Revision.State.ToLowerInvariant()">@d.Revision.StateLabel</span>
+            @if (d.Revision.IsLocked) { <span class="badge">Locked</span> }
+            <FavoriteButton Kind="@ObjectKinds.Document" Number="@d.Number" />
+        </Badges>
+        <Steps>
+            <Stepper States="lifecycleStates" Current="@d.Revision.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Document lifecycle" />
+        </Steps>
+        <ChildContent>
             @if (d.Revisions.Count > 1)
             {
                 <nav class="toolbar" aria-label="Revisions">
@@ -37,204 +261,14 @@
                     }
                 </nav>
             }
-
-            @if (error is not null) { <p class="error" role="alert">@error</p> }
-            @if (!d.Permissions.CanModify)
-            {
-                <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p>
-            }
-
-            @if (d.Revision.IsLatest)
-            {
-                var co = d.Checkout;
-                <section class="panel">
-                    <h3>Work</h3>
-                    @if (co is not null && !co.IsMine)
-                    {
-                        <p>Checked out by @(co.UserName ?? co.UserId) since @UiText.Utc(co.CheckedOutAt).</p>
-                    }
-                    <div class="toolbar">
-                        @if (co is null && d.Permissions.CanModify && !d.Revision.IsLocked)
-                        {
-                            <button type="button" disabled="@busy" @onclick="() => Run(s => Docs.CheckOutAsync(s, Number, Corr()))">Check out</button>
-                        }
-                        @if (co is not null && (co.IsMine || d.Permissions.CanAdminister))
-                        {
-                            <button type="button" class="secondary" disabled="@busy" @onclick="() => Run(s => Docs.UndoCheckOutAsync(s, Number, Corr()))">Undo check-out</button>
-                        }
-                        @foreach (var t in d.Transitions)
-                        {
-                            <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
-                                    @onclick="() => Run(s => Docs.SetStateAsync(s, Number, t.To, null, false, Corr()))">Move to @t.Label</button>
-                        }
-                    </div>
-                    @foreach (var t in d.Transitions.Where(t => !t.Allowed && t.Reason is not null))
-                    {
-                        <p class="muted small">@t.Label: @t.Reason</p>
-                    }
-
-                    @if (co?.IsMine == true)
-                    {
-                        <div class="stack">
-                            <p class="muted">You have this document checked out. Changes stay private until you check in.</p>
-                            <label class="grid-form">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label>
-                            <h4>Working files</h4>
-                            <DocumentFileList Files="co.Files ?? []" OnRemove="RemoveFile" Busy="busy" Empty="The working copy has no files." />
-                            <div class="toolbar">
-                                <select aria-label="File role" @bind="uploadRole">
-                                    <option value="primary">Primary (replaces the current primary)</option>
-                                    <option value="attachment">Attachment</option>
-                                </select>
-                                <InputFile OnChange="Upload" disabled="@busy" aria-label="Add file" />
-                                @if (uploading is not null) { <span class="muted">Uploading @uploading…</span> }
-                            </div>
-                            <div class="toolbar">
-                                <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save working copy</button>
-                                <input aria-label="Check-in comment" placeholder="Check-in comment" class="grow" @bind="comment" />
-                                <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
-                            </div>
-                        </div>
-                    }
-
-                    @if (d.Permissions.CanAdminister)
-                    {
-                        <details class="admin">
-                            <summary>Administrator: set state</summary>
-                            <div class="toolbar">
-                                <select aria-label="Target state" @bind="overrideState">
-                                    @foreach (var s in lifecycleStates) { <option value="@s.State">@s.Label</option> }
-                                </select>
-                                <input aria-label="Override reason" placeholder="Reason (required, audited)" class="grow" @bind="overrideReason" />
-                                <button type="button" disabled="@(busy || overrideState == d.Revision.State)"
-                                        @onclick="() => Run(s => Docs.SetStateAsync(s, Number, overrideState, overrideReason, true, Corr()))">Set state</button>
-                            </div>
-                        </details>
-                    }
-                </section>
-            }
-
-            <section class="panel">
-                <h3>Iteration @d.Iteration.Label</h3>
-                <p>@(string.IsNullOrEmpty(d.Iteration.Description) ? "No description" : d.Iteration.Description)</p>
-                @if (!d.Permissions.CanDownload) { <p class="muted">You may view this document but not download its files.</p> }
-                <DocumentFileList Files="d.Iteration.Files" DownloadNumber="@(d.Permissions.CanDownload ? d.Number : null)" Empty="No files yet." />
-                <p class="muted small">Downloads are marked: PDFs are stamped with the banner and notices on every page; other files arrive in a ZIP with a marking cover sheet.</p>
-            </section>
-
-            <section class="panel">
-                <h3>Security markings</h3>
-                @if (editMarkings is null)
-                {
-                    var m = d.Markings;
-                    <dl class="facts">
-                        <dt>Export jurisdiction</dt>
-                        <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
-                        <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
-                        <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
-                        <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
-                        <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
-                        <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
-                    </dl>
-                    @if (d.Permissions.CanModify && d.Revision.IsLatest && !d.Revision.IsLocked)
-                    {
-                        <button type="button" class="secondary" @onclick="() => editMarkings = MarkingsInput.From(d.Markings)">Change markings</button>
-                    }
-                }
-                else
-                {
-                    <div class="stack">
-                        <div class="grid-form">
-                            <MarkingsFields Value="editMarkings" />
-                            <label class="wide">Reason for change (required, audited) <input @bind="markingsReason" /></label>
-                        </div>
-                        <div class="toolbar">
-                            <button type="button" disabled="@busy" @onclick="SaveMarkings">Save markings</button>
-                            <button type="button" class="secondary" @onclick="() => editMarkings = null">Cancel</button>
-                        </div>
-                    </div>
-                }
-            </section>
-
-            <section class="panel">
-                <h3>Used by parts</h3>
-                @if (parts is null || parts.Parts.Count == 0)
-                {
-                    <p class="muted">No part's latest iteration links to this document.</p>
-                }
-                else
-                {
-                    <div class="table-wrap"><table class="data">
-                        <thead><tr><th scope="col">Link</th><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Version</th><th scope="col">Markings</th></tr></thead>
-                        <tbody>
-                            @foreach (var p in parts.Parts)
-                            {
-                                <tr>
-                                    <td>@DocumentUi.LinkTypeLabel(p.LinkType)</td>
-                                    @if (p.Redacted)
-                                    {
-                                        <td colspan="4" class="muted redacted">Restricted part: you are not authorized to see it.</td>
-                                    }
-                                    else
-                                    {
-                                        <td><a href="parts/@Uri.EscapeDataString(p.PartNumber!)">@p.PartNumber</a></td>
-                                        <td>@p.PartName</td>
-                                        <td>@p.IterationLabel</td>
-                                        <td><MarkingChip Text="@(p.Banner ?? "")" /></td>
-                                    }
-                                </tr>
-                            }
-                        </tbody>
-                    </table></div>
-                }
-            </section>
-
-            <section class="panel">
-                <h3>History</h3>
-                <div class="table-wrap"><table class="data">
-                    <thead><tr><th scope="col">Version</th><th scope="col">Checked in (UTC)</th><th scope="col">By</th><th scope="col">Comment</th><th scope="col">Files</th></tr></thead>
-                    <tbody>
-                        @foreach (var h in d.History)
-                        {
-                            <tr>
-                                <td>@h.Label</td><td>@UiText.Utc(h.CreatedAt)</td><td>@h.CreatedBy</td><td>@h.Comment</td>
-                                <td>
-                                    @foreach (var f in h.Files)
-                                    {
-                                        @if (d.Permissions.CanDownload)
-                                        {
-                                            <a href="@DocumentUi.DownloadUrl(d.Number, f.Id)" download>@f.FileName</a><br />
-                                        }
-                                        else
-                                        {
-                                            @f.FileName<br />
-                                        }
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table></div>
-            </section>
-        </article>
-    }
-</PageFrame>
-
-@code {
-    [Parameter] public required string Number { get; set; }
-    [SupplyParameterFromQuery] public string? Revision { get; set; }
-
-    private DocumentDetail? doc;
-    private DocumentPartLinks? parts;
-    private IReadOnlyList<LifecycleState> lifecycleStates = [];
-    private bool notFound, busy;
-    private string? error, uploading;
-    private string workingDescription = "", comment = "", overrideState = "", overrideReason = "", markingsReason = "", uploadRole = FileRoles.Primary;
-    private MarkingsInput? editMarkings;
+        </ChildContent>
+    </ObjectHeader>;
 
     private static string Corr() => CurrentUser.NewCorrelationId();
 
     protected override async Task OnParametersSetAsync()
     {
+        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
         var subject = await Users.GetAsync();
         var outcome = await Docs.GetAsync(subject, Number, Revision, Corr());
         // 2.2: the document's own lifecycle version (versions are data)
@@ -254,13 +288,18 @@
         if (d.Checkout?.IsMine == true) workingDescription = d.Checkout.Description ?? "";
     }
 
-    private async Task<bool> Run(Func<Subject, Task<Outcome<DocumentDetail>>> op)
+    private async Task<bool> Run(Func<Subject, Task<Outcome<DocumentDetail>>> op, string? success = null)
     {
         busy = true;
         error = null;
         var outcome = await op(await Users.GetAsync());
         busy = false;
-        if (outcome.IsOk) { Apply(outcome.Value); return true; }
+        if (outcome.IsOk)
+        {
+            Apply(outcome.Value);
+            if (success is not null) Toasts.Success(success);
+            return true;
+        }
         error = UiText.Message(outcome);
         return false;
     }
@@ -278,7 +317,7 @@
 
     private Task RemoveFile(Guid fileId) => Run(s => Docs.RemoveFileAsync(s, Number, fileId, Corr()));
 
-    private Task SaveWorkingCopy() => Run(s => Docs.UpdateWorkingCopyAsync(s, Number, workingDescription, Corr()));
+    private Task SaveWorkingCopy() => Run(s => Docs.UpdateWorkingCopyAsync(s, Number, workingDescription, Corr()), "Working copy saved.");
 
     // Check-in saves the open working copy first so unsaved edits are never silently dropped.
     private async Task CheckIn()
@@ -286,7 +325,7 @@
         if (await Run(s => Docs.UpdateWorkingCopyAsync(s, Number, workingDescription, Corr())))
         {
             var c = comment;
-            if (await Run(s => Docs.CheckInAsync(s, Number, c, Corr()))) comment = "";
+            if (await Run(s => Docs.CheckInAsync(s, Number, c, Corr()), "Checked in.")) comment = "";
         }
     }
 
@@ -294,6 +333,6 @@
     {
         var m = editMarkings!.Effective().ToMarkings();
         if (!m.IsSuccess) { error = string.Join(" ", m.Errors); return; }
-        if (await Run(s => Docs.ChangeMarkingsAsync(s, Number, m.Value, markingsReason, Corr()))) { editMarkings = null; markingsReason = ""; }
+        if (await Run(s => Docs.ChangeMarkingsAsync(s, Number, m.Value, markingsReason, Corr()), "Markings changed.")) { editMarkings = null; markingsReason = ""; }
     }
 }

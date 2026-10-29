@@ -183,11 +183,11 @@ public sealed class PartServiceTests(PostgresFixture pg)
         var (svc, db, _) = await Setup();
         await svc.CreateAsync(Alice, Cmd("Spacer"), null);
 
-        Assert.Contains("review workflow", (await svc.SetStateAsync(Alice, "P-000001", "UnderReview", null, false, null)).Errors[0]);
+        Assert.Contains("approved review", (await svc.SetStateAsync(Alice, "P-000001", "UnderReview", null, false, null)).Errors[0]);
         var review = (await svc.SetStateAsync(Ada, "P-000001", "UnderReview", "Test setup: put the part under review", true, null)).Value!;
         Assert.True(review.Revision.IsLocked);
         Assert.Contains("locked", (await svc.CheckOutAsync(Alice, "P-000001", null)).Errors[0]);
-        Assert.Contains("review workflow", (await svc.SetStateAsync(Alice, "P-000001", "Released", null, false, null)).Errors[0]);
+        Assert.Contains("approved review", (await svc.SetStateAsync(Alice, "P-000001", "Released", null, false, null)).Errors[0]);
         Assert.Contains("No transition", (await svc.SetStateAsync(Alice, "P-000001", "Obsolete", null, false, null)).Errors[0]);
         Assert.Equal(OutcomeKind.Forbidden, (await svc.SetStateAsync(Alice, "P-000001", "Released", "x", true, null)).Kind);
         Assert.Equal(OutcomeKind.Invalid, (await svc.SetStateAsync(Ada, "P-000001", "Released", " ", true, null)).Kind);

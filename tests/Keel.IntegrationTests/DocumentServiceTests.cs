@@ -328,7 +328,7 @@ public sealed class DocumentServiceTests(PostgresFixture pg)
         var review = (await env.Docs.SetStateAsync(Alice, "D-000001", "UnderReview", null, false, null)).Value!;
         Assert.True(review.Revision.IsLocked);
         Assert.Contains("locked", (await env.Docs.CheckOutAsync(Alice, "D-000001", null)).Errors[0]);
-        Assert.Contains("review workflow", (await env.Docs.SetStateAsync(Alice, "D-000001", "Released", null, false, null)).Errors[0]);
+        Assert.Contains("approved review", (await env.Docs.SetStateAsync(Alice, "D-000001", "Released", null, false, null)).Errors[0]);
         Assert.Equal(OutcomeKind.Forbidden, (await env.Docs.SetStateAsync(Alice, "D-000001", "Released", "x", true, null)).Kind);
         Assert.Equal("Released", (await env.Docs.SetStateAsync(Ada, "D-000001", "Released", "Released on paper before cutover", true, null)).Value!.Revision.State);
         Assert.Equal(OutcomeKind.Conflict, (await env.Docs.ChangeMarkingsAsync(Alice, "D-000001", Open, "x", null)).Kind);

@@ -121,7 +121,7 @@ public sealed class ChangeReviseTests(PostgresFixture pg)
 
         // Same object twice in one change is refused; unknown types are refused naming the phase.
         Assert.Contains("already listed", (await env.Change.AddAffectedAsync(alice, first, new AddAffectedCommand("part", part, "none"), null)).Errors[0], StringComparison.Ordinal);
-        Assert.Contains("Phase 2", (await env.Change.AddAffectedAsync(alice, third, new AddAffectedCommand("document", "D-000001", "revise"), null)).Errors[0], StringComparison.Ordinal);
+        Assert.Contains("Only parts can be", (await env.Change.AddAffectedAsync(alice, third, new AddAffectedCommand("document", "D-000001", "revise"), null)).Errors[0], StringComparison.Ordinal);
     }
 
     [Fact]

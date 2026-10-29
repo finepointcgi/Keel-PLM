@@ -417,7 +417,7 @@ public sealed class WorkflowEngineTests
             { "id": "w", "type": "Wait" },
             {{End}}
             """));
-        Assert.Contains(errors, e => e.Contains("'Condition' is not supported until Phase 2", StringComparison.Ordinal));
+        Assert.Contains(errors, e => e.Contains("'Condition' is not supported yet", StringComparison.Ordinal));
         Assert.Contains(errors, e => e.Contains("unknown node type 'Wait'", StringComparison.Ordinal));
     }
 

@@ -139,7 +139,7 @@ public sealed class WebServicesTests
     {
         Assert.Equal("With the new markings: You are not a member of the object's program.", UiText.Reason("new_markings:program.not_member"));
         Assert.Contains("CTI", UiText.Reason("cui.category_missing:CTI"), StringComparison.Ordinal);
-        Assert.Equal("unknown.code", UiText.Reason("unknown.code"));
+        Assert.Equal("You are not allowed to do this.", UiText.Reason("unknown.code")); // a raw reason code is never shown
         Assert.Equal("Not found, or you are not authorized to see it.", UiText.Message(Outcome<int>.NotFound()));
     }
 }

@@ -1,0 +1,108 @@
+@* One confirmation dialog for every destructive or irreversible action (undo check-out, cancel a review, set-state override, retire, ...). A modal:
+   role=dialog + aria-modal, focus moves in and is trapped, Escape cancels, focus returns to the control that opened it. A destructive dialog starts on
+   Cancel. When ReasonLabel is set the dialog asks for a reason (required when ReasonRequired) and hands it to OnConfirm. *@
+@implements IAsyncDisposable
+@inject ShellJs Shell
+
+@if (Open)
+{
+    <div class="dialog-backdrop center">
+        <div @ref="dialog" class="dialog small" role="dialog" aria-modal="true" aria-labelledby="@TitleId" aria-describedby="@BodyId" tabindex="-1"
+             data-confirm-dialog @onkeydown="OnKey">
+            <div class="dialog-head"><h2 id="@TitleId">@Title</h2></div>
+            <div class="dialog-body" id="@BodyId">
+                @ChildContent
+                @if (ReasonLabel is not null)
+                {
+                    <label class="stack">
+                        <span>@ReasonLabel@(ReasonRequired ? " (required)" : "")</span>
+                        <textarea rows="3" maxlength="1000" data-confirm-reason aria-invalid="@(reasonError is null ? null : "true")" aria-describedby="@(reasonError is null ? null : ErrorId)" @bind="reason" @bind:event="oninput"></textarea>
+                    </label>
+                    @if (reasonError is not null) { <p id="@ErrorId" class="error" role="alert">@reasonError</p> }
+                }
+            </div>
+            <div class="dialog-foot">
+                <button type="button" class="secondary" data-confirm-cancel @onclick="CancelAsync">@CancelText</button>
+                <button type="button" class="@(Destructive ? "danger" : null)" data-confirm-ok @onclick="ConfirmAsync">@ConfirmText</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static int counter;
+    private readonly string id = $"confirm-{Interlocked.Add(ref counter, 1)}";
+    private ElementReference dialog;
+    private string reason = "";
+    private string? reasonError;
+    private bool trapped;
+
+    private string TitleId => id + "-title";
+    private string BodyId => id + "-body";
+    private string ErrorId => id + "-error";
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public required string Title { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+    [Parameter] public string CancelText { get; set; } = "Cancel";
+    [Parameter] public bool Destructive { get; set; }
+    /// <summary>When set, the dialog asks for a reason with this label.</summary>
+    [Parameter] public string? ReasonLabel { get; set; }
+    [Parameter] public bool ReasonRequired { get; set; }
+    /// <summary>Called with the reason (or null when none was asked for) once the user confirms.</summary>
+    [Parameter] public EventCallback<string?> OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!Open) { reason = ""; reasonError = null; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open && !trapped)
+        {
+            trapped = true;
+            await Shell.InvokeVoidAsync("trapFocus", dialog, Destructive ? "[data-confirm-cancel]" : ReasonLabel is not null ? "[data-confirm-reason]" : "[data-confirm-ok]");
+        }
+        else if (!Open && trapped)
+        {
+            trapped = false;
+        }
+    }
+
+    private async Task Close()
+    {
+        Open = false;
+        await Shell.InvokeVoidAsync("releaseTrap", dialog, true);
+        trapped = false;
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    private async Task CancelAsync()
+    {
+        await Close();
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task ConfirmAsync()
+    {
+        var text = reason.Trim();
+        if (ReasonLabel is not null && ReasonRequired && text.Length == 0)
+        {
+            reasonError = "Enter a reason to continue.";
+            return;
+        }
+        await Close();
+        await OnConfirm.InvokeAsync(ReasonLabel is null ? null : text);
+    }
+
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" ? CancelAsync() : Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (trapped) await Shell.InvokeVoidAsync("releaseTrap", dialog, false);
+    }
+}

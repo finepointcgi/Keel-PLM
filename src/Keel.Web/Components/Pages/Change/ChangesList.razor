@@ -2,7 +2,7 @@
 @inject CurrentUser Users
 @inject ChangeService Changes
 
-<PageFrame Banner="@Banner" Title="Changes">
+<PageFrame Banner="@Banner" Title="Changes" Crumbs="@Crumbs">
     <form class="toolbar" role="search" @onsubmit="() => Search(0)">
         <input aria-label="Search changes" placeholder="Number or title" class="grow" @bind="text" />
         <select aria-label="Type" @bind="type" @bind:after="() => Search(0)">
@@ -49,28 +49,14 @@
     @if (result is not null)
     {
         <p class="muted">@result.Total change@(result.Total == 1 ? "" : "s") you can access</p>
-        <div class="table-wrap"><table class="data">
-            <thead><tr><th scope="col">Number</th><th scope="col">Type</th><th scope="col">Title</th><th scope="col">Class</th><th scope="col">Priority</th><th scope="col">State</th><th scope="col">Requester</th><th scope="col">Markings</th></tr></thead>
-            <tbody>
-                @foreach (var c in result.Items)
-                {
-                    <tr>
-                        <td><a href="@ChangeUi.Href(c.Number)">@c.Number</a></td>
-                        <td>@c.Type</td>
-                        <td>@c.Title</td>
-                        <td>@(c.ChangeClass ?? "")</td>
-                        <td>@c.Priority</td>
-                        <td><span class="badge @ChangeUi.StateClass(c.State)">@c.StateLabel</span></td>
-                        <td>@c.RequesterName</td>
-                        <td><MarkingChip Text="@c.Banner" /></td>
-                    </tr>
-                }
-            </tbody>
-        </table></div>
-        <div class="toolbar">
-            <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Search(Math.Max(0, offset - PageSize))">Previous</button>
-            <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Search(offset + PageSize)">Next</button>
-        </div>
+        <DataTable TItem="ChangeSummary" TableId="changes" Items="result.Items" Columns="Columns" Caption="Changes">
+            <Empty>
+                <EmptyState Title="@(Filtered ? "No changes match" : "No changes yet")" IconName="change">
+                    @(Filtered ? "Try a different search or clear the filters." : "Start a problem report or a change request when something about a released part or document needs to change.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
     }
 </PageFrame>
 
@@ -81,6 +67,21 @@
     private int offset;
     private ChangeSearchResult? result;
     private MyChangeTasks? mine;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Changes")];
+    private bool Filtered => text.Length > 0 || type != "" || state != "" || openOnly;
+
+    private static readonly IReadOnlyList<DataColumn<ChangeSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Number", Required = true, SortValue = c => c.Number, Cell = c => @<a href="@ChangeUi.Href(c.Number)">@c.Number</a> },
+        new() { Key = "type", Title = "Type", SortValue = c => c.Type, Text = c => c.Type },
+        new() { Key = "title", Title = "Title", SortValue = c => c.Title, Text = c => c.Title },
+        new() { Key = "class", Title = "Class", SortValue = c => c.ChangeClass, Text = c => c.ChangeClass ?? "" },
+        new() { Key = "priority", Title = "Priority", SortValue = c => c.Priority, Text = c => c.Priority },
+        new() { Key = "state", Title = "State", SortValue = c => c.StateLabel, Cell = c => @<span class="badge @ChangeUi.StateClass(c.State)">@c.StateLabel</span> },
+        new() { Key = "requester", Title = "Requester", SortValue = c => c.RequesterName, Text = c => c.RequesterName, DefaultHidden = false },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = c => @<MarkingChip Text="@c.Banner" /> },
+    ];
 
     // Union of the states of all three lifecycles, for the filter; the data-defined lifecycles stay the source of truth.
     private static readonly IReadOnlyDictionary<string, string> States = new Dictionary<string, string>

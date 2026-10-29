@@ -46,6 +46,7 @@ public sealed class ExportControlTests(E2EFixture fx)
 
             // The open spares kit is hers to read, but its ITAR lines are redacted: quantity and find number only.
             await session.GotoAsync(lena, "/parts/" + m.SparesKit);
+            await BrowserSession.OpenTabAsync(page, "Structure");
             await Expect(page.GetByRole(AriaRole.Treegrid)).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(page, "Expand all");
             await Expect(page.GetByText("3 restricted items you cannot see")).ToBeVisibleAsync();
@@ -70,11 +71,11 @@ public sealed class ExportControlTests(E2EFixture fx)
 
             // The partner plate lists TAA-0042, which he holds.
             await session.GotoAsync(farid, "/parts/" + m.PartnerPlate);
-            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = m.PartnerPlate, Exact = false, Level = 2 })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = m.PartnerPlate, Exact = false, Level = 1 })).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
             Assert.Contains("ITAR", await BrowserSession.TopBanner(page).InnerTextAsync(), StringComparison.Ordinal);
             await session.GotoAsync(farid, "/documents/" + m.PartnerDrawing);
-            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = m.PartnerDrawing, Exact = false, Level = 2 })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = m.PartnerDrawing, Exact = false, Level = 1 })).ToBeVisibleAsync();
 
             // The bracket and its drawing do not list it: not found.
             await session.GotoAsync(farid, "/parts/" + m.GimbalBracket);
@@ -84,6 +85,7 @@ public sealed class ExportControlTests(E2EFixture fx)
 
             // In the spares kit he sees his plate and two restricted lines.
             await session.GotoAsync(farid, "/parts/" + m.SparesKit);
+            await BrowserSession.OpenTabAsync(page, "Structure");
             await Expect(page.GetByRole(AriaRole.Treegrid)).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(page, "Expand all");
             await Expect(page.GetByText("2 restricted items you cannot see")).ToBeVisibleAsync();
@@ -102,6 +104,7 @@ public sealed class ExportControlTests(E2EFixture fx)
             // Alice is on ORCA but not on KRAKEN: the KRAKEN part is a restricted line in the payload assembly and unknown by number.
             var alice = await session.SignInAsync("alice");
             await session.GotoAsync(alice, "/parts/" + m.PayloadAssembly);
+            await BrowserSession.OpenTabAsync(alice.Page, "Structure");
             await Expect(alice.Page.GetByRole(AriaRole.Treegrid)).ToBeVisibleAsync();
             await Expect(alice.Page.GetByText("1 restricted item you cannot see")).ToBeVisibleAsync();
             await session.GotoAsync(alice, "/parts/" + m.KrakenPart);
@@ -112,6 +115,7 @@ public sealed class ExportControlTests(E2EFixture fx)
             await session.GotoAsync(carmen, "/parts/" + m.TopAssembly);
             await Expect(carmen.Page.GetByRole(AriaRole.Alert)).ToContainTextAsync("not found, or you are not authorized");
             await session.GotoAsync(carmen, "/parts/" + m.SparesKit);
+            await BrowserSession.OpenTabAsync(carmen.Page, "Structure");
             await Expect(carmen.Page.GetByRole(AriaRole.Treegrid)).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(carmen.Page, "Expand all");
             await Expect(carmen.Page.GetByText("3 restricted items you cannot see")).ToBeVisibleAsync();

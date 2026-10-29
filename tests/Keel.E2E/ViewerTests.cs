@@ -467,6 +467,7 @@ public sealed partial class ViewerTests(E2EFixture fx)
             var alice = await session.SignInAsync("alice", 375, 812);
             var page = alice.Page;
             await session.GotoAsync(alice, "/parts/" + m.GimbalBracket);
+            await BrowserSession.OpenTabAsync(page, "Documents");
             var view = page.Locator("a[data-action=view-primary]").First;
             await Expect(view).ToBeVisibleAsync();
             await view.ClickAsync();

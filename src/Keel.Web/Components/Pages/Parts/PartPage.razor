@@ -2,10 +2,13 @@
 @inject CurrentUser Users
 @inject PartService Parts
 @inject NpgsqlDataSource Db
+@inject ToastService Toasts
+@inject NavigationManager Nav
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
 
-<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner)" Title="Part">
+<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner)" Title="@PageTitle"
+           Crumbs="@Crumbs" Header="@(part is not null && defs is not null ? HeaderFragment(part) : null)">
     @if (notFound)
     {
         <p class="error" role="alert">Part @Number was not found, or you are not authorized to see it.</p>
@@ -14,18 +17,245 @@
     {
         var p = part;
         <article class="stack">
-            <header class="part-header">
-                <div>
-                    <h2>@p.Number · @p.Name</h2>
-                    <p class="muted">@p.PartType · @p.Source · unit @p.DefaultUnit · created by @p.CreatedBy</p>
-                </div>
-                <div class="badges">
-                    <span class="badge">Version @p.Iteration.Label</span>
-                    <span class="badge state-@p.Revision.State.ToLowerInvariant()">@p.Revision.StateLabel</span>
-                    @if (p.Revision.IsLocked) { <span class="badge">Locked</span> }
-                </div>
-            </header>
+            <ViewTracker Kind="@ObjectKinds.Part" Number="@p.Number" />
+            <UnsavedGuard Dirty="@IsDirty" />
 
+            @* Sticky action bar: the primary actions are reachable from every tab. *@
+            <div class="action-bar" role="toolbar" aria-label="Part actions">
+                @{ var co = p.Checkout; }
+                @if (p.Revision.IsLatest)
+                {
+                    @if (co is null && p.Permissions.CanModify && !p.Revision.IsLocked)
+                    {
+                        <button type="button" disabled="@busy" @onclick='() => Run(s => Parts.CheckOutAsync(s, Number, Corr()), "Checked out. Your changes stay private until you check in.")'>Check out</button>
+                    }
+                    @if (co?.IsMine == true && workingAttributes is not null)
+                    {
+                        <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save working copy</button>
+                        <input aria-label="Check-in comment" placeholder="Check-in comment" class="grow" @bind="comment" />
+                        <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
+                    }
+                    @if (co is not null && (co.IsMine || p.Permissions.CanAdminister))
+                    {
+                        <button type="button" class="secondary" disabled="@busy" @onclick="() => confirmUndo = true">Undo check-out</button>
+                    }
+                    @foreach (var t in p.Transitions)
+                    {
+                        <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
+                                @onclick='() => Run(s => Parts.SetStateAsync(s, Number, t.To, null, false, Corr()), $"Moved to {t.Label}.")'>Move to @t.Label</button>
+                    }
+                }
+                <span class="spacer"></span>
+                <a class="button secondary" href="@($"parts/{Uri.EscapeDataString(p.Number)}/where-used")">Where used</a>
+                <a class="button secondary" href="@($"parts/{Uri.EscapeDataString(p.Number)}/compare")">Compare</a>
+            </div>
+
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (co is not null && !co.IsMine)
+            {
+                <p class="notice">Checked out by @(co.UserName ?? co.UserId) since @UiText.Utc(co.CheckedOutAt).</p>
+            }
+            @if (!p.Permissions.CanModify)
+            {
+                <p class="muted">Read only: @string.Join(" ", p.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p>
+            }
+            @foreach (var t in p.Transitions.Where(t => !t.Allowed && t.Reason is not null))
+            {
+                <p class="muted small">@t.Label: @t.Reason</p>
+            }
+
+            <TabSet Tabs="Tabs" Active="@tab" ActiveChanged="OnTabChanged" Label="Part sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            @if (co?.IsMine == true && workingAttributes is not null)
+                            {
+                                <section class="panel" aria-labelledby="work-heading">
+                                    <h3 id="work-heading">Edit working copy</h3>
+                                    <p class="muted">You have this part checked out. Changes stay private until you check in.</p>
+                                    <div class="grid-form">
+                                        <label class="wide">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label>
+                                        <AttributeFields Definitions="defs" Value="workingAttributes" />
+                                    </div>
+                                </section>
+                            }
+                            <section class="panel" aria-labelledby="iteration-heading">
+                                <h3 id="iteration-heading">Version @p.Iteration.Label</h3>
+                                <p>@(string.IsNullOrEmpty(p.Iteration.Description) ? "No description" : p.Iteration.Description)</p>
+                                <dl class="facts">
+                                    @foreach (var (k, v) in p.Iteration.Attributes)
+                                    {
+                                        var (label, text) = AttributeInput.Format(defs, k, v);
+                                        <dt>@label</dt><dd>@text</dd>
+                                    }
+                                </dl>
+                            </section>
+                            @if (p.Permissions.CanAdminister && p.Revision.IsLatest)
+                            {
+                                <details class="admin">
+                                    <summary>Administrator: set state</summary>
+                                    <div class="toolbar">
+                                        <select aria-label="Target state" @bind="overrideState">
+                                            @foreach (var s in lifecycle!.States) { <option value="@s.State">@s.Label</option> }
+                                        </select>
+                                        <button type="button" class="secondary" disabled="@(busy || overrideState == p.Revision.State)" @onclick="() => confirmOverride = true">Set state…</button>
+                                    </div>
+                                </details>
+                            }
+                        </div>
+                        break;
+                    case "structure":
+                        <div class="stack">
+                            @* The page banner aggregates the part and every displayed BOM row. *@
+                            <Keel.Web.Components.Pages.Bom.BomSection Part="p" OnBanner="b => bomBanner = b" />
+                            @* Manufacturing BOMs per plant, with generate from this EBOM. *@
+                            <Keel.Web.Components.Pages.Mbom.MbomSection Part="p" OnBanner="b => mbomBanner = b" />
+                        </div>
+                        break;
+                    case "documents":
+                        <PartDocumentsPanel PartNumber="@p.Number" Revision="@Revision" IterationLabel="@p.Iteration.Label" CheckedOutByMe="@(p.Checkout?.IsMine == true)" />
+                        break;
+                    case "changes":
+                        <Keel.Web.Components.Pages.Change.PartChangesPanel Number="@p.Number" Revision="@p.Revision.Revision" State="@p.Revision.State" Latest="@p.Revision.IsLatest"
+                                                                           CanModify="@p.Permissions.CanModify" OnBanner="b => changesBanner = b" />
+                        break;
+                    case "review":
+                        <div class="stack">
+                            <PartReviewPanel Number="@p.Number" State="@p.Revision.State" Latest="@p.Revision.IsLatest" CheckedOut="@(p.Checkout is not null)"
+                                             CanModify="@p.Permissions.CanModify" OnChanged="Refresh" />
+                            <TdpExportPanel ObjectType="part" Number="@p.Number" Revision="@p.Revision.Revision" OnBanner="b => tdpBanner = b" />
+                        </div>
+                        break;
+                    case "classification":
+                        @if (p.Revision.IsLatest)
+                        {
+                            <Keel.Web.Components.Pages.Classification.PartClassificationPanel Number="@p.Number" Editable="@(p.Checkout?.IsMine == true && p.Permissions.CanModify)" Version="@($"{p.Iteration.Label}|{p.Checkout is not null}")" />
+                        }
+                        else
+                        {
+                            <p class="muted">Classification is shown for the latest revision.</p>
+                        }
+                        break;
+                    case "history":
+                        <section class="panel" aria-labelledby="history-heading">
+                            <h3 id="history-heading">Version history</h3>
+                            <div class="table-wrap"><table class="data">
+                                <thead><tr><th scope="col">Version</th><th scope="col">Checked in (UTC)</th><th scope="col">By</th><th scope="col">Comment</th></tr></thead>
+                                <tbody>
+                                    @foreach (var h in p.History)
+                                    {
+                                        <tr><td>@h.Label</td><td>@UiText.Utc(h.CreatedAt)</td><td>@h.CreatedBy</td><td>@h.Comment</td></tr>
+                                    }
+                                </tbody>
+                            </table></div>
+                        </section>
+                        break;
+                    case "security":
+                        <section class="panel" aria-labelledby="markings-heading">
+                            <h3 id="markings-heading">Security markings</h3>
+                            @if (editMarkings is null)
+                            {
+                                var m = p.Markings;
+                                <dl class="facts">
+                                    <dt>Export jurisdiction</dt>
+                                    <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
+                                    <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
+                                    <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
+                                    <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
+                                    <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
+                                    <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
+                                </dl>
+                                @if (p.Permissions.CanModify && p.Revision.IsLatest && !p.Revision.IsLocked)
+                                {
+                                    <button type="button" class="secondary" @onclick="() => editMarkings = MarkingsInput.From(p.Markings)">Change markings</button>
+                                }
+                            }
+                            else
+                            {
+                                <div class="stack">
+                                    <div class="grid-form">
+                                        <MarkingsFields Value="editMarkings" />
+                                        <label class="wide">Reason for change (required, audited) <input @bind="markingsReason" /></label>
+                                    </div>
+                                    <div class="toolbar">
+                                        <button type="button" disabled="@busy" @onclick="SaveMarkings">Save markings</button>
+                                        <button type="button" class="secondary" @onclick="() => editMarkings = null">Cancel</button>
+                                    </div>
+                                </div>
+                            }
+                        </section>
+                        break;
+                }
+            </TabSet>
+        </article>
+
+        <ConfirmDialog @bind-Open="confirmUndo" Title="Undo check-out?" Destructive="true" ConfirmText="Undo check-out" OnConfirm='_ => Run(s => Parts.UndoCheckOutAsync(s, Number, Corr()), "Check-out undone. Unsaved changes were discarded.")'>
+            <p>The working copy of @p.Number is discarded: edits you have not checked in are lost. The last checked-in version stays as it is.</p>
+        </ConfirmDialog>
+        <ConfirmDialog @bind-Open="confirmOverride" Title="@($"Set the state to {lifecycle?.State(overrideState)?.Label ?? overrideState}?")" Destructive="true" ConfirmText="Set state"
+                       ReasonLabel="Reason for this override" ReasonRequired="true"
+                       OnConfirm='reason => Run(s => Parts.SetStateAsync(s, Number, overrideState, reason, true, Corr()), "State set.")'>
+            <p>This bypasses the normal review and release steps. The reason and your name are recorded in the audit log.</p>
+        </ConfirmDialog>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the part" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    [SupplyParameterFromQuery] public string? Revision { get; set; }
+
+    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "security"];
+    private static readonly IReadOnlyList<TabInfo> Tabs =
+    [
+        new("overview", "Overview"), new("structure", "Structure"), new("documents", "Documents"), new("changes", "Changes"),
+        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("security", "Security markings"),
+    ];
+
+    private PartDetail? part;
+    private IReadOnlyList<AttributeDefinition>? defs;
+    private Lifecycle? lifecycle;
+    private bool notFound, busy, confirmUndo, confirmOverride;
+    private string? error;
+    private string tab = "overview";
+    private string workingDescription = "", comment = "", overrideState = "", markingsReason = "";
+    private AttributeInput? workingAttributes;
+    private MarkingsInput? editMarkings;
+    private string? bomBanner; // aggregate banner reported by the BOM section
+    private string? mbomBanner; // aggregate banner reported by the manufacturing BOM section
+    private string? changesBanner; // aggregate banner reported by the changes panel
+    private string? tdpBanner; // banner of the previewed Technical Data Package
+
+    private string PageTitle => part is null ? "Part" : $"{part.Number} · {part.Name}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Parts", "parts"), new(part?.Number ?? Number)];
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    private Task Refresh() => OnParametersSetAsync();
+
+    // Unsaved edits: the working copy form differs from what was last saved.
+    private bool IsDirty => part?.Checkout is { IsMine: true } co && workingAttributes is not null && defs is not null
+        && (workingDescription != (co.Description ?? "") || workingAttributes.ToJson(defs).ToJsonString() != (co.Attributes?.ToJsonString() ?? "{}"));
+
+    private RenderFragment HeaderFragment(PartDetail p) => @<ObjectHeader Title="@PageTitle" Banner="@p.Banner"
+                  Subtitle="@($"{p.PartType} · {p.Source} · unit {p.DefaultUnit} · created by {p.CreatedBy}")">
+        <Badges>
+            <span class="badge">Version @p.Iteration.Label</span>
+            <span class="badge state-@p.Revision.State.ToLowerInvariant()">@p.Revision.StateLabel</span>
+            @if (p.Revision.IsLocked) { <span class="badge">Locked</span> }
+            <FavoriteButton Kind="@ObjectKinds.Part" Number="@p.Number" />
+        </Badges>
+        <Steps>
+            @if (lifecycle is not null)
+            {
+                <Stepper States="lifecycle.States" Current="@p.Revision.State" Reachable="@(p.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Part lifecycle" />
+            }
+        </Steps>
+        <ChildContent>
             @if (p.Revisions.Count > 1)
             {
                 <nav class="toolbar" aria-label="Revisions">
@@ -35,196 +265,27 @@
                     }
                 </nav>
             }
+        </ChildContent>
+    </ObjectHeader>;
 
-            @if (error is not null) { <p class="error" role="alert">@error</p> }
-            @if (!p.Permissions.CanModify)
-            {
-                <p class="muted">Read only: @string.Join(" ", p.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p>
-            }
-
-            @if (p.Revision.IsLatest)
-            {
-                var co = p.Checkout;
-                <section class="panel">
-                    <h3>Work</h3>
-                    @if (co is not null && !co.IsMine)
-                    {
-                        <p>Checked out by @(co.UserName ?? co.UserId) since @UiText.Utc(co.CheckedOutAt).</p>
-                    }
-                    <div class="toolbar">
-                        @if (co is null && p.Permissions.CanModify && !p.Revision.IsLocked)
-                        {
-                            <button type="button" disabled="@busy" @onclick="() => Run(s => Parts.CheckOutAsync(s, Number, Corr()))">Check out</button>
-                        }
-                        @if (co is not null && (co.IsMine || p.Permissions.CanAdminister))
-                        {
-                            <button type="button" class="secondary" disabled="@busy" @onclick="() => Run(s => Parts.UndoCheckOutAsync(s, Number, Corr()))">Undo check-out</button>
-                        }
-                        @foreach (var t in p.Transitions)
-                        {
-                            <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
-                                    @onclick="() => Run(s => Parts.SetStateAsync(s, Number, t.To, null, false, Corr()))">Move to @t.Label</button>
-                        }
-                    </div>
-                    @foreach (var t in p.Transitions.Where(t => !t.Allowed && t.Reason is not null))
-                    {
-                        <p class="muted small">@t.Label: @t.Reason</p>
-                    }
-
-                    @if (co?.IsMine == true && workingAttributes is not null)
-                    {
-                        <div class="stack">
-                            <p class="muted">You have this part checked out. Changes stay private until you check in.</p>
-                            <div class="grid-form">
-                                <label class="wide">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label>
-                                <AttributeFields Definitions="defs" Value="workingAttributes" />
-                            </div>
-                            <div class="toolbar">
-                                <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save working copy</button>
-                                <input aria-label="Check-in comment" placeholder="Check-in comment" class="grow" @bind="comment" />
-                                <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
-                            </div>
-                        </div>
-                    }
-
-                    @if (p.Permissions.CanAdminister)
-                    {
-                        <details class="admin">
-                            <summary>Administrator: set state</summary>
-                            <div class="toolbar">
-                                <select aria-label="Target state" @bind="overrideState">
-                                    @foreach (var s in lifecycle!.States) { <option value="@s.State">@s.Label</option> }
-                                </select>
-                                <input aria-label="Override reason" placeholder="Reason (required, audited)" class="grow" @bind="overrideReason" />
-                                <button type="button" disabled="@(busy || overrideState == p.Revision.State)"
-                                        @onclick="() => Run(s => Parts.SetStateAsync(s, Number, overrideState, overrideReason, true, Corr()))">Set state</button>
-                            </div>
-                        </details>
-                    }
-                </section>
-            }
-
-            @* Increment 1.5: submit for review, review status and release history. *@
-            <PartReviewPanel Number="@p.Number" State="@p.Revision.State" Latest="@p.Revision.IsLatest" CheckedOut="@(p.Checkout is not null)"
-                             CanModify="@p.Permissions.CanModify" OnChanged="Refresh" />
-
-            @* --- Changes panel (increment 1.6): open changes listing this part and the notice a revision belongs to --- *@
-            <Keel.Web.Components.Pages.Change.PartChangesPanel Number="@p.Number" Revision="@p.Revision.Revision" State="@p.Revision.State" Latest="@p.Revision.IsLatest"
-                                                               CanModify="@p.Permissions.CanModify" OnBanner="b => changesBanner = b" />
-            @* --- end changes panel --- *@
-
-            <section class="panel">
-                <h3>Iteration @p.Iteration.Label</h3>
-                <p>@(string.IsNullOrEmpty(p.Iteration.Description) ? "No description" : p.Iteration.Description)</p>
-                <dl class="facts">
-                    @foreach (var (k, v) in p.Iteration.Attributes)
-                    {
-                        var (label, text) = AttributeInput.Format(defs, k, v);
-                        <dt>@label</dt><dd>@text</dd>
-                    }
-                </dl>
-            </section>
-
-            @* --- Classification (increment 2.2): the class and its attribute values belong to the iteration --- *@
-            @if (p.Revision.IsLatest)
-            {
-                <Keel.Web.Components.Pages.Classification.PartClassificationPanel Number="@p.Number" Editable="@(p.Checkout?.IsMine == true && p.Permissions.CanModify)" Version="@($"{p.Iteration.Label}|{p.Checkout is not null}")" />
-            }
-            @* --- end classification --- *@
-
-            @* ---- Linked documents (increment 1.3, ADR-0016) ---- *@
-            <PartDocumentsPanel PartNumber="@p.Number" Revision="@Revision" IterationLabel="@p.Iteration.Label" CheckedOutByMe="@(p.Checkout?.IsMine == true)" />
-            @* ---- end linked documents ---- *@
-            @* --- BOM section (increment 1.4): the page banner then aggregates the part and every displayed BOM row --- *@
-            <Keel.Web.Components.Pages.Bom.BomSection Part="p" OnBanner="b => bomBanner = b" />
-            @* --- end BOM section --- *@
-            @* --- Manufacturing BOMs (increment 2.3, ADR-0024): per plant, with generate from this EBOM --- *@
-            <Keel.Web.Components.Pages.Mbom.MbomSection Part="p" OnBanner="b => mbomBanner = b" />
-            @* --- end manufacturing BOMs --- *@
-            @* --- 4.0 Technical Data Package export (ADR-0025) --- *@
-            <TdpExportPanel ObjectType="part" Number="@p.Number" Revision="@p.Revision.Revision" OnBanner="b => tdpBanner = b" />
-
-            <section class="panel">
-                <h3>Security markings</h3>
-                @if (editMarkings is null)
-                {
-                    var m = p.Markings;
-                    <dl class="facts">
-                        <dt>Export jurisdiction</dt>
-                        <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
-                        <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
-                        <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
-                        <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
-                        <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
-                        <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
-                    </dl>
-                    @if (p.Permissions.CanModify && p.Revision.IsLatest && !p.Revision.IsLocked)
-                    {
-                        <button type="button" class="secondary" @onclick="() => editMarkings = MarkingsInput.From(p.Markings)">Change markings</button>
-                    }
-                }
-                else
-                {
-                    <div class="stack">
-                        <div class="grid-form">
-                            <MarkingsFields Value="editMarkings" />
-                            <label class="wide">Reason for change (required, audited) <input @bind="markingsReason" /></label>
-                        </div>
-                        <div class="toolbar">
-                            <button type="button" disabled="@busy" @onclick="SaveMarkings">Save markings</button>
-                            <button type="button" class="secondary" @onclick="() => editMarkings = null">Cancel</button>
-                        </div>
-                    </div>
-                }
-            </section>
-
-            <section class="panel">
-                <h3>History</h3>
-                <div class="table-wrap"><table class="data">
-                    <thead><tr><th scope="col">Version</th><th scope="col">Checked in (UTC)</th><th scope="col">By</th><th scope="col">Comment</th></tr></thead>
-                    <tbody>
-                        @foreach (var h in p.History)
-                        {
-                            <tr><td>@h.Label</td><td>@UiText.Utc(h.CreatedAt)</td><td>@h.CreatedBy</td><td>@h.Comment</td></tr>
-                        }
-                    </tbody>
-                </table></div>
-            </section>
-        </article>
+    private void OnTabChanged(string id)
+    {
+        tab = id;
+        // Panels of a tab that is no longer shown no longer contribute to the banner.
+        bomBanner = mbomBanner = changesBanner = tdpBanner = null;
     }
-</PageFrame>
-
-@code {
-    [Parameter] public required string Number { get; set; }
-    [SupplyParameterFromQuery] public string? Revision { get; set; }
-
-    private PartDetail? part;
-    private IReadOnlyList<AttributeDefinition>? defs;
-    private Lifecycle? lifecycle;
-    private bool notFound, busy;
-    private string? error;
-    private string workingDescription = "", comment = "", overrideState = "", overrideReason = "", markingsReason = "";
-    private AttributeInput? workingAttributes;
-    private MarkingsInput? editMarkings;
-    private string? bomBanner; // 1.4: aggregate banner reported by the BOM section
-    private string? mbomBanner; // 2.3: aggregate banner reported by the manufacturing BOM section
-    private string? changesBanner; // 1.6: aggregate banner reported by the changes panel
-    private string? tdpBanner; // 4.0: banner of the previewed Technical Data Package
-
-    private static string Corr() => CurrentUser.NewCorrelationId();
-
-    private Task Refresh() => OnParametersSetAsync();
 
     protected override async Task OnParametersSetAsync()
     {
-        bomBanner = null; // 1.4: the BOM section republishes its aggregate banner after it reloads
-        changesBanner = null; // 1.6: likewise the changes panel
+        bomBanner = null; // the BOM section republishes its aggregate banner after it reloads
+        changesBanner = null; // likewise the changes panel
+        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
         await using (var conn = await Db.OpenConnectionAsync())
         {
             defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);
         }
         var outcome = await Parts.GetAsync(await Users.GetAsync(), Number, Revision, Corr());
-        if (outcome.Value is { } found) // 2.2: the part's own lifecycle version (versions are data)
+        if (outcome.Value is { } found) // the part's own lifecycle version (versions are data)
         {
             await using var lcConn = await Db.OpenConnectionAsync();
             lifecycle = await Lifecycle.LoadAsync(lcConn, null, found.LifecycleId, CancellationToken.None);
@@ -246,19 +307,24 @@
         else workingAttributes = null;
     }
 
-    private async Task<bool> Run(Func<Subject, Task<Outcome<PartDetail>>> op)
+    private async Task<bool> Run(Func<Subject, Task<Outcome<PartDetail>>> op, string? success = null)
     {
         busy = true;
         error = null;
         var outcome = await op(await Users.GetAsync());
         busy = false;
-        if (outcome.IsOk) { Apply(outcome.Value); return true; }
+        if (outcome.IsOk)
+        {
+            Apply(outcome.Value);
+            if (success is not null) Toasts.Success(success);
+            return true;
+        }
         error = UiText.Message(outcome);
         return false;
     }
 
     private Task SaveWorkingCopy() =>
-        Run(s => Parts.UpdateWorkingCopyAsync(s, Number, workingDescription, workingAttributes!.ToJson(defs!), Corr()));
+        Run(s => Parts.UpdateWorkingCopyAsync(s, Number, workingDescription, workingAttributes!.ToJson(defs!), Corr()), "Working copy saved.");
 
     // Check-in saves the open working copy first so unsaved edits are never silently dropped.
     private async Task CheckIn()
@@ -266,7 +332,7 @@
         if (await Run(s => Parts.UpdateWorkingCopyAsync(s, Number, workingDescription, workingAttributes!.ToJson(defs!), Corr())))
         {
             var c = comment;
-            if (await Run(s => Parts.CheckInAsync(s, Number, c, Corr()))) comment = "";
+            if (await Run(s => Parts.CheckInAsync(s, Number, c, Corr()), "Checked in.")) comment = "";
         }
     }
 
@@ -274,6 +340,6 @@
     {
         var m = editMarkings!.Effective().ToMarkings();
         if (!m.IsSuccess) { error = string.Join(" ", m.Errors); return; }
-        if (await Run(s => Parts.ChangeMarkingsAsync(s, Number, m.Value, markingsReason, Corr()))) { editMarkings = null; markingsReason = ""; }
+        if (await Run(s => Parts.ChangeMarkingsAsync(s, Number, m.Value, markingsReason, Corr()), "Markings changed.")) { editMarkings = null; markingsReason = ""; }
     }
 }

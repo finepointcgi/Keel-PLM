@@ -1,0 +1,14 @@
+# Legitimate technical uses of the words the jargon scan forbids in user-facing text (JargonScanTests).
+# Format: path | token | reason. Every entry must still match something (a stale entry fails the build) and say why it is not shown as friendly text.
+
+src/Keel.Documents/Vault/VaultReferences.cs | ADR- | Descriptions in the vault reference report for administrators (a technical diagnostic naming the design record), not text on a user page.
+src/Keel.Change/ChangeService.Process.cs | gateway | Message of an InvalidOperationException for a missing registration (a configuration fault of the host), never shown on a page.
+src/Keel.Change/ChangeService.Affected.cs | gateway | Same: internal configuration fault, not user text.
+src/Keel.Change/ChangeWorkflowGateway.cs | gateway | Same: internal configuration fault, not user text.
+src/Keel.Workflow/WorkflowService.Sign.cs | gateway | Same: internal configuration fault, not user text.
+src/Keel.Workflow/WorkflowService.Admin.cs | gateway | Same: internal configuration fault, not user text.
+src/Keel.Workflow/WorkflowService.Queries.cs | gateway | Same: internal configuration fault, not user text.
+src/Keel.Admin/AttributeAdminService.cs | Phase | Message of a NotSupportedException naming the later wave that delivers the feature (project rule for out-of-scope work).
+src/Keel.Admin/AttributeAdminService.cs | increment | The same NotSupportedException message points at the increment notes for the plan.
+src/Keel.Integration/Sinks.cs | Phase | Message of the NotSupportedException for broker sinks, naming the later wave that delivers them (project rule).
+src/Keel.Core/ContentStore.cs | Phase | Message of a NotSupportedException naming the wave that delivers classification loading (project rule).
