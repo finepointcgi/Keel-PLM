@@ -29,7 +29,7 @@ public static class VaultContainer
             if (_container is null)
             {
                 var container = new ContainerBuilder(Image)
-                    .WithResourceMapping(new FileInfo(Path.Combine(RepoRoot, "deploy/compose/seaweedfs/s3.json")), "/etc/seaweedfs/")
+                    .WithResourceMapping(new FileInfo(WriteTestIdentityFile()), "/etc/seaweedfs/")
                     // Test data is throwaway: keep it in memory. SeaweedFS sizes its volume count from free disk space, and a
                     // nearly full Docker disk would otherwise leave it with no writable volumes.
                     .WithTmpfsMount("/data")
@@ -49,6 +49,43 @@ public static class VaultContainer
         {
             Gate.Release();
         }
+    }
+
+    // Test-only identity that may create buckets. The product identity (keel-app) stays exactly as in the dev stack.
+    public const string AdminAccessKey = "keel_test_admin";
+    public const string AdminSecretKey = "keel_test_admin_secret";
+
+    /// <summary>The dev identity file plus a test-only admin identity, written to a temp directory as s3.json.</summary>
+    private static string WriteTestIdentityFile()
+    {
+        var dev = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(RepoRoot, "deploy/compose/seaweedfs/s3.json")))!.AsObject();
+        dev["identities"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["name"] = "keel-test-admin",
+            ["credentials"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["accessKey"] = AdminAccessKey, ["secretKey"] = AdminSecretKey }),
+            ["actions"] = new System.Text.Json.Nodes.JsonArray("Admin", "Read", "Write", "List", "Tagging"),
+        });
+        var dir = Directory.CreateTempSubdirectory("keel-s3-").FullName;
+        var path = Path.Combine(dir, "s3.json");
+        File.WriteAllText(path, dev.ToJsonString());
+        return path;
+    }
+
+    /// <summary>
+    /// Options for a bucket nobody else uses. Tests that LIST a whole bucket (the garbage collector) must not see objects other tests
+    /// upload concurrently into the shared bucket: with a manual clock those look old and unreferenced and would be counted or swept.
+    /// </summary>
+    public static async Task<VaultOptions> IsolatedOptionsAsync()
+    {
+        var options = await OptionsAsync();
+        options.AccessKey = AdminAccessKey;
+        options.SecretKey = AdminSecretKey;
+        options.Bucket = "gc-" + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6));
+        using var s3 = new Amazon.S3.AmazonS3Client(
+            new Amazon.Runtime.BasicAWSCredentials(AdminAccessKey, AdminSecretKey),
+            new Amazon.S3.AmazonS3Config { ServiceURL = options.ServiceUrl, ForcePathStyle = true, AuthenticationRegion = options.Region });
+        await s3.PutBucketAsync(options.Bucket);
+        return options;
     }
 
     public static async Task<VaultOptions> OptionsAsync(int partSizeBytes = 5 * 1024 * 1024, long maxUploadBytes = VaultOptions.DefaultMaxUploadBytes) =>

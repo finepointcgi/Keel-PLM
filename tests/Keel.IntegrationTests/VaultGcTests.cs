@@ -55,7 +55,7 @@ public sealed class VaultGcTests(PostgresFixture pg)
         var ds = db.AppDataSource();
         var clock = new ManualTimeProvider(start ?? DateTimeOffset.UtcNow);
         var audit = new PostgresAuditLog(ds, clock);
-        var options = await VaultContainer.OptionsAsync();
+        var options = await VaultContainer.IsolatedOptionsAsync();
         var guard = new PostgresVaultPendingGuard(ds, clock);
         var vault = new ObjectVault(options, null, guard);
         var prefix = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(2));
