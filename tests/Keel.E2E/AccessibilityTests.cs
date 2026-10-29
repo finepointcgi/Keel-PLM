@@ -221,9 +221,18 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
     private static async Task ChooseThemeAsync(IPage page, string user, string theme)
     {
-        await page.GotoAsync(page.Url.Split('/', 4).Take(3).Aggregate((a, b) => a + "/" + b) + "/");
+        // A supplier user has no Home page (it needs a PLM role): "/" answers with the static access-denied page, which has no circuit, so the menu there never
+        // opens. Go to the page the user lands on: the portal for a supplier, Home for everyone else.
+        var origin = page.Url.Split('/', 4).Take(3).Aggregate((a, b) => a + "/" + b);
+        await page.GotoAsync(origin + (user.StartsWith("sup-", StringComparison.Ordinal) ? "/portal" : "/"));
+        await Expect(page.Locator("h1").First).ToBeVisibleAsync();
         await page.Locator("#user-menu-button").ClickAsync();
-        await page.Locator($"[data-theme-choice={theme}]").ClickAsync();
+        try { await page.Locator($"[data-theme-choice={theme}]").ClickAsync(new LocatorClickOptions { Timeout = 8000 }); }
+        catch (TimeoutException)
+        {
+            var state = await page.EvaluateAsync<string>("() => JSON.stringify({ url: location.href, expanded: document.querySelector('#user-menu-button')?.getAttribute('aria-expanded'), choices: [...document.querySelectorAll('[data-theme-choice]')].map(e => e.getAttribute('data-theme-choice')), panel: !!document.querySelector('#user-menu-panel') })");
+            throw new InvalidOperationException($"{user}: the theme choice '{theme}' did not appear: {state}");
+        }
         await page.Keyboard.PressAsync("Escape");
         await Expect(page.Locator("html")).ToHaveAttributeAsync("data-theme", theme);
     }
