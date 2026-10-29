@@ -157,12 +157,14 @@ public sealed record ImpactObject(
     IReadOnlyList<WhereUsedEntry> WhereUsed, int RedactedParents, int MaxLevel,
     IReadOnlyList<LinkedDocument> Documents, StructureComparison? Compare, string? CompareNote,
     /// <summary>MBOMs derived from this part's EBOM that go stale when it is revised (2.3, ADR-0024), and how many more the caller may not read.</summary>
-    IReadOnlyList<StaleMbom>? StaleMboms = null, int HiddenMboms = 0);
+    IReadOnlyList<StaleMbom>? StaleMboms = null, int HiddenMboms = 0,
+    /// <summary>Requirements that trace to this part (8.3, ADR-0038): readable ones with their verification state, plus a placeholder per restricted one.</summary>
+    IReadOnlyList<TracedRequirement>? Requirements = null);
 
 public sealed record ImpactConflict(string Kind, string ChangeType, string ChangeNumber, string Title, string StateLabel, string? ObjectKey, string Banner);
 
 public sealed record ImpactSummary(
-    int AffectedObjects, int HiddenObjects, int WhereUsedParents, int RedactedParents, int Documents, int RedactedDocuments, int OpenConflicts, int StructureChanges, int StaleMboms = 0);
+    int AffectedObjects, int HiddenObjects, int WhereUsedParents, int RedactedParents, int Documents, int RedactedDocuments, int OpenConflicts, int StructureChanges, int StaleMboms = 0, int Requirements = 0);
 
 public sealed record ImpactReport(string Number, IReadOnlyList<ImpactObject> Objects, IReadOnlyList<ImpactConflict> Conflicts, ImpactSummary Summary, string Banner,
     IReadOnlyList<Markings> Shown);

@@ -29,6 +29,8 @@ public sealed record DemoExtras
     public required IReadOnlyList<string> ClearanceProfiles { get; init; }
     public required string DisabledSink { get; init; }
     public required long OutboxEvents { get; init; }
+    /// <summary>The requirement specification of the demo (In Work, requirements allocated to parts, one verified); null for seeds made before 8.3.</summary>
+    public string? RequirementSpec { get; init; }
 }
 
 /// <summary>Classification catalogue of the demo (class tree and the parts classified before their release: class data is iteration-owned).</summary>
@@ -194,7 +196,7 @@ public sealed partial class DemoSeeder
             ClassCodes = [.. DemoClassification.Tree().Nodes.Select(n => n.Code)], ClassifiedParts = _classified,
             DesignBaseline = design.Summary.Number, ReleaseBaseline = release.Summary.Number, EffectivityContext = Context, AlternatesAssembly = partner,
             RevisedPart = yoke, EffectivityEcn = ecn, ReleasedMbom = drive, StaleMbom = pod, TdpPart = _part["bracket"], TdpRecipient = Recipient, TdpExportId = exportRecord.Id,
-            ClearanceProfiles = profiles, DisabledSink = sink, OutboxEvents = await host.OutboxCountAsync(ada),
+            ClearanceProfiles = profiles, DisabledSink = sink, OutboxEvents = await host.OutboxCountAsync(ada), RequirementSpec = await SeedRequirementsAsync(),
         };
     }
 

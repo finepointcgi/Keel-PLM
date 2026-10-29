@@ -22,6 +22,7 @@
             <li>@s.Documents linked document@(s.Documents == 1 ? "" : "s")@(s.RedactedDocuments > 0 ? $", plus {s.RedactedDocuments} restricted" : "")</li>
             <li>@s.StructureChanges structure change@(s.StructureChanges == 1 ? "" : "s") in revised assemblies</li>
             <li class="@(s.StaleMboms > 0 ? "error" : null)">@s.StaleMboms manufacturing BOM@(s.StaleMboms == 1 ? "" : "s") derived from a revised EBOM</li>
+            <li>@s.Requirements requirement@(s.Requirements == 1 ? "" : "s") traced to the affected parts</li>
             <li class="@(s.OpenConflicts > 0 ? "error" : null)">@s.OpenConflicts other open change@(s.OpenConflicts == 1 ? "" : "s") touching the same parts or their parents</li>
         </ul>
 
@@ -113,6 +114,26 @@
                         @if (o.HiddenMboms > 0) { <p class="muted small">Plus @o.HiddenMboms more you are not authorized to see.</p> }
                     }
                     @* --- end 2.3 --- *@
+                    @* --- 8.3: requirements that trace to this part (ADR-0038); restricted ones are placeholders --- *@
+                    @if (o.Requirements is { Count: > 0 } traced)
+                    {
+                        <h5>Requirements that trace to this part</h5>
+                        <ul class="plain">
+                            @foreach (var tr in traced)
+                            {
+                                <li>
+                                    @if (tr.Redacted) { <span class="redacted">Restricted requirement</span> }
+                                    else
+                                    {
+                                        <a href="requirements/@Uri.EscapeDataString(tr.SpecNumber!)?tab=requirements">@tr.SpecNumber @tr.Key</a> <span>@tr.Title · @tr.LinkLabel</span>
+                                        @if (tr.VerificationStatus is { } vs) { <span class="badge">@Keel.Requirements.VerificationStates.Label(vs)</span> }
+                                        @if (tr.Suspect) { <span class="badge sev-warning">Suspect link</span> }
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @* --- end 8.3 --- *@
                     @if (o.Compare is { } c)
                     {
                         <h5>Structure change, @c.From to @c.To</h5>

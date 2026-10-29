@@ -31,7 +31,7 @@ public static class SourcingSeed
             await Run(
                 """
                 INSERT INTO src.supplier (id, number, name, country, roles, status, is_foreign, clearance_profile, export_jurisdiction, cui_categories, distribution_statement, owning_org, export_authorizations, created_at, created_by)
-                VALUES (gen_random_uuid(), @n, @name, 'USA', ARRAY['vendor', 'manufacturer'], 'approved', false, 'public-release', 'None', ARRAY[]::text[], 'A', 'ENG', ARRAY[]::text[], now(), 'e2e')
+                VALUES (gen_random_uuid(), @n, @name, 'USA', ARRAY['vendor', 'manufacturer'], 'approved', false, 'orca-prime-contractor', 'None', ARRAY[]::text[], 'A', 'ENG', ARRAY[]::text[], now(), 'e2e')
                 ON CONFLICT (number) DO NOTHING
                 """, ("n", number), ("name", name));
         await Run(

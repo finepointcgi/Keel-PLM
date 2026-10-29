@@ -140,7 +140,7 @@ public sealed partial class ThemeContrastTests
 public sealed class UxLogicTests
 {
     [Theory]
-    [InlineData("bracket", "bracket", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance", null)]
+    [InlineData("bracket", "bracket", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec", null)]
     [InlineData("p: bracket", "bracket", "part", null)]
     [InlineData("P:bracket", "bracket", "part", null)]
     [InlineData("d: spec 12", "spec 12", "document", null)]
@@ -150,11 +150,12 @@ public sealed class UxLogicTests
     [InlineData("pr: leak", "leak", "change", "PR")]
     [InlineData("b: orca", "orca", "baseline", null)]
     [InlineData("mb: plant", "plant", "mbom", null)]
+    [InlineData("rs: pod", "pod", "reqspec", null)]
     [InlineData("ncr: burr", "burr", "ncr", null)]
     [InlineData("capa: torque", "torque", "capa", null)]
     [InlineData("dev: finish", "finish", "deviation", null)]
-    [InlineData("zz: nothing", "zz: nothing", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance", null)] // not a prefix: searched as typed
-    [InlineData("  P-000123  ", "P-000123", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance", null)]
+    [InlineData("zz: nothing", "zz: nothing", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec", null)] // not a prefix: searched as typed
+    [InlineData("  P-000123  ", "P-000123", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec", null)]
     public void Typed_prefixes_narrow_the_search(string raw, string text, string kinds, string? changeType)
     {
         var q = ParsedQuery.Parse(raw);

@@ -1,0 +1,60 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+
+@* The "Trace" tab of a part, document or change: the requirements that trace to it (upstream) and the verification state of each (downstream). A requirement you may not read is a
+   placeholder with no key, title or specification. The page banner follows what is shown (ADR-0038). *@
+<section class="panel stack" aria-labelledby="object-trace-heading">
+    <h3 id="object-trace-heading">Requirements traced to this @Kind</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (trace is null && error is null) { <Skeleton Lines="3" Label="Loading the traceability" /> }
+    @if (trace is not null)
+    {
+        @if (trace.Requirements.Count == 0) { <p class="muted">No requirement is linked to this @Kind@(Kind == "document" ? " and no verification cites it as evidence" : "").</p> }
+        else
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Requirements traced to @trace.Key</caption>
+                <thead><tr><th scope="col">Specification</th><th scope="col">Requirement</th><th scope="col">Relation</th><th scope="col">Verification</th><th scope="col">Link state</th><th scope="col">Marking</th></tr></thead>
+                <tbody>
+                @foreach (var r in trace.Requirements)
+                {
+                    if (r.Redacted)
+                    {
+                        <tr class="restricted"><td colspan="6"><span class="restricted-label">Restricted requirement</span> (you may not see it)</td></tr>
+                        continue;
+                    }
+                    <tr>
+                        <td><a href="@RequirementUiText.Href(r.SpecNumber!, "requirements")">@r.SpecNumber</a></td>
+                        <td>@r.Key · @r.Title</td>
+                        <td>@r.LinkLabel</td>
+                        <td>@if (r.VerificationStatus is { } v) { <span class="badge @RequirementUiText.VerificationClass(v)">@VerificationStates.Label(v)</span> }</td>
+                        <td>@if (r.Suspect) { <span class="badge sev-warning">Suspect</span> } else { <span class="badge state-released">Current</span> }</td>
+                        <td><MarkingChip Text="@r.Banner" /></td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+            <p class="muted small">Suspect means the requirement or this @Kind changed after the link was last reviewed. Review it on the specification's Trace tab.</p>
+        }
+    }
+</section>
+
+@code {
+    private ObjectTrace? trace;
+    private string? error, seen;
+
+    /// <summary>part, document or change.</summary>
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Key { get; set; }
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (seen == Kind + ":" + Key) return;
+        seen = Kind + ":" + Key;
+        var outcome = await Requirements.GetObjectTraceAsync(await Users.GetAsync(), Kind, Key, CurrentUser.NewCorrelationId());
+        trace = outcome.IsOk ? outcome.Value : null;
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        await OnBanner.InvokeAsync(trace?.Banner);
+    }
+}

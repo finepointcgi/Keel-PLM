@@ -150,6 +150,8 @@ builder.Services.AddKeelRecordsHost(builder.Configuration); // 8.6 records manag
 Keel.Compliance.ComplianceModule.AddKeelCompliance(builder.Services, builder.Configuration); // 8.5 substances, regulatory lists, declarations, roll-up
 builder.Services.AddSingleton<Keel.Web.Services.ComplianceRollupService>(); // 8.5 BOM-level compliance roll-up (composes BOM, MBOM and compliance)
 builder.Services.AddKeelComplianceOpenApi();
+Keel.Requirements.RequirementsModule.AddKeelRequirements(builder.Services, builder.Configuration); // 8.3 requirements and traceability
+builder.Services.AddKeelRequirementsOpenApi();
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -269,6 +271,7 @@ app.MapVariantEndpoints(); // 8.4 options, variants, usage conditions and resolv
 app.MapRecordsEndpoints(); // 8.6 records management
 app.MapQualityEndpoints(); // 8.1 quality records
 app.MapProductComplianceEndpoints(); // 8.5 substances, regulatory lists, declarations, roll-up and exports
+app.MapRequirementEndpoints(); // 8.3 requirements and traceability
 app.MapOpenApi("/openapi/{documentName}.json");
 app.MapKeelUi<App>();
 

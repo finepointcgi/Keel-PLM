@@ -8,11 +8,11 @@
         <label>
             Bill of materials
             <select @bind="mode">
-                <option value="ebom">Engineering BOM (part number)</option>
-                <option value="mbom">Manufacturing BOM (MBOM number)</option>
+                <option value="ebom">Engineering BOM</option>
+                <option value="mbom">Manufacturing BOM</option>
             </select>
         </label>
-        <label class="grow">Number <input @bind="number" placeholder="@(mode == "ebom" ? "P-000001" : "MB-000001")" /></label>
+        <label class="grow">Part or MBOM number <input @bind="number" placeholder="@(mode == "ebom" ? "P-000001" : "MB-000001")" /></label>
         <button type="submit">Check coverage</button>
     </form>
     @if (error is not null) { <p class="error" role="alert">@error</p> }

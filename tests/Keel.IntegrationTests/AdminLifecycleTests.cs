@@ -33,7 +33,7 @@ public sealed class AdminLifecycleTests(PostgresFixture pg)
         var families = AdminEnv.Ok(await env.Lifecycles.ListFamiliesAsync(Ada));
         var part = families.Single(f => f.Family == "part-default");
         Assert.Equal((1, "part", true, true), (part.CurrentVersion, part.ObjectType, part.IsSystem, part.Editable));
-        Assert.Equal(new[] { "baseline-default", "capa-default", "ct-default", "deviation-default", "document-default", "ecn-default", "ecr-default", "mbom-default", "ncr-default", "part-default", "pr-default" }.Order(), families.Select(f => f.Family).Order());
+        Assert.Equal(new[] { "baseline-default", "capa-default", "ct-default", "deviation-default", "document-default", "ecn-default", "ecr-default", "mbom-default", "ncr-default", "part-default", "pr-default", "reqspec-default" }.Order(), families.Select(f => f.Family).Order());
         Assert.False(families.Single(f => f.Family == "ecn-default").Editable);
         // The baseline lifecycle (2.1) is enforced by cfg.baseline triggers, so it is a view-only system family.
         Assert.Equal((false, true), (families.Single(f => f.Family == "baseline-default").Editable, families.Single(f => f.Family == "baseline-default").IsSystem));

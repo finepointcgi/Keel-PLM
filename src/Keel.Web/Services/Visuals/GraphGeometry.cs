@@ -38,6 +38,7 @@ public static class GraphGeometry
         switch (kind)
         {
             case GraphNodeKind.Document:
+            case GraphNodeKind.TraceDocument:
                 return $"M{F(x)} {F(y)} H{F(r - 14)} L{F(r)} {F(y + 14)} V{F(b)} H{F(x)} Z";
             case GraphNodeKind.Mbom:
             {
@@ -55,6 +56,8 @@ public static class GraphGeometry
                 return $"M{F(x + c)} {F(y)} H{F(r - c)} A{F(c)} {F(c)} 0 0 1 {F(r - c)} {F(b)} H{F(x + c)} A{F(c)} {F(c)} 0 0 1 {F(x + c)} {F(y)} Z";
             }
             case GraphNodeKind.Change:
+            case GraphNodeKind.Requirement:
+            case GraphNodeKind.TraceChange:
             {
                 var c = 10;
                 return $"M{F(x + c)} {F(y)} H{F(r - c)} Q{F(r)} {F(y)} {F(r)} {F(y + c)} V{F(b - c)} Q{F(r)} {F(b)} {F(r - c)} {F(b)} H{F(x + c)} Q{F(x)} {F(b)} {F(x)} {F(b - c)} V{F(y + c)} Q{F(x)} {F(y)} {F(x + c)} {F(y)} Z";
@@ -73,6 +76,10 @@ public static class GraphGeometry
         GraphNodeKind.Mbom => "mbom",
         GraphNodeKind.Conflict => "warning",
         GraphNodeKind.Restricted => "lock",
+        GraphNodeKind.Requirement => "requirement",
+        GraphNodeKind.TracePart => "part",
+        GraphNodeKind.TraceDocument => "document",
+        GraphNodeKind.TraceChange => "change",
         _ => "plus",
     };
 
@@ -85,6 +92,10 @@ public static class GraphGeometry
         GraphNodeKind.Mbom => "Stale manufacturing BOM",
         GraphNodeKind.Conflict => "Conflicting open change",
         GraphNodeKind.Restricted => "Restricted item",
+        GraphNodeKind.Requirement => "Requirement",
+        GraphNodeKind.TracePart => "Allocated part",
+        GraphNodeKind.TraceDocument => "Linked document",
+        GraphNodeKind.TraceChange => "Linked change",
         _ => "More levels",
     };
 

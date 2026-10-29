@@ -1,0 +1,28 @@
+/* Requirements and traceability (8.3). Tokens only; every state is also text. No inline styles (strict CSP): indentation is a class per outline depth. */
+.req-title { display: block; }
+.req-title.d1 { padding-inline-start: var(--sp-4); }
+.req-title.d2 { padding-inline-start: calc(var(--sp-4) * 2); }
+.req-title.d3 { padding-inline-start: calc(var(--sp-4) * 3); }
+.req-title.d4 { padding-inline-start: calc(var(--sp-4) * 4); }
+.req-title.d5 { padding-inline-start: calc(var(--sp-4) * 5); }
+.req-title.d6 { padding-inline-start: calc(var(--sp-4) * 6); }
+.req-title.d7 { padding-inline-start: calc(var(--sp-4) * 7); }
+.req-title.d8 { padding-inline-start: calc(var(--sp-4) * 8); }
+.req-title.d9 { padding-inline-start: calc(var(--sp-4) * 9); }
+.req-outline-number { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.req-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.req-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.req-actions button, .req-actions a { font-size: var(--fs-sm); }
+.req-selected { background: var(--c-info-bg); }
+table.matrix th, table.matrix td { text-align: center; }
+table.matrix th:first-child, table.matrix td:first-child { text-align: start; }
+table.matrix td.cell-yes { font-weight: 600; }
+table.matrix td.cell-suspect { border: 2px dashed var(--c-warning); }
+.cover-bar { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.cover-card { border: 1px solid var(--c-border); border-radius: var(--radius-2); background: var(--c-surface); padding: var(--sp-3) var(--sp-4); min-width: 9rem; }
+.cover-card .cover-number { font-size: var(--fs-xl); font-weight: 600; display: block; }
+.suspect-note { border-inline-start: 4px solid var(--c-warning); padding-inline-start: var(--sp-3); }
+@media (max-width: 600px) {
+  .req-title.d1, .req-title.d2, .req-title.d3, .req-title.d4, .req-title.d5, .req-title.d6, .req-title.d7, .req-title.d8, .req-title.d9 { padding-inline-start: var(--sp-2); }
+  .cover-card { flex: 1 1 8rem; }
+}

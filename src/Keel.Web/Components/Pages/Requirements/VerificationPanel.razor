@@ -1,0 +1,105 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+@* Verification records of one requirement and the form that adds one. The state judges the requirement's CURRENT text: a result recorded for older text is stale. A formal
+   verification is signed (approver role, a recent sign-in) and needs evidence documents the person may read (ADR-0038). Notes are marked data: stored, never audited. *@
+<section class="panel stack" aria-labelledby="req-verify-heading">
+    <h3 id="req-verify-heading">Verification</h3>
+    <label>Requirement
+        <select aria-label="Requirement to verify" @bind="key" @bind:after="LoadAsync">
+            <option value="">Choose a requirement</option>
+            @foreach (var r in Set.Rows.Where(r => !r.Redacted)) { <option value="@r.Key">@r.Key · @r.Title</option> }
+        </select>
+    </label>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (records is not null)
+    {
+        <p>State of the current text: <span class="badge @RequirementUiText.VerificationClass(records.State)">@VerificationStates.Label(records.State)</span></p>
+        @if (records.Records.Count == 0) { <p class="muted">No verification has been recorded.</p> }
+        else
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Verification records of @records.Key, newest first</caption>
+                <thead><tr><th scope="col">When</th><th scope="col">Result</th><th scope="col">Method</th><th scope="col">Kind</th><th scope="col">Evidence</th><th scope="col">Applies to</th><th scope="col">Notes</th></tr></thead>
+                <tbody>
+                @foreach (var v in records.Records)
+                {
+                    <tr>
+                        <td>@UiText.Utc(v.PerformedAt) by @v.PerformedBy</td>
+                        <td>@VerificationResults.Label(v.Result)</td>
+                        <td>@VerificationMethods.Label(v.Method)</td>
+                        <td>@if (v.Formal) { <text>Formal, signed by @v.SignedBy@(v.SignedAt is { } sa ? " on " + UiText.Utc(sa) : "") (@v.SignatureMeaning)</text> } else { <text>Informal</text> }</td>
+                        <td>@foreach (var e in v.Evidence) { if (e.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="documents/@Uri.EscapeDataString(e.Number!)">@e.Number</a> <MarkingChip Text="@e.Banner" /> } <text> </text> }</td>
+                        <td>@(v.Current ? "Current text" : "Older text (stale)")</td>
+                        <td>@(v.WaiverReason is null ? v.Notes : $"Waived: {v.WaiverReason}")</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+        @if (Detail.CanModify || CanSign)
+        {
+            <form class="grid-form" @onsubmit="RecordAsync" aria-label="Record a verification of @key">
+                <label>Result
+                    <select aria-label="Result" @bind="result">@foreach (var r in VerificationResults.All) { <option value="@r">@VerificationResults.Label(r)</option> }</select>
+                </label>
+                <label>Method
+                    <select aria-label="Method" @bind="method"><option value="">As planned</option>@foreach (var r in VerificationMethods.All) { <option value="@r">@VerificationMethods.Label(r)</option> }</select>
+                </label>
+                <label class="wide">Notes <textarea aria-label="Notes" rows="2" maxlength="2000" @bind="notes"></textarea></label>
+                @if (result == VerificationResults.Waived) { <label class="wide">Reason for the waiver * <input aria-label="Reason for the waiver" maxlength="2000" @bind="waiver" /></label> }
+                <label class="wide">Evidence documents (numbers, separated by commas) <input aria-label="Evidence documents" @bind="evidence" placeholder="D-000012, D-000013" /></label>
+                @if (CanSign)
+                {
+                    <label class="inline-check wide"><input type="checkbox" @bind="formal" /> Formal verification (signed)</label>
+                    @if (formal) { <label class="wide">Meaning of the signature * <input aria-label="Meaning of the signature" maxlength="200" @bind="meaning" placeholder="Verified by test" /></label> }
+                }
+                <div class="actions"><button type="submit" disabled="@busy">@(formal ? "Sign and record" : "Record verification")</button></div>
+            </form>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required SpecDetail Detail { get; set; }
+    [Parameter, EditorRequired] public required RequirementSet Set { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private RequirementVerifications? records;
+    private string key = "", result = VerificationResults.Pass, method = "", notes = "", waiver = "", evidence = "", meaning = "";
+    private bool formal, busy, canSign;
+    private string? error;
+
+    private bool CanSign => canSign;
+
+    protected override async Task OnInitializedAsync() => canSign = (await Users.GetAsync()).Roles.Contains(Roles.Approver);
+
+    private async Task LoadAsync()
+    {
+        error = null; records = null;
+        await OnBanner.InvokeAsync(null);
+        if (key.Length == 0) return;
+        var outcome = await Requirements.GetVerificationsAsync(await Users.GetAsync(), Detail.Summary.Number, key, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        records = outcome.Value;
+        await OnBanner.InvokeAsync(records!.Banner);
+    }
+
+    private async Task RecordAsync()
+    {
+        busy = true; error = null;
+        var docs = evidence.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var outcome = await Requirements.RecordVerificationAsync(await Users.GetAsync(), Detail.Summary.Number, key,
+            new RecordVerificationCommand(result, method.Length == 0 ? null : method, notes, result == VerificationResults.Waived ? waiver : null, docs, formal, meaning), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.Kind == OutcomeKind.StepUpRequired) { Nav.NavigateTo(RequirementUiText.StepUpUrl(Detail.Summary.Number, "verification"), forceLoad: true); return; }
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        (notes, waiver, evidence, meaning, formal) = ("", "", "", "", false);
+        Toasts.Success("Verification recorded.");
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+}

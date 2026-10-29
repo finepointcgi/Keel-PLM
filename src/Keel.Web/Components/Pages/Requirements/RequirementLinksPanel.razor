@@ -1,0 +1,134 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject ToastService Toasts
+
+@* The links of one requirement in both directions. An end the signed-in user may not read is a placeholder with no type, number or name. A suspect link names why and
+   stays suspect until someone reviews it (ADR-0038). *@
+<section class="stack" aria-labelledby="req-links-heading">
+    <h4 id="req-links-heading">Traceability links of @Requirement.Key</h4>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (links is null) { <Skeleton Lines="2" Label="Loading the links" /> }
+    else if (links.Links.Count == 0) { <p class="muted">No links yet.</p> }
+    else
+    {
+        <div class="table-wrap"><table class="data">
+            <caption class="sr-only">Links of @Requirement.Key</caption>
+            <thead><tr><th scope="col">Relation</th><th scope="col">Linked to</th><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Marking</th><th scope="col">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var l in links.Links)
+            {
+                if (l.Redacted)
+                {
+                    <tr class="restricted"><td colspan="6"><span class="restricted-label">Restricted item</span> (you may not see what this requirement is linked to)</td></tr>
+                    continue;
+                }
+                <tr>
+                    <td>@l.Label</td>
+                    <td>
+                        @if (l.OtherKind == LinkTargetKinds.Requirement) { <a href="@RequirementUiText.Href(l.OtherNumber!)">@l.OtherNumber @l.OtherKey</a> @(": " + l.OtherName) }
+                        else { <a href="@RequirementUiText.ObjectHref(l.OtherKind!, l.OtherNumber!)">@l.OtherNumber</a> @(": " + l.OtherName) }
+                    </td>
+                    <td>@l.OtherRevision</td>
+                    <td>@if (l.Suspect) { <span class="badge sev-warning">Suspect</span> <span class="small">@SuspectReasons.Label(l.SuspectReason)</span> } else { <span class="badge state-released">Current</span> }</td>
+                    <td><MarkingChip Text="@l.Banner" /></td>
+                    <td>
+                        @if (l.Direction == "outgoing" && Detail.CanModify)
+                        {
+                            <div class="req-actions">
+                                @if (l.Suspect) { <button type="button" class="secondary" disabled="@busy" @onclick="() => ReviewAsync(l.Id)">Mark reviewed <span class="sr-only">link to @l.OtherNumber</span></button> }
+                                <button type="button" class="secondary" disabled="@busy" @onclick="() => RemoveAsync(l.Id)">Remove <span class="sr-only">link to @l.OtherNumber</span></button>
+                            </div>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+
+    @if (Detail.CanModify)
+    {
+        <form class="grid-form" @onsubmit="AddAsync" aria-label="Add a link to @Requirement.Key">
+            <label>Relation
+                <select aria-label="Relation" @bind="type">
+                    @foreach (var t in types) { <option value="@t.Code">@t.Label (to @t.TargetKind)</option> }
+                </select>
+            </label>
+            @if (Current?.TargetKind == LinkTargetKinds.Requirement)
+            {
+                <label>Specification <input aria-label="Target specification" @bind="targetSpec" placeholder="@Detail.Summary.Number" /></label>
+                <label>Requirement key <input aria-label="Target requirement key" @bind="targetKey" placeholder="R-0001" /></label>
+            }
+            else
+            {
+                <label>Number of the @(Current?.TargetKind ?? "object") <input aria-label="Target number" @bind="targetNumber" /></label>
+            }
+            <div class="actions"><button type="submit" disabled="@busy">Add link</button></div>
+        </form>
+    }
+</section>
+
+@code {
+    private RequirementLinks? links;
+    private IReadOnlyList<LinkTypeInfo> types = [];
+    private string type = "allocated-to", targetSpec = "", targetKey = "", targetNumber = "";
+    private string? error, seen;
+    private bool busy;
+
+    [Parameter, EditorRequired] public required SpecDetail Detail { get; set; }
+    [Parameter, EditorRequired] public required RequirementRow Requirement { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private LinkTypeInfo? Current => types.FirstOrDefault(t => t.Code == type);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (types.Count == 0) { types = await Requirements.ListLinkTypesAsync(); if (types.Count > 0 && Current is null) type = types[0].Code; }
+        var stamp = Requirement.Key + ":" + Requirement.ContentSha256 + ":" + Detail.Displayed.LatestIteration;
+        if (stamp == seen) return;
+        seen = stamp;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var outcome = await Requirements.GetLinksAsync(await Users.GetAsync(), Detail.Summary.Number, Requirement.Key!, CurrentUser.NewCorrelationId());
+        links = outcome.IsOk ? outcome.Value : null;
+        if (!outcome.IsOk) error = UiText.Message(outcome);
+        await OnBanner.InvokeAsync(links?.Banner);
+    }
+
+    private async Task AddAsync()
+    {
+        busy = true; error = null;
+        var outcome = await Requirements.AddLinkAsync(await Users.GetAsync(), Detail.Summary.Number, Requirement.Key!, new AddLinkCommand(type, targetSpec, targetKey, targetNumber), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        (targetSpec, targetKey, targetNumber) = ("", "", "");
+        Toasts.Success("Link added.");
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task RemoveAsync(Guid id)
+    {
+        busy = true; error = null;
+        var outcome = await Requirements.RemoveLinkAsync(await Users.GetAsync(), Detail.Summary.Number, id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task ReviewAsync(Guid id)
+    {
+        busy = true; error = null;
+        var outcome = await Requirements.ReviewLinkAsync(await Users.GetAsync(), Detail.Summary.Number, id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        Toasts.Success("Link reviewed.");
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+}

@@ -42,6 +42,7 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0035](0035-cad-integration.md) | CAD integration: vendor-neutral connector protocol, package check-in/out, CAD BOM proposals | Accepted |
 | [0037](0037-suppliers-and-sourcing.md) | Suppliers, approved lists and supplier portal | Accepted |
 | [0036](0036-quality-processes.md) | Quality processes: NCR, CAPA, deviations and waivers | Accepted |
+| [0038](0038-requirements-and-traceability.md) | Requirements and traceability: specifications, trace links, verification and coverage | Accepted |
 | [0039](0039-configuration-and-variants.md) | Configuration and variants: options, rules, 150% BOM conditions | Accepted |
 | [0040](0040-product-compliance.md) | Product compliance: substances, regulatory lists, declarations and roll-up | Accepted |
 | [0041](0041-records-management.md) | Records management: retention, legal hold, disposition, WORM-style archive | Accepted |
