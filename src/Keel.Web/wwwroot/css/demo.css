@@ -1,0 +1,9 @@
+/* The demo sign-in page (ADR-0045). Shares the design tokens; no inline styles (the content security policy forbids them). */
+.demo-signin { max-width: 960px; margin: 0 auto; padding: var(--sp-5); }
+.demo-users { list-style: none; margin: var(--sp-4) 0; padding: 0; display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.demo-user { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-2); padding: var(--sp-4); }
+.demo-user form { display: flex; flex-direction: column; gap: var(--sp-2); height: 100%; }
+.demo-user-roles { font-size: var(--fs-sm); color: var(--c-muted); }
+.demo-user-attrs { font-size: var(--fs-sm); }
+.demo-user-try { margin: 0; flex: 1; }
+.demo-note { color: var(--c-muted); font-size: var(--fs-sm); }

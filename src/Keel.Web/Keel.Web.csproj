@@ -26,6 +26,10 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Demo mode (ADR-0045): the demo sign-in people come from the dev realm itself, so they can never drift from what Keycloak issues. -->
+    <EmbeddedResource Include="..\..\deploy\compose\keycloak\keel-realm.json" LogicalName="keel-realm.json" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Keel.UnitTests" />
   </ItemGroup>
 </Project>

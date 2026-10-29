@@ -8,6 +8,7 @@ using Keel.Core;
 using Keel.Workflow;
 using Keel.Web.Components;
 using Keel.Web.Services;
+using Keel.Web.Services.Demo;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -71,6 +72,9 @@ if (!string.IsNullOrWhiteSpace(secretsDirectory))
 
 var options = builder.Configuration.GetSection(KeelOptions.Section).Get<KeelOptions>() ?? new KeelOptions();
 builder.Services.AddSingleton(options);
+
+// Demo mode (ADR-0045): needs BOTH ASPNETCORE_ENVIRONMENT=Demo and Keel:Demo:Enabled=true; Enabled=true anywhere else ends the start here.
+var demo = Keel.Web.Services.Demo.DemoMode.IsEnabled(builder.Configuration, builder.Environment.EnvironmentName);
 
 if (args.Contains("--migrate"))
 {
@@ -192,10 +196,13 @@ builder.Services
         o.DefaultChallengeScheme = SmartScheme;
     })
     .AddPolicyScheme(SmartScheme, "API bearer or UI cookie", o => o.ForwardDefaultSelector = ctx =>
-        ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            ? JwtBearerDefaults.AuthenticationScheme
-            : KeelUi.CookieScheme)
-    .AddKeelUi(uiOptions, secureCookies: !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
+    {
+        var bearer = ctx.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
+        // Demo only (ADR-0045): the REST API also accepts the demo session cookie (there is no token endpoint without an IdP). A bearer token still goes to JWT validation.
+        if (demo && !bearer && ctx.Request.Path.StartsWithSegments("/api") && ctx.Request.Cookies.ContainsKey("keel.session")) return KeelUi.CookieScheme;
+        return ctx.Request.Path.StartsWithSegments("/api") || bearer ? JwtBearerDefaults.AuthenticationScheme : KeelUi.CookieScheme;
+    })
+    .AddKeelUi(uiOptions, secureCookies: !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing") && !demo, demo: demo)
     .AddJwtBearer(o =>
     {
         o.Authority = options.Auth.Authority;
@@ -273,6 +280,7 @@ app.MapQualityEndpoints(); // 8.1 quality records
 app.MapProductComplianceEndpoints(); // 8.5 substances, regulatory lists, declarations, roll-up and exports
 app.MapRequirementEndpoints(); // 8.3 requirements and traceability
 app.MapOpenApi("/openapi/{documentName}.json");
+if (demo) app.MapKeelDemo(); // 9.0 demo sign-in page; never mapped unless demo mode was proven above
 app.MapKeelUi<App>();
 
 app.Run();

@@ -15,3 +15,13 @@ scripts/
 # Licence texts copied into the image (Dockerfile): re-included after the docs/ and *.md exclusions above.
 !docs/third-party/viewer-licenses/
 !docs/third-party/viewer-licenses/*.txt
+
+# The demo image (ADR-0045): the entrypoint, the dev realm file Keel.Web embeds, and the project the seeder references.
+!deploy/demo/
+!deploy/demo/entrypoint.sh
+!deploy/compose/keycloak/keel-realm.json
+!tests/Keel.TestSupport/
+tests/Keel.TestSupport/bin/
+tests/Keel.TestSupport/obj/
+!docs/integration/cad/
+!docs/integration/cad/structure-v1.schema.json
