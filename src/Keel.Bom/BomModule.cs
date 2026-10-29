@@ -28,6 +28,7 @@ public static class BomModule
         // UX-4 (ADR-0030): notifications, comments and activity feeds find baselines and manufacturing BOMs through these key lookups.
         services.AddSingleton<IObjectAccess, BaselineObjectAccess>();
         services.AddSingleton<IObjectAccess, MbomObjectAccess>();
+        services.AddSingleton<IBaselineMembership>(sp => new BaselineMembership(sp.GetRequiredService<Npgsql.NpgsqlDataSource>())); // 8.3 requirements coverage by baseline
         return services;
     }
 }
