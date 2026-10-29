@@ -30,12 +30,14 @@ public static class ProgramRecords
 
     private static async Task AddItemAsync(IPage page, string kind, string title, string start, string? end, string? gate = null, string? phase = null)
     {
-        await page.GetByLabel("Kind", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync(kind);
-        if (phase is not null) await page.GetByLabel("Inside phase").SelectOptionAsync(new SelectOptionValue { Label = phase });
-        await BrowserSession.FillAsync(page.GetByLabel("Title *").Last, title);
-        await page.GetByLabel("Start *").FillAsync(start);
-        if (end is not null) await page.GetByLabel("End", new PageGetByLabelOptions { Exact = true }).Last.FillAsync(end);
-        if (gate is not null) await page.GetByLabel("Gate review type").SelectOptionAsync(gate);
+        var add = page.Locator("section[aria-labelledby='add-heading']");
+        var selects = add.Locator("select");
+        await selects.Nth(0).SelectOptionAsync(kind);
+        if (phase is not null) await selects.Nth(1).SelectOptionAsync(new SelectOptionValue { Label = phase });
+        await BrowserSession.FillAsync(add.Locator("input[maxlength='200']"), title);
+        await add.Locator("input[type=date]").Nth(0).FillAsync(start);
+        if (end is not null) await add.Locator("input[type=date]").Nth(1).FillAsync(end);
+        if (gate is not null) await selects.Nth(2).SelectOptionAsync(gate);
         await BrowserSession.ClickAsync(page, "Add item");
         await Expect(page.Locator("table[data-table='schedule']")).ToContainTextAsync(title);
     }
@@ -57,8 +59,8 @@ public static class ProgramRecords
         await AddItemAsync(page, "Task", "Concept design", "2027-03-01", "2027-03-31", phase: "PH-001 Design phase");
         await AddItemAsync(page, "Task", "Detailed design", "2027-04-01", "2027-05-31", phase: "PH-001 Design phase");
         await AddItemAsync(page, "Milestone", "Preliminary design review", "2027-06-15", null, gate: "PDR");
-        await page.GetByLabel("Predecessor").SelectOptionAsync(new SelectOptionValue { Label = "TK-002 Concept design" });
-        await page.GetByLabel("Successor").SelectOptionAsync(new SelectOptionValue { Label = "TK-003 Detailed design" });
+        await page.Locator("section[aria-labelledby='dep-heading'] select").Nth(0).SelectOptionAsync(new SelectOptionValue { Label = "TK-002 Concept design" });
+        await page.Locator("section[aria-labelledby='dep-heading'] select").Nth(1).SelectOptionAsync(new SelectOptionValue { Label = "TK-003 Detailed design" });
         await BrowserSession.ClickAsync(page, "Add dependency");
         await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Remove dependency TK-002 to TK-003" })).ToBeVisibleAsync();
         await BrowserSession.FillAsync(page.GetByLabel("Baseline name"), "Contract baseline");
@@ -109,7 +111,7 @@ public sealed class ProgramTests(E2EFixture fx)
             // the timeline: the chart is keyboard operable and the table holds the same items
             await BrowserSession.OpenTabAsync(page, "Timeline");
             await Expect(page.Locator(".vis-viewport")).ToBeVisibleAsync();
-            await page.Locator(".vis-viewport").FocusAsync();
+            await page.Locator("g.vis-node[tabindex='0']").FocusAsync();
             await page.Keyboard.PressAsync("Home");
             await Expect(page.Locator(".vis-node:focus")).ToHaveCountAsync(1);
             await page.Keyboard.PressAsync("ArrowDown");

@@ -213,13 +213,17 @@ else
     private async Task AddItem()
     {
         if (aStart is null) { error = "Choose the start date."; return; }
-        var ok = await Run(s => Programs.AddItemAsync(s, Code, new AddItemCommand(aKind, aParent == "" ? null : aParent, aTitle, null, aOwner, aStart.Value, aEnd ?? aStart.Value, aGate == "" ? null : aGate, null), CurrentUser.NewCorrelationId()), "Item added.");
-        if (ok) (aTitle, aOwner, aGate, aStart, aEnd) = ("", "", "", null, null);
+        var saved = (aTitle, aOwner, aGate, aStart, aEnd);
+        var command = new AddItemCommand(aKind, aParent == "" ? null : aParent, aTitle, null, aOwner, aStart.Value, aEnd ?? aStart.Value, aGate == "" ? null : aGate, null);
+        (aTitle, aOwner, aGate, aStart, aEnd) = ("", "", "", null, null); // cleared first: the form is ready for the next item as soon as this one is saved
+        if (!await Run(s => Programs.AddItemAsync(s, Code, command, CurrentUser.NewCorrelationId()), "Item added.")) (aTitle, aOwner, aGate, aStart, aEnd) = saved;
     }
 
     private async Task AddDependency()
     {
-        if (await Run(s => Programs.AddDependencyAsync(s, Code, dPred, dSucc, dLag, CurrentUser.NewCorrelationId()), "Dependency added.")) (dPred, dSucc, dLag) = ("", "", 0);
+        var (p, q, lag) = (dPred, dSucc, dLag);
+        (dPred, dSucc, dLag) = ("", "", 0);
+        if (!await Run(s => Programs.AddDependencyAsync(s, Code, p, q, lag, CurrentUser.NewCorrelationId()), "Dependency added.")) (dPred, dSucc, dLag) = (p, q, lag);
     }
 
     private Task RemoveDependency(DependencyRow d) => Run(s => Programs.RemoveDependencyAsync(s, Code, d.PredecessorKey, d.SuccessorKey, CurrentUser.NewCorrelationId()), "Dependency removed.");
