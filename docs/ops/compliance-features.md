@@ -18,8 +18,7 @@ not in the DOM), service calls fail, and every cookie request except the page sh
 (`prompt=login`, `max_age=0`, same subject) and returns to the same page; unsaved input is not kept (it would mean keeping marked data in memory). Audit actions:
 `session.lock` (reason `idle`/`manual`), `session.unlock`, `session.lock_expired`, `session.terminated_idle`. The REST API with bearer tokens is not affected.
 
-Operator notes: one node or sticky sessions (already required for Blazor circuits and the shared Data Protection key ring). A restart or another replica does not
-know the lock state and starts a session active; a database-backed registry is Phase 5. Cookies issued before this increment carry no session id and are refused: users sign in again once.
+Operator notes: the lock state lives in `identity.session_lock` (ADR-0032), so a restart and any number of replicas share it (another node's lock is enforced within about a second). Sticky sessions are still needed for Blazor circuits and the shared Data Protection key ring. Cookies issued before this increment carry no session id and are refused: users sign in again once.
 
 ## 2. Malware scanning of uploads (3.14.2)
 
@@ -77,4 +76,4 @@ parsing, verifying continuity, and what to do on `siem.chain_break`. Quick check
 
 ## What stays with the operator
 ClamAV signature supply and its update cadence in the air gap; protecting the clamd link if it is not loopback/socket; running delete-mode GC deliberately; the SIEM, its retention and alerting; replacing the
-placeholder private enterprise number 32473 with the organization's own; pgAudit for database superusers; sticky sessions for the lock; reviewing `unscanned/skipped` files and quarantines.
+placeholder private enterprise number 32473 with the organization's own; pgAudit for database superusers; sticky sessions for circuits; reviewing `unscanned/skipped` files and quarantines.

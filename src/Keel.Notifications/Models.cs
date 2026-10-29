@@ -40,7 +40,8 @@ public interface INotificationCenter
     Task SetAutoWatchAsync(Subject subject, bool autoWatch, CancellationToken ct = default);
 }
 
-public sealed record KindPreference(NotificationKind Kind, bool InApp, bool NotifyOwn);
+/// <param name="Email">Also send the "you have a notification" mail for this kind (effective only while the user has mail switched on).</param>
+public sealed record KindPreference(NotificationKind Kind, bool InApp, bool NotifyOwn, bool Email = true);
 
 public sealed record NotificationPreferences(bool AutoWatch, IReadOnlyList<KindPreference> Kinds);
 

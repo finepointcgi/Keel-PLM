@@ -19,6 +19,8 @@ public enum DeliveryResult
     Retry,
     /// <summary>Retrying cannot help (4xx other than 408/429, a refused redirect, an unusable configuration): the delivery becomes a dead letter.</summary>
     Permanent,
+    /// <summary>The sink is healthy but cannot take the event now (a full spool directory): try again later, without counting an attempt and without ever becoming a dead letter.</summary>
+    Defer,
 }
 
 public sealed record DeliveryOutcome(DeliveryResult Result, string? Error = null)
@@ -26,14 +28,15 @@ public sealed record DeliveryOutcome(DeliveryResult Result, string? Error = null
     public static readonly DeliveryOutcome Ok = new(DeliveryResult.Delivered);
     public static DeliveryOutcome Retry(string error) => new(DeliveryResult.Retry, error);
     public static DeliveryOutcome Permanent(string error) => new(DeliveryResult.Permanent, error);
+    public static DeliveryOutcome Defer(string error) => new(DeliveryResult.Defer, error);
 }
 
 /// <summary>What a sink receives for one event: the stable body bytes and the identifiers that go into transport headers.</summary>
 public sealed record EnvelopeMessage(Guid EventId, string EventType, long Seq, DateTimeOffset OccurredAt, byte[] Body, int Attempt);
 
 /// <summary>
-/// A destination for events. A message broker sink is added later by implementing this interface (Phase 4b); until then the broker kind
-/// refuses to be configured or to deliver.
+/// A destination for events. A message broker sink is added later by implementing this interface (Phase 4b, deferred by ADR-0032); until then the
+/// broker kind refuses to be configured or to deliver. The durable spool directory of <see cref="FileDropSink"/> is the on-premises alternative.
 /// </summary>
 public interface IEventSink
 {
@@ -61,7 +64,7 @@ public sealed class SinkRegistry(IEnumerable<IEventSink> sinks)
 /// <summary>The message broker kind is part of the model so sinks can be defined for it later; it refuses to be configured or to deliver and names the phase that delivers it.</summary>
 public sealed class BrokerSink : IEventSink
 {
-    public const string Message = "Message broker sinks are delivered in Phase 4b. Use a webhook or file-drop sink until then.";
+    public const string Message = "Message broker sinks are delivered in Phase 4b. Use a webhook or file-drop (spool directory) sink until then.";
 
     public string Kind => SinkKinds.Broker;
 
@@ -271,9 +274,12 @@ public sealed class WebhookSink(IntegrationOptions options, SecretResolver secre
 public sealed class SsrfRefusedException(string message) : Exception(message);
 
 /// <summary>
-/// Writes events as files for a batch ERP import (ADR-0025). Every file is written to a temporary name and renamed, so a reader never sees
-/// a partial file; each data file is followed by <c>{file}.manifest.json</c> (SHA-256, size, the event ids inside) which is the commit
-/// marker: a reader processes only files that have a manifest and verifies the hash.
+/// Writes events as files for a batch ERP import (ADR-0025) and doubles as the durable spool of the on-premises alternative to a message broker (ADR-0032).
+/// Every file is written to a temporary name (write-through) and renamed, so a reader never sees a partial file; each data file is followed by
+/// <c>{file}.manifest.json</c> (SHA-256, size, the event ids inside) which is the commit marker: a reader processes only files that have a manifest and
+/// verifies the hash, then removes both files (that is its acknowledgement). File names are derived from sequence numbers, so a retry after a crash
+/// rewrites the same name instead of adding a second copy. The spool is bounded: when <c>maxPendingFiles</c> committed files wait unconsumed the sink
+/// answers "defer" (the events stay in the outbox, no attempt is counted, nothing is lost, dropped or dead-lettered) and the gauge <c>keel_integration_spool_files</c> shows the depth.
 /// </summary>
 public sealed class FileDropSink(IntegrationOptions options, TimeProvider clock) : IBatchEventSink
 {
@@ -283,7 +289,9 @@ public sealed class FileDropSink(IntegrationOptions options, TimeProvider clock)
     {
         var errors = new List<string>();
         foreach (var key in config.Select(p => p.Key))
-            if (key is not ("directory" or "format")) errors.Add($"Unknown setting '{key}'.");
+            if (key is not ("directory" or "format" or "maxPendingFiles")) errors.Add($"Unknown setting '{key}'.");
+        if (config["maxPendingFiles"] is not null && !(config["maxPendingFiles"] is JsonValue m && m.TryGetValue<int>(out var max) && max is >= 0 and <= 1_000_000))
+            errors.Add("maxPendingFiles must be a whole number from 0 (unlimited) to 1000000.");
         var format = config["format"] is JsonValue f && f.TryGetValue<string>(out var fs) ? fs : "json";
         if (format is not ("json" or "ndjson")) errors.Add("format must be 'json' (one file per event) or 'ndjson' (one file per batch).");
         if (string.IsNullOrWhiteSpace(options.FileDropRoot)) { errors.Add("File-drop sinks are refused: Keel:Integration:FileDropRoot is not configured (mount a volume and set it)."); return errors; }
@@ -338,10 +346,19 @@ public sealed class FileDropSink(IntegrationOptions options, TimeProvider clock)
         try
         {
             Directory.CreateDirectory(full);
+            RemoveStaleTemporaryFiles(full);
+            var limit = sink.ConfigInt("maxPendingFiles") ?? options.FileDropMaxPendingFiles;
+            var pending = CountPending(full, limit);
+            IntegrationMetrics.SpoolFiles.WithLabels(sink.Name).Set(pending);
+            DeliveryOutcome Full() => DeliveryOutcome.Defer($"The spool directory holds {pending.ToString(CultureInfo.InvariantCulture)} files that were not consumed yet (limit {limit.ToString(CultureInfo.InvariantCulture)}); delivery resumes when the receiver removes processed files.");
             if (format == "ndjson")
             {
-                var stamp = clock.GetUtcNow().ToString("yyyyMMdd'T'HHmmssfff'Z'", CultureInfo.InvariantCulture);
-                var name = $"keel-{stamp}-{messages[0].Seq.ToString(CultureInfo.InvariantCulture)}-{messages.Count.ToString(CultureInfo.InvariantCulture)}.ndjson";
+                if (limit > 0 && pending >= limit)
+                {
+                    Array.Fill(results, Full());
+                    return results;
+                }
+                var name = $"keel-{messages[0].Seq.ToString("D12", CultureInfo.InvariantCulture)}-{messages[^1].Seq.ToString("D12", CultureInfo.InvariantCulture)}-{messages.Count.ToString(CultureInfo.InvariantCulture)}.ndjson";
                 var bytes = new MemoryStream();
                 foreach (var m in messages)
                 {
@@ -349,22 +366,47 @@ public sealed class FileDropSink(IntegrationOptions options, TimeProvider clock)
                     bytes.WriteByte((byte)'\n');
                 }
                 await WriteFileWithManifestAsync(full, name, bytes.ToArray(), messages, ct);
+                Array.Fill(results, DeliveryOutcome.Ok);
             }
             else
             {
-                foreach (var m in messages)
+                for (var i = 0; i < messages.Count; i++)
                 {
+                    if (limit > 0 && pending >= limit) { results[i] = Full(); continue; } // the rest wait in the outbox, in order, for the receiver to catch up
+                    var m = messages[i];
                     var name = $"keel-{m.Seq.ToString("D12", CultureInfo.InvariantCulture)}-{m.EventId:D}.json";
                     await WriteFileWithManifestAsync(full, name, [.. m.Body, (byte)'\n'], [m], ct);
+                    results[i] = DeliveryOutcome.Ok;
+                    pending++;
                 }
             }
-            Array.Fill(results, DeliveryOutcome.Ok);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             Array.Fill(results, DeliveryOutcome.Retry("File write failed: " + e.Message));
         }
         return results;
+    }
+
+    /// <summary>Committed files (those with a manifest) that wait for the receiver, counted up to <paramref name="limit"/> (0 counts them all).</summary>
+    private static int CountPending(string directory, int limit)
+    {
+        var n = 0;
+        foreach (var _ in Directory.EnumerateFiles(directory, "*.manifest.json"))
+            if (++n >= limit && limit > 0) break;
+        return n;
+    }
+
+    /// <summary>Temporary files a crashed write left behind never match a reader's pattern; they are removed after an hour.</summary>
+    private void RemoveStaleTemporaryFiles(string directory)
+    {
+        var cutoff = clock.GetUtcNow().UtcDateTime - TimeSpan.FromHours(1);
+        foreach (var f in Directory.EnumerateFiles(directory, "*.tmp"))
+        {
+            try { if (File.GetLastWriteTimeUtc(f) < cutoff) File.Delete(f); }
+            catch (IOException) { /* in use or already gone: the next delivery looks again */ }
+            catch (UnauthorizedAccessException) { /* not ours to remove */ }
+        }
     }
 
     private async Task WriteFileWithManifestAsync(string directory, string name, byte[] content, IReadOnlyList<EnvelopeMessage> messages, CancellationToken ct)

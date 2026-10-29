@@ -359,14 +359,6 @@ public sealed partial class AwarenessUnitTests
     }
 
     [Fact]
-    public void The_email_channel_is_a_named_later_phase_not_a_silent_no_op()
-    {
-        var channel = new EmailNotificationChannel();
-        var ex = Assert.Throws<NotSupportedException>(() => channel.DeliverAsync("sub", NotificationKinds.All[0], CancellationToken.None).GetAwaiter().GetResult());
-        Assert.Contains("Phase 5", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void Awareness_kinds_map_audit_object_types_and_numbers()
     {
         Assert.Equal("part", AwarenessKinds.AuditObjectType("part", "P-000001"));

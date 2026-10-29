@@ -10,6 +10,7 @@ public static class IntegrationMetrics
 {
     public static readonly Counter Deliveries = Metrics.CreateCounter("keel_integration_deliveries_total", "Delivery attempts by sink and result (delivered, retry, dead, withheld).", "sink", "result");
     public static readonly Gauge Backlog = Metrics.CreateGauge("keel_integration_deliveries", "Deliveries by status.", "status");
+    public static readonly Gauge SpoolFiles = Metrics.CreateGauge("keel_integration_spool_files", "Committed files waiting in a file-drop sink's spool directory for the receiver to consume them.", "sink");
     public static readonly Gauge LagSeconds = Metrics.CreateGauge("keel_integration_lag_seconds", "Seconds the oldest due delivery has been waiting.");
 }
 

@@ -123,6 +123,10 @@ Secret-bearing settings are marked **secret**: supply them as files, never in an
 | `Keel__Session__WarningSeconds` | `60` | D | Shorter than the idle timeout. |
 | `Keel__Session__LockedTerminateMinutes` | `15` | D | Locked this long = session terminated and signed out. |
 | `Keel__Session__ActivityThrottleSeconds` | `5` | D | Browser activity report interval (1 to 60). |
+| `Keel__Session__Store` | `Database` | D | `Database` shares lock state between replicas and keeps it across restarts (migration 0016). `Memory` is refused in production. |
+
+### Gap wave B settings (ADR-0032)
+Outbox retention (`Keel:Integration:Retention`, `Keel:Integration:FileDropMaxPendingFiles`) and the e-mail channel (`Keel:Notifications:Email`) are documented with their tables in [integration.md](integration.md) and [notifications.md](notifications.md).
 
 ### SIEM forwarding (`Keel:Siem`, ADR-0026, siem-onboarding.md)
 | Setting | Default | Prod | Example / notes |

@@ -72,6 +72,20 @@ public sealed class DeliveryStore(NpgsqlDataSource dataSource, IAuditLog audit, 
     public async Task<string> CompleteAsync(ClaimedDelivery d, DeliveryOutcome outcome, int maxAttempts, TimeSpan backoffBase, TimeSpan backoffMax, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
+        if (outcome.Result == DeliveryResult.Defer)
+        {
+            // Not an attempt: the row keeps its status and attempt count and is looked at again after a pause (never a dead letter because a receiver is slow).
+            await using var defer = dataSource.CreateCommand(
+                """
+                UPDATE integration.delivery SET last_error = @error, updated_at = @now, next_attempt_at = @next, claimed_by = NULL, claimed_until = NULL
+                WHERE id = @id AND status IN ('pending', 'failed') RETURNING status
+                """);
+            defer.Parameters.Add(new NpgsqlParameter("error", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)Truncate(outcome.Error) ?? DBNull.Value });
+            defer.Parameters.AddWithValue("now", now);
+            defer.Parameters.AddWithValue("next", now + (backoffBase * 6 < backoffMax ? backoffBase * 6 : backoffMax));
+            defer.Parameters.AddWithValue("id", d.DeliveryId);
+            return await defer.ExecuteScalarAsync(ct) as string ?? DeliveryStatus.Pending;
+        }
         var attempts = d.Attempts + 1;
         string status;
         DateTimeOffset next = now;
