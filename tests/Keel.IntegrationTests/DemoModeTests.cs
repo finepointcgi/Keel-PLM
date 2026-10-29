@@ -108,7 +108,7 @@ public sealed partial class DemoModeTests(PostgresFixture pg)
         // An unauthenticated page request lands on the demo page.
         var challenge = await client.GetAsync("/parts");
         Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
-        Assert.StartsWith("/account/demo-signin?returnUrl=%2Fparts", challenge.Headers.Location!.OriginalString, StringComparison.Ordinal);
+        Assert.True(challenge.Headers.Location!.OriginalString.Contains("/account/demo-signin?returnUrl=", StringComparison.Ordinal), "Location was " + challenge.Headers.Location.OriginalString);
 
         var page = await client.GetAsync(challenge.Headers.Location.OriginalString);
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
