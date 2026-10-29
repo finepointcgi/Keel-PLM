@@ -128,6 +128,7 @@
                         break;
                     case "comments":
                         <CommentThread Kind="@ObjectKinds.Mbom" Number="@s.Number" OnCount="c => commentCount = c" />
+                        break;
                     case "timeline":
                         @* UX-3: the life of the manufacturing BOM. *@
                         <TimelinePanel ObjectType="mbom" Key="@s.Number" Version="@($"{d.Displayed.Revision}.{d.Iteration.Iteration}.{d.Displayed.State}")"
