@@ -1,5 +1,12 @@
-<span class="chip @MarkingBanner.Tone(Text)"><Icon Name="markings" />@Text</span>
+@* The marking of one object. The text wraps only at the " · " separators: each segment (for example "DISTRIBUTION D") is a no-break unit, so a narrow column never splits a word. The text is never truncated. *@
+<span class="chip @MarkingBanner.Tone(Text)"><Icon Name="markings" /><span class="chip-text">@Segments(Text)</span></span>
 
 @code {
     [Parameter, EditorRequired] public required string Text { get; set; }
+
+    private static MarkupString Segments(string text)
+    {
+        var parts = text.Split(" · ");
+        return new MarkupString(string.Join(" · ", parts.Select(p => "<span class=\"seg\">" + System.Net.WebUtility.HtmlEncode(p) + "</span>")));
+    }
 }
