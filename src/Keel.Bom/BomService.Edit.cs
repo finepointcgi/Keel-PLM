@@ -230,9 +230,9 @@ public sealed partial class BomService
             await using (var ins = new NpgsqlCommand(
                 """
                 INSERT INTO plm.bom_working_usage (id, checkout_revision_id, child_master_id, quantity, unit, find_number, reference_designators, notes, created_at, created_by,
-                                                   eff_kind, eff_context, eff_from, eff_to)
+                                                   eff_kind, eff_context, eff_from, eff_to, opt_cond, opt_ast)
                 SELECT gen_random_uuid(), @rid, u.child_master_id, u.quantity, u.unit, u.find_number, u.reference_designators, u.notes, @at, @by,
-                       u.eff_kind, u.eff_context, u.eff_from, u.eff_to
+                       u.eff_kind, u.eff_context, u.eff_from, u.eff_to, u.opt_cond, u.opt_ast
                 FROM plm.bom_usage u WHERE u.parent_iteration_id = @iter
                 """, conn, tx))
             {
@@ -363,7 +363,7 @@ public sealed partial class BomService
             if (readable) (m, banner) = cache.Get(r, r.GetGuid(7), 11);
             lines.Add(new WorkingBomLine(r.GetGuid(0), r.GetInt32(1), r.GetDecimal(2), r.GetString(3), !readable,
                 readable ? r.GetGuid(6) : null, readable ? r.GetString(8) : null, readable ? r.GetString(9) : null, readable ? r.GetString(10) : null,
-                readable ? r.GetFieldValue<string[]>(4) : [], readable && !r.IsDBNull(5) ? r.GetString(5) : null, banner, m, EffectivityStore.ReadRange(r, 21)));
+                readable ? r.GetFieldValue<string[]>(4) : [], readable && !r.IsDBNull(5) ? r.GetString(5) : null, banner, m, EffectivityStore.ReadRange(r, 21), readable && !r.IsDBNull(25) ? r.GetString(25) : null));
         }
         return lines;
     }

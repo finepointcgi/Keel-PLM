@@ -21,8 +21,20 @@ internal static class MbomSql
         LIMIT 1
         """;
 
-    private static string LineCondition(bool unit) => unit ? BomSql.UsageApplies("u") : "TRUE";
-    private static string ChildCondition(bool unit) => unit ? BomSql.UsageApplies("c") : "TRUE";
+    /// <summary>
+    /// Option conditions of an MBOM line (ADR-0039) are inherited from the EBOM lines it implements: with a variant, a line applies when it implements no EBOM line
+    /// (manufacturing only) or at least one linked EBOM line applies. MBOM lines carry no condition of their own. Parameter @var_sel is always bound.
+    /// </summary>
+    public static string VariantApplies(string u) =>
+        $"""
+        (@var_sel::jsonb IS NULL
+          OR NOT EXISTS (SELECT 1 FROM mbom.usage_link vl WHERE vl.mbom_usage_id = {u}.id)
+          OR EXISTS (SELECT 1 FROM mbom.usage_link vl JOIN plm.bom_usage ve ON ve.id = vl.ebom_usage_id
+                     WHERE vl.mbom_usage_id = {u}.id AND (ve.opt_ast IS NULL OR var.eval_cond(ve.opt_ast, @var_sel::jsonb))))
+        """;
+
+    private static string LineCondition(bool unit) => (unit ? BomSql.UsageApplies("u") : "TRUE") + " AND " + VariantApplies("u");
+    private static string ChildCondition(bool unit) => (unit ? BomSql.UsageApplies("c") : "TRUE") + " AND " + VariantApplies("c");
 
     public static string Explode(bool latestChildren, bool unit, SqlFilter partFilter, SqlFilter mbomFilter) =>
         $"""

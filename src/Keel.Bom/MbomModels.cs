@@ -266,7 +266,9 @@ public sealed record MbomQuery(
     bool LatestChildren = false,
     int? Depth = null,
     string? ParentLine = null,
-    EffectivityRequest? Unit = null);
+    EffectivityRequest? Unit = null,
+    /// <summary>Resolve for a variant (ADR-0039): lines inherit the option conditions of the EBOM lines they implement. Null: every line.</summary>
+    Keel.Core.Variants.VariantSelection? Variant = null);
 
 public sealed record MbomExplosion(
     string Number, string PartNumber, string PartName, string Plant, string Revision, int Iteration, int? Depth, string? ParentLine,

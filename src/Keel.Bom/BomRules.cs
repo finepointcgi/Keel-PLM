@@ -113,10 +113,13 @@ public static class BomCsv
 
     public static string Render(string banner, IEnumerable<BomLine> lines)
     {
+        var list = lines as IReadOnlyCollection<BomLine> ?? [.. lines];
+        // A column for option usage conditions appears only when some line has one, so files of structures without conditions are byte for byte what they were.
+        var withCondition = list.Any(l => l.Condition is not null);
         var sb = new StringBuilder(1 << 20);
         sb.Append(Cell(banner)).Append("\r\n");
-        sb.Append("Level,Path,Find number,Part number,Name,Revision,State,Quantity,Unit,Extended quantity,Reference designators,Markings,Effectivity,Flags\r\n");
-        foreach (var l in lines)
+        sb.Append("Level,Path,Find number,Part number,Name,Revision,State,Quantity,Unit,Extended quantity,Reference designators,Markings,Effectivity,Flags").Append(withCondition ? ",Condition" : "").Append("\r\n");
+        foreach (var l in list)
         {
             var flags = l.Redacted ? "restricted" : l.Unresolved ? "unresolved: no released revision" : l.Circular ? "circular reference" : "";
             sb.Append(l.Level.ToString(CultureInfo.InvariantCulture)).Append(',')
@@ -132,7 +135,7 @@ public static class BomCsv
               .Append(Cell(string.Join(' ', l.ReferenceDesignators))).Append(',')
               .Append(Cell(l.Banner)).Append(',')
               .Append(Cell(l.EffectivityText)).Append(',')
-              .Append(Cell(flags)).Append("\r\n");
+              .Append(Cell(flags)).Append(withCondition ? "," + Cell(l.Condition) : "").Append("\r\n");
         }
         sb.Append(Cell(banner)).Append("\r\n");
         return sb.ToString();
