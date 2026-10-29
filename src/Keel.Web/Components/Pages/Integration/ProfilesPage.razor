@@ -11,7 +11,7 @@
         @if (errors.Count > 0) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
         @if (saved is not null) { <p role="status" class="permit">@saved</p> }
         <section class="panel">
-            <h3>Profiles</h3>
+            <h2>Profiles</h2>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Clearance profiles</caption>
                 <thead><tr><th scope="col">Name</th><th scope="col">Recipient</th><th scope="col">U.S. persons only</th><th scope="col">Jurisdictions</th><th scope="col">CUI</th><th scope="col">Statements</th><th scope="col">Authorizations</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
@@ -30,7 +30,7 @@
             </table></div>
         </section>
         <section class="panel">
-            <h3>@(editing ? $"Edit {name}" : "Add a profile")</h3>
+            <h2>@(editing ? $"Edit {name}" : "Add a profile")</h2>
             <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <label>Name * <input @bind="name" maxlength="41" readonly="@editing" required /></label>
                 <label>Label * <input @bind="label" maxlength="120" required /></label>

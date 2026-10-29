@@ -33,13 +33,42 @@
     [Parameter] public string Label { get; set; } = "Sections";
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>The tab a URL names (its fragment), when it is one of <paramref name="ids"/>; otherwise <paramref name="fallback"/>.</summary>
+    /// <summary>
+    /// The tab a URL names: its fragment (#documents) or, when there is none that names a tab, its <c>?tab=documents</c> query value; otherwise
+    /// <paramref name="fallback"/>. Both forms are deep links (GAP-A-4); the fragment wins because it is what selecting a tab writes.
+    /// </summary>
     public static string FromUri(string uri, IEnumerable<string> ids, string fallback)
     {
         var hash = uri.IndexOf('#', StringComparison.Ordinal);
-        if (hash < 0) return fallback;
-        var name = Uri.UnescapeDataString(uri[(hash + 1)..]);
-        return ids.Contains(name, StringComparer.Ordinal) ? name : fallback;
+        if (hash >= 0)
+        {
+            var name = Uri.UnescapeDataString(uri[(hash + 1)..]);
+            if (ids.Contains(name, StringComparer.Ordinal)) return name;
+        }
+        var end = hash >= 0 ? hash : uri.Length;
+        var q = uri.IndexOf('?', StringComparison.Ordinal);
+        if (q >= 0 && q < end)
+        {
+            foreach (var pair in uri[(q + 1)..end].Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var eq = pair.IndexOf('=', StringComparison.Ordinal);
+                if (eq < 0 || !string.Equals(Uri.UnescapeDataString(pair[..eq].Replace('+', ' ')), "tab", StringComparison.Ordinal)) continue;
+                var name = Uri.UnescapeDataString(pair[(eq + 1)..].Replace('+', ' '));
+                if (ids.Contains(name, StringComparer.Ordinal)) return name;
+            }
+        }
+        return fallback;
+    }
+
+    /// <summary>
+    /// The tab for a page that reloads its data: the address's tab only when the address is NEW since the last call (a real navigation or the first load).
+    /// Reloading after an action, or a tab chosen by the user (which rewrites the browser's address but not the circuit's copy), keeps <paramref name="current"/>.
+    /// </summary>
+    public static string OnNavigation(string uri, ref string? seenUri, IEnumerable<string> ids, string current)
+    {
+        if (string.Equals(uri, seenUri, StringComparison.Ordinal)) return current;
+        seenUri = uri;
+        return FromUri(uri, ids, current);
     }
 
     private async Task SelectAsync(string id, bool focus)

@@ -6,7 +6,7 @@
     @if (tasks is not null)
     {
         <p class="muted">@tasks.Items.Count open task@(tasks.Items.Count == 1 ? "" : "s")</p>
-        <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="My open tasks">
+        <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="My open tasks" OnServerSort="OnSort" ServerSort="sort">
             <Empty><EmptyState Title="You have no open tasks" IconName="check">Reviews and approvals that are waiting for you will be listed here.</EmptyState></Empty>
         </DataTable>
     }
@@ -19,13 +19,32 @@
 
     private static readonly IReadOnlyList<DataColumn<TaskSummary>> Columns =
     [
-        new() { Key = "task", Title = "Task", Required = true, SortValue = t => t.Name, Cell = t => @<a href="tasks/@t.Id">@t.Name</a> },
-        new() { Key = "item", Title = "Item", Cell = t => @<text>@if (t.Redacted || t.Target is null) { <span class="muted">Restricted item. You are no longer eligible to see it; the task cannot be signed.</span> } else { @t.Target.Key <text>·</text> @t.Target.Name <span class="muted">rev @t.Target.Revision</span> }</text> },
+        new() { Key = "task", Title = "Task", Required = true, ServerSortKey = "task", Cell = t => @<a href="tasks/@t.Id">@t.Name</a> },
+        new() { Key = "item", Title = "Item", ServerSortKey = "item", Cell = t => @<text>@if (t.Redacted || t.Target is null) { <span class="muted">Restricted item. You are no longer eligible to see it; the task cannot be signed.</span> } else { @t.Target.Key <text>·</text> @t.Target.Name <span class="muted">rev @t.Target.Revision</span> }</text> },
         new() { Key = "markings", Title = "Markings", Cell = t => @<text>@if (!t.Redacted && t.Target is not null) { <MarkingChip Text="@t.Target.Banner" /> }</text> },
-        new() { Key = "started", Title = "Started by", SortValue = t => t.StartedByName, Text = t => t.Redacted ? "" : t.StartedByName },
-        new() { Key = "due", Title = "Due", SortValue = t => t.DueAt, Cell = t => @<span class="@(t.Overdue ? "error" : null)">@WorkflowText.Due(t.DueAt, t.Overdue)</span> },
+        new() { Key = "started", Title = "Started by", ServerSortKey = "started", Text = t => t.Redacted ? "" : t.StartedByName },
+        new() { Key = "due", Title = "Due", ServerSortKey = "due", Cell = t => @<span class="@(t.Overdue ? "error" : null)">@WorkflowText.Due(t.DueAt, t.Overdue)</span> },
     ];
 
-    protected override async Task OnInitializedAsync() =>
-        tasks = await Flow.MyTasksAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+
+    // The order lives in the address bar (GAP-A-1); a value that is not one of the sort keys falls back to the default order.
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = WorkflowService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await LoadAsync();
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => tasks = await Flow.MyTasksAsync(await Users.GetAsync(), sort, CurrentUser.NewCorrelationId());
 }

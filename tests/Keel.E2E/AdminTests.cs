@@ -148,8 +148,9 @@ public sealed class AdminTests(E2EFixture fx)
             await Expect(page.Locator(".notice")).ToContainTextAsync("Added state Qualified");
             await BrowserSession.FillAsync(page.GetByLabel("Change note *"), "Add the qualification step");
             await BrowserSession.ClickAsync(page, "Publish new version");
-            await Expect(page.GetByRole(AriaRole.Group, new PageGetByRoleOptions { Name = "Confirm publish" })).ToContainTextAsync("existing revision");
-            await BrowserSession.ClickAsync(page, "Confirm publish");
+            var publish = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Publish this version?" }); // the shared confirmation dialog (GAP-A-3)
+            await Expect(publish).ToContainTextAsync("existing revision");
+            await BrowserSession.ClickAsync(page, "Publish version");
             await Expect(page.GetByRole(AriaRole.Status).Filter(new LocatorFilterOptions { HasText = "Published version 2" })).ToBeVisibleAsync();
 
             // ---- a workflow template: open the structured editor, switch to JSON and back, publish a new version, pin it
@@ -163,7 +164,8 @@ public sealed class AdminTests(E2EFixture fx)
             await BrowserSession.ClickAsync(page, "Validate");
             await Expect(page.GetByRole(AriaRole.Status).Filter(new LocatorFilterOptions { HasText = "The definition is valid." })).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(page, "Publish new version");
-            await BrowserSession.ClickAsync(page, "Confirm publish");
+            await Expect(page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Publish this version?" })).ToBeVisibleAsync();
+            await BrowserSession.ClickAsync(page, "Publish version");
             await Expect(page.GetByRole(AriaRole.Status).Filter(new LocatorFilterOptions { HasText = "version 2" })).ToBeVisibleAsync();
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Changes since v1" }).ClickAsync();
             await Expect(page.Locator("section[aria-label='Differences']")).ToContainTextAsync("dueDays");

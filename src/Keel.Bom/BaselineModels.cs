@@ -77,7 +77,8 @@ public sealed record BaselineSearch(
     string? RootNumber = null,
     string? ContainsPart = null,
     int Limit = 50,
-    int Offset = 0);
+    int Offset = 0,
+    SortSpec? Sort = null);
 
 public sealed record BaselinePage(IReadOnlyList<BaselineSummary> Items, int Total, string Banner);
 

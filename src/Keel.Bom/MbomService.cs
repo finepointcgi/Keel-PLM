@@ -177,7 +177,10 @@ public sealed partial class MbomService(NpgsqlDataSource dataSource, IAuditLog a
         return Outcome<PlantInfo>.Ok(saved);
     }
 
-    /// <summary>Creates or updates a supply type (administrators). The system types Make, Buy and Consume cannot be retired.</summary>
+    /// <summary>
+    /// Creates or updates a supply type (administrators). The system types Make, Buy and Consume cannot be retired. Retiring a type, or restoring a retired one, needs a
+    /// reason; the audit event records the label and state before and after. Nothing changes when the reason is missing (GAP-A-2).
+    /// </summary>
     public async Task<Outcome<SupplyTypeInfo>> SaveSupplyTypeAsync(Subject subject, SaveSupplyTypeCommand cmd, string? correlationId, CancellationToken ct = default)
     {
         var code = cmd.Code?.Trim() ?? "";
@@ -194,6 +197,17 @@ public sealed partial class MbomService(NpgsqlDataSource dataSource, IAuditLog a
         }
         if (errors.Count > 0) return Outcome<SupplyTypeInfo>.Invalid(errors);
         if (!cmd.IsActive && code is "Make" or "Buy" or "Consume") return Outcome<SupplyTypeInfo>.Invalid([$"The system supply type {code} cannot be retired."]);
+        (string Label, bool Active, int Order)? before = null;
+        await using (var prior = new NpgsqlCommand("SELECT label, is_active, sort_order FROM mbom.supply_type WHERE code = @c", conn, tx))
+        {
+            prior.Parameters.AddWithValue("c", code);
+            await using var pr = await prior.ExecuteReaderAsync(ct);
+            if (await pr.ReadAsync(ct)) before = (pr.GetString(0), pr.GetBoolean(1), pr.GetInt32(2));
+        }
+        var reason = cmd.Reason?.Trim();
+        if (before is not null && before.Value.Active != cmd.IsActive && string.IsNullOrEmpty(reason))
+            return Outcome<SupplyTypeInfo>.Invalid([$"A reason is required to {(cmd.IsActive ? "restore" : "retire")} a supply type."]);
+        if (reason is { Length: > 1000 }) return Outcome<SupplyTypeInfo>.Invalid(["The reason is at most 1000 characters."]);
         await using (var up = new NpgsqlCommand(
             """
             INSERT INTO mbom.supply_type (code, label, sort_order, is_active, updated_at, updated_by) VALUES (@c, @l, @o, @a, @at, @by)
@@ -208,7 +222,8 @@ public sealed partial class MbomService(NpgsqlDataSource dataSource, IAuditLog a
             up.Parameters.AddWithValue("by", BomService.DisplayId(subject));
             await up.ExecuteNonQueryAsync(ct);
         }
-        await audit.AppendAsync(tx, Entry(subject, "mbom.supply_type_save", AuditOutcome.Success, null, correlationId, ("code", code), ("active", cmd.IsActive.ToString())), ct);
+        await audit.AppendAsync(tx, Entry(subject, "mbom.supply_type_save", AuditOutcome.Success, null, correlationId, ("code", code), ("new", before is null ? "true" : "false"),
+            ("labelBefore", before?.Label), ("labelAfter", cmd.Label.Trim()), ("activeBefore", before?.Active.ToString()), ("active", cmd.IsActive.ToString()), ("reason", reason)), ct);
         await tx.CommitAsync(ct);
         return Outcome<SupplyTypeInfo>.Ok((await ListSupplyTypesAsync(true, ct)).Single(s => s.Code == code));
     }
@@ -393,6 +408,10 @@ public sealed partial class MbomService(NpgsqlDataSource dataSource, IAuditLog a
         return (string?)await cmd.ExecuteScalarAsync(ct) ?? "";
     }
 
+    /// <summary>The sort keys the MBOM list accepts (GAP-A-1); the part is inner-joined with the read filter, so only readable parts take part in the order.</summary>
+    public static readonly SortMap SortKeys = new(
+        ("mbom", ["mm.number"]), ("part", ["pm.number"]), ("plant", ["mm.plant"]), ("state", ["lower(COALESCE(ls.label, r.lifecycle_state))"]));
+
     public async Task<Outcome<MbomSearchResult>> SearchAsync(Subject subject, MbomSearch search, string? correlationId, CancellationToken ct = default)
     {
         var limit = Math.Clamp(search.Limit, 1, 200);
@@ -418,7 +437,7 @@ public sealed partial class MbomService(NpgsqlDataSource dataSource, IAuditLog a
               AND (@q = '' OR mm.number ILIKE @like OR pm.number ILIKE @like OR pm.name ILIKE @like)
               AND (@plant::text IS NULL OR mm.plant = @plant) AND (@state::text IS NULL OR r.lifecycle_state = @state)
               AND (@part::text IS NULL OR pm.number = @part)
-            ORDER BY mm.number
+            ORDER BY {SortKeys.OrderBy(search.Sort, "mm.number", "mm.number")}
             LIMIT @limit OFFSET @offset
             """, conn, tx))
         {
@@ -451,7 +470,7 @@ public sealed partial class MbomService(NpgsqlDataSource dataSource, IAuditLog a
             cmd.Parameters.AddWithValue("m", items[i].Id);
             items[i] = items[i] with { ReconciliationStatus = (string?)await cmd.ExecuteScalarAsync(ct) };
         }
-        await audit.AppendAsync(tx, Entry(subject, "mbom.search", AuditOutcome.Success, null, correlationId, ("query", q), ("plant", search.Plant), ("state", search.State),
+        await audit.AppendAsync(tx, Entry(subject, "mbom.search", AuditOutcome.Success, null, correlationId, ("query", q), ("plant", search.Plant), ("state", search.State), ("sort", search.Sort is null ? null : $"{search.Sort.Key} {search.Sort.DirectionText}"),
             ("returned", Fmt(items.Count)), ("numbers", string.Join(",", items.Select(i => i.Number)))), ct);
         await tx.CommitAsync(ct);
         return Outcome<MbomSearchResult>.Ok(new MbomSearchResult(items, total, Markings.AggregateBanner(items.Select(i => i.Markings))));

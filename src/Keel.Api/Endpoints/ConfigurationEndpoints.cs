@@ -24,9 +24,10 @@ public static class ConfigurationEndpoints
     {
         var baselines = app.MapGroup("/api/v1/baselines").RequireAuthorization(Policies.AnyPlmRole);
 
-        baselines.MapGet("", async (string? q, string? state, string? type, string? root, string? contains, int? limit, int? offset,
+        baselines.MapGet("", async (string? q, string? state, string? type, string? root, string? contains, string? sort, string? dir, int? limit, int? offset,
             HttpContext ctx, BaselineService svc, CancellationToken ct) =>
-            (await svc.SearchAsync(SubjectFactory.Require(ctx), new BaselineSearch(q, state, type, root, contains, limit ?? 50, offset ?? 0), CorrelationId.Get(ctx), ct)).ToHttp());
+            !BaselineService.SortKeys.TryResolve(sort, dir, out var spec, out var error) ? (IResult)OutcomeResults.BadSort(error!)
+            : (await svc.SearchAsync(SubjectFactory.Require(ctx), new BaselineSearch(q, state, type, root, contains, limit ?? 50, offset ?? 0, spec), CorrelationId.Get(ctx), ct)).ToHttp());
 
         baselines.MapGet("/types", async (BaselineService svc, CancellationToken ct) => Results.Ok(await svc.ListTypesAsync(ct)));
 

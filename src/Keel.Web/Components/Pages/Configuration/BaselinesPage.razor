@@ -4,7 +4,7 @@
 
 @* Baselines the signed-in user may read. The page banner is the aggregate of the rows shown (ADR-0014, ADR-0021). *@
 <PageFrame Banner="@(page?.Banner ?? UiText.Unclassified)" Title="Baselines" Crumbs="@Crumbs">
-    <form class="toolbar" @onsubmit="Search" aria-label="Search baselines">
+    <form class="toolbar" @onsubmit="() => Search(0)" aria-label="Search baselines">
         <input aria-label="Search text" placeholder="Number, name, milestone, purpose" class="grow" @bind="text" />
         <input aria-label="Root part" placeholder="Root part number" size="14" @bind="root" />
         <select aria-label="State" @bind="state">
@@ -28,19 +28,42 @@
     @if (page is not null)
     {
         <p class="muted" aria-live="polite">@(page.Total == 0 ? "No baselines match." : $"{page.Total} baseline{(page.Total == 1 ? "" : "s")}")</p>
-        <DataTable TItem="BaselineSummary" TableId="baselines" Items="page.Items" Columns="Columns" Caption="Baselines">
+        <DataTable TItem="BaselineSummary" TableId="baselines" Items="page.Items" Columns="Columns" Caption="Baselines" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
                 <EmptyState Title="No baselines match" IconName="baseline" ActionHref="baselines/new" ActionText="New baseline">
                     A baseline freezes the exact versions of a product structure for a milestone or an audit. Create one from a part, or change the search.
                 </EmptyState>
             </Empty>
         </DataTable>
+        <Pager Total="page.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
     }
 </PageFrame>
 
 @code {
     [SupplyParameterFromQuery(Name = "root")] public string? RootQuery { get; set; }
+    private const int PageSize = 50;
+    private int offset;
     private BaselinePage? page;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+
+    // The order lives in the address bar (GAP-A-1). A stale or hand-edited value that is not one of the module's sort keys falls back to the default order.
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = BaselineService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
     private IReadOnlyList<BaselineTypeInfo> types = [];
     private string text = "", root = "", state = "", type = "";
     private string? error;
@@ -49,15 +72,15 @@
 
     private static readonly IReadOnlyList<DataColumn<BaselineSummary>> Columns =
     [
-        new() { Key = "number", Title = "Number", Required = true, SortValue = b => b.Number, Cell = b => @<a href="baselines/@Uri.EscapeDataString(b.Number)">@b.Number</a> },
-        new() { Key = "name", Title = "Name", SortValue = b => b.Name, Text = b => b.Name },
-        new() { Key = "type", Title = "Type", SortValue = b => b.Type, Text = b => b.Type },
-        new() { Key = "milestone", Title = "Milestone", SortValue = b => b.Milestone, Text = b => b.Milestone },
-        new() { Key = "state", Title = "State", SortValue = b => b.StateLabel, Cell = b => @<text><span class="badge @ConfigurationText.StateClass(b.State)">@b.StateLabel</span>@(b.Signoff && b.State == "Draft" ? " (needs sign-off)" : "")</text> },
-        new() { Key = "root", Title = "Root part", Cell = b => @<text>@if (b.RootNumber is not null) { <a href="parts/@Uri.EscapeDataString(b.RootNumber)">@b.RootNumber</a> @b.RootVersion } else { <span class="restricted-label">Restricted item</span> }</text> },
+        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = b => @<a href="baselines/@Uri.EscapeDataString(b.Number)">@b.Number</a> },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = b => b.Name },
+        new() { Key = "type", Title = "Type", ServerSortKey = "type", Text = b => b.Type },
+        new() { Key = "milestone", Title = "Milestone", ServerSortKey = "milestone", Text = b => b.Milestone },
+        new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = b => @<text><span class="badge @ConfigurationText.StateClass(b.State)">@b.StateLabel</span>@(b.Signoff && b.State == "Draft" ? " (needs sign-off)" : "")</text> },
+        new() { Key = "root", Title = "Root part", ServerSortKey = "root", Cell = b => @<text>@if (b.RootNumber is not null) { <a href="parts/@Uri.EscapeDataString(b.RootNumber)">@b.RootNumber</a> @b.RootVersion } else { <span class="restricted-label">Restricted item</span> }</text> },
         new() { Key = "configuration", Title = "Configuration", Text = b => b.SpecText, DefaultHidden = true },
-        new() { Key = "items", Title = "Items", SortValue = b => b.ItemCount, Text = b => b.ItemCount.ToString(System.Globalization.CultureInfo.InvariantCulture) },
-        new() { Key = "created", Title = "Created", SortValue = b => b.CreatedAt, Text = b => $"{UiText.Utc(b.CreatedAt)} · {b.CreatedBy}" },
+        new() { Key = "items", Title = "Items", ServerSortKey = "items", Text = b => b.ItemCount.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+        new() { Key = "created", Title = "Created", ServerSortKey = "created", Text = b => $"{UiText.Utc(b.CreatedAt)} · {b.CreatedBy}" },
         new() { Key = "markings", Title = "Markings", Required = true, Cell = b => @<MarkingChip Text="@b.Banner" /> },
     ];
 
@@ -65,14 +88,14 @@
     {
         types = await Baselines.ListTypesAsync();
         root = RootQuery ?? "";
-        await Search();
     }
 
-    private async Task Search()
+    private async Task Search(int newOffset)
     {
+        offset = newOffset;
         var outcome = await Baselines.SearchAsync(await Users.GetAsync(),
             new BaselineSearch(string.IsNullOrWhiteSpace(text) ? null : text, string.IsNullOrEmpty(state) ? null : state, string.IsNullOrEmpty(type) ? null : type,
-                string.IsNullOrWhiteSpace(root) ? null : root.Trim()), CurrentUser.NewCorrelationId());
+                string.IsNullOrWhiteSpace(root) ? null : root.Trim(), Limit: PageSize, Offset: offset, Sort: sort), CurrentUser.NewCorrelationId());
         error = outcome.IsOk ? null : UiText.Message(outcome);
         page = outcome.Value;
     }

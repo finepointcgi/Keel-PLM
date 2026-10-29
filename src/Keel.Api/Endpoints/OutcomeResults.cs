@@ -4,6 +4,10 @@ namespace Keel.Api.Endpoints;
 
 public static class OutcomeResults
 {
+    /// <summary>400 with the allowed keys when a list request asks for a sort the module does not offer (GAP-A-1); nothing is queried.</summary>
+    public static Microsoft.AspNetCore.Http.HttpResults.ValidationProblem BadSort(string message) =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["sort"] = [message] });
+
     /// <summary>Maps an application outcome to HTTP. Forbidden carries reason codes so the UI can explain the denial.</summary>
     public static IResult ToHttp<T>(this Outcome<T> o, Func<T, IResult>? ok = null) => o.Kind switch
     {

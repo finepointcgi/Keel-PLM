@@ -11,7 +11,7 @@
         @if (message is not null) { <p role="status" class="permit">@message</p> }
 
         <section class="panel">
-            <h3>Templates</h3>
+            <h2>Templates</h2>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Workflow template versions</caption>
                 <thead><tr><th scope="col">Template</th><th scope="col">Object type</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Published</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
@@ -34,7 +34,7 @@
         @if (diff is not null)
         {
             <section class="panel" aria-label="Differences">
-                <h3>Changes in @diffTitle</h3>
+                <h2>Changes in @diffTitle</h2>
                 @if (diff.Count == 0) { <p class="muted">No differences.</p> }
                 else { <ul>@foreach (var d in diff) { <li>@d</li> } </ul> }
             </section>
@@ -43,7 +43,7 @@
         @if (draft is not null || jsonText is not null)
         {
             <section class="panel" aria-label="Template editor">
-                <h3>@(isNew ? "New template" : $"Editing {draft?.Id ?? openId}") @(viewOnly ? "(read only: superseded version)" : "")</h3>
+                <h2>@(isNew ? "New template" : $"Editing {draft?.Id ?? openId}") @(viewOnly ? "(read only: superseded version)" : "")</h2>
                 <div class="toolbar" role="tablist" aria-label="Editor view">
                     <button type="button" role="tab" aria-selected="@(!advanced ? "true" : "false")" class="@(advanced ? "secondary" : "")" @onclick="() => SwitchView(false)">Structured</button>
                     <button type="button" role="tab" aria-selected="@(advanced ? "true" : "false")" class="@(advanced ? "" : "secondary")" @onclick="() => SwitchView(true)">JSON (advanced)</button>
@@ -140,26 +140,19 @@
                 {
                     <div class="toolbar">
                         <button type="button" class="secondary" disabled="@busy" @onclick="ValidateAsync">Validate</button>
-                        @if (!confirming) { <button type="button" disabled="@busy" @onclick="() => confirming = true">Publish new version</button> }
+                        <button type="button" disabled="@busy" @onclick="() => confirming = true">Publish new version</button>
                         <button type="button" class="secondary" @onclick="Close">Close editor</button>
                     </div>
-                    @if (confirming)
-                    {
-                        <div class="confirm" role="group" aria-label="Confirm publish">
-                            <p>Publish as the next version and make it the active one? New reviews use it; running reviews are not affected.</p>
-                            <div class="toolbar">
-                                <button type="button" class="danger" disabled="@busy" @onclick="PublishAsync">Confirm publish</button>
-                                <button type="button" class="secondary" @onclick="() => confirming = false">Back</button>
-                            </div>
-                        </div>
-                    }
+                    <ConfirmDialog @bind-Open="confirming" Title="Publish this version?" Destructive="true" ConfirmText="Publish version" OnConfirm="_ => PublishAsync()">
+                        <p>Publish as the next version and make it the active one? New reviews use it; running reviews are not affected.</p>
+                    </ConfirmDialog>
                 }
                 else { <div class="toolbar"><button type="button" class="secondary" @onclick="Close">Close</button></div> }
             </section>
         }
 
         <section class="panel">
-            <h3>Which template each object type uses</h3>
+            <h2>Which template each object type uses</h2>
             <p class="muted">When a user chooses "Submit for review" without picking a template, the pinned template is used. Without a pin, the only active template is used, or the user is asked to choose.</p>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Template pins</caption>

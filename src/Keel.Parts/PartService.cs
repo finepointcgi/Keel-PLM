@@ -138,7 +138,15 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
         return Outcome<PartDetail>.Ok(detail);
     }
 
-    public async Task<PartSearchResult> SearchAsync(Subject subject, string? query, string? state, int limit, int offset, string? correlationId, CancellationToken ct = default)
+    /// <summary>The sort keys the part list accepts (GAP-A-1); expressions are constants over rows the read filter already admitted.</summary>
+    public static readonly SortMap SortKeys = new(
+        ("number", ["m.number"]), ("name", ["lower(m.name)"]), ("type", ["lower(m.part_type)"]), ("state", ["r.lifecycle_state"]),
+        ("version", ["length(r.revision)", "r.revision", "r.latest_iteration"]));
+
+    public Task<PartSearchResult> SearchAsync(Subject subject, string? query, string? state, int limit, int offset, string? correlationId, CancellationToken ct = default) =>
+        SearchAsync(subject, query, state, limit, offset, null, correlationId, ct);
+
+    public async Task<PartSearchResult> SearchAsync(Subject subject, string? query, string? state, int limit, int offset, SortSpec? sort, string? correlationId, CancellationToken ct = default)
     {
         limit = Math.Clamp(limit, 1, MaxSearchLimit);
         offset = Math.Max(0, offset);
@@ -159,7 +167,7 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             WHERE {filter.Sql}
               AND (@q = '' OR m.search @@ websearch_to_tsquery('english', @q) OR m.number ILIKE @like OR m.name ILIKE @like)
               AND (@state::text IS NULL OR r.lifecycle_state = @state)
-            ORDER BY CASE WHEN m.number ILIKE @prefix THEN 0 ELSE 1 END, m.number
+            ORDER BY {SortKeys.OrderBy(sort, "CASE WHEN m.number ILIKE @prefix THEN 0 ELSE 1 END, m.number", "m.number")}
             LIMIT @limit OFFSET @offset
             """, conn, tx))
         {
@@ -180,7 +188,7 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             }
         }
         await audit.AppendAsync(tx, Entry(subject, "part.search", AuditOutcome.Success, null, correlationId,
-            ("query", q), ("state", state), ("offset", offset.ToString(CultureInfo.InvariantCulture)),
+            ("query", q), ("state", state), ("sort", sort is null ? null : $"{sort.Key} {sort.DirectionText}"), ("offset", offset.ToString(CultureInfo.InvariantCulture)),
             ("returned", items.Count.ToString(CultureInfo.InvariantCulture)), ("numbers", string.Join(",", items.Select(i => i.Number)))), ct);
         await tx.CommitAsync(ct);
         return new PartSearchResult(items, total, Markings.AggregateBanner(items.Select(i => i.Markings)));

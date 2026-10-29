@@ -11,7 +11,7 @@
         @if (saved is not null) { <p role="status" class="permit">@saved</p> }
 
         <section class="panel">
-            <h3>Signature meanings</h3>
+            <h2>Signature meanings</h2>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Signature meanings</caption>
                 <thead><tr><th scope="col">Code</th><th scope="col">Label</th><th scope="col">Decision</th><th scope="col">Comment required</th><th scope="col">Applies to</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
@@ -28,7 +28,7 @@
         </section>
 
         <section class="panel">
-            <h3>Change reason codes</h3>
+            <h2>Change reason codes</h2>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Change reason codes</caption>
                 <thead><tr><th scope="col">Used for</th><th scope="col">Code</th><th scope="col">Label</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
@@ -44,20 +44,13 @@
             </table></div>
         </section>
 
-        @if (toggling is not null)
-        {
-            <section class="panel confirm" role="group" aria-label="Confirm">
-                <h3>@(toggling.IsActive ? "Retire" : "Restore") @toggling.Code</h3>
-                <label>Reason * <input @bind="reason" maxlength="500" /></label>
-                <div class="toolbar">
-                    <button type="button" class="danger" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="ConfirmToggle">Confirm</button>
-                    <button type="button" class="secondary" @onclick="() => toggling = null">Cancel</button>
-                </div>
-            </section>
-        }
+        <ConfirmDialog @bind-Open="confirmingToggle" Title="@($"{(toggling?.IsActive == true ? "Retire" : "Restore")} {toggling?.Code}?")" Destructive="true" ConfirmText="@(toggling?.IsActive == true ? "Retire" : "Restore")"
+                       ReasonLabel="Reason" ReasonRequired="true" OnConfirm="ConfirmToggle" OnCancel="() => toggling = null">
+            <p>The reason and your name are recorded in the audit log. Codes are retired, never deleted.</p>
+        </ConfirmDialog>
 
         <section class="panel">
-            <h3>@(editing ? $"Edit {code}" : "Add a code")</h3>
+            <h2>@(editing ? $"Edit {code}" : "Add a code")</h2>
             <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <label>
                     Kind
@@ -91,7 +84,7 @@
 
 @code {
     private IReadOnlyList<ReasonCodeDto> all = [];
-    private string kind = "signature", code = "", label = "", decision = "approve", scope = "pr.reject", reason = "";
+    private string kind = "signature", code = "", label = "", decision = "approve", scope = "pr.reject";
     private int sortOrder;
     private bool requiresComment, forReview = true, forApproval, editing, busy;
     private ReasonCodeDto? toggling;
@@ -140,16 +133,14 @@
         else error = UiText.Message(o);
     }
 
-    private void AskToggle(ReasonCodeDto c)
-    {
-        toggling = c;
-        reason = "";
-    }
+    private bool confirmingToggle;
 
-    private async Task ConfirmToggle()
+    private void AskToggle(ReasonCodeDto c) => (toggling, confirmingToggle) = (c, true);
+
+    private async Task ConfirmToggle(string? toggleReason)
     {
         busy = true;
-        var o = await Reasons.SetActiveAsync(await Users.GetAsync(), toggling!.Kind, toggling.Scope, toggling.Code, !toggling.IsActive, reason, CurrentUser.NewCorrelationId());
+        var o = await Reasons.SetActiveAsync(await Users.GetAsync(), toggling!.Kind, toggling.Scope, toggling.Code, !toggling.IsActive, toggleReason ?? "", CurrentUser.NewCorrelationId());
         busy = false;
         if (o.IsOk) { saved = $"{(o.Value!.IsActive ? "Restored" : "Retired")} {o.Value.Code}."; error = null; toggling = null; await Load(); }
         else error = UiText.Message(o);

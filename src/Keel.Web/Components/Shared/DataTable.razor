@@ -1,7 +1,8 @@
 @* The shared list table (ADR-0028): sortable headers (aria-sort), a column chooser, a density toggle, a sticky header, arrow-key row navigation, and loading, error and
    empty states. Layout choices (hidden columns, density, sort) are saved per user per TableId. Paging and filtering stay on the server in the page that owns the
-   service call: sorting is in the page too when the service supports it (ServerSortKey + OnServerSort), otherwise the table sorts the rows of the current page, and the
-   header says so in its tooltip. A wide table scrolls inside its own container, never the page. *@
+   service call: sorting is in the page too when the service supports it (ServerSortKey + OnServerSort + ServerSort, GAP-A-1): the table then shows the page's order as
+   it is, asks the page to re-query, and keeps the order in the address bar (sort and dir) so it can be shared and survives a reload; otherwise the table sorts the rows
+   of the current page, and the header says so in its tooltip. A wide table scrolls inside its own container, never the page. *@
 @typeparam TItem
 @using Keel.Workspace
 @inject CurrentUser Users
@@ -57,8 +58,8 @@
                     <tr>
                         @foreach (var c in shown)
                         {
-                            <th scope="col" class="@c.CssClass" aria-sort="@(c.Sortable ? SortState(c) : null)">
-                                @if (c.Sortable)
+                            <th scope="col" class="@c.CssClass" aria-sort="@(IsSortable(c) ? SortState(c) : null)">
+                                @if (IsSortable(c))
                                 {
                                     var col = c;
                                     <button type="button" class="sort" title="@SortTitle(c)" @onclick="() => SortByAsync(col)">
@@ -111,8 +112,15 @@
     /// <summary>Filter controls shown on the left above the table.</summary>
     [Parameter] public RenderFragment? Toolbar { get; set; }
     [Parameter] public Func<TItem, string?>? RowClass { get; set; }
-    /// <summary>Raised when a column with a ServerSortKey is chosen: the page re-queries with that order.</summary>
+    /// <summary>Raised when a column with a ServerSortKey is chosen: the page re-queries with that order. Setting it makes the table server-sorted.</summary>
     [Parameter] public EventCallback<(string Key, bool Descending)> OnServerSort { get; set; }
+    /// <summary>The order the page's rows are in now (from the address bar); drives the sort indicator of a server-sorted table.</summary>
+    [Parameter] public SortSpec? ServerSort { get; set; }
+
+    private bool ServerMode => OnServerSort.HasDelegate;
+    private bool IsSortable(DataColumn<TItem> c) => ServerMode ? c.ServerSortKey is not null : c.Sortable;
+    private string? ActiveKey => ServerMode ? Columns.FirstOrDefault(c => c.ServerSortKey is not null && c.ServerSortKey == ServerSort?.Key)?.Key : sortKey;
+    private bool ActiveDescending => ServerMode ? ServerSort?.Descending == true : sortDescending;
 
     private string Density => density ?? Shell.Preferences.Density;
     private IEnumerable<DataColumn<TItem>> Shown => Columns.Where(c => c.Required || !hidden.Contains(c.Key));
@@ -128,8 +136,11 @@
             {
                 hidden = prefs.HiddenColumns.Where(k => Columns.Any(c => c.Key == k && !c.Required)).ToHashSet(StringComparer.Ordinal);
                 density = prefs.Density;
-                sortKey = prefs.SortColumn;
-                sortDescending = prefs.SortDescending;
+                if (!ServerMode) // a server-sorted table's order lives in the address bar, not in the saved layout
+                {
+                    sortKey = prefs.SortColumn;
+                    sortDescending = prefs.SortDescending;
+                }
             }
         }
         catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException)
@@ -141,6 +152,7 @@
     private IReadOnlyList<TItem> Sorted()
     {
         var items = Items ?? [];
+        if (ServerMode) return items; // already in the order the server returned
         var col = Columns.FirstOrDefault(c => c.Key == sortKey);
         if (col?.SortValue is null) return items;
         var keyed = items.Select((item, i) => (item, i, key: col.SortValue(item))).ToList();
@@ -160,18 +172,25 @@
         return keyed.Select(k => k.item).ToList();
     }
 
-    private string SortState(DataColumn<TItem> c) => c.Key != sortKey ? "none" : sortDescending ? "descending" : "ascending";
+    private string SortState(DataColumn<TItem> c) => c.Key != ActiveKey ? "none" : ActiveDescending ? "descending" : "ascending";
 
-    private string SortIcon(DataColumn<TItem> c) => c.Key != sortKey ? "sort" : sortDescending ? "sort-desc" : "sort-asc";
+    private string SortIcon(DataColumn<TItem> c) => c.Key != ActiveKey ? "sort" : ActiveDescending ? "sort-desc" : "sort-asc";
 
-    private static string SortTitle(DataColumn<TItem> c) => c.ServerSortKey is not null ? $"Sort by {c.Title}" : $"Sort the rows of this page by {c.Title}";
+    private string SortTitle(DataColumn<TItem> c) => ServerMode ? $"Sort all results by {c.Title}" : $"Sort the rows of this page by {c.Title}";
 
     private async Task SortByAsync(DataColumn<TItem> c)
     {
+        active = 0;
+        if (ServerMode)
+        {
+            if (c.ServerSortKey is null) return;
+            var descending = ActiveKey == c.Key && !ActiveDescending;
+            await OnServerSort.InvokeAsync((c.ServerSortKey, descending));
+            await Js.InvokeVoidAsync("setQuery", "sort", c.ServerSortKey, "dir", descending ? "desc" : "asc");
+            return;
+        }
         sortDescending = sortKey == c.Key && !sortDescending;
         sortKey = c.Key;
-        active = 0;
-        if (c.ServerSortKey is not null && OnServerSort.HasDelegate) await OnServerSort.InvokeAsync((c.ServerSortKey, sortDescending));
         await SaveAsync();
     }
 

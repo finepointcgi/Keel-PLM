@@ -79,7 +79,7 @@ public sealed record AddAffectedCommand(string ObjectType, string Key, string Ac
 
 public sealed record CreateTaskCommand(string Title, string? Description, string Assignee, DateOnly? DueDate);
 
-public sealed record ChangeSearchQuery(string? Type = null, string? State = null, string? Text = null, bool OpenOnly = false, int Limit = 50, int Offset = 0);
+public sealed record ChangeSearchQuery(string? Type = null, string? State = null, string? Text = null, bool OpenOnly = false, int Limit = 50, int Offset = 0, SortSpec? Sort = null);
 
 public sealed record ChangeSummary(
     Guid Id, string Type, string Number, string Title, string State, string StateLabel, string? ChangeClass, string Priority,

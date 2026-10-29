@@ -12,7 +12,7 @@
         @if (errors.Count > 0) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
         @if (saved is not null) { <p role="status" class="permit">@saved</p> }
         <section class="panel">
-            <h3>Sinks</h3>
+            <h2>Sinks</h2>
             @if (sinks.Count == 0) { <p class="muted">No sinks are defined.</p> }
             else
             {
@@ -37,7 +37,7 @@
             }
         </section>
         <section class="panel">
-            <h3>@(editing ? $"Edit {name}" : "Add a sink")</h3>
+            <h2>@(editing ? $"Edit {name}" : "Add a sink")</h2>
             <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <label>Name * <input @bind="name" maxlength="41" readonly="@editing" required /></label>
                 <label>Label * <input @bind="label" maxlength="120" required /></label>

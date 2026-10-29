@@ -268,6 +268,51 @@ public sealed class PaletteAndTableTests : BunitContext
     }
 
     [Fact]
+    public void A_server_sorted_table_shows_the_pages_order_marks_it_with_aria_sort_and_keeps_it_in_the_address()
+    {
+        var asked = new List<(string Key, bool Descending)>();
+        _store.Tables["demo"] = new TablePreferences([], null, "number", true); // an old saved sort does not apply: the order comes from the page
+        var columns = new List<DataColumn<Row>>
+        {
+            new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Text = r => r.Number },
+            new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = r => r.Name },
+            new() { Key = "qty", Title = "Quantity", SortValue = r => r.Qty, Text = r => r.Qty.ToString(System.Globalization.CultureInfo.InvariantCulture) }, // not whitelisted: not sortable here
+        };
+        var cut = Render<DataTable<Row>>(p => p.Add(x => x.TableId, "demo").Add(x => x.Items, Rows).Add(x => x.Columns, columns).Add(x => x.ServerSort, new SortSpec("name", true))
+            .Add(x => x.OnServerSort, EventCallback.Factory.Create<(string Key, bool Descending)>(this, v => asked.Add(v))));
+
+        Assert.Equal(["P-3", "P-1", "P-2"], Numbers(cut));                        // exactly the order the server returned
+        Assert.Equal("descending", cut.FindAll("th")[1].GetAttribute("aria-sort"));
+        Assert.Equal("none", cut.FindAll("th")[0].GetAttribute("aria-sort"));
+        Assert.Null(cut.FindAll("th")[2].GetAttribute("aria-sort"));              // the quantity column cannot be sorted by the server
+        Assert.Empty(cut.FindAll("th")[2].QuerySelectorAll("button.sort"));
+        Assert.Contains("Sort all results", cut.FindAll("th button.sort")[0].GetAttribute("title"), StringComparison.Ordinal);
+
+        cut.FindAll("th button.sort")[0].Click(); // another column: ascending
+        cut.FindAll("th button.sort")[1].Click(); // the sorted column again: ascending (it is descending now)
+        Assert.Equal([("number", false), ("name", false)], asked);
+        var setQuery = JSInterop.Invocations.Where(i => i.Identifier == "setQuery").ToList();
+        Assert.Equal(2, setQuery.Count);
+        Assert.Equal(["sort", "number", "dir", "asc"], setQuery[0].Arguments.Select(a => a?.ToString()));
+        Assert.Equal(["sort", "name", "dir", "asc"], setQuery[1].Arguments.Select(a => a?.ToString()));
+        Assert.Equal(["P-3", "P-1", "P-2"], Numbers(cut)); // the table never re-sorts the rows itself
+    }
+
+    [Fact]
+    public void Choosing_the_sorted_column_again_flips_the_direction_for_the_server()
+    {
+        var asked = new List<(string Key, bool Descending)>();
+        var columns = new List<DataColumn<Row>> { new() { Key = "name", Title = "Name", Required = true, ServerSortKey = "name", Text = r => r.Name } };
+        var cut = Render<DataTable<Row>>(p => p.Add(x => x.TableId, "demo").Add(x => x.Items, Rows).Add(x => x.Columns, columns).Add(x => x.ServerSort, new SortSpec("name", false))
+            .Add(x => x.OnServerSort, EventCallback.Factory.Create<(string Key, bool Descending)>(this, v => asked.Add(v))));
+        cut.Find("th button.sort").Click();
+        Assert.Equal([("name", true)], asked);
+        Assert.Equal("ascending", cut.Find("th").GetAttribute("aria-sort")); // the indicator follows the page's order, which the page updates
+        cut.Render(p => p.Add(x => x.ServerSort, new SortSpec("name", true)));
+        Assert.Equal("descending", cut.Find("th").GetAttribute("aria-sort"));
+    }
+
+    [Fact]
     public void The_column_chooser_hides_and_shows_columns_and_saves_the_choice_per_table()
     {
         var cut = RenderTable();

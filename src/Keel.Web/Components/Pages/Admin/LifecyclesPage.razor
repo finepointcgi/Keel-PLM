@@ -32,7 +32,7 @@
         @if (view is not null && info is not null)
         {
             <section class="panel">
-                <h3>@view.Definition.Name · version @view.Definition.Version @(view.IsCurrent ? "(current)" : "")</h3>
+                <h2>@view.Definition.Name · version @view.Definition.Version @(view.IsCurrent ? "(current)" : "")</h2>
                 <p class="muted">Applies to <strong>@info.ObjectType</strong> objects. @(view.Definition.ChangeNote is null ? "" : $"Change note: {view.Definition.ChangeNote}") @view.TotalRevisions revision(s) use this version.</p>
                 @if (!info.Editable) { <p class="notice">This lifecycle is tied to change-process rules in code and database triggers; it can be viewed here. Its editor is not available yet.</p> }
                 <div class="table-wrap"><table class="data">
@@ -45,7 +45,7 @@
                         }
                     </tbody>
                 </table></div>
-                <h4>Transitions</h4>
+                <h3>Transitions</h3>
                 <ul class="plain">@foreach (var t in view.Definition.Transitions) { <li><code>@t.From</code> to <code>@t.To</code> <span class="muted">(@t.Via)</span></li> }</ul>
                 @if (info.Editable && view.IsCurrent && draft is null)
                 {
@@ -57,7 +57,7 @@
         @if (draft is not null)
         {
             <section class="panel" aria-label="@(creating ? "New lifecycle" : "New version")">
-                <h3>@(creating ? "New lifecycle" : $"New version {view!.Definition.Version + 1} of {draft.Name}")</h3>
+                <h2>@(creating ? "New lifecycle" : $"New version {view!.Definition.Version + 1} of {draft.Name}")</h2>
                 @if (creating)
                 {
                     <div class="grid-form">
@@ -70,26 +70,19 @@
                 <label>@(creating ? "Reason" : "Change note *") <input @bind="changeNote" maxlength="500" /></label>
                 <div class="toolbar">
                     <button type="button" class="secondary" disabled="@busy" @onclick="ValidateAsync">Validate and preview effect</button>
-                    @if (!confirming) { <button type="button" disabled="@(busy || (!creating && string.IsNullOrWhiteSpace(changeNote)))" @onclick="() => confirming = true">@(creating ? "Create lifecycle" : "Publish new version")</button> }
+                    <button type="button" disabled="@(busy || (!creating && string.IsNullOrWhiteSpace(changeNote)))" @onclick="() => confirming = true">@(creating ? "Create lifecycle" : "Publish new version")</button>
                     <button type="button" class="secondary" @onclick="CancelDraft">Cancel</button>
                 </div>
-                @if (confirming)
-                {
-                    <div class="confirm" role="group" aria-label="Confirm publish">
-                        <p>@(creating ? "Create this lifecycle? Part and document types can then be bound to it." : $"Publish version {view!.Definition.Version + 1}? New objects will use it from now on; the {view.TotalRevisions} existing revision(s) stay on version {view.Definition.Version}.")</p>
-                        <div class="toolbar">
-                            <button type="button" class="danger" disabled="@busy" @onclick="PublishAsync">@(creating ? "Confirm create" : "Confirm publish")</button>
-                            <button type="button" class="secondary" @onclick="() => confirming = false">Back</button>
-                        </div>
-                    </div>
-                }
+                <ConfirmDialog @bind-Open="confirming" Title="@(creating ? "Create this lifecycle?" : "Publish this version?")" Destructive="true" ConfirmText="@(creating ? "Create lifecycle" : "Publish version")" OnConfirm="_ => PublishAsync()">
+                    <p>@(creating ? "Part and document types can then be bound to it." : $"Publish version {view!.Definition.Version + 1}? New objects will use it from now on; the {view.TotalRevisions} existing revision(s) stay on version {view.Definition.Version}.")</p>
+                </ConfirmDialog>
             </section>
         }
 
         @if (info is { Editable: true } && draft is null)
         {
             <section class="panel">
-                <h3>Create a new lifecycle</h3>
+                <h2>Create a new lifecycle</h2>
                 <p class="muted">Starts as a copy of <strong>@info.Family</strong>. Bind it to a part or document type under <a href="admin/lists">Types and lists</a> so new objects of that type use it.</p>
                 <div class="toolbar"><button type="button" class="secondary" @onclick="StartCreate">New lifecycle from a copy</button></div>
             </section>
@@ -98,7 +91,7 @@
         @if (info is { Editable: true } && info.Versions.Count > 1 && LifecycleRules.VersionedObjectTypes.Contains(info.ObjectType))
         {
             <section class="panel" aria-label="Migrate objects">
-                <h3>Migrate objects to the current version</h3>
+                <h2>Migrate objects to the current version</h2>
                 <p class="muted">Moves existing objects from an older version to version @info.CurrentVersion. Every state in use needs a target; locked states cannot be mapped to unlocked ones; objects under an active review block the migration.</p>
                 <div class="toolbar">
                     <label>From version
@@ -129,15 +122,10 @@
                     </table></div>
                     <ValidationList Errors="migrationErrors" />
                     <label>Reason * <input @bind="migrationReason" maxlength="500" /></label>
-                    <div class="toolbar">
-                        @if (!confirmMigrate) { <button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(migrationReason))" @onclick="() => confirmMigrate = true">Migrate @plan.Revisions revision(s)</button> }
-                        else
-                        {
-                            <span>Move @plan.Revisions revision(s) to version @info.CurrentVersion? This is audited and cannot be undone automatically.</span>
-                            <button type="button" class="danger" disabled="@busy" @onclick="MigrateAsync">Confirm migration</button>
-                            <button type="button" class="secondary" @onclick="() => confirmMigrate = false">Back</button>
-                        }
-                    </div>
+                    <div class="toolbar"><button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(migrationReason))" @onclick="() => confirmMigrate = true">Migrate @plan.Revisions revision(s)</button></div>
+                    <ConfirmDialog @bind-Open="confirmMigrate" Title="Migrate these revisions?" Destructive="true" ConfirmText="Migrate" OnConfirm="_ => MigrateAsync()">
+                        <p>Move @plan.Revisions revision(s) to version @info.CurrentVersion? This is audited and cannot be undone automatically.</p>
+                    </ConfirmDialog>
                 }
             </section>
         }

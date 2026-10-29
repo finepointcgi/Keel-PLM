@@ -12,7 +12,7 @@
 
         <div class="split">
             <aside class="panel" aria-label="Class tree">
-                <h3>Classes</h3>
+                <h2>Classes</h2>
                 @if (tree is not null && rows.Count > 0) { <ClassTreeNav Rows="rows" Selected="selected" OnSelect="Select" /> }
                 else { <p class="muted">No classes yet. Create the first one below, or import a hierarchy.</p> }
             </aside>
@@ -22,9 +22,9 @@
                 {
                     var node = detail.Node;
                     <section class="panel">
-                        <h3>@node.Name <span class="muted">@node.Code</span> @if (!node.IsActive) { <span class="badge">Retired</span> }</h3>
+                        <h2>@node.Name <span class="muted">@node.Code</span> @if (!node.IsActive) { <span class="badge">Retired</span> }</h2>
                         <p class="muted">Path <code>@node.Path</code> · @detail.ClassifiedParts classified part(s) in this class and below · @detail.Children.Count subclass(es)</p>
-                        <h4>Effective attributes (inherited first)</h4>
+                        <h3>Effective attributes (inherited first)</h3>
                         <div class="table-wrap"><table class="data">
                             <caption class="visually-hidden">Effective attributes of @node.Code</caption>
                             <thead><tr><th scope="col">Label</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Rules</th><th scope="col">Defined by</th></tr></thead>
@@ -39,12 +39,12 @@
                     </section>
 
                     <section class="panel">
-                        <h3>Attributes defined by @node.Code</h3>
+                        <h2>Attributes defined by @node.Code</h2>
                         <AttributeEditor Definitions="detail.OwnAttributes" Save="SaveAttributeAsync" Retire="RetireAttributeAsync" OnChanged="Reload" />
                     </section>
 
                     <section class="panel">
-                        <h3>Rename</h3>
+                        <h2>Rename</h2>
                         <form class="grid-form" @onsubmit="RenameAsync" @onsubmit:preventDefault>
                             <label>Name * <input @bind="editName" maxlength="200" required /></label>
                             <label>Sort order <input type="number" @bind="editSort" /></label>
@@ -54,7 +54,7 @@
                     </section>
 
                     <section class="panel" aria-label="Move or retire">
-                        <h3>Move or retire</h3>
+                        <h2>Move or retire</h2>
                         <div class="grid-form">
                             <label>Move under
                                 <select @bind="moveTarget">
@@ -66,23 +66,17 @@
                         </div>
                         <ValidationList Errors="actionErrors" />
                         <div class="toolbar">
-                            @if (pending is null)
-                            {
-                                <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(actionReason))" @onclick="AskMove">Move class</button>
-                                <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(actionReason))" @onclick="() => AskToggle(node)">@(node.IsActive ? "Retire class" : "Restore class")</button>
-                            }
-                            else
-                            {
-                                <span>@PendingText(node)</span>
-                                <button type="button" class="danger" disabled="@busy" @onclick="ConfirmAction">Confirm</button>
-                                <button type="button" class="secondary" @onclick="() => pending = null">Cancel</button>
-                            }
+                            <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(actionReason))" @onclick="AskMove">Move class</button>
+                            <button type="button" class="secondary" disabled="@(busy || string.IsNullOrWhiteSpace(actionReason))" @onclick="() => AskToggle(node)">@(node.IsActive ? "Retire class" : "Restore class")</button>
                         </div>
+                        <ConfirmDialog @bind-Open="confirmingAction" Title="@PendingTitle" Destructive="true" ConfirmText="@PendingTitle" OnConfirm="_ => ConfirmAction()" OnCancel="() => pending = null">
+                            <p>@PendingText(node)</p>
+                        </ConfirmDialog>
                     </section>
                 }
 
                 <section class="panel">
-                    <h3>@(selected is null ? "New top-level class" : $"New subclass of {selected}")</h3>
+                    <h2>@(selected is null ? "New top-level class" : $"New subclass of {selected}")</h2>
                     <form class="grid-form" @onsubmit="CreateAsync" @onsubmit:preventDefault>
                         <label>Code * <input @bind="newCode" maxlength="40" required /></label>
                         <label>Name * <input @bind="newName" maxlength="200" required /></label>
@@ -97,7 +91,7 @@
         </div>
 
         <section class="panel" aria-label="Import and export">
-            <h3>Import and export the hierarchy</h3>
+            <h2>Import and export the hierarchy</h2>
             <p class="muted">Format <code>keel-classification/1</code> as JSON or CSV (see docs/migration/classification-format.md). An import creates or updates classes and attributes by code and name; it never deletes, moves or retires. A dry run shows exactly what an apply would do.</p>
             <p><a class="button secondary" href="admin-files/classification?format=json" download>Export JSON</a> <a class="button secondary" href="admin-files/classification?format=csv" download>Export CSV</a></p>
             <label>File to import (.json or .csv) <InputFile OnChange="Loaded" accept=".json,.csv" /></label>
@@ -179,9 +173,13 @@
         if (o.IsOk) { message = "Saved."; error = null; await Reload(); } else error = UiText.Message(o);
     }
 
-    private void AskMove() => pending = "move";
+    private bool confirmingAction;
 
-    private void AskToggle(ClassNodeDto node) => pending = node.IsActive ? "retire" : "restore";
+    private void AskMove() => (pending, confirmingAction) = ("move", true);
+
+    private void AskToggle(ClassNodeDto node) => (pending, confirmingAction) = (node.IsActive ? "retire" : "restore", true);
+
+    private string PendingTitle => pending switch { "move" => "Move class", "retire" => "Retire class", _ => "Restore class" };
 
     private string PendingText(ClassNodeDto node) => pending switch
     {

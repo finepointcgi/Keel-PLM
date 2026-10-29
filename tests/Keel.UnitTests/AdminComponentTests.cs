@@ -4,12 +4,21 @@ using Keel.Core;
 using Keel.Web.Components.Shared;
 using Keel.Web.Services;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Keel.UnitTests;
 
 /// <summary>bUnit tests of the administration and classification components. They are presentational: they take data and callbacks, so no service is mocked.</summary>
 public sealed class AdminComponentTests : BunitContext
 {
+    public AdminComponentTests()
+    {
+        // The shared confirmation dialog (focus trap) reaches the browser module; its behavior is not under test here.
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        JSInterop.SetupModule("./_content/Keel.Web/js/shell.js");
+        Services.AddScoped<ShellJs>();
+    }
+
     [Fact]
     public void The_admin_navigation_lists_every_section_with_an_accessible_name()
     {
@@ -158,15 +167,17 @@ public sealed class AdminComponentTests : BunitContext
         Assert.Equal(("gauge", true), (saved[^1].Input.Name, saved[^1].Create));
         Assert.Contains("Take note.", cut.Markup, StringComparison.Ordinal);
 
-        // Retire needs a reason before the confirm button works.
+        // Retire opens the shared confirmation dialog; its reason is required before the confirm button works.
         cut.FindAll("tbody tr")[0].QuerySelectorAll("button")[1].Click();
-        var confirm = cut.Find(".confirm button.danger");
-        Assert.True(confirm.HasAttribute("disabled"));
-        Assert.Contains("5 stored value(s) stay readable", cut.Find(".confirm").TextContent, StringComparison.Ordinal);
-        cut.Find(".confirm input").Change("Replaced by coating");
-        cut.Find(".confirm button.danger").Click();
+        Assert.Equal("Retire attribute DIAMETER?", cut.Find("[role=dialog] h2").TextContent);
+        Assert.Contains("5 stored value(s) stay readable", cut.Find("[role=dialog] .dialog-body").TextContent, StringComparison.Ordinal);
+        cut.Find("[data-confirm-ok]").Click();
+        Assert.Empty(retired); // no reason, no change
+        Assert.Contains("Enter a reason", cut.Find("[role=dialog] [role=alert]").TextContent, StringComparison.Ordinal);
+        cut.Find("[data-confirm-reason]").Input("Replaced by coating");
+        cut.Find("[data-confirm-ok]").Click();
         Assert.Equal(("diameter", true, "Replaced by coating"), retired.Single());
-        Assert.Empty(cut.FindAll(".confirm"));
+        Assert.Empty(cut.FindAll("[role=dialog]"));
 
         // Edit: the name is read-only and the save is an update.
         cut.FindAll("tbody tr")[0].QuerySelectorAll("button")[0].Click();

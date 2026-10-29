@@ -123,6 +123,9 @@
                     case "structure":
             <MbomStructure Detail="d" OnMarkings="m => structureMarkings = m" />
                         break;
+                    case "security":
+                        <MbomMarkingsPanel Detail="d" OnChanged="Reload" />
+                        break;
                     case "activity":
                         <ActivityFeed Kind="@ObjectKinds.Mbom" Number="@s.Number" />
                         break;
@@ -148,8 +151,10 @@
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery(Name = "revision")] public string? Revision { get; set; }
 
-    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure", "timeline", .. AwarenessTabs.Ids];
-    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure"), new("timeline", "Timeline")];
+    private string? seenUri; // the address the tab was last taken from (GAP-A-4)
+
+    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure", "timeline", "security", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure"), new("timeline", "Timeline"), new("security", "Security markings")];
     private string tab = "overview";
     private int? commentCount; // number of comments, shown on the Comments tab (UX-4)
     private IReadOnlyList<LifecycleState> steps = [];
@@ -202,7 +207,7 @@
         if (!outcome.IsOk) { notFound = outcome.Kind == OutcomeKind.NotFound; error = notFound ? null : UiText.Message(outcome); detail = null; return; }
         notFound = false;
         detail = outcome.Value;
-        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
         if (steps.Count == 0) steps = await Lifecycles.StatesAsync("mbom-default");
         var l = await Mbom.GetLinesAsync(subject, Number, detail!.Displayed.IsLatest ? null : detail.Displayed.Revision, null, Corr());
         lines = l.IsOk ? l.Value : null;

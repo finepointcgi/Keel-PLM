@@ -18,7 +18,15 @@ public sealed partial class WorkflowService
     /// whose object they can no longer read stays in the list, redacted (no object name, number or markings) and unsignable;
     /// pool tasks they cannot read are simply absent.
     /// </summary>
-    public async Task<MyTasks> MyTasksAsync(Subject subject, string? correlationId, CancellationToken ct = default)
+    /// <summary>
+    /// The sort keys the task list accepts (GAP-A-1). The order is applied to the items AFTER redaction, from the values the caller is shown
+    /// (a redacted task has no item and no starter, so those sort last), so a hidden object never influences it.
+    /// </summary>
+    public static readonly SortMap SortKeys = new(("task", []), ("item", []), ("started", []), ("due", []));
+
+    public Task<MyTasks> MyTasksAsync(Subject subject, string? correlationId, CancellationToken ct = default) => MyTasksAsync(subject, null, correlationId, ct);
+
+    public async Task<MyTasks> MyTasksAsync(Subject subject, SortSpec? sort, string? correlationId, CancellationToken ct = default)
     {
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         await using var tx = await conn.BeginTransactionAsync(ct);
@@ -59,10 +67,34 @@ public sealed partial class WorkflowService
                 items.Add(new TaskSummary(t.Id, inst.Id, t.Name, t.Kind, true, null, null, null, t.DueAt, overdue, false));
             }
         }
+        if (sort is not null) items = SortTasks(items, sort);
         await audit.AppendAsync(tx, Entry(subject, "workflow.tasks_list", AuditOutcome.Success, "workflow_task", null, correlationId,
-            ("returned", items.Count.ToString(CultureInfo.InvariantCulture)), ("redacted", redacted.ToString(CultureInfo.InvariantCulture))), ct);
+            ("returned", items.Count.ToString(CultureInfo.InvariantCulture)), ("redacted", redacted.ToString(CultureInfo.InvariantCulture)),
+            ("sort", $"{sort?.Key} {sort?.DirectionText}".Trim())), ct);
         await tx.CommitAsync(ct);
         return new MyTasks(items, Markings.AggregateBanner(shown));
+    }
+
+    private static List<TaskSummary> SortTasks(List<TaskSummary> items, SortSpec sort)
+    {
+        if (!SortKeys.Allows(sort.Key)) throw new ArgumentException($"Cannot sort by '{sort.Key}'.", nameof(sort));
+        IComparable? KeyOf(TaskSummary t) => sort.Key switch
+        {
+            "task" => t.Name.ToUpperInvariant(),
+            "item" => t.Target?.Key.ToUpperInvariant(),
+            "started" => t.StartedByName?.ToUpperInvariant(),
+            _ => t.DueAt,
+        };
+        // Nulls last in both directions; ties keep the order the list was built in (a stable sort).
+        var keyed = items.Select((t, i) => (t, i, k: KeyOf(t))).ToList();
+        keyed.Sort((a, b) =>
+        {
+            if (a.k is null || b.k is null) return a.k is null && b.k is null ? a.i.CompareTo(b.i) : a.k is null ? 1 : -1;
+            var c = a.k.CompareTo(b.k);
+            if (sort.Descending) c = -c;
+            return c != 0 ? c : a.i.CompareTo(b.i);
+        });
+        return [.. keyed.Select(x => x.t)];
     }
 
     // ---------------------------------------------------------------- task page

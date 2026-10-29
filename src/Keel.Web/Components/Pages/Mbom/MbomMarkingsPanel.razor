@@ -1,0 +1,87 @@
+@inject CurrentUser Users
+@inject MbomService Mbom
+@inject ToastService Toasts
+
+@* The security markings of one manufacturing BOM, with a change that needs a reason (GAP-A-2). The service decides everything: the reason is required, a locked
+   revision cannot change, the markings stay at least as restrictive as the part's, the caller must still be able to modify the MBOM afterwards, and the change and its
+   audit event are one transaction. The page banner follows the new markings when the detail is reloaded. Like the part and change pages, no e-signature is asked for. *@
+<section class="panel" aria-labelledby="mbom-markings-heading">
+    <h3 id="mbom-markings-heading">Security markings</h3>
+    @if (edit is null)
+    {
+        var m = Detail.Summary.Markings;
+        <dl class="facts">
+            <dt>Export jurisdiction</dt>
+            <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
+            <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
+            <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
+            <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
+            <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
+            <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
+        </dl>
+        <p class="muted small">The markings of a manufacturing BOM are never less restrictive than those of its part, @Detail.Summary.PartNumber.</p>
+        @if (CanChange)
+        {
+            <button type="button" class="secondary" @onclick="Begin">Change markings</button>
+        }
+        else if (Detail.Permissions.CanModify)
+        {
+            <p class="muted small">@(Detail.Displayed.IsLatest ? "The markings of a manufacturing BOM change only while it is In Work (not under review, released or obsolete)." : "Only the latest revision's markings can change.")</p>
+        }
+    }
+    else
+    {
+        <div class="stack">
+            <div class="grid-form">
+                <MarkingsFields Value="edit" />
+                <label class="wide">Reason for change (required, audited) <input @bind="reason" maxlength="1000" /></label>
+            </div>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <div class="toolbar">
+                <button type="button" disabled="@busy" @onclick="SaveAsync">Save markings</button>
+                <button type="button" class="secondary" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private MarkingsInput? edit;
+    private string reason = "";
+    private string? error;
+    private bool busy;
+
+    [Parameter, EditorRequired] public required MbomDetail Detail { get; set; }
+    /// <summary>Raised after the markings changed: the page reloads and its banner follows.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool CanChange => Detail.Permissions.CanModify && Detail.Displayed.IsLatest && Detail.Displayed.State == MbomStates.InWork;
+
+    private void Begin()
+    {
+        edit = MarkingsInput.From(Detail.Summary.Markings);
+        reason = "";
+        error = null;
+    }
+
+    private void Cancel() => edit = null;
+
+    private async Task SaveAsync()
+    {
+        var markings = edit!.Effective().ToMarkings();
+        if (!markings.IsSuccess) { error = string.Join(" ", markings.Errors); return; }
+        busy = true;
+        error = null;
+        var outcome = await Mbom.ChangeMarkingsAsync(await Users.GetAsync(), Detail.Summary.Number, markings.Value, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk)
+        {
+            error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome);
+            return;
+        }
+        edit = null;
+        reason = "";
+        Toasts.Success("Markings changed.");
+        await OnChanged.InvokeAsync();
+    }
+}

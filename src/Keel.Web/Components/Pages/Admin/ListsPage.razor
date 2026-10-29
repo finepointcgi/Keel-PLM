@@ -45,21 +45,13 @@
             </tbody>
         </table></div>
 
-        @if (toggling is not null)
-        {
-            <section class="panel confirm" role="group" aria-label="Confirm">
-                <h3>@(toggling.IsActive ? "Retire" : "Restore") @toggling.Code</h3>
-                <p>@(toggling.IsActive ? "Existing objects keep this value; it is no longer offered for new ones." : "The item is offered again.")</p>
-                <label>Reason * <input @bind="reason" maxlength="500" /></label>
-                <div class="toolbar">
-                    <button type="button" class="danger" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="ConfirmToggle">Confirm</button>
-                    <button type="button" class="secondary" @onclick="() => toggling = null">Cancel</button>
-                </div>
-            </section>
-        }
+        <ConfirmDialog @bind-Open="confirmingToggle" Title="@($"{(toggling?.IsActive == true ? "Retire" : "Restore")} {toggling?.Code}?")" Destructive="true" ConfirmText="@(toggling?.IsActive == true ? "Retire" : "Restore")"
+                       ReasonLabel="Reason" ReasonRequired="true" OnConfirm="ConfirmToggle" OnCancel="() => toggling = null">
+            <p>@(toggling?.IsActive == true ? "Existing objects keep this value; it is no longer offered for new ones." : "The item is offered again.")</p>
+        </ConfirmDialog>
 
         <section class="panel">
-            <h3>@(editingCode is null ? "Add an item" : $"Edit {editingCode}")</h3>
+            <h2>@(editingCode is null ? "Add an item" : $"Edit {editingCode}")</h2>
             <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <label>Code * <input @bind="code" maxlength="60" readonly="@(editingCode is not null)" required /></label>
                 <label>Label * <input @bind="label" maxlength="120" required /></label>
@@ -93,7 +85,7 @@
     private string list = RefLists.PartType;
     private IReadOnlyList<RefItem> items = [];
     private IReadOnlyList<string> families = [];
-    private string code = "", label = "", lifecycleFamily = "", reason = "";
+    private string code = "", label = "", lifecycleFamily = "";
     private int sortOrder;
     private string? editingCode, error, saved;
     private RefItem? toggling;
@@ -150,17 +142,15 @@
         else error = UiText.Message(outcome);
     }
 
-    private void AskToggle(RefItem i)
-    {
-        toggling = i;
-        reason = "";
-    }
+    private bool confirmingToggle;
 
-    private async Task ConfirmToggle()
+    private void AskToggle(RefItem i) => (toggling, confirmingToggle) = (i, true);
+
+    private async Task ConfirmToggle(string? toggleReason)
     {
         if (toggling is null) return;
         busy = true;
-        var outcome = await Lists.SetActiveAsync(await Users.GetAsync(), list, toggling.Code, !toggling.IsActive, reason, CurrentUser.NewCorrelationId());
+        var outcome = await Lists.SetActiveAsync(await Users.GetAsync(), list, toggling.Code, !toggling.IsActive, toggleReason ?? "", CurrentUser.NewCorrelationId());
         busy = false;
         if (outcome.IsOk) { saved = $"{(outcome.Value!.IsActive ? "Restored" : "Retired")} {outcome.Value.Code}."; error = null; toggling = null; await Load(); }
         else error = UiText.Message(outcome);

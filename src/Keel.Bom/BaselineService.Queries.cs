@@ -34,6 +34,14 @@ public sealed partial class BaselineService
         return (summary, head);
     }
 
+    /// <summary>
+    /// The sort keys the baseline list accepts (GAP-A-1). "root" orders by the root part number AFTER redaction (the joined column is
+    /// null when the caller may not read the root part), so a hidden part number never influences the order.
+    /// </summary>
+    public static readonly SortMap SortKeys = new(
+        ("number", ["b.number"]), ("name", ["lower(b.name)"]), ("type", ["b.baseline_type"]), ("milestone", ["lower(b.milestone)"]),
+        ("state", ["lower(ls.label)"]), ("root", ["pm.number"]), ("items", ["b.item_count"]), ("created", ["b.created_at"]));
+
     public async Task<Outcome<BaselinePage>> SearchAsync(Subject subject, BaselineSearch query, string? correlationId, CancellationToken ct = default)
     {
         var limit = Math.Clamp(query.Limit, 1, 200);
@@ -81,7 +89,7 @@ public sealed partial class BaselineService
         }
         var items = new List<BaselineSummary>();
         await using (var cmd = new NpgsqlCommand(
-            $"{SummarySelect(rootFilter)} WHERE {filter.Sql}{extra} ORDER BY b.created_at DESC, b.number DESC LIMIT @limit OFFSET @offset", conn, tx))
+            $"{SummarySelect(rootFilter)} WHERE {filter.Sql}{extra} ORDER BY {SortKeys.OrderBy(query.Sort, "b.created_at DESC, b.number DESC", "b.number")} LIMIT @limit OFFSET @offset", conn, tx))
         {
             foreach (var (k, v) in parameters.Concat(rootFilter.Parameters)) cmd.Parameters.AddWithValue(k, v);
             cmd.Parameters.AddWithValue("limit", limit);
@@ -91,7 +99,7 @@ public sealed partial class BaselineService
         }
         var banner = Markings.AggregateBanner(items.Select(i => i.Markings).Distinct());
         await audit.AppendAsync(tx, Entry(subject, "baseline.search", AuditOutcome.Success, null, correlationId,
-            ("text", query.Text), ("state", query.State), ("type", query.Type), ("root", query.RootNumber), ("contains", query.ContainsPart), ("results", items.Count.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
+            ("text", query.Text), ("state", query.State), ("type", query.Type), ("root", query.RootNumber), ("contains", query.ContainsPart), ("sort", query.Sort is null ? null : $"{query.Sort.Key} {query.Sort.DirectionText}"), ("results", items.Count.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
         await tx.CommitAsync(ct);
         return Outcome<BaselinePage>.Ok(new BaselinePage(items, total, banner));
     }

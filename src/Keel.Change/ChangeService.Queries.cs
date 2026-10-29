@@ -31,6 +31,11 @@ public sealed partial class ChangeService
         return Outcome<ChangeDetail>.Ok(detail);
     }
 
+    /// <summary>The sort keys the change list accepts (GAP-A-1); expressions are constants over rows the read filter already admitted.</summary>
+    public static readonly SortMap SortKeys = new(
+        ("number", ["c.number"]), ("type", ["c.change_type"]), ("title", ["lower(c.title)"]), ("class", ["c.change_class"]),
+        ("priority", ["c.priority"]), ("state", ["lower(COALESCE(ls.label, c.lifecycle_state))"]), ("requester", ["lower(c.requester_name)"]), ("created", ["c.created_at"]));
+
     public async Task<ChangeSearchResult> SearchAsync(Subject subject, ChangeSearchQuery query, string? correlationId, CancellationToken ct = default)
     {
         var limit = Math.Clamp(query.Limit, 1, MaxSearchLimit);
@@ -54,7 +59,7 @@ public sealed partial class ChangeService
               AND (@state::text IS NULL OR c.lifecycle_state = @state)
               AND (@q = '' OR c.number ILIKE @like OR c.title ILIKE @like)
               AND (NOT @open OR NOT COALESCE(ls.is_final, false))
-            ORDER BY c.created_at DESC, c.number DESC
+            ORDER BY {SortKeys.OrderBy(query.Sort, "c.created_at DESC, c.number DESC", "c.number")}
             LIMIT @limit OFFSET @offset
             """, conn, tx))
         {
@@ -76,7 +81,7 @@ public sealed partial class ChangeService
             }
         }
         await audit.AppendAsync(tx, ChangeStore.Entry(subject, "change.search", AuditOutcome.Success, "change", null, correlationId,
-            ("type", query.Type), ("state", query.State), ("query", q), ("returned", items.Count.ToString(CultureInfo.InvariantCulture)),
+            ("type", query.Type), ("state", query.State), ("query", q), ("sort", query.Sort is null ? null : $"{query.Sort.Key} {query.Sort.DirectionText}"), ("returned", items.Count.ToString(CultureInfo.InvariantCulture)),
             ("numbers", string.Join(",", items.Select(i => i.Number)))), ct);
         await tx.CommitAsync(ct);
         return new ChangeSearchResult(items, total, Markings.AggregateBanner(items.Select(i => i.Markings)));

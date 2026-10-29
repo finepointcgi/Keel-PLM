@@ -4,7 +4,7 @@
 
 @* Manufacturing BOMs the signed-in user may read, with the plant selector. The page banner is the aggregate of the rows shown (ADR-0014, ADR-0024). *@
 <PageFrame Banner="@(page?.PageBanner ?? UiText.Unclassified)" Title="Manufacturing BOMs" Crumbs="@Crumbs">
-    <form class="toolbar" @onsubmit="Search" aria-label="Search manufacturing BOMs">
+    <form class="toolbar" @onsubmit="() => Search(0)" aria-label="Search manufacturing BOMs">
         <input aria-label="Search text" placeholder="MBOM number, part number or name" class="grow" @bind="text" />
         <label class="inline-check">Plant
             <select aria-label="Plant" @bind="plant">
@@ -27,18 +27,19 @@
     @if (page is not null)
     {
         <p class="muted" aria-live="polite">@(page.Total == 0 ? "No manufacturing BOMs match." : $"{page.Total} manufacturing BOM{(page.Total == 1 ? "" : "s")}")</p>
-        <DataTable TItem="MbomSummary" TableId="mboms" Items="page.Items" Columns="Columns" Caption="Manufacturing BOMs">
+        <DataTable TItem="MbomSummary" TableId="mboms" Items="page.Items" Columns="Columns" Caption="Manufacturing BOMs" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
                 <EmptyState Title="No manufacturing BOMs match" IconName="mbom" ActionHref="mboms/generate" ActionText="Generate from EBOM">
                     A manufacturing BOM is built per plant from a released engineering BOM. Generate one, or change the search.
                 </EmptyState>
             </Empty>
         </DataTable>
+        <Pager Total="page.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
     }
 
     <AuthorizeView Policy="@Policies.Admin">
         <section class="panel stack" aria-labelledby="plants-heading">
-            <h3 id="plants-heading">Plants</h3>
+            <h2 id="plants-heading">Plants</h2>
             <p class="muted small">Plants are administrator data. A plant that does not allow warnings releases an MBOM only when its reconciliation has none. Plants are retired, never deleted.</p>
             @if (plantError is not null) { <p class="error" role="alert">@plantError</p> }
             <div class="table-wrap"><table class="data">
@@ -68,7 +69,29 @@
 @code {
     [SupplyParameterFromQuery(Name = "q")] public string? QueryText { get; set; }
 
+    private const int PageSize = 50;
+    private int offset;
     private MbomSearchResult? page;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+
+    // The order lives in the address bar (GAP-A-1). A stale or hand-edited value that is not one of the module's sort keys falls back to the default order.
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = MbomService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
     private IReadOnlyList<PlantInfo> plants = [], allPlants = [];
     private string text = "", plant = "", state = "", pCode = "", pName = "";
     private bool pActive = true, pWarn = true;
@@ -78,11 +101,11 @@
 
     private static readonly IReadOnlyList<DataColumn<MbomSummary>> Columns =
     [
-        new() { Key = "mbom", Title = "MBOM", Required = true, SortValue = m => m.Number, Cell = m => @<a href="@MbomUiText.Href(m.Number)">@m.Number</a> },
-        new() { Key = "part", Title = "Part", SortValue = m => m.PartNumber, Cell = m => @<text><a href="parts/@Uri.EscapeDataString(m.PartNumber)">@m.PartNumber</a> @m.PartName</text> },
-        new() { Key = "plant", Title = "Plant", SortValue = m => m.Plant, Text = m => m.Plant },
+        new() { Key = "mbom", Title = "MBOM", Required = true, ServerSortKey = "mbom", Cell = m => @<a href="@MbomUiText.Href(m.Number)">@m.Number</a> },
+        new() { Key = "part", Title = "Part", ServerSortKey = "part", Cell = m => @<text><a href="parts/@Uri.EscapeDataString(m.PartNumber)">@m.PartNumber</a> @m.PartName</text> },
+        new() { Key = "plant", Title = "Plant", ServerSortKey = "plant", Text = m => m.Plant },
         new() { Key = "version", Title = "Version", Text = m => $"{m.Revision}.{m.Iteration}" },
-        new() { Key = "state", Title = "State", SortValue = m => m.StateLabel, Cell = m => @<text><span class="badge @MbomUiText.StateClass(m.State)">@m.StateLabel</span>@(m.CheckedOutBy is null ? "" : $" (checked out by {m.CheckedOutBy})")</text> },
+        new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = m => @<text><span class="badge @MbomUiText.StateClass(m.State)">@m.StateLabel</span>@(m.CheckedOutBy is null ? "" : $" (checked out by {m.CheckedOutBy})")</text> },
         new() { Key = "derived", Title = "Derived from EBOM", Text = m => m.DerivedFrom ?? "none", DefaultHidden = true },
         new() { Key = "reconciliation", Title = "Reconciliation", Cell = m => @<text>@if (m.ReconciliationStatus is { } s) { <span class="badge @MbomUiText.StatusClass(s)">@ReconcileStatuses.Label(s)</span> } else { <span class="muted">Not run</span> }</text> },
         new() { Key = "markings", Title = "Markings", Required = true, Cell = m => @<MarkingChip Text="@m.Banner" /> },
@@ -93,13 +116,13 @@
         plants = await Mbom.ListPlantsAsync();
         allPlants = await Mbom.ListPlantsAsync(true);
         if (QueryText is { Length: > 0 }) text = QueryText;
-        await Search();
     }
 
-    private async Task Search()
+    private async Task Search(int newOffset)
     {
         error = null;
-        var outcome = await Mbom.SearchAsync(await Users.GetAsync(), new MbomSearch(text, plant == "" ? null : plant, state == "" ? null : state), CurrentUser.NewCorrelationId());
+        offset = newOffset;
+        var outcome = await Mbom.SearchAsync(await Users.GetAsync(), new MbomSearch(text, plant == "" ? null : plant, state == "" ? null : state, Limit: PageSize, Offset: offset, Sort: sort), CurrentUser.NewCorrelationId());
         if (outcome.IsOk) page = outcome.Value;
         else error = UiText.Message(outcome);
     }

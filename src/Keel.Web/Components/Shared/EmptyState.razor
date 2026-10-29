@@ -1,7 +1,7 @@
-@* Nothing to show yet: say why and what to do next. Used by every list page and card. *@
+@* Nothing to show yet: say why and what to do next. Used by every list page and card. The title is a message, not a section, so it is not a heading (it would skip a level on list pages). *@
 <div class="empty">
     <Icon Name="@IconName" />
-    <h3>@Title</h3>
+    <p class="empty-title">@Title</p>
     @if (ChildContent is not null) { <p>@ChildContent</p> }
     @if (!string.IsNullOrEmpty(ActionHref))
     {

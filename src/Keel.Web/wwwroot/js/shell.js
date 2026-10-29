@@ -127,6 +127,16 @@ export function setHash(hash) {
   window.history.replaceState(window.history.state, '', url.toString());
 }
 
+/** Sets query-string values (a list's sort) in the address bar without navigating, so the order is shareable and survives reload. Pairs: key, value, key, value. */
+export function setQuery(...pairs) {
+  const url = new URL(window.location.href);
+  for (let i = 0; i + 1 < pairs.length; i += 2) {
+    if (pairs[i + 1]) url.searchParams.set(pairs[i], pairs[i + 1]);
+    else url.searchParams.delete(pairs[i]);
+  }
+  window.history.replaceState(window.history.state, '', url.toString());
+}
+
 /** Reads the fragment so a page can open on the tab a link names. */
 export function getHash() {
   return window.location.hash.replace(/^#/, '');

@@ -211,6 +211,8 @@
 @code {
     [Parameter] public required string Number { get; set; }
 
+    private string? seenUri; // the address the tab was last taken from (GAP-A-4)
+
     private static readonly string[] TabIds = ["overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", .. AwarenessTabs.Ids];
 
     private static IReadOnlyList<TabInfo> TabsFor(ChangeDetail d) =>
@@ -276,7 +278,7 @@
         impactShown = [];
         mapBanner = null;
         detail = outcome.Value;
-        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
         if (detail is not null && steps.Count == 0) steps = await Lifecycles.StatesAsync($"{detail.Type.ToLowerInvariant()}-default");
     }
 
