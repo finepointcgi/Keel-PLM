@@ -1,0 +1,24 @@
+@* Additive chips for an object's header (8.6): "On legal hold" and "Disposed of". Shown only to people with a records role who can read the object, so the chip
+   adds nothing about objects a reader cannot see and nothing for everyone else. It never says which hold or why. *@
+@inject CurrentUser Users
+@inject HoldService Holds
+
+@if (status is { } s)
+{
+    @if (s.Held) { <span class="badge state-underreview" data-records-chip="hold" title="A legal hold keeps this record from being disposed of."><Icon Name="lock" /> On legal hold</span> }
+    @if (s.Tombstoned) { <span class="badge state-obsolete" data-records-chip="disposed" title="The stored files were disposed of under the retention schedule; the entry and its history remain.">Disposed of</span> }
+}
+
+@code {
+    /// <summary>"document" or "part".</summary>
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+
+    private ObjectRecordsStatus? status;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try { status = await Holds.StatusOfAsync(await Users.GetAsync(), Kind, Number); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { status = null; } // the chip is a convenience; the page must still render
+    }
+}

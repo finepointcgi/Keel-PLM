@@ -1,0 +1,96 @@
+@page "/records/holds/{Number}"
+@inject CurrentUser Users
+@inject HoldService Holds
+
+<PageFrame Banner="@PageBanner" Title="@PageTitle" Crumbs="@Crumbs">
+    <RecordsNav Current="holds" />
+    @if (notFound)
+    {
+        <p class="error" role="alert">Hold @Number was not found.</p>
+    }
+    else if (hold is not null)
+    {
+        <p>
+            <span class="badge @(hold.Status == "active" ? "state-underreview" : "state-obsolete")">@(hold.Status == "active" ? (hold.InRelease ? "Release requested" : "Active") : "Released")</span>
+            Placed @UiText.Utc(hold.PlacedAt) by @hold.PlacedBy@(hold.ReleasedAt is { } r ? $"; released {UiText.Utc(r)} by {hold.ReleasedBy}" : "")
+        </p>
+        <dl class="facts">
+            <dt>Reason</dt><dd>@hold.Reason</dd>
+            <dt>Covers</dt><dd>@hold.ScopeText</dd>
+            <dt>Records you can see</dt><dd>@hold.ReadableMembers</dd>
+        </dl>
+        <p class="muted small">This page lists only the records you are allowed to see. A hold can cover more than that; no count of the rest is shown.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (message is not null) { <p class="notice" role="status">@message</p> }
+
+        @if (hold.Status == "active" && canManage && hold.ScopeKind != HoldScopeKinds.Objects)
+        {
+            <div class="toolbar">
+                <button type="button" class="secondary" disabled="@busy" @onclick="Reevaluate">Check again for new matches</button>
+                <span class="muted small">A program or query hold also covers records created since it was placed.</span>
+            </div>
+        }
+
+        <section class="panel stack" aria-labelledby="members-heading">
+            <h2 id="members-heading">Records covered that you can see</h2>
+            @if (members is null) { <Skeleton Lines="3" Label="Loading records" /> }
+            else
+            {
+                <DataTable TItem="HoldMemberView" TableId="hold-members" Items="members" Columns="Columns" Caption="Records covered by the hold">
+                    <Empty><EmptyState Title="Nothing you can see" IconName="lock">No record under this hold is visible to you.</EmptyState></Empty>
+                </DataTable>
+            }
+        </section>
+
+        @if (hold.Status == "active")
+        {
+            <SourcingReviewPanel ObjectType="legal_hold" Key="@hold.Number" Noun="hold" CanSubmit="@(canManage && !hold.InRelease)"
+                                 SubmitHint="Releasing a hold needs the signature of an approver. You cannot approve your own request." OnChanged="Load" />
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Number { get; set; } = "";
+    private HoldView? hold;
+    private IReadOnlyList<HoldMemberView>? members;
+    private bool notFound, busy, canManage;
+    private string? error, message;
+
+    private string PageTitle => hold is null ? $"Legal hold {Number}" : $"Legal hold {hold.Number}: {hold.Name}";
+    private string PageBanner => BannerMerge.Union([.. (members ?? []).Select(m => m.Banner)]);
+    private IReadOnlyList<Crumb> Crumbs => [new("Records", "records"), new("Legal holds", "records/holds"), new(Number)];
+
+    private static readonly IReadOnlyList<DataColumn<HoldMemberView>> Columns =
+    [
+        new() { Key = "object", Title = "Record", Required = true, Cell = m => @<a href="@RecordKinds.Path(m.Kind, m.Number)">@m.Number</a> },
+        new() { Key = "kind", Title = "Kind", Text = m => RecordKinds.Label(m.Kind) },
+        new() { Key = "name", Title = "Name", Text = m => m.Name },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = m => @<MarkingChip Text="@m.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var me = await Users.GetAsync();
+        canManage = RecordsAccess.CanManage(me);
+        var corr = CurrentUser.NewCorrelationId();
+        var o = await Holds.GetAsync(me, Number, corr);
+        notFound = !o.IsOk;
+        hold = o.Value;
+        if (hold is null) return;
+        var m = await Holds.MembersAsync(me, Number, 200, 0, corr);
+        members = m.IsOk ? m.Value : [];
+    }
+
+    private async Task Reevaluate()
+    {
+        busy = true; error = message = null;
+        var o = await Holds.ReevaluateAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        message = "The hold was checked again and now covers any matching record created since it was placed.";
+        await Load();
+    }
+}

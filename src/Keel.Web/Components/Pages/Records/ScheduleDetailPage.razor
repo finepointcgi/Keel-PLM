@@ -1,0 +1,153 @@
+@page "/records/schedules/{Version:int}"
+@inject CurrentUser Users
+@inject ScheduleService Schedules
+@inject NavigationManager Nav
+
+<PageFrame Banner="@UiText.Unclassified" Title="@PageTitle" Crumbs="@Crumbs">
+    <RecordsNav Current="schedules" />
+    @if (notFound)
+    {
+        <p class="error" role="alert">Version @Version was not found.</p>
+    }
+    else if (view is not null)
+    {
+        <p>
+            <span class="badge @RecordsUi.StatusClass(view.Status)">@ScheduleStatuses.Label(view.Status)</span>
+            Created @UiText.Utc(view.CreatedAt) by @view.CreatedBy@(view.PublishedAt is { } p ? $"; published {UiText.Utc(p)} by {view.PublishedBy}" : "")
+        </p>
+        @if (!string.IsNullOrWhiteSpace(view.Notes)) { <p class="muted">@view.Notes</p> }
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+        <section class="panel stack" aria-labelledby="classes-heading">
+            <h2 id="classes-heading">Record classes</h2>
+            <p class="muted">The first class that matches an object (lowest priority number first) decides how long it is kept. A criterion left empty matches anything.</p>
+            @if (view.Classes.Count == 0) { <EmptyState Title="No classes yet" IconName="config">Add a record class below.</EmptyState> }
+            else
+            {
+                <DataTable TItem="ClassView" TableId="classes" Items="view.Classes" Columns="Columns" Caption="Record classes" />
+            }
+        </section>
+
+        @if (view.Status == ScheduleStatuses.Draft && canManage)
+        {
+            <section class="panel stack" aria-labelledby="class-edit">
+                <h2 id="class-edit">Add or replace a class</h2>
+                <EditForm Model="this" OnSubmit="SaveClass" FormName="save-class" class="stack">
+                    <fieldset class="grid-form">
+                        <legend>Class</legend>
+                        <label>Code * <InputText @bind-Value="code" maxlength="30" /></label>
+                        <label>Name * <InputText @bind-Value="name" maxlength="200" /></label>
+                        <label>Priority (lower is checked first) <InputNumber @bind-Value="priority" /></label>
+                        <label>Citation (law, contract clause or policy) <InputText @bind-Value="citation" maxlength="500" /></label>
+                        <label class="wide">Notes <InputText @bind-Value="notes" maxlength="2000" /></label>
+                    </fieldset>
+                    <fieldset class="grid-form">
+                        <legend>Which objects</legend>
+                        <label class="inline"><input type="checkbox" @bind="kindDocument" /> Documents</label>
+                        <label class="inline"><input type="checkbox" @bind="kindPart" /> Parts</label>
+                        <label>Types (comma separated, for example Specification) <InputText @bind-Value="types" /></label>
+                        <label>Programs (comma separated) <InputText @bind-Value="programs" /></label>
+                        <label>Export jurisdictions (None, Ear, Itar) <InputText @bind-Value="jurisdictions" /></label>
+                        <label>CUI categories (any of) <InputText @bind-Value="cui" /></label>
+                        <label>Distribution statements (A to F) <InputText @bind-Value="statements" /></label>
+                    </fieldset>
+                    <fieldset class="grid-form">
+                        <legend>How long, and then what</legend>
+                        <label>Retention in months <InputNumber @bind-Value="months" /></label>
+                        <label>The clock starts at
+                            <select @bind="trigger">
+                                @foreach (var t in TriggerEvents.All) { <option value="@t">@TriggerEvents.Label(t)</option> }
+                            </select>
+                        </label>
+                        <label>Then
+                            <select @bind="disposition">
+                                @foreach (var a in DispositionActions.All) { <option value="@a">@DispositionActions.Label(a)</option> }
+                            </select>
+                        </label>
+                    </fieldset>
+                    <div class="toolbar"><button type="submit" disabled="@busy">Save class</button></div>
+                </EditForm>
+            </section>
+            <section class="panel stack" aria-labelledby="draft-actions">
+                <h2 id="draft-actions">Draft</h2>
+                <div class="toolbar">
+                    <button type="button" class="secondary" disabled="@busy" @onclick="AskDiscard">Discard this draft</button>
+                </div>
+            </section>
+            <ConfirmDialog @bind-Open="confirmDiscard" Title="Discard this draft?" ConfirmText="Discard draft" Destructive="true" OnConfirm="_ => Discard()">
+                <p>The draft and its classes stay on record as discarded; the published version is not affected.</p>
+            </ConfirmDialog>
+        }
+
+        @if (view.Status is ScheduleStatuses.Draft or ScheduleStatuses.InReview or ScheduleStatuses.Published or ScheduleStatuses.Superseded)
+        {
+            <SourcingReviewPanel ObjectType="retention_schedule" Key="@($"v{view.Version}")" Noun="schedule" CanSubmit="@(canManage && view.Status == ScheduleStatuses.Draft && view.Classes.Count > 0)"
+                                 SubmitHint="Approvers sign the schedule and every class in it. You cannot approve your own submission." OnChanged="Load" />
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public int Version { get; set; }
+    private ScheduleView? view;
+    private bool notFound, busy, canManage, confirmDiscard, kindDocument = true, kindPart;
+    private string? error;
+    private string code = "", name = "", citation = "", notes = "", types = "", programs = "", jurisdictions = "", cui = "", statements = "", trigger = TriggerEvents.Release, disposition = DispositionActions.Review;
+    private int priority = 100, months = 84;
+
+    private string PageTitle => view is null ? "Retention schedule" : $"Retention schedule, version {view.Version}: {view.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Records", "records"), new("Retention schedules", "records/schedules"), new($"Version {Version}")];
+
+    private static string Any(string[] v) => v.Length == 0 ? "any" : string.Join(", ", v);
+
+    private static readonly IReadOnlyList<DataColumn<ClassView>> Columns =
+    [
+        new() { Key = "code", Title = "Code", Required = true, Text = c => c.Input.Code },
+        new() { Key = "name", Title = "Name", Text = c => c.Input.Name },
+        new() { Key = "priority", Title = "Priority", Text = c => c.Input.Priority.ToString() },
+        new() { Key = "kinds", Title = "Objects", Text = c => Any(c.Input.Kinds) + (c.Input.Types.Length > 0 ? " · types " + Any(c.Input.Types) : "") },
+        new() { Key = "match", Title = "Matches", Text = c => $"programs {Any(c.Input.Programs)}; jurisdictions {Any(c.Input.Jurisdictions)}; CUI {Any(c.Input.Cui)}; statements {Any(c.Input.Statements)}" },
+        new() { Key = "period", Title = "Kept for", Text = c => $"{c.Input.RetentionMonths} months after {TriggerEvents.Label(c.Input.TriggerEvent).ToLowerInvariant()}" },
+        new() { Key = "action", Title = "Then", Text = c => DispositionActions.Label(c.Input.Disposition) },
+        new() { Key = "citation", Title = "Citation", DefaultHidden = true, Text = c => c.Input.Citation ?? "" },
+    ];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var me = await Users.GetAsync();
+        canManage = RecordsAccess.CanManage(me);
+        var o = await Schedules.GetAsync(me, Version, CurrentUser.NewCorrelationId());
+        notFound = !o.IsOk;
+        view = o.Value;
+    }
+
+    private static string[] Split(string text) => text.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private async Task SaveClass()
+    {
+        error = null; busy = true;
+        var kinds = new List<string>();
+        if (kindDocument) kinds.Add(RecordKinds.Document);
+        if (kindPart) kinds.Add(RecordKinds.Part);
+        var input = new ClassInput(code.Trim().ToUpperInvariant(), name, null, priority, [.. kinds], Split(types), Split(programs), Split(jurisdictions), Split(cui), Split(statements.ToUpperInvariant()), months, trigger, disposition,
+            string.IsNullOrWhiteSpace(citation) ? null : citation, string.IsNullOrWhiteSpace(notes) ? null : notes);
+        var o = await Schedules.UpsertClassAsync(await Users.GetAsync(), Version, input, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        view = o.Value;
+        code = name = citation = notes = "";
+    }
+
+    private void AskDiscard() => confirmDiscard = true;
+
+    private async Task Discard()
+    {
+        confirmDiscard = false; busy = true;
+        var o = await Schedules.DiscardDraftAsync(await Users.GetAsync(), Version, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        Nav.NavigateTo("records/schedules");
+    }
+}

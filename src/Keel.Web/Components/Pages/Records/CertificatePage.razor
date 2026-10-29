@@ -1,0 +1,81 @@
+@page "/records/certificates/{Number}"
+@inject CurrentUser Users
+@inject DispositionService Disposition
+
+<PageFrame Banner="@PageBanner" Title="@PageTitle" Crumbs="@Crumbs">
+    <RecordsNav Current="disposition" />
+    @if (notFound)
+    {
+        <p class="error" role="alert">Certificate @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (cert is not null)
+    {
+        <header class="title-row"><MarkingChip Text="@cert.Banner" /></header>
+        <p>Issued @UiText.Utc(cert.IssuedAt) by @cert.IssuedBy for request <a href="@RecordsUi.DispositionHref(cert.DispositionNumber)">@cert.DispositionNumber</a>, covering @cert.Objects record@(cert.Objects == 1 ? "" : "s").</p>
+        <section class="panel stack" aria-labelledby="verify-heading">
+            <h2 id="verify-heading">Signature</h2>
+            @if (cert.Verification.Valid) { <p><span class="badge state-approved">Verified</span> The certificate is unchanged and its signature matches a trusted key (@cert.Verification.KeyId).</p> }
+            else { <p class="error" role="alert"><span class="badge state-obsolete">Not verified</span> @(!cert.Verification.HashMatches ? "The stored text does not match its hash. " : "")@(!cert.Verification.KeyKnown ? "No trusted key has the signing key id. " : cert.Verification.SignatureValid ? "" : "The signature is not valid.")</p> }
+        </section>
+        <section class="panel stack" aria-labelledby="content-heading">
+            <h2 id="content-heading">Stored files</h2>
+            <p class="muted">The files of disposed documents are released to the vault sweep, which removes them after its waiting period. Confirming records, signed, that a file is really gone.</p>
+            @if (cert.Content.Count == 0) { <p class="muted">No stored files were involved.</p> }
+            else
+            {
+                <DataTable TItem="ContentConfirmation" TableId="content" Items="cert.Content" Columns="Columns" Caption="Stored files named by the certificate" />
+                @if (canManage && cert.Content.Any(c => c.State == "pending"))
+                {
+                    <div class="toolbar"><button type="button" class="secondary" disabled="@busy" @onclick="Confirm">Check the vault now</button></div>
+                }
+            }
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (message is not null) { <p class="notice" role="status">@message</p> }
+        </section>
+        <section class="panel stack" aria-labelledby="body-heading">
+            <h2 id="body-heading">Signed text</h2>
+            <p class="muted small">Hash (SHA-256) <code>@cert.BodySha256</code></p>
+            <pre class="code-block" tabindex="0" aria-label="Signed text of the certificate">@cert.Body</pre>
+        </section>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Number { get; set; } = "";
+    private CertificateView? cert;
+    private bool notFound, busy, canManage;
+    private string? error, message;
+
+    private string PageTitle => $"Certificate of destruction {Number}";
+    private string PageBanner => cert?.Banner ?? UiText.Unclassified;
+    private IReadOnlyList<Crumb> Crumbs => [new("Records", "records"), new("Disposition", "records/disposition"), new("Certificates", "records/certificates"), new(Number)];
+
+    private static readonly IReadOnlyList<DataColumn<ContentConfirmation>> Columns =
+    [
+        new() { Key = "sha", Title = "File (SHA-256)", Required = true, Text = c => c.Sha256 },
+        new() { Key = "size", Title = "Size", Text = c => RecordsUi.Size(c.SizeBytes) },
+        new() { Key = "state", Title = "State", Text = c => RecordsUi.ContentState(c.State) },
+        new() { Key = "at", Title = "Confirmed", Text = c => c.ConfirmedAt is { } t ? UiText.Utc(t) : "" },
+    ];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var me = await Users.GetAsync();
+        canManage = RecordsAccess.CanManage(me);
+        var o = await Disposition.GetCertificateAsync(me, Number, CurrentUser.NewCorrelationId());
+        notFound = !o.IsOk;
+        cert = o.Value;
+    }
+
+    private async Task Confirm()
+    {
+        busy = true; error = message = null;
+        var o = await Disposition.ConfirmDestructionAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        message = $"{o.Value!.Confirmed} file(s) confirmed removed, {o.Value.RetainedShared} kept because another record uses them, {o.Value.Pending} still waiting for the sweep.";
+        await Load();
+    }
+}

@@ -53,6 +53,17 @@ public sealed partial class DocumentService
                 await tx.CommitAsync(ct);
                 return read.Permitted ? Outcome<MarkedDownload>.Forbidden(decision.Reasons) : Outcome<MarkedDownload>.NotFound();
             }
+            // 8.6 records management: a document disposed of under a retention schedule keeps its record (tombstone) but its content is released to the vault sweeper.
+            await using (var gone = new NpgsqlCommand("SELECT rec.is_tombstoned('document', @id)", conn, tx))
+            {
+                gone.Parameters.AddWithValue("id", head.MasterId);
+                if ((bool)(await gone.ExecuteScalarAsync(ct))!)
+                {
+                    await audit.AppendAsync(tx, Entry(subject, action, AuditOutcome.Failure, number, correlationId, ("reason", "disposed")), ct);
+                    await tx.CommitAsync(ct);
+                    return Outcome<MarkedDownload>.Conflict("The content of this document was disposed of under a retention schedule.");
+                }
+            }
 
             await using var cmd = new NpgsqlCommand(
                 """

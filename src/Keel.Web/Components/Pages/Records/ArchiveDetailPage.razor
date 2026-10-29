@@ -1,0 +1,94 @@
+@page "/records/archives/{Number}"
+@inject CurrentUser Users
+@inject ArchiveService Archives
+
+<PageFrame Banner="@PageBanner" Title="@PageTitle" Crumbs="@Crumbs">
+    <RecordsNav Current="archives" />
+    @if (notFound)
+    {
+        <p class="error" role="alert">Archive @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (view is not null)
+    {
+        <header class="title-row"><MarkingChip Text="@view.Banner" /></header>
+        <p>Created @UiText.Utc(view.CreatedAt) by @view.CreatedBy. @RecordsUi.Size(view.PackageSize) in the vault.</p>
+        <dl class="facts">
+            <dt>Protection</dt><dd>@RecordsUi.WormText(view.WormMode)@(view.RetainUntil is { } until ? $", until {UiText.Utc(until)}" : "")</dd>
+            <dt>Package hash (SHA-256)</dt><dd><code>@view.PackageSha256</code></dd>
+            <dt>Signed list of hashes</dt><dd><code>@view.ManifestSha256</code> signed with key @view.KeyId</dd>
+        </dl>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        <div class="toolbar"><button type="button" class="secondary" disabled="@busy" @onclick="Open">Verify and open the read-only view</button></div>
+
+        @if (contents is not null)
+        {
+            <section class="panel stack" aria-labelledby="verify-heading">
+                <h2 id="verify-heading">Verification</h2>
+                @if (contents.Verification.Valid)
+                {
+                    <p><span class="badge state-approved">Verified</span> Every file matches the signed list (@contents.Verification.Entries entries), the signature is valid@(contents.Verification.Events > 0 ? $", and the hashes of the {contents.Verification.Events} audit events recompute" : "").</p>
+                }
+                else
+                {
+                    <p class="error" role="alert"><span class="badge state-obsolete">Not verified</span></p>
+                    <ul class="error">@foreach (var p in contents.Verification.Problems) { <li>@p</li> }</ul>
+                }
+                @if (contents.Verification.Note is not null) { <p class="muted small">@contents.Verification.Note</p> }
+            </section>
+            <p class="notice" role="status">This is a read-only view. Nothing here can change the archive, and the stored files are not offered for download from this page.</p>
+            @foreach (var o in contents.Objects)
+            {
+                <section class="panel stack" aria-labelledby="@($"obj-{o.Number}")">
+                    <h2 id="@($"obj-{o.Number}")">@RecordKinds.Label(o.Kind) @o.Number: @o.Name</h2>
+                    <MarkingChip Text="@o.Banner" />
+                    @foreach (var r in o.Revisions)
+                    {
+                        <h3>Revision @r.Revision (@r.State), @UiText.Utc(r.StateChangedAt)</h3>
+                        <ul class="plain">
+                            @foreach (var i in r.Iterations)
+                            {
+                                <li>
+                                    Version @r.Revision.@i.Iteration by @i.CreatedBy, @UiText.Utc(i.CreatedAt)@(string.IsNullOrWhiteSpace(i.Description) ? "" : ": " + i.Description)
+                                    @if (i.Files.Count > 0) { <ul class="plain">@foreach (var f in i.Files) { <li>@f.Name (@RecordsUi.Size(f.Size), SHA-256 <code>@f.Sha256[..16]</code>…)</li> }</ul> }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
+            <section class="panel stack" aria-labelledby="sig-heading">
+                <h2 id="sig-heading">Signatures</h2>
+                @if (contents.Signatures.Count == 0) { <p class="muted">No signatures were recorded for these records.</p> }
+                else { <ul class="plain">@foreach (var s in contents.Signatures) { <li>@s.ObjectKey revision @s.Revision: @s.Signer, @s.Meaning, @UiText.Utc(s.SignedAt)</li> }</ul> }
+            </section>
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Number { get; set; } = "";
+    private ArchiveView? view;
+    private ArchiveContents? contents;
+    private bool notFound, busy;
+    private string? error;
+
+    private string PageTitle => $"Archive {Number}" + (view is null ? "" : ": " + view.Title);
+    private string PageBanner => view?.Banner ?? UiText.Unclassified;
+    private IReadOnlyList<Crumb> Crumbs => [new("Records", "records"), new("Archives", "records/archives"), new(Number)];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var o = await Archives.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !o.IsOk;
+        view = o.Value;
+    }
+
+    private async Task Open()
+    {
+        busy = true; error = null;
+        var o = await Archives.OpenAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        contents = o.Value;
+    }
+}

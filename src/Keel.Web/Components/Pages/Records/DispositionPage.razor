@@ -1,0 +1,116 @@
+@page "/records/disposition"
+@inject CurrentUser Users
+@inject DispositionService Disposition
+@inject NavigationManager Nav
+
+<PageFrame Banner="@PageBanner" Title="Disposition" Crumbs="@Crumbs">
+    <RecordsNav Current="disposition" />
+    <p class="muted">Records whose retention period has run, that you are allowed to see and that no legal hold protects. Choose the ones to dispose of; the request is signed by approvers before anything happens.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+    <form class="toolbar" role="search" @onsubmit="() => Load(0)">
+        <input aria-label="Search due records" placeholder="Number or name" class="grow" @bind="text" />
+        <select aria-label="Kind" @bind="kind" @bind:after="() => Load(0)">
+            <option value="">Documents and parts</option>
+            <option value="@RecordKinds.Document">Documents</option>
+            <option value="@RecordKinds.Part">Parts</option>
+        </select>
+        <button type="submit">Search</button>
+    </form>
+
+    @if (queue is not null)
+    {
+        <p class="muted">@queue.Total record@(queue.Total == 1 ? "" : "s") due@(queue.HeldReadable > 0 ? $"; {queue.HeldReadable} more you can see {(queue.HeldReadable == 1 ? "is" : "are")} kept by a legal hold" : "")</p>
+        <DataTable TItem="EligibleRow" TableId="eligible" Items="queue.Items" Columns="Columns" Caption="Records due for disposition">
+            <Empty><EmptyState Title="Nothing is due" IconName="check">No record you can see is past its retention period. If the schedule changed, re-classify the records on the retention schedules page.</EmptyState></Empty>
+        </DataTable>
+        <Pager Total="queue.Total" Offset="offset" PageSize="PageSize" OnPage="Load" />
+        @if (queue.Items.Count > 0 && canManage)
+        {
+            <fieldset class="stack">
+                <legend>Request disposal</legend>
+                <p class="muted small">Tick the records, then create a request. A request covers records of one program.</p>
+                <ul class="plain" aria-label="Choose records">
+                    @foreach (var r in queue.Items)
+                    {
+                        var key = $"{r.Kind}:{r.Number}";
+                        <li><label class="inline"><input type="checkbox" checked="@selected.Contains(key)" @onchange="e => Toggle(key, (bool)e.Value!)" /> @r.Number (@RecordKinds.Label(r.Kind).ToLowerInvariant(), @DispositionActions.Label(r.Disposition).ToLowerInvariant())</label></li>
+                    }
+                </ul>
+                <label>Note for the approvers (optional) <InputText @bind-Value="note" maxlength="1000" /></label>
+                <div class="toolbar"><button type="button" disabled="@(busy || selected.Count == 0)" @onclick="CreateRequest">Create request for @selected.Count record@(selected.Count == 1 ? "" : "s")</button></div>
+            </fieldset>
+        }
+    }
+    else if (error is null) { <Skeleton Lines="4" Label="Loading the queue" /> }
+
+    <section class="panel stack" aria-labelledby="requests-heading">
+        <h2 id="requests-heading">Requests</h2>
+        @if (requests is null || requests.Count == 0) { <p class="muted">There are no requests you can see.</p> }
+        else
+        {
+            <DataTable TItem="DispositionSummary" TableId="requests" Items="requests" Columns="RequestColumns" Caption="Disposition requests" />
+        }
+        <p class="small"><a href="records/certificates">Certificates of destruction</a></p>
+    </section>
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Records", "records"), new("Disposition")];
+    private EligiblePage? queue;
+    private IReadOnlyList<DispositionSummary>? requests;
+    private readonly HashSet<string> selected = [];
+    private string text = "", kind = "", note = "";
+    private string? error;
+    private int offset;
+    private bool busy, canManage;
+
+    private string PageBanner => BannerMerge.Union([queue?.PageBanner, .. (requests ?? []).Select(r => r.Banner)]);
+
+    private static readonly IReadOnlyList<DataColumn<EligibleRow>> Columns =
+    [
+        new() { Key = "number", Title = "Record", Required = true, Cell = r => @<a href="@RecordKinds.Path(r.Kind, r.Number)">@r.Number</a> },
+        new() { Key = "name", Title = "Name", Text = r => r.Name },
+        new() { Key = "class", Title = "Class", Text = r => r.ClassCode },
+        new() { Key = "due", Title = "Due since", Text = r => r.EligibleOn.ToString("yyyy-MM-dd") },
+        new() { Key = "action", Title = "Then", Text = r => DispositionActions.Label(r.Disposition) },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = r => @<MarkingChip Text="@r.Banner" /> },
+    ];
+
+    private static readonly IReadOnlyList<DataColumn<DispositionSummary>> RequestColumns =
+    [
+        new() { Key = "number", Title = "Request", Required = true, Cell = d => @<a href="@RecordsUi.DispositionHref(d.Number)">@d.Number</a> },
+        new() { Key = "status", Title = "Status", Cell = d => @<span class="badge @RecordsUi.StatusClass(d.Status)">@DispositionStatuses.Label(d.Status)</span> },
+        new() { Key = "items", Title = "Records", Text = d => d.Items.ToString() },
+        new() { Key = "created", Title = "Created", Text = d => UiText.Utc(d.CreatedAt) + " by " + d.CreatedBy },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = d => @<MarkingChip Text="@d.Banner" /> },
+    ];
+
+    protected override async Task OnInitializedAsync() => await Load(0);
+
+    private async Task Load(int newOffset)
+    {
+        offset = newOffset; error = null;
+        var me = await Users.GetAsync();
+        canManage = RecordsAccess.CanManage(me);
+        var corr = CurrentUser.NewCorrelationId();
+        var q = await Disposition.EligibleAsync(me, new EligibleQuery(string.IsNullOrEmpty(kind) ? null : kind, null, text, PageSize, offset), corr);
+        if (!q.IsOk) { error = RecordsUi.Message(q); return; }
+        queue = q.Value;
+        var l = await Disposition.ListAsync(me, null, corr);
+        requests = l.IsOk ? l.Value : [];
+    }
+
+    private void Toggle(string key, bool on) { if (on) selected.Add(key); else selected.Remove(key); }
+
+    private async Task CreateRequest()
+    {
+        busy = true; error = null;
+        var items = selected.Select(k => k.Split(':', 2)).Select(p => new ObjectRef(p[0], p[1])).ToList();
+        var o = await Disposition.CreateAsync(await Users.GetAsync(), new CreateDispositionCommand(items, string.IsNullOrWhiteSpace(note) ? null : note), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        Nav.NavigateTo(RecordsUi.DispositionHref(o.Value!.Number));
+    }
+}

@@ -1,0 +1,123 @@
+@page "/records/disposition/{Number}"
+@inject CurrentUser Users
+@inject DispositionService Disposition
+
+<PageFrame Banner="@PageBanner" Title="@PageTitle" Crumbs="@Crumbs">
+    <RecordsNav Current="disposition" />
+    @if (notFound)
+    {
+        <p class="error" role="alert">Request @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (view is not null)
+    {
+        <header class="title-row"><MarkingChip Text="@view.Banner" /></header>
+        <p>
+            <span class="badge @RecordsUi.StatusClass(view.Status)">@DispositionStatuses.Label(view.Status)</span>
+            Created @UiText.Utc(view.CreatedAt) by @view.CreatedBy@(view.ExecutedAt is { } e ? $"; carried out {UiText.Utc(e)} by {view.ExecutedBy}" : "")
+        </p>
+        @if (!string.IsNullOrWhiteSpace(view.Note)) { <p class="muted">@view.Note</p> }
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (message is not null) { <p class="notice" role="status">@message</p> }
+
+        <section class="panel stack" aria-labelledby="items-heading">
+            <h2 id="items-heading">Records in this request</h2>
+            <DataTable TItem="DispositionItemView" TableId="items" Items="view.Items" Columns="Columns" Caption="Records in the request" />
+        </section>
+
+        @if (view.CertificateNumber is not null)
+        {
+            <p>Certificate of destruction: <a href="@RecordsUi.CertificateHref(view.CertificateNumber)">@view.CertificateNumber</a></p>
+        }
+
+        @if (view.Status == DispositionStatuses.Approved)
+        {
+            <section class="panel stack" aria-labelledby="exec-heading">
+                <h2 id="exec-heading">Carry out</h2>
+                <p>The request is approved. Carrying it out checks every record again: anything now under a legal hold, no longer due, or still used by another record is left alone and reported. Records that are disposed of keep their entry and history, lose their stored files to the vault sweep, and are listed on a signed certificate.</p>
+                @if (canExecute)
+                {
+                    <div class="toolbar">
+                        <button type="button" class="danger" disabled="@busy" @onclick="AskExecute">Carry out the disposal</button>
+                        <button type="button" class="secondary" disabled="@busy" @onclick="AskCancel">Cancel the request</button>
+                    </div>
+                }
+                else { <p class="muted">Only a records manager can carry out a disposal.</p> }
+            </section>
+            <ConfirmDialog @bind-Open="confirmExecute" Title="Carry out this disposal?" Destructive="true" ConfirmText="Carry out" OnConfirm="_ => Execute()">
+                <p>This cannot be undone. The stored files of the disposed records are released to the vault sweep, and a signed certificate is issued.</p>
+            </ConfirmDialog>
+            <ConfirmDialog @bind-Open="confirmCancel" Title="Cancel this request?" Destructive="true" ConfirmText="Cancel request" OnConfirm="_ => CancelRequest()">
+                <p>Nothing is disposed of. The records return to the queue.</p>
+            </ConfirmDialog>
+        }
+        else if (view.Status == DispositionStatuses.Draft && canManage)
+        {
+            <div class="toolbar"><button type="button" class="secondary" disabled="@busy" @onclick="AskCancel">Cancel the request</button></div>
+            <ConfirmDialog @bind-Open="confirmCancel" Title="Cancel this request?" Destructive="true" ConfirmText="Cancel request" OnConfirm="_ => CancelRequest()">
+                <p>Nothing is disposed of. The records return to the queue.</p>
+            </ConfirmDialog>
+        }
+
+        @if (view.Status is DispositionStatuses.Draft or DispositionStatuses.InReview or DispositionStatuses.Approved or DispositionStatuses.Rejected or DispositionStatuses.Executed)
+        {
+            <SourcingReviewPanel ObjectType="disposition" Key="@view.Number" Noun="request" CanSubmit="@(canManage && view.Status == DispositionStatuses.Draft)"
+                                 SubmitHint="Approvers sign the list of records and their classes. You cannot approve your own request." OnChanged="Load" />
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Number { get; set; } = "";
+    private DispositionView? view;
+    private bool notFound, busy, canManage, canExecute, confirmExecute, confirmCancel;
+    private string? error, message;
+
+    private string PageTitle => $"Disposition request {Number}";
+    private string PageBanner => view?.Banner ?? UiText.Unclassified;
+    private IReadOnlyList<Crumb> Crumbs => [new("Records", "records"), new("Disposition", "records/disposition"), new(Number)];
+
+    private static readonly IReadOnlyList<DataColumn<DispositionItemView>> Columns =
+    [
+        new() { Key = "object", Title = "Record", Required = true, Cell = i => @<a href="@RecordKinds.Path(i.Kind, i.Number)">@i.Number</a> },
+        new() { Key = "kind", Title = "Kind", Text = i => RecordKinds.Label(i.Kind) },
+        new() { Key = "class", Title = "Class", Text = i => i.ClassCode },
+        new() { Key = "action", Title = "Action", Text = i => DispositionActions.Label(i.Action) },
+        new() { Key = "due", Title = "Due since", Text = i => i.EligibleOn.ToString("yyyy-MM-dd") },
+        new() { Key = "result", Title = "Result", Text = i => RecordsUi.ResultText(i.Result, i.ResultCode) },
+    ];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var me = await Users.GetAsync();
+        canManage = RecordsAccess.CanManage(me);
+        canExecute = RecordsAccess.CanExecute(me);
+        var o = await Disposition.GetAsync(me, Number, CurrentUser.NewCorrelationId());
+        notFound = !o.IsOk;
+        view = o.Value;
+    }
+
+    private void AskExecute() => confirmExecute = true;
+    private void AskCancel() => confirmCancel = true;
+
+    private async Task Execute()
+    {
+        busy = true; error = message = null;
+        var o = await Disposition.ExecuteAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        var r = o.Value!;
+        message = $"Done: {r.Destroyed} destroyed, {r.Transferred} moved to the archive, {r.Retained} kept, {r.Skipped} left alone.";
+        await Load();
+    }
+
+    private async Task CancelRequest()
+    {
+        busy = true; error = null;
+        var o = await Disposition.CancelAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        await Load();
+    }
+}

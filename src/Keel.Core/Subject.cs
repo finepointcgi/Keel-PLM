@@ -44,6 +44,11 @@ public static class Roles
     /// pages and API only, scoped to the one supplier the user is linked to, and no internal object can be read with it (the access policy refuses it).
     /// </summary>
     public const string Supplier = "plm-supplier";
+    /// <summary>
+    /// Records management (8.6): may manage retention schedules, legal holds, disposition and archives. Deliberately not in <see cref="All"/> and not granted any
+    /// <c>PlmAction</c>: it opens the records pages and API only; what the holder may SEE of the objects is still decided by the viewer role and the markings.
+    /// </summary>
+    public const string RecordsManager = "plm-records";
 
     /// <summary>The roles of people. <see cref="Integration"/> is a service role and is not part of this set.</summary>
     public static readonly ImmutableArray<string> All = [Viewer, Author, Approver, Admin, Auditor];

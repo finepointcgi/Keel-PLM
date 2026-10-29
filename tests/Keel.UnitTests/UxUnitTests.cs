@@ -194,7 +194,7 @@ public sealed class UxLogicTests
         Assert.DoesNotContain(viewer.SelectMany(g => g.Items), i => i.Href is "admin" or "audit" or "workflows");
 
         var all = NavModel.For([Roles.Admin, Roles.Auditor]);
-        Assert.Equal(["Work", "Product data", "Change", "Sourcing", "Configuration", "Administration", "Tools"], all.Select(g => g.Title));
+        Assert.Equal(["Work", "Product data", "Change", "Sourcing", "Records", "Configuration", "Administration", "Tools"], all.Select(g => g.Title));
         Assert.Contains(all.SelectMany(g => g.Items), i => i.Href == "audit");
         Assert.Equal(all.SelectMany(g => g.Items).Count(), all.SelectMany(g => g.Items).Select(i => i.Href).Distinct().Count()); // no link twice
     }

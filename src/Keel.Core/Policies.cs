@@ -10,4 +10,6 @@ public static class Policies
     public const string Integration = "plm.integration";
     /// <summary>The supplier portal (users with the plm-supplier role).</summary>
     public const string Supplier = "plm.supplier";
+    /// <summary>Records management (8.6): the records manager, administrators and auditors (who only read).</summary>
+    public const string Records = "plm.records";
 }
