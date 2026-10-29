@@ -104,6 +104,8 @@ public static class RequirementIo
     {
         var inQuotes = false;
         int commas = 0, semis = 0, tabs = 0;
+        // The header row decides; comment lines before it (the export's marking banner) do not.
+        while (content.StartsWith('#')) { var nl = content.IndexOf('\n', StringComparison.Ordinal); if (nl < 0) break; content = content[(nl + 1)..]; }
         foreach (var c in content)
         {
             if (c == '"') inQuotes = !inQuotes;

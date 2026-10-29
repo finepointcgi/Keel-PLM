@@ -36,8 +36,7 @@ internal static class ImportPlanner
             if (r.SourceId is not null)
             {
                 if (existing.TryGetValue(r.SourceId, out ex)) { actions[i] = "update"; keys[i] = ex.Key; }
-                else if (RequirementRules.IsKey(r.SourceId)) { actions[i] = "error"; problems[i].Add($"Requirement {r.SourceId} does not exist."); }
-                else actions[i] = "create"; // a foreign id (another tool's identifier): a new requirement
+                else actions[i] = "create"; // an id that is not one of this specification's readable requirements (another tool's identifier, or one the caller cannot read): a new requirement
             }
             else actions[i] = "create";
             if (actions[i] == "error") { merged[i] = ("", "", "", "", "", "", ""); continue; }
