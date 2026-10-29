@@ -64,7 +64,7 @@
         "tags": [
           "Integration pull API"
         ],
-        "summary": "Released EBOM snapshot of an assembly revision (children resolved at the requested configuration spec).",
+        "summary": "Released EBOM snapshot of an assembly revision (children resolved at the requested configuration spec). With variant, only the lines that variant uses; otherwise every line with its option condition.",
         "parameters": [
           {
             "name": "number",
@@ -105,6 +105,13 @@
                 "string"
               ],
               "format": "int32"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -811,6 +818,12 @@
           },
           "recipientProfile": {
             "type": "string"
+          },
+          "variant": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       }

@@ -80,7 +80,7 @@ public sealed record TdpBaseline(
 public interface ITdpStructureSource
 {
     /// <summary>The structure of the part revision with every child at its latest Released revision. Lines the subject cannot read are counted in <see cref="TdpStructure.RedactedCount"/>.</summary>
-    Task<Outcome<TdpStructure>> GetPartStructureAsync(Subject subject, string number, string? revision, string? correlationId, CancellationToken ct);
+    Task<Outcome<TdpStructure>> GetPartStructureAsync(Subject subject, string number, string? revision, string? correlationId, CancellationToken ct, Keel.Core.Variants.VariantSelection? variant = null);
 
     /// <summary>The frozen items of a baseline.</summary>
     Task<Outcome<TdpStructure>> GetBaselineStructureAsync(Subject subject, string baselineNumber, string? correlationId, CancellationToken ct);

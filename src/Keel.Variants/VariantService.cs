@@ -14,7 +14,7 @@ namespace Keel.Variants;
 /// product; a product the caller cannot read answers as missing. Every call writes an audit event in the transaction of its change, denials included. Writers of one
 /// product serialize on its model row. A released variant is frozen: a change to the model that would make one invalid is refused.
 /// </summary>
-public sealed partial class VariantService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IDomainEventSink? events = null)
+public sealed partial class VariantService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IDomainEventSink? events = null) : IVariantSelectionSource
 {
     /// <summary>Audit object type: variant actions are events of the product part, so the part's activity feed and timeline show them.</summary>
     public const string ObjectType = "part";
@@ -267,6 +267,12 @@ public sealed partial class VariantService(NpgsqlDataSource dataSource, IAuditLo
                 ? Step<ResolvedVariant>.Missing()
                 : Step<ResolvedVariant>.Done(ToResolved(product, model, v.Name, v.State, v.Selection), ("variant", v.Name), ("state", v.State)));
         }, ct);
+
+    async Task<Outcome<VariantSelection>> IVariantSelectionSource.ResolveAsync(Subject subject, string productNumber, string variantName, string? correlationId, CancellationToken ct)
+    {
+        var r = await ResolveAsync(subject, productNumber, variantName, correlationId, ct);
+        return r.IsOk ? Outcome<VariantSelection>.Ok(r.Value!.Selection) : new Outcome<VariantSelection>(r.Kind, default, r.Errors);
+    }
 
     /// <summary>An ad-hoc choice of options (not a named variant). It must pass the rules.</summary>
     public Task<Outcome<ResolvedVariant>> ResolveCustomAsync(Subject subject, string productNumber, IReadOnlyDictionary<string, string> selection, string? correlationId, CancellationToken ct = default) =>

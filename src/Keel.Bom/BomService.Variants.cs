@@ -57,6 +57,30 @@ public sealed partial class BomService
         }, ct);
 
     /// <summary>
+    /// What differs between two variants of one product (both resolved from the same revision, through the caller's read filter): lines used by one and not the other,
+    /// and changed quantities. Restricted lines match on the same hidden part under the same parent, like every comparison.
+    /// </summary>
+    public async Task<Outcome<DeepComparison>> CompareVariantsAsync(
+        Subject subject, string number, VariantSelection a, VariantSelection b, BomConfigSpec spec, int? depth, string? correlationId, CancellationToken ct = default)
+    {
+        var errors = new List<string>();
+        if (depth is { } d && (d < 1 || d > BomLimits.MaxDepth)) errors.Add($"Depth must be between 1 and {BomLimits.MaxDepth}.");
+        if (spec is not (BomConfigSpec.Latest or BomConfigSpec.LatestReleased)) errors.Add("Variants are compared at Latest or LatestReleased.");
+        if (errors.Count > 0) return Outcome<DeepComparison>.Invalid(errors);
+        return await WithRootAsync<DeepComparison>(subject, new BomQuery(number), Keel.Security.PlmAction.Read, "bom.compare_variants", correlationId, async (conn, tx, root0) =>
+        {
+            var revision = await CurrentRootRevisionAsync(conn, tx, root0.MasterId, spec, ct);
+            var root = revision is null ? root0 : await LoadRootAsync(conn, tx, root0.Number, revision, null, ct) ?? root0;
+            if (!Keel.Security.AccessPolicy.Evaluate(subject, root.Markings, Keel.Security.PlmAction.Read).Permitted) return (Outcome<DeepComparison>.NotFound(), []);
+            var left = await ExplodeCoreAsync(conn, tx, subject, root, spec, depth, Seed.ForRoot(root), null, ct, a);
+            var right = await ExplodeCoreAsync(conn, tx, subject, root, spec, depth, Seed.ForRoot(root), null, ct, b);
+            if (left is null || right is null) return (TooLarge<DeepComparison>(), []);
+            var result = Compared($"{root0.Number}: variant {a.Label} against variant {b.Label}", $"variant {a.Label}", $"variant {b.Label}", left, right, [root.Markings], out var details);
+            return (result, [("part", root0.Number), ("left", a.Label), ("right", b.Label), .. details]);
+        }, ct);
+    }
+
+    /// <summary>
     /// The effective condition of every line of an explosion that was resolved without a variant: its own condition together with those of its ancestors (a line is
     /// used only when every assembly above it is). Lines of an unreadable assembly never appear in an explosion, so nothing hidden is needed here.
     /// </summary>

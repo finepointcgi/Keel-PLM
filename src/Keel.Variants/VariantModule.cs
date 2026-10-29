@@ -1,5 +1,6 @@
 using Keel.Audit;
 using Keel.Core;
+using Keel.Core.Variants;
 using Keel.Security;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -45,6 +46,7 @@ public static class VariantModule
     public static IServiceCollection AddKeelVariants(this IServiceCollection services)
     {
         services.AddSingleton(sp => new VariantService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<IDomainEventSink>()));
+        services.AddSingleton<IVariantSelectionSource>(sp => sp.GetRequiredService<VariantService>());
         services.AddSingleton<ITimelineSource, VariantTimelineSource>();
         return services;
     }

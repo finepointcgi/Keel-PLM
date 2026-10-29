@@ -54,7 +54,7 @@ public static class TdpObjectTypes
     public const string Baseline = "baseline";
 }
 
-public sealed record TdpRequest(string ObjectType, string Number, string? Revision, string RecipientProfile);
+public sealed record TdpRequest(string ObjectType, string Number, string? Revision, string RecipientProfile, Keel.Core.Variants.VariantSelection? Variant = null);
 
 /// <summary>An item of the package. <see cref="Path"/> is its place in the archive; document files are marked downloads.</summary>
 public sealed record TdpElement(

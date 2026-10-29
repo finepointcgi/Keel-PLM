@@ -12,3 +12,6 @@ git --no-pager diff --stat -- docs/integration/cad-openapi.json || true
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.SourcingApiTests.The_published_sourcing_openapi_document_equals_the_committed_one_and_lists_no_internal_surface"
 git --no-pager diff --stat -- docs/integration/openapi.json docs/sourcing/openapi.json || true
+# The options and variants API has its own document (docs/variants/openapi.json).
+KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
+  --filter-method "Keel.IntegrationTests.VariantsApiTests.The_published_variants_openapi_document_equals_the_committed_one_and_lists_nothing_else"
