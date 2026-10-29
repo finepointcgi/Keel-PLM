@@ -96,7 +96,7 @@ public sealed partial class DocumentService
         List<VersionRecord> records;
         Head head;
         Lifecycle lifecycle;
-        (string Revision, string State, int Iteration, string? CheckedOutBy, bool CheckedOut) latest;
+        (string Revision, string State, int Iteration, string? CheckedOutBy, bool CheckedOut, bool Mine) latest;
         bool modify, download, admin;
         await using (var conn = await dataSource.OpenConnectionAsync(ct))
         await using (var tx = await conn.BeginTransactionAsync(ct))
@@ -128,7 +128,7 @@ public sealed partial class DocumentService
                 cmd.Parameters.AddWithValue("m", head.MasterId);
                 await using var r = await cmd.ExecuteReaderAsync(ct);
                 await r.ReadAsync(ct);
-                latest = (r.GetString(0), r.GetString(1), r.GetInt32(2), r.IsDBNull(3) ? (r.IsDBNull(4) ? null : r.GetString(4)) : r.GetString(3), !r.IsDBNull(4));
+                latest = (r.GetString(0), r.GetString(1), r.GetInt32(2), r.IsDBNull(3) ? (r.IsDBNull(4) ? null : r.GetString(4)) : r.GetString(3), !r.IsDBNull(4), !r.IsDBNull(4) && r.GetString(4) == subject.Id);
             }
             modify = AccessPolicy.Evaluate(subject, head.Markings, PlmAction.Modify).Permitted;
             download = AccessPolicy.Evaluate(subject, head.Markings, PlmAction.Download).Permitted;
@@ -149,7 +149,7 @@ public sealed partial class DocumentService
                 v.CreatedAt, v.CreatedBy, v.Comment, v.FileId, v.FileName, v.SizeBytes, v.Sha256, v.Metrics, same));
         }
         return Outcome<ModelVersionHistory>.Ok(new ModelVersionHistory(number, await NameOfAsync(head.MasterId, ct), head.Markings.BannerText(), head.Markings, rows,
-            $"{latest.Revision}.{latest.Iteration}", latest.Revision, latest.State, lifecycle.IsLocked(latest.State), latest.CheckedOut, latest.CheckedOutBy, latest.Iteration,
+            $"{latest.Revision}.{latest.Iteration}", latest.Revision, latest.State, lifecycle.IsLocked(latest.State), latest.CheckedOut, latest.CheckedOutBy, latest.Mine, latest.Iteration,
             modify, download, admin, pending));
     }
 

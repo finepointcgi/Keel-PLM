@@ -38,6 +38,7 @@ public sealed record ModelVersionHistory(
     bool LatestRevisionLocked,
     bool CheckedOut,
     string? CheckedOutBy,
+    bool CheckedOutByMe,
     int LatestIteration,
     bool CanModify,
     bool CanDownload,

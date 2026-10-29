@@ -1,0 +1,173 @@
+@* One dialog for "Upload new version": pick the file, write the change note, and (for a released revision) agree to revise first. The server checks the document out,
+   replaces the primary file and checks it in again in ONE step, so a failure leaves nothing checked out. A modal like ConfirmDialog: role=dialog, focus trapped,
+   Escape cancels, focus returns to the control that opened it. *@
+@implements IAsyncDisposable
+@using Keel.Documents
+@using Keel.Documents.Vault
+@inject ShellJs Shell
+@inject CurrentUser Users
+@inject DocumentService Docs
+@inject VaultOptions Vault
+@inject ToastService Toasts
+
+@if (Open)
+{
+    <div class="dialog-backdrop center">
+        <div @ref="dialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="uv-title" aria-describedby="uv-body" tabindex="-1" data-upload-version-dialog @onkeydown="OnKey">
+            <div class="dialog-head"><h2 id="uv-title">Upload new version of @Number</h2></div>
+            <div class="dialog-body stack" id="uv-body">
+                @if (Blocker is not null)
+                {
+                    <p class="notice" role="status" data-testid="upload-blocker">@Blocker</p>
+                }
+                else
+                {
+                    <p class="muted">Current version: <strong>@History.CurrentLabel</strong>. The new file becomes the next version; earlier versions are kept and can be restored.</p>
+                    @if (History.LatestRevisionLocked)
+                    {
+                        <div class="callout" role="group" aria-labelledby="uv-revise-title">
+                            <p id="uv-revise-title"><strong>Revision @History.LatestRevision is @History.LatestRevisionState and locked.</strong> A locked revision cannot change. Revising it creates revision @NextRevision, which starts in work with the same files, and the new version goes into that revision.</p>
+                            <label class="check"><input type="checkbox" data-testid="upload-revise" @bind="revise" /> Create revision @NextRevision first</label>
+                        </div>
+                    }
+                    <label class="stack">
+                        <span>Model file (required)</span>
+                        <InputFile OnChange="Picked" disabled="@busy" aria-label="Model file" data-testid="upload-file" />
+                    </label>
+                    @if (picked is not null) { <p class="muted small" data-testid="upload-picked">@picked.Name · @DocumentUi.Size(picked.Size)</p> }
+                    <label class="stack">
+                        <span>Change note (required)</span>
+                        <textarea rows="3" maxlength="@DocumentService.MaxChangeNoteLength" data-testid="upload-note" aria-invalid="@(noteError is null ? null : "true")" aria-describedby="@(noteError is null ? null : "uv-note-error")"
+                                  @bind="note" @bind:event="oninput"></textarea>
+                    </label>
+                    @if (noteError is not null) { <p id="uv-note-error" class="error" role="alert">@noteError</p> }
+                }
+                @if (error is not null) { <p class="error" role="alert" data-testid="upload-error">@error</p> }
+                @if (busy) { <p class="muted" role="status">Uploading and checking in…</p> }
+            </div>
+            <div class="dialog-foot">
+                @if (error is not null && reloadNeeded)
+                {
+                    <button type="button" class="secondary" @onclick="ReloadAsync">Reload versions</button>
+                }
+                <button type="button" class="secondary" data-upload-cancel disabled="@busy" @onclick="CancelAsync">Cancel</button>
+                @if (Blocker is null)
+                {
+                    <button type="button" data-upload-ok disabled="@(busy || !CanSubmit)" @onclick="SubmitAsync">Upload version</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ElementReference dialog;
+    private IBrowserFile? picked;
+    private string note = "";
+    private string? noteError, error;
+    private bool revise, busy, trapped, reloadNeeded;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    [Parameter, EditorRequired] public required ModelVersionHistory History { get; set; }
+    /// <summary>Called after a version was created (or the person asked to reload): the page reloads.</summary>
+    [Parameter] public EventCallback OnDone { get; set; }
+
+    private string NextRevision => Keel.Core.RevisionScheme.Next(History.LatestRevision);
+
+    private bool Released => History.LatestRevisionState == "Released";
+
+    /// <summary>Why nothing can be uploaded right now, in plain words; null when the dialog can take a file.</summary>
+    private string? Blocker =>
+        !History.CanModify ? "You may read this document but not change it, so you cannot upload a new version."
+        : History.CheckedOut ? (History.CheckedOutByMe
+            ? "You have this document checked out. Check it in (or undo the check-out) from the Overview tab first; then upload the new version."
+            : $"This document is checked out by {History.CheckedOutBy}. Ask them to check it in, then upload the new version.")
+        : History.LatestRevisionLocked && !Released ? $"Revision {History.LatestRevision} is {History.LatestRevisionState} and locked, so it cannot take a new version."
+        : null;
+
+    private bool CanSubmit => picked is not null && note.Trim().Length > 0 && (!History.LatestRevisionLocked || revise);
+
+    protected override void OnParametersSet()
+    {
+        if (!Open) { picked = null; note = ""; noteError = null; error = null; revise = false; reloadNeeded = false; busy = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open && !trapped)
+        {
+            trapped = true;
+            await Shell.InvokeVoidAsync("trapFocus", dialog, "[data-upload-cancel]");
+        }
+        else if (!Open && trapped)
+        {
+            trapped = false;
+        }
+    }
+
+    private void Picked(InputFileChangeEventArgs e)
+    {
+        picked = e.File;
+        error = null;
+    }
+
+    private async Task CloseAsync()
+    {
+        Open = false;
+        await Shell.InvokeVoidAsync("releaseTrap", dialog, true);
+        trapped = false;
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    private Task CancelAsync() => busy ? Task.CompletedTask : CloseAsync();
+
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" ? CancelAsync() : Task.CompletedTask;
+
+    private async Task ReloadAsync()
+    {
+        await CloseAsync();
+        await OnDone.InvokeAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        error = null;
+        noteError = null;
+        if (note.Trim().Length == 0) { noteError = "Enter a change note to continue."; return; }
+        if (picked is null) { error = "Choose the model file to upload."; return; }
+        busy = true;
+        reloadNeeded = false;
+        try
+        {
+            // Streams from the browser over the circuit straight into the vault; nothing is accepted before the server has checked access and the lock.
+            await using var content = picked.OpenReadStream(Vault.MaxUploadBytes);
+            var outcome = await Docs.UploadNewVersionAsync(await Users.GetAsync(), Number, new FileUpload(picked.Name, picked.ContentType, content), note, revise,
+                History.LatestIteration, CurrentUser.NewCorrelationId());
+            if (outcome.IsOk)
+            {
+                Toasts.Success($"Version {outcome.Value!.Iteration.Label} uploaded.");
+                busy = false;
+                await CloseAsync();
+                await OnDone.InvokeAsync();
+                return;
+            }
+            error = UiText.Message(outcome);
+            reloadNeeded = outcome.Kind == Keel.Core.OutcomeKind.Conflict;
+        }
+        catch (IOException e)
+        {
+            error = "The file could not be read from your browser: " + e.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (trapped) await Shell.InvokeVoidAsync("releaseTrap", dialog, false);
+    }
+}

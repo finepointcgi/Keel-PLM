@@ -19,9 +19,6 @@ namespace Keel.Api.Endpoints;
 /// </summary>
 public static class ModelVersionEndpoints
 {
-    public const string ZipRoute = "/downloads/documents/{number}/versions.zip";
-    public static string ZipUrl(string number, IEnumerable<Guid> ids) => $"downloads/documents/{Uri.EscapeDataString(number)}/versions.zip?ids={string.Join(',', ids.Select(i => i.ToString("D")))}";
-
     public static void MapModelVersionEndpoints(this IEndpointRouteBuilder app)
     {
         var docs = app.MapGroup("/api/v1/documents").RequireAuthorization(Policies.AnyPlmRole);
@@ -44,7 +41,7 @@ public static class ModelVersionEndpoints
                 return (await svc.UploadNewVersionAsync(SubjectFactory.Require(ctx), number, file, note, revise, expected, CorrelationId.Get(ctx), ct)).ToHttp();
             }, ct));
 
-        app.MapGet(ZipRoute, Zip).RequireAuthorization(Policies.AnyPlmRole);
+        app.MapGet(DocumentUi.VersionsZipRoute, Zip).RequireAuthorization(Policies.AnyPlmRole);
 
         var viewer = app.MapGroup("/viewer").RequireAuthorization(Policies.AnyPlmRole);
         viewer.MapGet("/mesh/documents/{number}/files/{fileId:guid}", Mesh);
