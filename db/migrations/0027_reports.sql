@@ -46,7 +46,7 @@ CREATE TABLE rpt.definition (
     spec       jsonb       NOT NULL CHECK (jsonb_typeof(spec) = 'object' AND length(spec::text) <= 20000),
     owner_sub  text        NOT NULL,
     owner_name text        NOT NULL,
-    shared     boolean     NOT NULL DEFAULT false,
+    visible_to_all boolean     NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL
 );

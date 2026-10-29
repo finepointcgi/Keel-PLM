@@ -179,13 +179,13 @@ public sealed class ReportBuilderService(NpgsqlDataSource dataSource, IAuditLog 
                     if ((long)(await count.ExecuteScalarAsync(ct))! >= ReportsLimits.MaxDefinitionsPerUser) return Outcome<ReportDefinition>.Conflict($"You can keep {ReportsLimits.MaxDefinitionsPerUser} saved reports. Delete one first.");
                 }
                 id = Guid.CreateVersion7();
-                await using var ins = new NpgsqlCommand("INSERT INTO rpt.definition (id, name, dataset, spec, owner_sub, owner_name, shared, created_at, updated_at) VALUES (@id, @n, @d, @s::jsonb, @o, @on, @sh, @at, @at)", conn, tx);
+                await using var ins = new NpgsqlCommand("INSERT INTO rpt.definition (id, name, dataset, spec, owner_sub, owner_name, visible_to_all, created_at, updated_at) VALUES (@id, @n, @d, @s::jsonb, @o, @on, @sh, @at, @at)", conn, tx);
                 Bind(ins, id.Value, name, datasetId, specJson, subject, shared, now);
                 await ins.ExecuteNonQueryAsync(ct);
             }
             else
             {
-                await using var upd = new NpgsqlCommand("UPDATE rpt.definition SET name = @n, dataset = @d, spec = @s::jsonb, shared = @sh, updated_at = @at WHERE id = @id AND owner_sub = @o", conn, tx);
+                await using var upd = new NpgsqlCommand("UPDATE rpt.definition SET name = @n, dataset = @d, spec = @s::jsonb, visible_to_all = @sh, updated_at = @at WHERE id = @id AND owner_sub = @o", conn, tx);
                 Bind(upd, id.Value, name, datasetId, specJson, subject, shared, now);
                 if (await upd.ExecuteNonQueryAsync(ct) == 0) return Outcome<ReportDefinition>.NotFound();
             }
@@ -206,7 +206,7 @@ public sealed class ReportBuilderService(NpgsqlDataSource dataSource, IAuditLog 
     {
         var list = new List<ReportDefinition>();
         await using var conn = await dataSource.OpenConnectionAsync(ct);
-        await using var cmd = new NpgsqlCommand("SELECT id, name, dataset, spec::text, owner_name, shared, owner_sub, updated_at FROM rpt.definition WHERE owner_sub = @o OR shared ORDER BY lower(name) LIMIT 300", conn);
+        await using var cmd = new NpgsqlCommand("SELECT id, name, dataset, spec::text, owner_name, visible_to_all, owner_sub, updated_at FROM rpt.definition WHERE owner_sub = @o OR visible_to_all ORDER BY lower(name) LIMIT 300", conn);
         cmd.Parameters.AddWithValue("o", subject.Id);
         await using var r = await cmd.ExecuteReaderAsync(ct);
         while (await r.ReadAsync(ct))
