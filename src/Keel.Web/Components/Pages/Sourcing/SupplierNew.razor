@@ -1,0 +1,61 @@
+@page "/suppliers/new"
+@inject CurrentUser Users
+@inject SupplierService Suppliers
+@inject NavigationManager Nav
+
+@* A blank form shows no controlled data; the markings being entered appear on the created supplier. *@
+<PageFrame Banner="@UiText.Unclassified" Title="New supplier" Crumbs="@Crumbs">
+    <EditForm Model="this" OnSubmit="Create" FormName="new-supplier" class="stack">
+        <fieldset class="grid-form">
+            <legend>Supplier</legend>
+            <label class="wide">Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+            <label>Country (three letters, for example USA) * <InputText @bind-Value="country" maxlength="3" required /></label>
+            <label>CAGE code <InputText @bind-Value="cage" maxlength="5" /></label>
+            <label>Company identifier (nine digits) <InputText @bind-Value="duns" maxlength="9" /></label>
+            <fieldset class="wide">
+                <legend>Roles *</legend>
+                <label class="inline"><input type="checkbox" @bind="vendor" /> Vendor (we buy from them)</label>
+                <label class="inline"><input type="checkbox" @bind="manufacturer" /> Manufacturer (they make parts)</label>
+            </fieldset>
+            <label class="inline wide"><input type="checkbox" @bind="isForeign" /> Foreign supplier (foreign ownership, control or foreign-person staff with access)</label>
+            <p class="muted small wide">A foreign supplier is never selected for ITAR-marked parts and never receives ITAR-marked data. A supplier outside the USA is always foreign.</p>
+        </fieldset>
+        <fieldset class="grid-form">
+            <legend>Security markings</legend>
+            <p class="muted wide small">The markings of the supplier record decide who can see it. The records of suppliers with no restrictions are marked as public with no export jurisdiction.</p>
+            <MarkingsFields Value="markings" />
+        </fieldset>
+        @if (errors is not null)
+        {
+            <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+        }
+        <div class="toolbar"><button type="submit" disabled="@busy">Create supplier</button> <a class="button secondary" href="suppliers">Cancel</a></div>
+    </EditForm>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Suppliers", "suppliers"), new("New supplier")];
+    private string name = "", country = "USA", cage = "", duns = "";
+    private bool vendor = true, manufacturer, isForeign, busy;
+    private IReadOnlyList<string>? errors;
+    private readonly MarkingsInput markings = new()
+    {
+        ExportJurisdiction = ExportJurisdiction.None, Eccn = "", UsmlCategory = "", CuiCategories = "", DistributionStatement = DistributionStatement.A,
+        ControllingOffice = "", DistributionReason = "", Program = "", OwningOrg = "ENG", ExportAuthorizations = "",
+    };
+
+    private async Task Create()
+    {
+        errors = null;
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        var roles = new List<string>();
+        if (vendor) roles.Add(SupplierRoles.Vendor);
+        if (manufacturer) roles.Add(SupplierRoles.Manufacturer);
+        busy = true;
+        var outcome = await Suppliers.CreateAsync(await Users.GetAsync(), new CreateSupplierCommand(name, country, roles, isForeign || country.Trim().ToUpperInvariant() != "USA", m.Value, cage, duns), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { errors = outcome.Kind == OutcomeKind.Forbidden ? outcome.Errors.Select(UiText.Reason).ToList() : outcome.Errors; return; }
+        Nav.NavigateTo(SourcingUi.SupplierHref(outcome.Value!.Summary.Number));
+    }
+}

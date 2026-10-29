@@ -1,0 +1,79 @@
+@page "/sourcing/coverage"
+@inject CurrentUser Users
+@inject SourcingCoverageService Coverage
+
+<PageFrame Banner="@(report?.Banner ?? UiText.Unclassified)" Title="Sourcing coverage" Crumbs="@Crumbs">
+    <p class="muted">Which purchased lines of a bill of materials have no approved source. Lines you may not read are left out and not counted.</p>
+    <form class="toolbar" role="search" @onsubmit="Run">
+        <label>
+            Bill of materials
+            <select @bind="mode">
+                <option value="ebom">Engineering BOM (part number)</option>
+                <option value="mbom">Manufacturing BOM (MBOM number)</option>
+            </select>
+        </label>
+        <label class="grow">Number <input @bind="number" placeholder="@(mode == "ebom" ? "P-000001" : "MB-000001")" /></label>
+        <button type="submit">Check coverage</button>
+    </form>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (report is not null)
+    {
+        <section class="panel" aria-labelledby="coverage-summary">
+            <h2 id="coverage-summary">@report.Number · @report.Name</h2>
+            <ul class="plain" aria-label="Summary">
+                <li><span class="badge state-approved">@report.Covered</span> purchased line@(report.Covered == 1 ? "" : "s") with an approved source</li>
+                <li><span class="badge state-underreview">@report.Conditional</span> with a conditional source only</li>
+                <li><span class="badge state-obsolete">@report.NotCovered</span> without an approved source</li>
+                <li class="muted">@report.NotRequired line@(report.NotRequired == 1 ? "" : "s") not purchased (made in house, consumed, or assemblies)</li>
+            </ul>
+            @if (report.Required == 0) { <p class="muted">No purchased line was found.</p> }
+            else if (report.Complete) { <p role="status">Every purchased line has an approved source.</p> }
+        </section>
+        <div class="table-wrap">
+            <table class="data">
+                <caption class="visually-hidden">Lines and their sourcing</caption>
+                <thead><tr><th scope="col">Find</th><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Quantity</th><th scope="col">Supply</th><th scope="col">Sourcing</th></tr></thead>
+                <tbody>
+                    @foreach (var l in report.Lines)
+                    {
+                        <tr>
+                            <td>@l.Path</td>
+                            <th scope="row"><a href="@SourcingUi.PartHref(l.Number)">@l.Number</a></th>
+                            <td>@l.Name</td>
+                            <td>@l.Quantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) @l.Unit</td>
+                            <td>@(l.SupplyType ?? (l.Required ? "Buy" : "Make or assembly"))</td>
+                            <td>
+                                @if (l.Required) { <span class="badge @SourcingUi.BucketClass(l.Bucket)">@CoverageBuckets.Label(l.Bucket)</span> }
+                                else { <span class="muted">Not purchased</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</PageFrame>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mode")] public string? ModeParam { get; set; }
+    [SupplyParameterFromQuery(Name = "number")] public string? NumberParam { get; set; }
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Suppliers", "suppliers"), new("Sourcing coverage")];
+    private string mode = "ebom", number = "";
+    private string? error;
+    private CoverageReport? report;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NumberParam)) return;
+        (mode, number) = (ModeParam is "mbom" ? "mbom" : "ebom", NumberParam);
+        await Run();
+    }
+
+    private async Task Run()
+    {
+        error = null;
+        var outcome = await Coverage.ReportAsync(await Users.GetAsync(), mode, number, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { error = UiText.Message(outcome); report = null; return; }
+        report = outcome.Value;
+    }
+}

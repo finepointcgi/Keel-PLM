@@ -39,6 +39,11 @@ public static class Roles
     /// API and read access under the account's own markings, and no access to the interactive API or the UI.
     /// </summary>
     public const string Integration = "plm-integration";
+    /// <summary>
+    /// An external supplier's user (8.2 supplier portal). Deliberately not in <see cref="All"/> and not granted any <c>PlmAction</c>: the role opens the portal
+    /// pages and API only, scoped to the one supplier the user is linked to, and no internal object can be read with it (the access policy refuses it).
+    /// </summary>
+    public const string Supplier = "plm-supplier";
 
     /// <summary>The roles of people. <see cref="Integration"/> is a service role and is not part of this set.</summary>
     public static readonly ImmutableArray<string> All = [Viewer, Author, Approver, Admin, Auditor];

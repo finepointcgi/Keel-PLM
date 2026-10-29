@@ -32,6 +32,10 @@
       {
         "name": "plm-integration",
         "description": "Service accounts of connected systems (ERP reconciliation): the integration pull API and read access under the account's own markings. Grants nothing in the UI or the interactive API."
+      },
+      {
+        "name": "plm-supplier",
+        "description": "An external supplier's user (supplier portal): sees only the requests addressed to the one supplier an administrator linked the user to. Grants no access to any internal object."
       }
     ]
   },
@@ -600,6 +604,72 @@
         "plm-integration"
       ],
       "id": "f5e2c581-d932-5984-ad94-830bc84bd39c"
+    },
+    {
+      "username": "sup-alpha",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alpha",
+      "lastName": "Supplier",
+      "email": "sup-alpha@supplier.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "ALPHA"
+        ],
+        "programs": [],
+        "export_authorizations": [],
+        "cui_categories": []
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-sup-alpha",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-supplier"
+      ],
+      "id": "3c0f2b9e-6a4d-5d7e-9a10-7e1a5b0c8d01"
+    },
+    {
+      "username": "sup-bravo",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Bravo",
+      "lastName": "Supplier",
+      "email": "sup-bravo@supplier.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "BRAVO"
+        ],
+        "programs": [],
+        "export_authorizations": [],
+        "cui_categories": []
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-sup-bravo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-supplier"
+      ],
+      "id": "3c0f2b9e-6a4d-5d7e-9a10-7e1a5b0c8d02"
     }
   ],
   "components": {

@@ -45,6 +45,9 @@ public static class NotificationKinds
     public const string WatchedEstablished = NotificationKindCodes.WatchedEstablished;
     public const string CommentAdded = NotificationKindCodes.CommentAdded;
     public const string CommentMention = NotificationKindCodes.CommentMention;
+    public const string SupplierCertExpiring = NotificationKindCodes.SupplierCertExpiring;
+    public const string SupplierCertExpired = NotificationKindCodes.SupplierCertExpired;
+    public const string SupplierStatusChanged = NotificationKindCodes.SupplierStatusChanged;
 
     private const string TasksLocked = "A task or review that waits for you cannot be turned off: it would be missed.";
     private const string MentionLocked = "Someone asked for you by name: this cannot be turned off.";
@@ -77,6 +80,12 @@ public static class NotificationKinds
             "Approved (by {actor})", true, null, false, true, 40),
         new(WatchedEstablished, NotificationGroups.Watching, "Baseline or manufacturing BOM established", "A baseline was established or a manufacturing BOM released for something you watch.",
             "Established or released (by {actor})", true, null, false, true, 40),
+        new(SupplierCertExpired, NotificationGroups.Watching, "Supplier certification expired", "A certification of a supplier you watch has expired.",
+            "A certification has expired", true, null, false, true, 45),
+        new(SupplierCertExpiring, NotificationGroups.Watching, "Supplier certification expiring", "A certification of a supplier you watch expires soon.",
+            "A certification expires soon", true, null, false, false, 35),
+        new(SupplierStatusChanged, NotificationGroups.Watching, "Supplier approval status changed", "The approval status of a supplier you watch changed.",
+            "The approval status changed (by {actor})", true, null, false, true, 42),
         new(WatchedState, NotificationGroups.Watching, "Watched object changed state", "An object you watch moved to another lifecycle state.",
             "Changed state (by {actor})", true, null, true, false, 30),
         new(WatchedChanged, NotificationGroups.Watching, "Watched object changed", "A new version of an object you watch was checked in.",

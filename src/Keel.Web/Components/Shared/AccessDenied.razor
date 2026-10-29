@@ -23,6 +23,8 @@
     {
         var user = (await AuthState!).User;
         signedIn = SessionRevalidatingStateProvider.IsValid(user, DateTimeOffset.UtcNow) && SubjectClaims.FromPrincipal(user) is not null;
+        // An external supplier user who lands on the home page goes to the supplier portal (8.2); any other internal page stays denied and audited.
+        if (signedIn && user.IsInRole(Roles.Supplier) && Nav.ToBaseRelativePath(Nav.Uri).Length == 0) { Nav.NavigateTo("portal", replace: true); return; }
         if (!signedIn || !RecordDenial) return;
         // In-circuit navigation is authorized by AuthorizeRouteView, not the HTTP middleware, so audit the denial here.
         await Audit.AppendAsync(new AuditEntry

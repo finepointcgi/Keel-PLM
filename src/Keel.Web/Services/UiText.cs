@@ -14,6 +14,9 @@ public static class UiText
         ["number.explicit_requires_admin"] = "Only administrators may assign explicit numbers.",
         ["document.read_denied"] = "You are not authorized to see the linked document.",
         ["child.not_readable"] = "You are not authorized to see a part this change would involve.",
+        ["sourcing.foreign_supplier_itar_part"] = "A foreign supplier is never selected for, or sent data about, an ITAR-marked part.",
+        ["portal.not_linked"] = "Your account is not linked to a supplier.",
+        ["portal.no_clearance_profile"] = "The supplier has no clearance profile, so no data may be released to it.",
         ["stepup.required"] = "Signing needs a fresh sign-in. You will be asked to sign in again.",
     };
 

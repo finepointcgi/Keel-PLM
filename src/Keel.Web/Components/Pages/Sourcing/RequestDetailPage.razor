@@ -1,0 +1,141 @@
+@page "/requests/{Number}"
+@inject CurrentUser Users
+@inject RequestService Requests
+
+<PageFrame Banner="@(detail?.Summary.Banner ?? UiText.Unclassified)" Title="@Title" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Request @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        <article class="stack">
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (d.CanModify)
+            {
+                <div class="action-bar" role="toolbar" aria-label="Request actions">
+                    @if (d.Summary.State == RequestStates.Draft) { <button type="button" disabled="@busy" @onclick="Issue">Issue to suppliers</button> }
+                    @if (d.Summary.State == RequestStates.Issued) { <button type="button" class="secondary" disabled="@busy" @onclick="Close">Close for responses</button> }
+                    @if (d.Summary.State is RequestStates.Draft or RequestStates.Issued)
+                    {
+                        <input aria-label="Reason for cancelling" placeholder="Reason for cancelling" class="grow" @bind="cancelReason" />
+                        <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel request</button>
+                    }
+                </div>
+            }
+            <section class="panel" aria-labelledby="request-heading">
+                <h2 id="request-heading">@RequestKinds.Label(d.Summary.Kind)</h2>
+                <p>@d.Description</p>
+                <p class="muted">Respond by @(d.Summary.DueOn is null ? "no date set" : SourcingUi.Date(d.Summary.DueOn)) · created @UiText.Utc(d.Summary.CreatedAt) by @d.Summary.CreatedBy</p>
+            </section>
+            <section class="panel" aria-labelledby="parts-heading">
+                <h3 id="parts-heading">Parts</h3>
+                <div class="table-wrap">
+                    <table class="data">
+                        <caption class="visually-hidden">Parts of the request</caption>
+                        <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Quantity</th><th scope="col">Note</th><th scope="col">Markings</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in d.Parts)
+                            {
+                                <tr><th scope="row"><a href="@SourcingUi.PartHref(p.PartNumber)">@p.PartNumber</a></th><td>@p.PartName</td><td>@p.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) @p.Unit</td><td>@p.Note</td><td><MarkingChip Text="@p.Banner" /></td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="panel" aria-labelledby="recipients-heading">
+                <h3 id="recipients-heading">Suppliers</h3>
+                <div class="table-wrap">
+                    <table class="data">
+                        <caption class="visually-hidden">Suppliers the request is addressed to</caption>
+                        <thead><tr><th scope="col">Supplier</th><th scope="col">State</th><th scope="col">First viewed</th><th scope="col">Portal</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in d.Recipients)
+                            {
+                                <tr>
+                                    <th scope="row"><a href="@SourcingUi.SupplierHref(r.SupplierNumber)">@r.SupplierName</a> (@r.SupplierNumber)</th>
+                                    <td>@r.State</td>
+                                    <td>@(r.FirstViewedAt is { } v ? UiText.Utc(v) : "not yet")</td>
+                                    <td>@(r.Releasable ? "Receives the request" : $"Withheld: {SourcingUi.Withheld(r.WithheldReason)}")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="panel" aria-labelledby="responses-heading">
+                <h3 id="responses-heading">Responses</h3>
+                @if (d.Responses.Count == 0) { <p class="muted">No supplier has responded yet.</p> }
+                @foreach (var r in d.Responses)
+                {
+                    <article class="stack" aria-label="Response @r.Seq of @r.SupplierName">
+                        <h4>@r.SupplierName, response @r.Seq @(r.Declined ? "(declined)" : "")</h4>
+                        <p class="muted small">@UiText.Utc(r.SubmittedAt) by @r.SubmittedBy</p>
+                        @if (r.Message.Length > 0) { <p>@r.Message</p> }
+                        @if (r.Quote.Count > 0)
+                        {
+                            <div class="table-wrap">
+                                <table class="data">
+                                    <caption class="visually-hidden">Quote of @r.SupplierName</caption>
+                                    <thead><tr><th scope="col">Part</th><th scope="col">Unit price</th><th scope="col">Lead time (days)</th><th scope="col">Minimum order</th></tr></thead>
+                                    <tbody>@foreach (var q in r.Quote) { <tr><th scope="row">@q.Part</th><td>@(q.UnitPrice is null ? "" : $"{q.UnitPrice:0.####} {q.Currency}")</td><td>@q.LeadTimeDays</td><td>@q.Moq</td></tr> }</tbody>
+                                </table>
+                            </div>
+                        }
+                        @if (r.Files.Count > 0)
+                        {
+                            <ul class="plain" aria-label="Files of the response">
+                                @foreach (var f in r.Files)
+                                {
+                                    <li><a href="@SourcingUi.FileUrl(d.Summary.Number, f.Id)" download>@f.FileName</a> <span class="muted small">@(f.Kind == "certificate" ? "certificate" : "response") · @SourcingUi.Size(f.SizeBytes) · scanned when received</span></li>
+                                }
+                            </ul>
+                        }
+                    </article>
+                }
+            </section>
+        </article>
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading the request" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    private RequestDetail? detail;
+    private bool notFound, busy;
+    private string? error;
+    private string cancelReason = "";
+
+    private string Title => detail is null ? "Request" : $"{detail.Summary.Number} · {detail.Summary.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Supplier requests", "requests"), new(detail?.Summary.Number ?? Number)];
+
+    private RenderFragment HeaderFragment(RequestDetail d) => @<ObjectHeader Title="@Title" Banner="@d.Summary.Banner" Subtitle="@RequestKinds.Label(d.Summary.Kind)">
+        <Badges><span class="badge @SourcingUi.RequestClass(d.Summary.State)">@d.Summary.State</span></Badges>
+    </ObjectHeader>;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Requests.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+    }
+
+    private async Task Run(Func<Subject, Task<Outcome<RequestDetail>>> action)
+    {
+        busy = true; error = null;
+        var outcome = await action(await Users.GetAsync());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        detail = outcome.Value;
+    }
+
+    private Task Issue() => Run(s => Requests.IssueAsync(s, Number, CurrentUser.NewCorrelationId()));
+    private Task Close() => Run(s => Requests.CloseAsync(s, Number, CurrentUser.NewCorrelationId()));
+    private Task Cancel() => Run(s => Requests.CancelAsync(s, Number, cancelReason, CurrentUser.NewCorrelationId()));
+}

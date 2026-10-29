@@ -1,0 +1,167 @@
+@page "/portal/requests/{Number}"
+@inject CurrentUser Users
+@inject PortalService Portal
+
+<PageFrame Banner="@(detail?.Summary.Banner ?? UiText.Unclassified)" Title="@Title" Crumbs="@Crumbs">
+    @if (notFound)
+    {
+        <p class="error" role="alert">This request was not found. It may be closed, or not addressed to your company.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        <article class="stack">
+            <section class="panel" aria-labelledby="request-heading">
+                <h2 id="request-heading">@RequestKinds.Label(d.Summary.Kind)</h2>
+                <p>
+                    <span class="badge @SourcingUi.RequestClass(d.Summary.State)">@(d.Summary.State == RequestStates.Issued ? "Open" : "Closed")</span>
+                    Respond by @(d.Summary.DueOn is null ? "no date set" : SourcingUi.Date(d.Summary.DueOn))
+                </p>
+                <p>@d.Description</p>
+            </section>
+            <section class="panel" aria-labelledby="parts-heading">
+                <h3 id="parts-heading">Parts</h3>
+                <div class="table-wrap">
+                    <table class="data">
+                        <caption class="visually-hidden">Parts of the request</caption>
+                        <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Quantity</th><th scope="col">Note</th></tr></thead>
+                        <tbody>@foreach (var p in d.Parts) { <tr><th scope="row">@p.PartNumber</th><td>@p.PartName</td><td>@p.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) @p.Unit</td><td>@p.Note</td></tr> }</tbody>
+                    </table>
+                </div>
+            </section>
+
+            @if (d.CanRespond)
+            {
+                <EditForm Model="this" OnSubmit="Submit" FormName="portal-response" class="panel stack">
+                    <h3>Your response</h3>
+                    @if (error is not null) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
+                    @if (message is not null) { <p role="status">@message</p> }
+                    <label class="inline"><input type="checkbox" @bind="declined" /> We decline to respond</label>
+                    <label>Message <InputTextArea @bind-Value="text" rows="4" maxlength="4000" /></label>
+                    @if (!declined && d.Summary.Kind == RequestKinds.Rfq)
+                    {
+                        <fieldset>
+                            <legend>Quote (leave a part blank to skip it)</legend>
+                            <div class="table-wrap">
+                                <table class="data">
+                                    <caption class="visually-hidden">Quote per part</caption>
+                                    <thead><tr><th scope="col">Part</th><th scope="col">Unit price</th><th scope="col">Currency</th><th scope="col">Lead time (days)</th><th scope="col">Minimum order</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var q in quote)
+                                        {
+                                            <tr>
+                                                <th scope="row">@q.Part</th>
+                                                <td><InputNumber @bind-Value="q.Price" aria-label="@($"Unit price for {q.Part}")" /></td>
+                                                <td><InputText @bind-Value="q.Currency" maxlength="3" aria-label="@($"Currency for {q.Part}")" /></td>
+                                                <td><InputNumber @bind-Value="q.Lead" aria-label="@($"Lead time in days for {q.Part}")" /></td>
+                                                <td><InputNumber @bind-Value="q.Moq" aria-label="@($"Minimum order for {q.Part}")" /></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </fieldset>
+                    }
+                    @if (!declined)
+                    {
+                        <label>Response files (up to @PortalService.MaxFiles files, @(PortalService.MaxFileBytes / (1024 * 1024)) MB each) <InputFile OnChange="e => Pick(e, responseFiles)" multiple /></label>
+                        <label>Certificates (for example AS9100 or NADCAP) <InputFile OnChange="e => Pick(e, certificateFiles)" multiple /></label>
+                        <p class="muted small">Every file is scanned for malware when it is received. A file that fails the scan rejects the whole response.</p>
+                    }
+                    <div class="toolbar"><button type="submit" disabled="@busy">@(declined ? "Send decline" : "Send response")</button></div>
+                </EditForm>
+            }
+            else { <p class="muted">This request is closed. It takes no more responses.</p> }
+
+            <section class="panel" aria-labelledby="history-heading">
+                <h3 id="history-heading">Your earlier responses</h3>
+                @if (d.Responses.Count == 0) { <p class="muted">You have not responded yet.</p> }
+                @foreach (var r in d.Responses)
+                {
+                    <article class="stack" aria-label="Response @r.Seq">
+                        <h4>Response @r.Seq @(r.Declined ? "(declined)" : "")</h4>
+                        <p class="muted small">@UiText.Utc(r.SubmittedAt) by @r.SubmittedBy</p>
+                        @if (r.Message.Length > 0) { <p>@r.Message</p> }
+                        @if (r.Quote.Count > 0) { <ul class="plain" aria-label="Quoted parts">@foreach (var q in r.Quote) { <li>@q.Part: @(q.UnitPrice is null ? "no price" : $"{q.UnitPrice:0.####} {q.Currency}")@(q.LeadTimeDays is null ? "" : $", {q.LeadTimeDays} days")</li> }</ul> }
+                        @if (r.Files.Count > 0) { <ul class="plain" aria-label="Files">@foreach (var f in r.Files) { <li><a href="@SourcingUi.PortalFileUrl(d.Summary.Number, f.Id)" download>@f.FileName</a> <span class="muted small">@SourcingUi.Size(f.SizeBytes)</span></li> }</ul> }
+                    </article>
+                }
+            </section>
+        </article>
+    }
+    else
+    {
+        <Skeleton Lines="5" Label="Loading the request" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private sealed class QuoteRow { public string Part { get; init; } = ""; public decimal? Price { get; set; } public string Currency { get; set; } = "USD"; public int? Lead { get; set; } public decimal? Moq { get; set; } }
+
+    private PortalRequestDetail? detail;
+    private bool notFound, busy, declined;
+    private string? error, message;
+    private IReadOnlyList<string> errors = [];
+    private string text = "";
+    private List<QuoteRow> quote = [];
+    private readonly List<IBrowserFile> responseFiles = [], certificateFiles = [];
+
+    private string Title => detail is null ? "Request" : $"{detail.Summary.Number} · {detail.Summary.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("My requests", "portal"), new(detail?.Summary.Number ?? Number)];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Portal.GetRequestAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is not null && quote.Count == 0) quote = [.. detail.Parts.Select(p => new QuoteRow { Part = p.PartNumber })];
+    }
+
+    private static void Pick(InputFileChangeEventArgs e, List<IBrowserFile> target)
+    {
+        target.Clear();
+        target.AddRange(e.GetMultipleFiles(PortalService.MaxFiles + 1));
+    }
+
+    private async Task Submit()
+    {
+        busy = true; error = message = null; errors = [];
+        var uploads = new List<UploadedFile>();
+        try
+        {
+            if (!declined)
+            {
+                foreach (var f in responseFiles) uploads.Add(new UploadedFile(f.Name, "response", f.OpenReadStream(PortalService.MaxFileBytes)));
+                foreach (var f in certificateFiles) uploads.Add(new UploadedFile(f.Name, "certificate", f.OpenReadStream(PortalService.MaxFileBytes)));
+            }
+            var lines = declined ? [] : quote.Where(q => q.Price is not null || q.Lead is not null || q.Moq is not null).Select(q => new QuoteLine(q.Part, q.Price, string.IsNullOrWhiteSpace(q.Currency) ? null : q.Currency, q.Lead, q.Moq)).ToList();
+            var outcome = await Portal.RespondAsync(await Users.GetAsync(), Number, new PortalResponseInput(text, declined, lines), uploads, CurrentUser.NewCorrelationId());
+            if (!outcome.IsOk)
+            {
+                error = "not sent";
+                errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+                return;
+            }
+            message = declined ? "Your decline was sent." : "Your response was sent.";
+            (text, declined) = ("", false);
+            responseFiles.Clear();
+            certificateFiles.Clear();
+            quote = [];
+            await Load();
+        }
+        catch (IOException e)
+        {
+            error = "not sent";
+            errors = [e.Message.Contains("exceeds", StringComparison.OrdinalIgnoreCase) ? $"A file is larger than {PortalService.MaxFileBytes / (1024 * 1024)} MB." : "A file could not be read."];
+        }
+        finally
+        {
+            foreach (var u in uploads) await u.Content.DisposeAsync();
+            busy = false;
+        }
+    }
+}

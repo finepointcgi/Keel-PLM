@@ -100,6 +100,15 @@ public sealed class AccessibilityTests(E2EFixture fx)
             Add("alice", $"/mboms/{x.ReleasedMbom}?tab={tab}");
         Add("alice", $"/mboms/{x.StaleMbom}?tab=reconciliation", $"/mboms/{x.ReleasedMbom}/compare", $"/mboms/{x.ReleasedMbom}/side-by-side");
 
+        // Suppliers, approved lists, requests and the supplier portal (8.2, ADR-0037): the synthetic rows come from SourcingSeed.
+        Add("alice", "/suppliers", "/suppliers/new", "/requests", "/requests/new", "/sourcing/where-sourced", "/sourcing/coverage",
+            $"/sourcing/where-sourced?supplier={SourcingSeed.SupplierA}", $"/sourcing/coverage?mode=ebom&number={m.TopAssembly}", $"/requests/{SourcingSeed.Request}",
+            $"/sourcing/entries/{SourcingSeed.Entry}", $"/parts/{m.OpenFastener}?tab=sourcing", $"/parts/{m.GimbalBracket}?tab=sourcing");
+        foreach (var tab in new[] { "overview", "certifications", "contacts", "parts", "quality", "review", "activity", "comments" })
+            Add("alice", $"/suppliers/{SourcingSeed.SupplierA}?tab={tab}");
+        Add("ada", $"/suppliers/{SourcingSeed.SupplierA}?tab=portal");
+        Add("sup-alpha", "/portal", $"/portal/requests/{SourcingSeed.Request}");
+
         Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
             "/admin/integration/profiles", "/admin/integration/sinks", "/admin/integration/tdp-categories", "/admin/lifecycles", "/admin/lists", "/admin/migration",
             "/admin/numbering", "/admin/reasons", "/admin/supply-types", "/admin/workflow-templates", "/audit", "/access", "/parts", "/");
@@ -114,6 +123,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
         await using var session = new BrowserSession(fx, testName);
         await session.RunAsync(async () =>
         {
+            await SourcingSeed.EnsureAsync(fx);
             var e = fx.Manifest.Extras ?? throw new InvalidOperationException("The demo extras are missing.");
             var extras = new DemoExtrasView(e.DesignBaseline, e.ReleaseBaseline, e.ReleasedMbom, e.StaleMbom);
             var axe = await File.ReadAllTextAsync(AxePath());
@@ -123,7 +133,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
             var originalTheme = new Dictionary<string, string>();
             try
             {
-                foreach (var name in new[] { "alice", "ada" })
+                foreach (var name in new[] { "alice", "ada", "sup-alpha" })
                 {
                     var up = await session.SignInAsync(name, 1280, 900);
                     originalTheme[name] = await up.Page.EvaluateAsync<string>("document.documentElement.getAttribute('data-theme')");

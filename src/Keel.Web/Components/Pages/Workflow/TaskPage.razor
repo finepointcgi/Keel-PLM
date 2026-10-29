@@ -131,7 +131,7 @@
         {
             case OutcomeKind.Ok:
                 comment = "";
-                var noun = outcome.Value!.Target.ObjectType switch { "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "ecn" or "ecr" => "change", _ => "part" };
+                var noun = outcome.Value!.Target.ObjectType switch { "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "supplier" => "supplier", "source_entry" => "list entry", "ecn" or "ecr" => "change", _ => "part" };
                 message = outcome.Value!.Status switch
                 {
                     InstanceStatus.Approved => $"Signed. All approvals are in and the {noun} is released.",
