@@ -190,6 +190,12 @@ public sealed class BomExchangeService(NpgsqlDataSource dataSource, IAuditLog au
             if (row.Parent.Length > 0 && !found.TryGetValue(row.Parent, out var parent)) { errors.Add($"Parent {row.Parent} was not found."); parent = null; }
             else parent = row.Parent.Length > 0 ? found[row.Parent] : null;
             if (row.Child.Length > 0 && !found.ContainsKey(row.Child) && row.Action != "remove") errors.Add($"Child {row.Child} was not found.");
+            // The BOM rule that reference designators and quantity agree for countable units is checked here too, so the dry run says what applying would say.
+            if (row.Action != "remove" && row.Designators.Count > 0 && row.Quantity is { } q)
+            {
+                var unit = row.Unit ?? (found.TryGetValue(row.Child, out var c) ? c.Unit : null);
+                if (unit == "EA" && row.Designators.Count != q) errors.Add($"{row.Designators.Count} reference designator(s) given but the quantity is {q:0.####}; the counts must match for unit EA.");
+            }
             if (parent is not null)
             {
                 if (parent.PartType != "Assembly") errors.Add($"{parent.Number} is not an assembly.");
