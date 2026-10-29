@@ -1,0 +1,81 @@
+@inject CurrentUser Users
+@inject QualityActions Actions
+
+@* Links from this record to others (reports, corrective actions, deviations, changes, parts) and the records that link here. A record the viewer cannot read is a neutral row. *@
+<section class="panel" aria-labelledby="links-heading">
+    <h3 id="links-heading">Linked records</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Items.Count == 0)
+    {
+        <p class="muted">Nothing is linked yet.</p>
+    }
+    else
+    {
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Direction</th><th scope="col">Kind</th><th scope="col">Record</th><th scope="col">State</th><th scope="col">Markings</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+                @foreach (var l in Items)
+                {
+                    <tr>
+                        <td>@(l.Direction == "out" ? "Links to" : "Linked from")</td>
+                        @if (l.Redacted)
+                        {
+                            <td colspan="3" class="muted">A restricted record</td>
+                        }
+                        else
+                        {
+                            <td>@QualityUi.LinkLabel(l.Kind)</td>
+                            <td><a href="@l.Href">@l.Key</a> <span class="muted">@l.Title</span></td>
+                            <td>@l.StateLabel</td>
+                        }
+                        <td>@if (!l.Redacted) { <MarkingChip Text="@l.Banner" /> }</td>
+                        <td>@if (l.CanRemove) { <button type="button" class="secondary" aria-label="Remove link to @(l.Key ?? "a restricted record")" disabled="@busy" @onclick="() => Remove(l)">Remove</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    }
+
+    @if (CanModify && !Final)
+    {
+        <h4>Add a link</h4>
+        <div class="grid-form">
+            <label>Kind <select @bind="toKind">@foreach (var k in LinkKinds.Targets) { <option value="@k">@LinkKinds.Label(k)</option> }</select></label>
+            <label>Number * <input maxlength="64" placeholder="For example P-000123" @bind="toKey" /></label>
+        </div>
+        <div class="toolbar"><button type="button" disabled="@(busy || toKey.Trim().Length == 0)" @onclick="Add">Add link</button></div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    [Parameter, EditorRequired] public required IReadOnlyList<LinkView> Items { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    [Parameter] public bool Final { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string toKind = "part", toKey = "";
+    private bool busy;
+    private string? error;
+
+    private async Task Add()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Actions.AddLinkAsync(await Users.GetAsync(), Kind, Number, toKind, toKey.Trim(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { toKey = ""; await OnChanged.InvokeAsync(); }
+        else error = QualityUi.Message(outcome);
+    }
+
+    private async Task Remove(LinkView l)
+    {
+        busy = true;
+        error = null;
+        var outcome = await Actions.RemoveLinkAsync(await Users.GetAsync(), Kind, Number, l.Id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) await OnChanged.InvokeAsync();
+        else error = QualityUi.Message(outcome);
+    }
+}

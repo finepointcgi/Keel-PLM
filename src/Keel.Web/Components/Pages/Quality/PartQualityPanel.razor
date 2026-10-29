@@ -1,0 +1,74 @@
+@inject CurrentUser Users
+@inject QualityQueries Queries
+
+@* The "Quality" tab of a part: the deviations and waivers that apply to it (active now, and scheduled), its open nonconformance reports and the open corrective actions linked to it. Only records the user may read are listed (SQL read filter); a part with restricted records shows no sign of them. *@
+<section class="panel stack" aria-labelledby="part-quality-heading">
+    <h3 id="part-quality-heading">Quality</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    else if (data is null) { <Skeleton Lines="4" Label="Loading quality records" /> }
+    else
+    {
+        <h4>Deviations and waivers</h4>
+        <label class="inline"><input type="checkbox" @bind="all" @bind:after="Load" /> Include records that are not approved or have ended</label>
+        @if (data.Deviations.Count == 0)
+        {
+            <p class="muted">No deviation or waiver applies to this part@(all ? "" : " right now").</p>
+        }
+        else
+        {
+            <div class="table-wrap"><table class="data">
+                <thead><tr><th scope="col">Number</th><th scope="col">Kind</th><th scope="col">Title</th><th scope="col">Covers</th><th scope="col">Window</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
+                <tbody>
+                    @foreach (var x in data.Deviations)
+                    {
+                        <tr>
+                            <td><a href="@QualityUi.Href(QualityKinds.Deviation, x.Number)">@x.Number</a></td>
+                            <td>@x.Kind</td>
+                            <td>@x.Title</td>
+                            <td>@x.Applicability</td>
+                            <td>@QualityUi.Date(x.ValidFrom) to @QualityUi.Date(x.ValidTo)</td>
+                            <td><span class="badge @QualityUi.StateClass(x.State)">@x.StateLabel</span>@if (x.Active) { <span class="badge state-released">Active now</span> }</td>
+                            <td><MarkingChip Text="@x.Banner" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        }
+
+        <h4>Open nonconformance reports</h4>
+        @if (data.OpenNcrs.Count == 0) { <p class="muted">No open report names this part.</p> }
+        else { <ul class="plain">@foreach (var n in data.OpenNcrs) { <li><a href="@QualityUi.Href(QualityKinds.Ncr, n.Number)">@n.Number</a> @n.Title · @n.Detail1 · @n.StateLabel <MarkingChip Text="@n.Banner" /></li> }</ul> }
+
+        <h4>Open corrective actions linked to this part</h4>
+        @if (data.OpenCapas.Count == 0) { <p class="muted">No open corrective action is linked to this part.</p> }
+        else { <ul class="plain">@foreach (var n in data.OpenCapas) { <li><a href="@QualityUi.Href(QualityKinds.Capa, n.Number)">@n.Number</a> @n.Title · @n.StateLabel <MarkingChip Text="@n.Banner" /></li> }</ul> }
+
+        <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+            <div class="toolbar"><a class="button secondary" href="@(QualityUi.NewHref(QualityKinds.Ncr) + "?part=" + Uri.EscapeDataString(PartNumber))">Report a nonconformance</a></div>
+        </AuthorizeView>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string PartNumber { get; set; }
+    /// <summary>Raised with the banner of the records the tab shows, so the page banner covers them.</summary>
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private PartQuality? data;
+    private string? error, loadedFor;
+    private bool all;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == PartNumber) return;
+        loadedFor = PartNumber;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var outcome = await Queries.ForPartAsync(await Users.GetAsync(), PartNumber, all, CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) { data = outcome.Value; error = null; await OnBanner.InvokeAsync(data!.Shown.Count == 0 ? null : data.PageBanner); }
+        else { data = null; error = UiText.Message(outcome); await OnBanner.InvokeAsync(null); }
+    }
+}

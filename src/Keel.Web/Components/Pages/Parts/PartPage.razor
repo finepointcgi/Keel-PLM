@@ -7,7 +7,7 @@
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
 
-<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner, timelineBanner, sourcingBanner)" Title="@PageTitle"
+<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner, timelineBanner, sourcingBanner, qualityBanner)" Title="@PageTitle"
            Crumbs="@Crumbs" Header="@(part is not null && defs is not null ? HeaderFragment(part) : null)">
     @if (notFound)
     {
@@ -133,6 +133,9 @@
                         <TimelinePanel ObjectType="part" Key="@p.Number" Version="@($"{p.Revision.Revision}.{p.Iteration.Iteration}.{p.Revision.State}")"
                                        OnShown="m => timelineBanner = m.Count == 0 ? null : Markings.AggregateBanner(m)" />
                         break;
+                    case "quality":
+                        <Keel.Web.Components.Pages.Quality.PartQualityPanel PartNumber="@p.Number" OnBanner="b => qualityBanner = b" />
+                        break;
                     case "sourcing":
                         <Keel.Web.Components.Pages.Sourcing.PartSourcingPanel PartNumber="@p.Number" OnBanner="b => sourcingBanner = b" />
                         break;
@@ -226,11 +229,11 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "sourcing", .. AwarenessTabs.Ids];
+    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "sourcing", "quality", .. AwarenessTabs.Ids];
     private static readonly IReadOnlyList<TabInfo> Tabs =
     [
         new("overview", "Overview"), new("structure", "Structure"), new("documents", "Documents"), new("changes", "Changes"),
-        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"), new("sourcing", "Sourcing"),
+        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"), new("sourcing", "Sourcing"), new("quality", "Quality"),
     ];
 
     private PartDetail? part;
@@ -248,6 +251,7 @@
     private string? changesBanner; // aggregate banner reported by the changes panel
     private string? tdpBanner; // banner of the previewed Technical Data Package
     private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
+    private string? qualityBanner; // banner of the deviations, reports and actions the Quality tab shows (8.1)
     private string? sourcingBanner; // banner of the suppliers and related parts the Sourcing tab shows (8.2)
 
     private string PageTitle => part is null ? "Part" : $"{part.Number} · {part.Name}";
@@ -294,7 +298,7 @@
     {
         tab = id;
         // Panels of a tab that is no longer shown no longer contribute to the banner.
-        bomBanner = mbomBanner = changesBanner = tdpBanner = timelineBanner = sourcingBanner = null;
+        bomBanner = mbomBanner = changesBanner = tdpBanner = timelineBanner = sourcingBanner = qualityBanner = null;
     }
 
     protected override async Task OnParametersSetAsync()

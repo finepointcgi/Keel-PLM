@@ -14,9 +14,13 @@ public static class AwarenessKinds
     public const string Change = "change";
     public const string Baseline = "baseline";
     public const string Mbom = "mbom";
+    /// <summary>Quality records (8.1): nonconformance reports, corrective and preventive actions, deviations and waivers.</summary>
+    public const string Ncr = "ncr";
+    public const string Capa = "capa";
+    public const string Deviation = "deviation";
     public const string Supplier = "supplier";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -28,6 +32,9 @@ public static class AwarenessKinds
         Change => "changes/" + Uri.EscapeDataString(number),
         Baseline => "baselines/" + Uri.EscapeDataString(number),
         Mbom => "mboms/" + Uri.EscapeDataString(number),
+        Ncr => "quality/ncrs/" + Uri.EscapeDataString(number),
+        Capa => "quality/capas/" + Uri.EscapeDataString(number),
+        Deviation => "quality/deviations/" + Uri.EscapeDataString(number),
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
@@ -39,6 +46,9 @@ public static class AwarenessKinds
         Change => "Change",
         Baseline => "Baseline",
         Mbom => "Manufacturing BOM",
+        Ncr => "NCR",
+        Capa => "CAPA",
+        Deviation => "Deviation",
         Supplier => "Supplier",
         _ => kind,
     };
@@ -63,6 +73,9 @@ public static class AwarenessKinds
         "pr" or "ecr" or "ecn" => Change,
         "baseline" => Baseline,
         "mbom" => Mbom,
+        "ncr" => Ncr,
+        "capa" => Capa,
+        "deviation" => Deviation,
         "supplier" => Supplier,
         _ => null,
     };
@@ -138,6 +151,14 @@ public static class NotificationKindCodes
     public const string WatchedEstablished = "watched_established";
     public const string CommentAdded = "comment_added";
     public const string CommentMention = "comment_mention";
+    /// <summary>Quality (8.1): a corrective or containment action was assigned to the person.</summary>
+    public const string QualityActionAssigned = "quality_action_assigned";
+    /// <summary>Quality (8.1): an action the person owns is past its due date.</summary>
+    public const string QualityActionOverdue = "quality_action_overdue";
+    /// <summary>Quality (8.1): a deviation or waiver ends soon.</summary>
+    public const string DeviationExpiring = "deviation_expiring";
+    /// <summary>Quality (8.1): a deviation or waiver ended.</summary>
+    public const string DeviationExpired = "deviation_expired";
     /// <summary>8.2 sourcing: a supplier certification is about to expire / has expired, and a supplier's standing changed.</summary>
     public const string SupplierCertExpiring = "supplier_cert_expiring";
     public const string SupplierCertExpired = "supplier_cert_expired";

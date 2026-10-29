@@ -1,0 +1,154 @@
+@inject CurrentUser Users
+@inject WorkflowService Flow
+@using Keel.Web.Components.Pages.Workflow
+
+@* Review status, the submit button and the signed history of one quality record. The review itself is the workflow engine's: signatures, step-up sign-in and the
+   progress map are the same as for parts and changes. *@
+@if (status is not null)
+{
+    <section class="panel" aria-labelledby="review-heading">
+        <h3 id="review-heading">@Heading</h3>
+        <p class="muted small">@Intro</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @{ var mapInstance = status.Active ?? status.Last; }
+        @if (mapInstance is not null) { <WorkflowMapPanel InstanceId="@mapInstance.Id" Version="@($"{mapInstance.Status}:{mapInstance.Tasks.Count(t => t.Status != "Open")}")" /> }
+
+        @if (status.Active is { } active)
+        {
+            <p>
+                <span class="badge state-underreview">Review in progress</span>
+                Started by @active.StartedBy on @WorkflowText.Utc(active.StartedAt) · <a href="workflows/@active.Id">Workflow details</a>
+            </p>
+            <ul class="plain">
+                @foreach (var t in active.Tasks.Where(t => t.Status == "Open"))
+                {
+                    <li>@t.Name: waiting for @(t.AssigneeName ?? WorkflowText.Role(t.RequiredRole))@(t.Overdue ? " (overdue)" : "")</li>
+                }
+            </ul>
+            @if (active.CanCancel)
+            {
+                <div class="toolbar">
+                    <input aria-label="Reason for cancelling the review" placeholder="Reason for cancelling (required)" class="grow" @bind="cancelReason" />
+                    <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
+                </div>
+            }
+        }
+        else
+        {
+            @if (status.Last is { } last)
+            {
+                <p>
+                    <span class="badge @(last.Status == InstanceStatus.Approved ? "state-released" : null)">Last review: @WorkflowText.Status(last.Status)</span>
+                    @(last.CompletedAt is { } done ? WorkflowText.Utc(done) : "") · <a href="workflows/@last.Id">Workflow details</a>
+                </p>
+                @if (last.Status == InstanceStatus.Rejected)
+                {
+                    <ul class="plain" aria-label="Rejection reasons">
+                        @foreach (var r in last.Rejections) { <li>Rejected by @r.By (@r.Username): @r.Comment</li> }
+                    </ul>
+                }
+                else if (last.Status == InstanceStatus.Cancelled) { <p class="muted">@last.CompletionNote</p> }
+            }
+            else { <p class="muted">This record has not been submitted for review.</p> }
+
+            @if (CanStart && !starting)
+            {
+                <button type="button" disabled="@busy" @onclick="BeginStart">@StartText</button>
+            }
+            else if (!CanStart && !string.IsNullOrEmpty(WhyNot))
+            {
+                <p class="muted small">@WhyNot</p>
+            }
+        }
+
+        @if (starting && template is not null)
+        {
+            <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" />
+        }
+
+        @if (status.Releases.Count > 0)
+        {
+            <h4>Signed approvals</h4>
+            @foreach (var rel in status.Releases)
+            {
+                <div class="release">
+                    <p><strong>Submission @rel.Revision</strong> approved @WorkflowText.Utc(rel.ReleasedAt) · <a href="workflows/@rel.InstanceId">Workflow details</a></p>
+                    <ul class="plain signatures">
+                        @foreach (var s in rel.Signatures) { <li>@s.Manifestation@(string.IsNullOrEmpty(s.Comment) ? "" : $": {s.Comment}")</li> }
+                    </ul>
+                </div>
+            }
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    [Parameter, EditorRequired] public required string Heading { get; set; }
+    [Parameter] public string Intro { get; set; } = "";
+    [Parameter] public string StartText { get; set; } = "Submit for review";
+    /// <summary>True when the record is in the state it is submitted from and the user may modify it.</summary>
+    [Parameter] public bool CanStart { get; set; }
+    [Parameter] public string? WhyNot { get; set; }
+    /// <summary>Changes when the record changed, so the status is read again.</summary>
+    [Parameter] public string? Version { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private ObjectWorkflowStatus? status;
+    private TemplateView? template;
+    private bool starting, busy;
+    private string? error, startError, cancelReason = "", loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Kind}:{Number}:{Version}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        var outcome = await Flow.StatusForObjectAsync(await Users.GetAsync(), Kind, Number, CurrentUser.NewCorrelationId());
+        status = outcome.IsOk ? outcome.Value : null;
+    }
+
+    private async Task BeginStart()
+    {
+        error = startError = null;
+        var templates = await Flow.ListTemplatesAsync(await Users.GetAsync(), activeOnly: true, CurrentUser.NewCorrelationId());
+        template = templates.FirstOrDefault(t => t.ObjectType == Kind);
+        if (template is null) { error = "No review template is available for this kind of record. Ask an administrator to upload one."; return; }
+        starting = true;
+    }
+
+    private Task EndStart()
+    {
+        starting = false;
+        return Task.CompletedTask;
+    }
+
+    private async Task<IReadOnlyList<DirectoryUserView>> SearchUsers(SlotView slot, string text)
+    {
+        var outcome = await Flow.SearchUsersAsync(await Users.GetAsync(), text, slot.Role, Kind, Number, 25, CurrentUser.NewCorrelationId());
+        return outcome.IsOk ? outcome.Value! : [];
+    }
+
+    private async Task Start(StartSelection selection)
+    {
+        busy = true;
+        startError = null;
+        var outcome = await Flow.StartAsync(await Users.GetAsync(), new StartReviewCommand(Kind, Number, selection.Participants, selection.TemplateId, selection.Comment), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { startError = WorkflowText.Message(outcome); return; }
+        starting = false;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Flow.CancelAsync(await Users.GetAsync(), status!.Active!.Id, cancelReason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = WorkflowText.Message(outcome); return; }
+        cancelReason = "";
+        await OnChanged.InvokeAsync();
+    }
+}

@@ -67,7 +67,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
     private sealed record Target(string Path, string User, string? Wait = null);
 
-    private List<Target> Targets(DemoExtrasView x)
+    private List<Target> Targets(DemoExtrasView x, QualityData q)
     {
         var m = fx.Manifest;
         var t = new List<Target>();
@@ -118,6 +118,11 @@ public sealed class AccessibilityTests(E2EFixture fx)
         RecordsSeed.EnsureAsync(fx).GetAwaiter().GetResult();
         Add("rex", "/records", "/records/schedules", $"/records/schedules/{RecordsSeed.ScheduleVersion}", "/records/holds", $"/records/holds/{RecordsSeed.Hold}", "/records/disposition",
             $"/records/disposition/{RecordsSeed.Request}", "/records/archives", "/records/certificates", $"/documents/{m.SystemSpecification}", "/");
+        // 8.1 quality: the three lists, the three forms, every tab of the three record pages and the quality tab of a part
+        Add("alice", "/quality/ncrs", "/quality/capas", "/quality/deviations", "/quality/new/ncr", "/quality/new/capa", "/quality/new/deviation", $"/parts/{q.Part}?tab=quality");
+        foreach (var tab in new[] { "overview", "disposition", "actions", "links", "review", "history", "activity", "comments" }) Add("alice", $"/quality/ncrs/{q.Ncr}?tab={tab}");
+        foreach (var tab in new[] { "overview", "analysis", "actions", "verification", "links", "review", "history", "activity", "comments" }) Add("alice", $"/quality/capas/{q.Capa}?tab={tab}");
+        foreach (var tab in new[] { "overview", "scope", "links", "review", "history", "activity", "comments" }) Add("alice", $"/quality/deviations/{q.Deviation}?tab={tab}");
 
         Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
             "/admin/integration/profiles", "/admin/integration/sinks", "/admin/integration/tdp-categories", "/admin/lifecycles", "/admin/lists", "/admin/migration",
@@ -152,7 +157,8 @@ public sealed class AccessibilityTests(E2EFixture fx)
                     users[name] = up;
                 }
 
-                foreach (var target in Targets(extras))
+                var quality = await QualityRecords.EnsureAsync(fx, session, users["alice"]);
+                foreach (var target in Targets(extras, quality))
                 {
                     var up = users[target.User];
                     audited += await AuditPageAsync(up.Page, fx.BaseUrl + target.Path, $"{theme}/{width}px {target.User} {target.Path}", axe, findings, expectBanners: !target.Path.StartsWith("/not-found", StringComparison.Ordinal));

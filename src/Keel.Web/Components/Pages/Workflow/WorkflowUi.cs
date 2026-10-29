@@ -58,6 +58,7 @@ public static class WorkflowText
         "document" => $"documents/{Uri.EscapeDataString(key)}", // 7.6: documents are reviewed through the same engine
         "ecr" or "ecn" => $"changes/{Uri.EscapeDataString(key)}", // 1.6: change requests and change notices
         "baseline" => $"baselines/{Uri.EscapeDataString(key)}", // 2.1: baselines established by signatures
+        "ncr" or "capa" or "deviation" => AwarenessKinds.Path(objectType, key), // 8.1: quality records reviewed through the same engine
         "supplier" => $"suppliers/{Uri.EscapeDataString(key)}", // 8.2: supplier approval
         "source_entry" => $"sourcing/entries/{Uri.EscapeDataString(key)}", // 8.2: approved list entries
         "retention_schedule" => $"records/schedules/{key.TrimStart('v')}", // 8.6: retention schedule publication

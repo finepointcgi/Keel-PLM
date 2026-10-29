@@ -50,6 +50,9 @@ public sealed record ParsedQuery(string Text, IReadOnlyList<string> Kinds, strin
                 case "pr": return new(rest, [ObjectKinds.Change], "PR");
                 case "b": return new(rest, [ObjectKinds.Baseline], null);
                 case "mb": return new(rest, [ObjectKinds.Mbom], null);
+                case "ncr": return new(rest, [ObjectKinds.Ncr], null);
+                case "capa": return new(rest, [ObjectKinds.Capa], null);
+                case "dev": return new(rest, [ObjectKinds.Deviation], null);
                 case "s": return new(rest, [ObjectKinds.Supplier], null);
             }
         }
@@ -92,7 +95,7 @@ public static class StateText
 /// Global search through the modules' own search methods (ADR-0028): each one applies <c>AccessPolicy.BuildReadFilter</c> in its SQL and audits the search, so
 /// nothing the user may not read can appear, and a total is a count of what they may read. No result is cached or stored. Results are merged and ranked here.
 /// </summary>
-public sealed class GlobalSearchService(CurrentUser users, PartService parts, DocumentService documents, ChangeService changes, BaselineService baselines, MbomService mboms, WorkspaceReads reads, SupplierService? suppliers = null) : IGlobalSearch
+public sealed class GlobalSearchService(CurrentUser users, PartService parts, DocumentService documents, ChangeService changes, BaselineService baselines, MbomService mboms, WorkspaceReads reads, SupplierService? suppliers = null, Keel.Quality.QualityQueries? quality = null) : IGlobalSearch
 {
     public async Task<IReadOnlyList<SearchHit>> RecentAsync(int take, CancellationToken ct) =>
         (await reads.RecentAsync(take, ct)).Items.Select(i => new SearchHit(i.Kind, i.Number, i.Name, i.StateLabel, i.Banner, i.Href, 0)).ToList();
@@ -154,6 +157,12 @@ public sealed class GlobalSearchService(CurrentUser users, PartService parts, Do
                 var o = await suppliers.SearchAsync(subject, new SupplierSearch(Text: text, Limit: limit, Offset: offset), corr, ct);
                 if (o.Value is not { } page) return new(kind, [], 0, UiText.Unclassified);
                 return new(kind, page.Items.Select(sp => Hit(sp.Number, sp.Name, sp.StatusLabel, sp.Banner)).ToList(), page.Total, page.Banner);
+            }
+            case ObjectKinds.Ncr or ObjectKinds.Capa or ObjectKinds.Deviation:
+            {
+                if (quality is null) return new(kind, [], 0, UiText.Unclassified);
+                var r = await quality.SearchAsync(subject, kind, new Keel.Quality.QualitySearchQuery(Text: text, Limit: limit, Offset: offset), corr, ct);
+                return new(kind, r.Items.Select(i => Hit(i.Number, i.Title, i.StateLabel, i.Banner)).ToList(), r.Total, r.PageBanner);
             }
             default:
                 throw new NotSupportedException($"Search of '{kind}' is not available.");

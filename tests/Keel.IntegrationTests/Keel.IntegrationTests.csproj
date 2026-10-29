@@ -31,6 +31,7 @@
     <ProjectReference Include="..\Keel.TestSupport\Keel.TestSupport.csproj" />
     <ProjectReference Include="..\..\src\Keel.Workflow\Keel.Workflow.csproj" />
     <ProjectReference Include="..\..\src\Keel.Change\Keel.Change.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Quality\Keel.Quality.csproj" />
     <ProjectReference Include="..\..\src\Keel.Migration\Keel.Migration.csproj" />
     <ProjectReference Include="..\..\src\Keel.Import\Keel.Import.csproj" />
     <ProjectReference Include="..\..\src\Keel.Seed\Keel.Seed.csproj" />

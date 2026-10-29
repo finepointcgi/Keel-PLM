@@ -1,0 +1,290 @@
+@page "/quality/deviations/{Number}"
+@inject CurrentUser Users
+@inject DeviationService Deviations
+@inject LifecycleSteps Lifecycles
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is { } d)
+    {
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.Deviation" Number="@d.Number" />
+            <CommentCount Kind="@ObjectKinds.Deviation" Number="@d.Number" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @foreach (var n in d.Notices) { <p class="notice" role="status">@n</p> }
+            @if (!d.Permissions.CanModify) { <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p> }
+
+            <TabSet Tabs="@AwarenessTabs.Append(TabsFor(d), commentCount)" Active="@tab" ActiveChanged="id => tab = id" Label="Deviation and waiver sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            <section class="panel" aria-labelledby="summary-heading">
+                                <h3 id="summary-heading">Summary</h3>
+                                @if (editing)
+                                {
+                                    <div class="grid-form">
+                                        <label class="wide">Title * <input maxlength="200" @bind="f.Title" /></label>
+                                        <label>Kind <select @bind="f.Kind">@foreach (var k in DeviationKinds.All) { <option value="@k">@k</option> }</select></label>
+                                        <label>Valid from * <input type="date" @bind="f.From" /></label>
+                                        <label>Valid to * <input type="date" @bind="f.To" /></label>
+                                        <label class="inline"><input type="checkbox" @bind="f.Customer" /> The customer must approve</label>
+                                        <label class="wide">Requirement departed from <input maxlength="500" @bind="f.Requirement" /></label>
+                                        <label class="wide">Justification <textarea rows="5" maxlength="8000" @bind="f.Description"></textarea></label>
+                                    </div>
+                                    <div class="toolbar">
+                                        <button type="button" disabled="@busy" @onclick="SaveEdit">Save</button>
+                                        <button type="button" class="secondary" @onclick="() => editing = false">Cancel</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p>@(string.IsNullOrEmpty(d.Description) ? "No justification" : d.Description)</p>
+                                    <dl class="facts">
+                                        <dt>Requirement</dt><dd>@(d.RequirementRef.Length == 0 ? "Not stated" : d.RequirementRef)</dd>
+                                        <dt>Window</dt><dd>@QualityUi.Date(d.ValidFrom) to @QualityUi.Date(d.ValidTo)@(d.DaysLeft is { } left and >= 0 ? $" ({left} days left)" : "")</dd>
+                                        <dt>Customer approval</dt>
+                                        <dd>@(!d.CustomerApprovalRequired ? "Not required" : d.CustomerApprovalRef is null ? "Required, not yet recorded" : $"{d.CustomerApprovalRef}, approved {QualityUi.Date(d.CustomerApprovalDate)}")</dd>
+                                        @if (d.CloseReason is not null) { <dt>Ended because</dt><dd>@d.CloseReason</dd> }
+                                    </dl>
+                                    @if (d.Permissions.Editable && d.Permissions.CanModify) { <button type="button" class="secondary" @onclick="BeginEdit">Edit</button> }
+                                }
+                            </section>
+
+                            <section class="panel" aria-labelledby="steps-heading">
+                                <h3 id="steps-heading">Steps</h3>
+                                <div class="toolbar">
+                                    @foreach (var t in d.Transitions.Where(t => t.Via == "manual"))
+                                    {
+                                        <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason" @onclick="() => Begin(t)">@StepText(t)</button>
+                                    }
+                                </div>
+                                @foreach (var t in d.Transitions.Where(t => t.Via == "manual" && !t.Allowed && t.Reason is not null))
+                                {
+                                    <p class="muted small">@StepText(t): @t.Reason</p>
+                                }
+                                @if (pending is { } p)
+                                {
+                                    <div class="stack">
+                                        @if (p.To == "Approved")
+                                        {
+                                            <div class="grid-form">
+                                                <label>Customer approval reference * <input maxlength="300" @bind="custRef" /></label>
+                                                <label>Approved on * <input type="date" @bind="custDate" /></label>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <label>Reason * <input maxlength="1000" @bind="reasonText" /></label>
+                                        }
+                                        <div class="toolbar">
+                                            <button type="button" disabled="@busy" @onclick="ConfirmStep">@StepText(p)</button>
+                                            <button type="button" class="secondary" @onclick="() => pending = null">Back</button>
+                                        </div>
+                                    </div>
+                                }
+                            </section>
+
+                            <QualityMarkingsPanel Current="d.Markings" CanEdit="@(d.Permissions.Editable && d.Permissions.CanModify)" OnSave="SaveMarkings" />
+                        </div>
+                        break;
+                    case "scope":
+                        <section class="panel" aria-labelledby="scope-heading">
+                            <h3 id="scope-heading">Scope</h3>
+                            <p class="muted small">Parts the permission covers. A part with no serial, lot or quantity limit is covered for every unit inside the window.</p>
+                            @if (d.Scope.Count == 0) { <p class="muted">No parts yet.</p> }
+                            else
+                            {
+                                <div class="table-wrap"><table class="data">
+                                    <thead><tr><th scope="col">Part</th><th scope="col">Covers</th><th scope="col">Markings</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                                    <tbody>
+                                        @foreach (var s in d.Scope)
+                                        {
+                                            <tr>
+                                                <td>@if (s.PartReadable) { <a href="parts/@Uri.EscapeDataString(s.PartNumber)">@s.PartNumber</a> } else { <span>@s.PartNumber</span> }</td>
+                                                <td>@QualityUi.ScopeText(s)</td>
+                                                <td>@if (s.Banner is not null) { <MarkingChip Text="@s.Banner" /> }</td>
+                                                <td>@if (d.Permissions.Editable && d.Permissions.CanModify) { <button type="button" class="secondary" aria-label="Remove @s.PartNumber from the scope" disabled="@busy" @onclick="() => RemoveScope(s)">Remove</button> }</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table></div>
+                            }
+                            @if (d.Permissions.Editable && d.Permissions.CanModify)
+                            {
+                                <h4>Add a part</h4>
+                                <div class="grid-form">
+                                    <label>Part number * <input maxlength="64" @bind="sPart" /></label>
+                                    <label>Revision (blank for every revision) <input maxlength="10" @bind="sRev" /></label>
+                                    <label>Serial from <input type="number" min="0" @bind="sFrom" /></label>
+                                    <label>Serial to <input type="number" min="0" @bind="sTo" /></label>
+                                    <label class="wide">Listed serial numbers (comma-separated) <input @bind="sSerials" /></label>
+                                    <label class="wide">Lots (comma-separated) <input @bind="sLots" /></label>
+                                    <label>Quantity limit <input type="number" step="any" min="0" @bind="sQty" /></label>
+                                </div>
+                                <div class="toolbar"><button type="button" disabled="@(busy || sPart.Trim().Length == 0)" @onclick="AddScope">Add to the scope</button></div>
+                            }
+                        </section>
+                        break;
+                    case "links":
+                        <QualityLinksPanel Kind="@QualityKinds.Deviation" Number="@d.Number" Items="d.Links" CanModify="d.Permissions.CanModify" Final="d.IsFinal" OnChanged="Reload" />
+                        break;
+                    case "review":
+                        <QualityReviewPanel Kind="@QualityKinds.Deviation" Number="@d.Number" Heading="Approval" StartText="Submit for approval" Version="@($"{d.State}:{d.Submission}")"
+                                            Intro="Every chosen approver signs. The signatures cover the scope and the window as they are when it is submitted. When the customer must approve too, that is recorded after the internal approval."
+                                            CanStart="@(d.State == "Draft" && d.Permissions.CanModify)" WhyNot="@(d.State == "Draft" ? "You may not submit this record." : null)" OnChanged="Reload" />
+                        break;
+                    case "history":
+                        <QualityHistoryPanel Items="d.History" />
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Deviation" Number="@d.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Deviation" Number="@d.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the deviation or waiver" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private sealed class EditForm
+    {
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Kind { get; set; } = "Deviation";
+        public string Requirement { get; set; } = "";
+        public bool Customer { get; set; }
+        public DateTime? From { get; set; }
+        public DateTime? To { get; set; }
+    }
+
+    private static readonly string[] TabIds = ["overview", "scope", "links", "review", "history", .. AwarenessTabs.Ids];
+
+    private static IReadOnlyList<TabInfo> TabsFor(DeviationDetail d) =>
+    [
+        new("overview", "Overview"), new("scope", "Scope", d.Scope.Count), new("links", "Links", d.Links.Count), new("review", "Review"), new("history", "History"),
+    ];
+
+    private static string StepText(QualityStepView t) => t.To switch
+    {
+        "Withdrawn" => "Withdraw the request", "Revoked" => "Revoke the approval", "Approved" => "Record the customer's approval", "Rejected" => "Record that the customer declined", _ => "Move to " + t.Label,
+    };
+
+    private DeviationDetail? detail;
+    private IReadOnlyList<LifecycleState> steps = [];
+    private string tab = "overview", reasonText = "", custRef = "", sPart = "", sRev = "", sSerials = "", sLots = "";
+    private string? error, seenUri;
+    private bool notFound, busy, editing;
+    private int? commentCount;
+    private long? sFrom, sTo;
+    private decimal? sQty;
+    private DateTime? custDate = DateTime.UtcNow.Date;
+    private QualityStepView? pending;
+    private readonly EditForm f = new();
+
+    private string PageTitle => detail is null ? "Deviation or waiver" : $"{detail.Number} · {detail.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Deviations and waivers", QualityUi.ListHref(QualityKinds.Deviation)), new(detail?.Number ?? Number)];
+    private string Banner => detail?.Banner ?? UiText.Unclassified;
+
+    private RenderFragment HeaderFragment(DeviationDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Markings.BannerText()"
+              Subtitle="@($"{d.Kind} requested by {d.RequesterName} on {UiText.Utc(d.CreatedAt)} UTC · {QualityUi.Date(d.ValidFrom)} to {QualityUi.Date(d.ValidTo)}")">
+        <Badges>
+            <span class="badge">@d.Kind</span>
+            <span class="badge @QualityUi.StateClass(d.State)">@d.StateLabel</span>
+            @if (d.IsActive) { <span class="badge state-released">Active now</span> }
+            @if (d.IsLocked) { <span class="badge">Locked</span> }
+            <FavoriteButton Kind="@ObjectKinds.Deviation" Number="@d.Number" />
+            <WatchButton Kind="@ObjectKinds.Deviation" Number="@d.Number" />
+        </Badges>
+        <Steps>
+            @if (steps.Count > 0) { <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Deviation lifecycle" /> }
+        </Steps>
+    </ObjectHeader>;
+
+    protected override Task OnParametersSetAsync() => Reload();
+
+    private async Task Reload()
+    {
+        var outcome = await Deviations.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+        if (detail is not null && steps.Count == 0) steps = await Lifecycles.StatesAsync(QualityKinds.Family(QualityKinds.Deviation));
+    }
+
+    private void BeginEdit()
+    {
+        var d = detail!;
+        (f.Title, f.Description, f.Kind, f.Requirement, f.Customer, f.From, f.To) = (d.Title, d.Description, d.Kind, d.RequirementRef, d.CustomerApprovalRequired, d.ValidFrom.ToDateTime(TimeOnly.MinValue), d.ValidTo.ToDateTime(TimeOnly.MinValue));
+        editing = true;
+    }
+
+    private async Task<bool> Run(Func<Subject, Task<Outcome<DeviationDetail>>> op, string? success = null)
+    {
+        busy = true;
+        error = null;
+        var outcome = await op(await Users.GetAsync());
+        busy = false;
+        if (outcome.IsOk) { detail = outcome.Value; if (success is not null) Toasts.Success(success); return true; }
+        error = QualityUi.Message(outcome);
+        return false;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (f.From is null || f.To is null) { error = "Enter both dates of the window."; return; }
+        if (await Run(s => Deviations.UpdateAsync(s, Number, new UpdateDeviationCommand(f.Kind, f.Title, f.Description, f.Requirement, f.Customer, DateOnly.FromDateTime(f.From.Value), DateOnly.FromDateTime(f.To.Value)), CurrentUser.NewCorrelationId()), "Changes saved.")) editing = false;
+    }
+
+    private void Begin(QualityStepView t)
+    {
+        reasonText = custRef = "";
+        pending = t;
+    }
+
+    private async Task ConfirmStep()
+    {
+        var t = pending!;
+        var reason = reasonText;
+        var ok = await Run(s => t.To switch
+        {
+            "Withdrawn" => Deviations.WithdrawAsync(s, Number, reason, CurrentUser.NewCorrelationId()),
+            "Revoked" => Deviations.RevokeAsync(s, Number, reason, CurrentUser.NewCorrelationId()),
+            "Rejected" => Deviations.RejectByCustomerAsync(s, Number, reason, CurrentUser.NewCorrelationId()),
+            _ => Deviations.RecordCustomerApprovalAsync(s, Number, new CustomerApprovalCommand(custRef, DateOnly.FromDateTime(custDate ?? DateTime.UtcNow.Date)), CurrentUser.NewCorrelationId()),
+        }, "State changed.");
+        if (ok) pending = null;
+    }
+
+    private async Task AddScope()
+    {
+        string[] Split(string text) => text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var input = new ScopeInput(sPart, sRev, sFrom, sTo, Split(sSerials), Split(sLots), sQty);
+        if (await Run(s => Deviations.AddScopeAsync(s, Number, input, CurrentUser.NewCorrelationId()), "Part added to the scope."))
+            (sPart, sRev, sSerials, sLots, sFrom, sTo, sQty) = ("", "", "", "", null, null, null);
+    }
+
+    private Task RemoveScope(ScopeView s) => Run(u => Deviations.RemoveScopeAsync(u, Number, s.Id, CurrentUser.NewCorrelationId()), "Part removed from the scope.");
+
+    private async Task<string?> SaveMarkings(Markings m, string reason)
+    {
+        var outcome = await Deviations.ChangeMarkingsAsync(await Users.GetAsync(), Number, m, reason, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) return QualityUi.Message(outcome);
+        detail = outcome.Value;
+        return null;
+    }
+}

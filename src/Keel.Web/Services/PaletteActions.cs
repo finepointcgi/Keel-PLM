@@ -30,6 +30,9 @@ public static class PaletteActions
             new("go:mboms", "Go to Manufacturing BOMs", "Go to", "mbom", "mboms", "mbom plant"),
             new("go:baselines", "Go to Baselines", "Go to", "baseline", "baselines", "configuration"),
             new("go:changes", "Go to Changes", "Go to", "change", "changes", "ecn ecr problem report"),
+            new("go:ncrs", "Go to Nonconformance reports", "Go to", "ncr", "quality/ncrs", "ncr quality defect mrb disposition"),
+            new("go:capas", "Go to Corrective actions", "Go to", "capa", "quality/capas", "capa corrective preventive root cause"),
+            new("go:deviations", "Go to Deviations and waivers", "Go to", "deviation", "quality/deviations", "deviation waiver concession"),
             new("go:suppliers", "Go to Suppliers", "Go to", "folder", "suppliers", "vendors manufacturers sources certifications approved"),
             new("go:access", "Go to Access check", "Go to", "access", "access", "permission can i see"),
             new("go:profile", "Go to My access", "Go to", "user", "profile", "profile roles clearance"),
@@ -42,6 +45,9 @@ public static class PaletteActions
         {
             list.Add(new("new:part", "New part", "Create", "plus", "parts/new", "create add"));
             list.Add(new("new:document", "New document", "Create", "plus", "documents/new", "create add upload"));
+            list.Add(new("new:ncr", "New nonconformance report", "Create", "plus", "quality/new/ncr", "create add defect quality"));
+            list.Add(new("new:capa", "New corrective action", "Create", "plus", "quality/new/capa", "create add capa"));
+            list.Add(new("new:deviation", "New deviation or waiver", "Create", "plus", "quality/new/deviation", "create add waiver"));
             list.Add(new("new:change", "New change request", "Create", "plus", "changes/new/ECR", "create ecr engineering change"));
         }
         list.Add(new(ToggleTheme, "Toggle theme", "Commands", "theme", null, "dark light contrast appearance"));

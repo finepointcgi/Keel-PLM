@@ -1,0 +1,352 @@
+@page "/quality/capas/{Number}"
+@inject CurrentUser Users
+@inject CapaService Capas
+@inject QualityActions Actions
+@inject LifecycleSteps Lifecycles
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is { } d)
+    {
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.Capa" Number="@d.Number" />
+            <CommentCount Kind="@ObjectKinds.Capa" Number="@d.Number" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @foreach (var n in d.Notices) { <p class="notice" role="status">@n</p> }
+            @if (!d.Permissions.CanModify) { <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p> }
+
+            <TabSet Tabs="@AwarenessTabs.Append(TabsFor(d), commentCount)" Active="@tab" ActiveChanged="id => tab = id" Label="Corrective action sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            <section class="panel" aria-labelledby="summary-heading">
+                                <h3 id="summary-heading">Summary</h3>
+                                @if (editing)
+                                {
+                                    <div class="grid-form">
+                                        <label class="wide">Title * <input maxlength="200" @bind="f.Title" /></label>
+                                        <label>Type <select @bind="f.Type">@foreach (var s in CapaOptions.Types) { <option value="@s">@s</option> }</select></label>
+                                        <label>Source <select @bind="f.Source">@foreach (var s in CapaOptions.Sources) { <option value="@s">@CapaOptions.SourceLabel(s)</option> }</select></label>
+                                        <label>Priority <select @bind="f.Priority">@foreach (var s in CapaOptions.Priorities) { <option value="@s">@s</option> }</select></label>
+                                        <label>Owner * <input list="owner-options" @bind="f.Owner" @bind:event="oninput" @bind:after="FindOwners" />
+                                            <datalist id="owner-options">@foreach (var u in candidates) { <option value="@u.Username">@u.DisplayName</option> }</datalist></label>
+                                        <label>Target date <input type="date" @bind="f.Target" /></label>
+                                        <label class="wide">Problem statement <textarea rows="5" maxlength="8000" @bind="f.Description"></textarea></label>
+                                    </div>
+                                    <div class="toolbar">
+                                        <button type="button" disabled="@busy" @onclick="SaveEdit">Save</button>
+                                        <button type="button" class="secondary" @onclick="() => editing = false">Cancel</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p>@(string.IsNullOrEmpty(d.Description) ? "No problem statement" : d.Description)</p>
+                                    <dl class="facts">
+                                        <dt>Type</dt><dd>@d.CapaType</dd>
+                                        <dt>Source</dt><dd>@CapaOptions.SourceLabel(d.Source)</dd>
+                                        <dt>Priority</dt><dd>@d.Priority</dd>
+                                        <dt>Owner</dt><dd>@d.OwnerName (@d.OwnerUsername)</dd>
+                                        <dt>Target date</dt><dd class="@(d.Overdue ? "error" : null)">@QualityUi.DueText(d.TargetDate, d.Overdue)</dd>
+                                        @if (d.CancelReason is not null) { <dt>Cancelled because</dt><dd>@d.CancelReason</dd> }
+                                    </dl>
+                                    @if (d.Permissions.Editable && d.Permissions.CanModify) { <button type="button" class="secondary" @onclick="BeginEdit">Edit</button> }
+                                }
+                            </section>
+
+                            <section class="panel" aria-labelledby="steps-heading">
+                                <h3 id="steps-heading">Steps</h3>
+                                <div class="toolbar">
+                                    @foreach (var t in d.Transitions.Where(t => t.Via == "manual"))
+                                    {
+                                        <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason" @onclick="() => Begin(t)">@(t.To == "InProgress" ? "Start the work" : "Cancel the corrective action")</button>
+                                    }
+                                </div>
+                                @foreach (var t in d.Transitions.Where(t => t.Via == "manual" && !t.Allowed && t.Reason is not null))
+                                {
+                                    <p class="muted small">@t.Label: @t.Reason</p>
+                                }
+                                @if (pending is { To: "Cancelled" })
+                                {
+                                    <div class="stack">
+                                        <label>Why is it cancelled? * <input maxlength="1000" @bind="reasonText" /></label>
+                                        <div class="toolbar">
+                                            <button type="button" disabled="@busy" @onclick="ConfirmCancel">Cancel the corrective action</button>
+                                            <button type="button" class="secondary" @onclick="() => pending = null">Back</button>
+                                        </div>
+                                    </div>
+                                }
+                            </section>
+
+                            <QualityMarkingsPanel Current="d.Markings" CanEdit="@(d.Permissions.Editable && d.Permissions.CanModify)" OnSave="SaveMarkings" />
+                        </div>
+                        break;
+                    case "analysis":
+                        <section class="panel" aria-labelledby="analysis-heading">
+                            <h3 id="analysis-heading">Root cause analysis</h3>
+                            @if (editAnalysis)
+                            {
+                                <div class="stack">
+                                    <fieldset class="stack">
+                                        <legend>Five whys (up to @CapaOptions.MaxWhys)</legend>
+                                        @for (var i = 0; i < whys.Count; i++)
+                                        {
+                                            var w = whys[i];
+                                            <div class="grid-form">
+                                                <label class="wide">Why @(i + 1)? <input maxlength="1000" @bind="w.Why" /></label>
+                                                <label class="wide">Evidence <input maxlength="1000" @bind="w.Evidence" /></label>
+                                            </div>
+                                        }
+                                        <div class="toolbar">
+                                            <button type="button" class="secondary" disabled="@(whys.Count >= CapaOptions.MaxWhys)" @onclick="() => whys.Add(new WhyRow())">Add a why</button>
+                                        </div>
+                                    </fieldset>
+                                    <fieldset class="stack">
+                                        <legend>Causes by category</legend>
+                                        @for (var i = 0; i < causes.Count; i++)
+                                        {
+                                            var c = causes[i];
+                                            <div class="grid-form">
+                                                <label>Category <select @bind="c.Category">@foreach (var x in CapaOptions.Categories) { <option value="@x">@x</option> }</select></label>
+                                                <label class="wide">Cause <input maxlength="1000" @bind="c.Description" /></label>
+                                                <label class="inline"><input type="checkbox" @bind="c.IsRoot" /> This is a root cause</label>
+                                            </div>
+                                        }
+                                        <div class="toolbar"><button type="button" class="secondary" @onclick="() => causes.Add(new CauseRow())">Add a cause</button></div>
+                                    </fieldset>
+                                    <label>Root cause statement <textarea rows="3" maxlength="4000" @bind="rootCause"></textarea></label>
+                                    <div class="toolbar">
+                                        <button type="button" disabled="@busy" @onclick="SaveAnalysis">Save analysis</button>
+                                        <button type="button" class="secondary" @onclick="() => editAnalysis = false">Cancel</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <h4>Root cause</h4>
+                                <p>@(d.RootCause.Length == 0 ? "Not recorded yet" : d.RootCause)</p>
+                                <h4>Whys</h4>
+                                @if (d.Whys.Count == 0) { <p class="muted">No whys recorded.</p> }
+                                else
+                                {
+                                    <ol>@foreach (var w in d.Whys) { <li>@w.Why@if (w.Evidence.Length > 0) { <span class="muted"> Evidence: @w.Evidence</span> }</li> }</ol>
+                                }
+                                <h4>Causes by category</h4>
+                                @if (d.Causes.Count == 0) { <p class="muted">No causes recorded.</p> }
+                                else
+                                {
+                                    <div class="table-wrap"><table class="data">
+                                        <thead><tr><th scope="col">Category</th><th scope="col">Cause</th><th scope="col">Root cause</th></tr></thead>
+                                        <tbody>@foreach (var c in d.Causes) { <tr><td>@c.Category</td><td>@c.Description</td><td>@(c.IsRoot ? "Yes" : "No")</td></tr> }</tbody>
+                                    </table></div>
+                                }
+                                @if (d.Permissions.Editable && d.Permissions.CanModify) { <button type="button" class="secondary" @onclick="BeginAnalysis">Edit the analysis</button> }
+                            }
+                        </section>
+                        break;
+                    case "actions":
+                        <QualityActionsPanel Kind="@QualityKinds.Capa" Number="@d.Number" Items="d.Actions" CanModify="d.Permissions.CanModify" Final="@(d.IsFinal || d.IsLocked)" Heading="Corrective and preventive actions" OnChanged="Reload" />
+                        break;
+                    case "verification":
+                        <section class="panel" aria-labelledby="verify-heading">
+                            <h3 id="verify-heading">Effectiveness verification</h3>
+                            <dl class="facts">
+                                <dt>Method</dt><dd>@(d.VerificationMethod.Length == 0 ? "Not stated yet" : d.VerificationMethod)</dd>
+                                <dt>Success criteria</dt><dd>@(d.VerificationCriteria.Length == 0 ? "Not stated yet" : d.VerificationCriteria)</dd>
+                                <dt>Due</dt><dd>@QualityUi.Date(d.VerificationDue)</dd>
+                                <dt>Result</dt><dd>@(d.VerificationResult.Length == 0 ? "Not recorded yet" : d.VerificationResult)</dd>
+                                <dt>Effective</dt><dd>@(d.VerificationEffective is null ? "Not decided" : d.VerificationEffective == true ? "Yes" : "No")</dd>
+                                @if (d.VerificationBy is not null) { <dt>Recorded by</dt><dd>@d.VerificationBy on @(d.VerificationAt is { } at ? UiText.Utc(at) : "") UTC</dd> }
+                            </dl>
+                            @if (d.Permissions.Editable && d.Permissions.CanModify)
+                            {
+                                <h4>Verification plan</h4>
+                                <div class="grid-form">
+                                    <label class="wide">Method * <input maxlength="2000" @bind="vMethod" /></label>
+                                    <label class="wide">Success criteria * <input maxlength="2000" @bind="vCriteria" /></label>
+                                    <label>Due date <input type="date" @bind="vDue" /></label>
+                                </div>
+                                <div class="toolbar"><button type="button" class="secondary" disabled="@(busy || vMethod.Trim().Length == 0 || vCriteria.Trim().Length == 0)" @onclick="SavePlan">Save plan</button></div>
+                                @if (d.State == "InProgress")
+                                {
+                                    <h4>Record the result</h4>
+                                    <p class="muted small">Possible once every action is finished and the plan is saved. Saving a new plan clears an earlier result.</p>
+                                    <div class="grid-form">
+                                        <label class="wide">What was found * <textarea rows="3" maxlength="4000" @bind="vResult"></textarea></label>
+                                        <label class="inline"><input type="checkbox" @bind="vEffective" /> The actions were effective</label>
+                                    </div>
+                                    <div class="toolbar"><button type="button" disabled="@(busy || vResult.Trim().Length == 0)" @onclick="RecordResult">Record the result</button></div>
+                                }
+                            }
+                        </section>
+                        break;
+                    case "links":
+                        <QualityLinksPanel Kind="@QualityKinds.Capa" Number="@d.Number" Items="d.Links" CanModify="d.Permissions.CanModify" Final="d.IsFinal" OnChanged="Reload" />
+                        break;
+                    case "review":
+                        <QualityReviewPanel Kind="@QualityKinds.Capa" Number="@d.Number" Heading="Signed verification" StartText="Submit for signed verification" Version="@($"{d.State}:{d.Submission}")"
+                                            Intro="Closing needs signed verification. The signatures cover the analysis, the actions and the effectiveness result as they are when it is submitted."
+                                            CanStart="@(d.State == "InProgress" && d.Permissions.CanModify)"
+                                            WhyNot="@(d.State == "InProgress" ? "You may not submit this record." : "The work has to be in progress, with every action finished and an effective result recorded.")" OnChanged="Reload" />
+                        break;
+                    case "history":
+                        <QualityHistoryPanel Items="d.History" />
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Capa" Number="@d.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Capa" Number="@d.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the corrective action" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private sealed class EditForm
+    {
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Type { get; set; } = "Corrective";
+        public string Source { get; set; } = "Other";
+        public string Priority { get; set; } = "Medium";
+        public string Owner { get; set; } = "";
+        public DateTime? Target { get; set; }
+    }
+    private sealed class WhyRow { public string Why { get; set; } = ""; public string Evidence { get; set; } = ""; }
+    private sealed class CauseRow { public string Category { get; set; } = "Method"; public string Description { get; set; } = ""; public bool IsRoot { get; set; } }
+
+    private static readonly string[] TabIds = ["overview", "analysis", "actions", "verification", "links", "review", "history", .. AwarenessTabs.Ids];
+
+    private static IReadOnlyList<TabInfo> TabsFor(CapaDetail d) =>
+    [
+        new("overview", "Overview"), new("analysis", "Analysis"), new("actions", "Actions", d.Actions.Count), new("verification", "Verification"), new("links", "Links", d.Links.Count),
+        new("review", "Review"), new("history", "History"),
+    ];
+
+    private CapaDetail? detail;
+    private IReadOnlyList<LifecycleState> steps = [];
+    private string tab = "overview", reasonText = "", rootCause = "", vMethod = "", vCriteria = "", vResult = "";
+    private string? error, seenUri;
+    private bool notFound, busy, editing, editAnalysis, vEffective = true;
+    private DateTime? vDue;
+    private int? commentCount;
+    private QualityStepView? pending;
+    private IReadOnlyList<UserChoice> candidates = [];
+    private readonly EditForm f = new();
+    private readonly List<WhyRow> whys = [];
+    private readonly List<CauseRow> causes = [];
+
+    private string PageTitle => detail is null ? "Corrective action" : $"{detail.Number} · {detail.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Corrective actions", QualityUi.ListHref(QualityKinds.Capa)), new(detail?.Number ?? Number)];
+    private string Banner => detail?.Banner ?? UiText.Unclassified;
+
+    private RenderFragment HeaderFragment(CapaDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Markings.BannerText()"
+              Subtitle="@($"{d.CapaType} action raised by {d.RequesterName} on {UiText.Utc(d.CreatedAt)} UTC · owner {d.OwnerName}")">
+        <Badges>
+            <span class="badge">@d.Priority</span>
+            <span class="badge @QualityUi.StateClass(d.State)">@d.StateLabel</span>
+            @if (d.Overdue) { <span class="badge state-obsolete error">Overdue</span> }
+            @if (d.IsLocked) { <span class="badge">Locked</span> }
+            <FavoriteButton Kind="@ObjectKinds.Capa" Number="@d.Number" />
+            <WatchButton Kind="@ObjectKinds.Capa" Number="@d.Number" />
+        </Badges>
+        <Steps>
+            @if (steps.Count > 0) { <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Corrective action lifecycle" /> }
+        </Steps>
+    </ObjectHeader>;
+
+    protected override Task OnParametersSetAsync() => Reload();
+
+    private async Task Reload()
+    {
+        var outcome = await Capas.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+        if (detail is not null && steps.Count == 0) steps = await Lifecycles.StatesAsync(QualityKinds.Family(QualityKinds.Capa));
+    }
+
+    private async Task FindOwners() => candidates = f.Owner.Trim().Length < 2 ? [] : await Actions.SearchUsersAsync(f.Owner);
+
+    private void BeginEdit()
+    {
+        var d = detail!;
+        (f.Title, f.Description, f.Type, f.Source, f.Priority, f.Owner, f.Target) = (d.Title, d.Description, d.CapaType, d.Source, d.Priority, d.OwnerUsername, d.TargetDate?.ToDateTime(TimeOnly.MinValue));
+        editing = true;
+    }
+
+    private async Task<bool> Run(Func<Subject, Task<Outcome<CapaDetail>>> op, string? success = null)
+    {
+        busy = true;
+        error = null;
+        var outcome = await op(await Users.GetAsync());
+        busy = false;
+        if (outcome.IsOk) { detail = outcome.Value; if (success is not null) Toasts.Success(success); return true; }
+        error = QualityUi.Message(outcome);
+        return false;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (await Run(s => Capas.UpdateAsync(s, Number, new UpdateCapaCommand(f.Title, f.Description, f.Type, f.Source, f.Priority, f.Owner, QualityUi.ParseDate(f.Target)), CurrentUser.NewCorrelationId()), "Changes saved.")) editing = false;
+    }
+
+    private void BeginAnalysis()
+    {
+        var d = detail!;
+        rootCause = d.RootCause;
+        whys.Clear();
+        whys.AddRange(d.Whys.Select(w => new WhyRow { Why = w.Why, Evidence = w.Evidence }));
+        if (whys.Count == 0) whys.Add(new WhyRow());
+        causes.Clear();
+        causes.AddRange(d.Causes.Select(c => new CauseRow { Category = c.Category, Description = c.Description, IsRoot = c.IsRoot }));
+        editAnalysis = true;
+    }
+
+    private async Task SaveAnalysis()
+    {
+        var cmd = new SaveAnalysisCommand(rootCause, [.. whys.Select(w => new WhyInput(w.Why, w.Evidence))], [.. causes.Select(c => new CauseInput(c.Category, c.Description, c.IsRoot))]);
+        if (await Run(s => Capas.SaveAnalysisAsync(s, Number, cmd, CurrentUser.NewCorrelationId()), "Analysis saved.")) editAnalysis = false;
+    }
+
+    private Task SavePlan() => Run(s => Capas.SaveVerificationPlanAsync(s, Number, new SaveVerificationPlanCommand(vMethod, vCriteria, QualityUi.ParseDate(vDue)), CurrentUser.NewCorrelationId()), "Plan saved.");
+
+    private async Task RecordResult()
+    {
+        if (await Run(s => Capas.RecordVerificationAsync(s, Number, new RecordVerificationCommand(vResult, vEffective), CurrentUser.NewCorrelationId()), "Result recorded.")) vResult = "";
+    }
+
+    private async Task Begin(QualityStepView t)
+    {
+        reasonText = "";
+        if (t.To == "InProgress") { await Run(s => Capas.StartAsync(s, Number, CurrentUser.NewCorrelationId()), "Work started."); return; }
+        pending = t;
+    }
+
+    private async Task ConfirmCancel()
+    {
+        if (await Run(s => Capas.CancelAsync(s, Number, reasonText, CurrentUser.NewCorrelationId()), "State changed.")) pending = null;
+    }
+
+    private async Task<string?> SaveMarkings(Markings m, string reason)
+    {
+        var outcome = await Capas.ChangeMarkingsAsync(await Users.GetAsync(), Number, m, reason, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) return QualityUi.Message(outcome);
+        detail = outcome.Value;
+        return null;
+    }
+}

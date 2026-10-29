@@ -31,8 +31,8 @@ public sealed partial class AwarenessUnitTests
             Assert.Contains(k.Group, new[] { NotificationGroups.Mentions, NotificationGroups.Tasks, NotificationGroups.Watching });
             Assert.False(string.IsNullOrWhiteSpace(k.Label));
             Assert.False(string.IsNullOrWhiteSpace(k.Description));
-            // Every sentence names who did it, except the certification notices of the supplier master (8.2), which the system raises on its own.
-            if (k.Code is not (NotificationKindCodes.SupplierCertExpiring or NotificationKindCodes.SupplierCertExpired)) Assert.Contains("{actor}", k.Sentence, StringComparison.Ordinal);
+            // Every sentence names who did it, except the certification notices of the supplier master (8.2) and the overdue and expiry notices of quality records (8.1), which the system raises on its own.
+            if (k.Code is not (NotificationKindCodes.SupplierCertExpiring or NotificationKindCodes.SupplierCertExpired or NotificationKindCodes.QualityActionOverdue or NotificationKindCodes.DeviationExpiring or NotificationKindCodes.DeviationExpired)) Assert.Contains("{actor}", k.Sentence, StringComparison.Ordinal);
             Assert.Equal(!k.CanDisable, !string.IsNullOrWhiteSpace(k.LockedReason)); // a reason exactly when it is locked
         }
         // Every code the modules use is a registered kind (no module can raise an unknown kind).

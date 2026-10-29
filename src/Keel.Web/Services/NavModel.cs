@@ -24,6 +24,7 @@ public static class NavModel
             new("Work", [new("Home", "", "home", ExactMatch: true), new("My tasks", "tasks", "tasks")]),
             new("Product data", [new("Parts", "parts", "part"), new("Documents", "documents", "document"), new("Manufacturing BOMs", "mboms", "mbom"), new("Options and variants", "options", "config"), new("CAD structures", "cad/bom-proposals", "part"), new("Baselines", "baselines", "baseline")]),
             new("Change", [new("Changes", "changes", "change")]),
+            new("Quality", [new("Nonconformance reports", "quality/ncrs", "ncr"), new("Corrective actions", "quality/capas", "capa"), new("Deviations and waivers", "quality/deviations", "deviation")]),
             new("Sourcing", [new("Suppliers", "suppliers", "folder"), new("Supplier requests", "requests", "inbox")]),
         };
         // 8.6 records management: records managers, administrators and auditors (the pages and services check the role again)

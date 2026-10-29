@@ -1,0 +1,56 @@
+@* The security markings of a record, with an audited change (a reason is required). The record's markings must cover what it names (the part of a report, the parts of
+   a scope); the service refuses a change that would not. *@
+<section class="panel" aria-labelledby="markings-heading">
+    <h3 id="markings-heading">Security markings</h3>
+    @if (editMarkings is null)
+    {
+        var m = Current;
+        <dl class="facts">
+            <dt>Export jurisdiction</dt>
+            <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
+            <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
+            <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
+            <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
+            <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
+            <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
+        </dl>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (CanEdit) { <button type="button" class="secondary" @onclick="() => editMarkings = MarkingsInput.From(Current)">Change markings</button> }
+    }
+    else
+    {
+        <div class="stack">
+            <div class="grid-form">
+                <MarkingsFields Value="editMarkings" />
+                <label class="wide">Reason for change (required, audited) <input @bind="reason" /></label>
+            </div>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <div class="toolbar">
+                <button type="button" disabled="@busy" @onclick="Save">Save markings</button>
+                <button type="button" class="secondary" @onclick="() => editMarkings = null">Cancel</button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required Markings Current { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    /// <summary>Saves the new markings with the reason; returns an error text, or null when it worked (the page then reloads the record).</summary>
+    [Parameter, EditorRequired] public required Func<Markings, string, Task<string?>> OnSave { get; set; }
+
+    private MarkingsInput? editMarkings;
+    private string reason = "";
+    private string? error;
+    private bool busy;
+
+    private async Task Save()
+    {
+        var m = editMarkings!.Effective().ToMarkings();
+        if (!m.IsSuccess) { error = string.Join(" ", m.Errors); return; }
+        busy = true;
+        error = await OnSave(m.Value, reason);
+        busy = false;
+        if (error is null) { editMarkings = null; reason = ""; }
+    }
+}

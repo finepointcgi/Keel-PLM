@@ -1,0 +1,257 @@
+@page "/quality/ncrs/{Number}"
+@inject CurrentUser Users
+@inject NcrService Ncrs
+@inject LifecycleSteps Lifecycles
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is { } d)
+    {
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.Ncr" Number="@d.Number" />
+            <CommentCount Kind="@ObjectKinds.Ncr" Number="@d.Number" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @foreach (var n in d.Notices) { <p class="notice" role="status">@n</p> }
+            @if (!d.Permissions.CanModify) { <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p> }
+
+            <TabSet Tabs="@AwarenessTabs.Append(TabsFor(d), commentCount)" Active="@tab" ActiveChanged="id => tab = id" Label="Nonconformance report sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            <section class="panel" aria-labelledby="summary-heading">
+                                <h3 id="summary-heading">Summary</h3>
+                                @if (editing)
+                                {
+                                    <div class="grid-form">
+                                        <label class="wide">Title * <input maxlength="200" @bind="f.Title" /></label>
+                                        <label>Severity <select @bind="f.Severity">@foreach (var s in NcrSeverities.All) { <option value="@s">@s</option> }</select></label>
+                                        <label>Found at <select @bind="f.Stage">@foreach (var s in NcrSeverities.Stages) { <option value="@s">@NcrSeverities.StageLabel(s)</option> }</select></label>
+                                        <label>Quantity affected * <input type="number" step="any" min="0" @bind="f.Quantity" /></label>
+                                        <label>Unit <input maxlength="10" @bind="f.Unit" /></label>
+                                        <label>Lot number <input maxlength="100" @bind="f.Lot" /></label>
+                                        <label>Serial number <input maxlength="100" @bind="f.Serial" /></label>
+                                        <label class="wide">Supplier reference <input maxlength="200" @bind="f.Supplier" /></label>
+                                        <label class="wide">Defect description <textarea rows="5" maxlength="8000" @bind="f.Description"></textarea></label>
+                                    </div>
+                                    <div class="toolbar">
+                                        <button type="button" disabled="@busy" @onclick="SaveEdit">Save</button>
+                                        <button type="button" class="secondary" @onclick="() => editing = false">Cancel</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p>@(string.IsNullOrEmpty(d.Description) ? "No defect description" : d.Description)</p>
+                                    <dl class="facts">
+                                        <dt>Part</dt>
+                                        <dd>@if (d.PartReadable) { <a href="parts/@Uri.EscapeDataString(d.PartNumber)">@d.PartNumber</a> } else { <span>@d.PartNumber</span> } revision @d.PartRevision</dd>
+                                        <dt>Quantity affected</dt><dd>@QualityUi.Quantity(d.Quantity, d.Unit)</dd>
+                                        <dt>Lot</dt><dd>@(d.LotNumber ?? "None")</dd>
+                                        <dt>Serial</dt><dd>@(d.SerialNumber ?? "None")</dd>
+                                        <dt>Supplier reference</dt><dd>@(d.SupplierRef ?? "None")</dd>
+                                        <dt>Found at</dt><dd>@NcrSeverities.StageLabel(d.Stage)</dd>
+                                        @if (d.CancelReason is not null) { <dt>Cancelled because</dt><dd>@d.CancelReason</dd> }
+                                    </dl>
+                                    @if (d.Permissions.Editable && d.Permissions.CanModify) { <button type="button" class="secondary" @onclick="BeginEdit">Edit</button> }
+                                }
+                            </section>
+
+                            <section class="panel" aria-labelledby="steps-heading">
+                                <h3 id="steps-heading">Steps</h3>
+                                <div class="toolbar">
+                                    @if (d.State == "Dispositioned" && d.Permissions.CanModify)
+                                    {
+                                        <button type="button" class="secondary" disabled="@busy" @onclick='() => pending = "close"'>Close the report</button>
+                                    }
+                                    @if (d.State == "Open" && d.Permissions.CanModify)
+                                    {
+                                        <button type="button" class="secondary" disabled="@busy" @onclick='() => pending = "cancel"'>Cancel the report</button>
+                                    }
+                                </div>
+                                @foreach (var t in d.Transitions.Where(t => t.Via == "manual" && !t.Allowed && t.Reason is not null))
+                                {
+                                    <p class="muted small">@t.Label: @t.Reason</p>
+                                }
+                                @if (pending is not null)
+                                {
+                                    <div class="stack">
+                                        <label>@(pending == "close" ? "How was the disposition carried out? *" : "Why is the report cancelled? *")
+                                            <input maxlength="4000" @bind="reasonText" /></label>
+                                        <div class="toolbar">
+                                            <button type="button" disabled="@busy" @onclick="ConfirmPending">@(pending == "close" ? "Close the report" : "Cancel the report")</button>
+                                            <button type="button" class="secondary" @onclick="() => pending = null">Back</button>
+                                        </div>
+                                    </div>
+                                }
+                            </section>
+
+                            <QualityMarkingsPanel Current="d.Markings" CanEdit="@(d.Permissions.Editable && d.Permissions.CanModify)" OnSave="SaveMarkings" />
+                        </div>
+                        break;
+                    case "disposition":
+                        <section class="panel" aria-labelledby="disp-heading">
+                            <h3 id="disp-heading">Disposition</h3>
+                            <dl class="facts">
+                                <dt>Proposed</dt><dd>@NcrDispositions.Label(d.ProposedDisposition)</dd>
+                                <dt>Rationale</dt><dd>@(d.DispositionRationale.Length == 0 ? "None yet" : d.DispositionRationale)</dd>
+                                <dt>Approved by the review board</dt><dd>@(d.Disposition is null ? "Not yet" : NcrDispositions.Label(d.Disposition))</dd>
+                                @if (d.DispositionNote is not null) { <dt>How it was carried out</dt><dd>@d.DispositionNote</dd> }
+                            </dl>
+                            @if (d.Permissions.Editable && d.Permissions.CanModify)
+                            {
+                                <h4>Propose a disposition</h4>
+                                <div class="grid-form">
+                                    <label>Disposition
+                                        <select @bind="dispCode">
+                                            <option value="">Choose a disposition</option>
+                                            @foreach (var x in NcrDispositions.All) { <option value="@x">@NcrDispositions.Label(x)</option> }
+                                        </select>
+                                    </label>
+                                    <label class="wide">Rationale * <textarea rows="3" maxlength="4000" @bind="dispWhy"></textarea></label>
+                                </div>
+                                <div class="toolbar"><button type="button" disabled="@(busy || dispCode.Length == 0)" @onclick="SaveDisposition">Save proposal</button></div>
+                                <p class="muted small">The review board signs the proposal on the Review tab. The disposition becomes final only when every member has signed.</p>
+                            }
+                        </section>
+                        break;
+                    case "actions":
+                        <QualityActionsPanel Kind="@QualityKinds.Ncr" Number="@d.Number" Items="d.Containment" CanModify="d.Permissions.CanModify" Final="d.IsFinal" Heading="Containment and correction" OnChanged="Reload" />
+                        break;
+                    case "links":
+                        <QualityLinksPanel Kind="@QualityKinds.Ncr" Number="@d.Number" Items="d.Links" CanModify="d.Permissions.CanModify" Final="d.IsFinal" OnChanged="Reload" />
+                        break;
+                    case "review":
+                        <QualityReviewPanel Kind="@QualityKinds.Ncr" Number="@d.Number" Heading="Material review board" StartText="Submit to the review board" Version="@($"{d.State}:{d.Submission}")"
+                                            Intro="The review board signs the proposed disposition. Each signature covers the report, the part, the quantity and the containment actions as they are when it is submitted."
+                                            CanStart="@(d.State == "Open" && d.Permissions.CanModify)" WhyNot="@(d.State == "Open" ? "You may not submit this report." : null)" OnChanged="Reload" />
+                        break;
+                    case "history":
+                        <QualityHistoryPanel Items="d.History" />
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Ncr" Number="@d.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Ncr" Number="@d.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the report" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private sealed class EditForm
+    {
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Severity { get; set; } = "Minor";
+        public string Stage { get; set; } = "Other";
+        public decimal Quantity { get; set; } = 1;
+        public string Unit { get; set; } = "EA";
+        public string Lot { get; set; } = "";
+        public string Serial { get; set; } = "";
+        public string Supplier { get; set; } = "";
+    }
+
+    private static readonly string[] TabIds = ["overview", "disposition", "actions", "links", "review", "history", .. AwarenessTabs.Ids];
+
+    private static IReadOnlyList<TabInfo> TabsFor(NcrDetail d) =>
+    [
+        new("overview", "Overview"), new("disposition", "Disposition"), new("actions", "Containment", d.Containment.Count), new("links", "Links", d.Links.Count),
+        new("review", "Review"), new("history", "History"),
+    ];
+
+    private NcrDetail? detail;
+    private IReadOnlyList<LifecycleState> steps = [];
+    private string tab = "overview", dispCode = "", dispWhy = "", reasonText = "";
+    private string? error, pending, seenUri;
+    private bool notFound, busy, editing;
+    private int? commentCount;
+    private readonly EditForm f = new();
+
+    private string PageTitle => detail is null ? "Nonconformance report" : $"{detail.Number} · {detail.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Nonconformance reports", QualityUi.ListHref(QualityKinds.Ncr)), new(detail?.Number ?? Number)];
+    private string Banner => detail?.Banner ?? UiText.Unclassified;
+
+    private RenderFragment HeaderFragment(NcrDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Markings.BannerText()"
+              Subtitle="@($"Reported by {d.ReporterName} on {UiText.Utc(d.CreatedAt)} UTC · {d.PartNumber} revision {d.PartRevision}")">
+        <Badges>
+            <span class="badge">@d.Severity</span>
+            <span class="badge @QualityUi.StateClass(d.State)">@d.StateLabel</span>
+            @if (d.IsLocked) { <span class="badge">Locked</span> }
+            <FavoriteButton Kind="@ObjectKinds.Ncr" Number="@d.Number" />
+            <WatchButton Kind="@ObjectKinds.Ncr" Number="@d.Number" />
+        </Badges>
+        <Steps>
+            @if (steps.Count > 0) { <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Report lifecycle" /> }
+        </Steps>
+    </ObjectHeader>;
+
+    protected override Task OnParametersSetAsync() => Reload();
+
+    private async Task Reload()
+    {
+        var outcome = await Ncrs.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+        if (detail is not null && steps.Count == 0) steps = await Lifecycles.StatesAsync(QualityKinds.Family(QualityKinds.Ncr));
+    }
+
+    private void BeginEdit()
+    {
+        var d = detail!;
+        (f.Title, f.Description, f.Severity, f.Stage, f.Quantity, f.Unit, f.Lot, f.Serial, f.Supplier) =
+            (d.Title, d.Description, d.Severity, d.Stage, d.Quantity, d.Unit, d.LotNumber ?? "", d.SerialNumber ?? "", d.SupplierRef ?? "");
+        editing = true;
+    }
+
+    private async Task<bool> Run(Func<Subject, Task<Outcome<NcrDetail>>> op, string? success = null)
+    {
+        busy = true;
+        error = null;
+        var outcome = await op(await Users.GetAsync());
+        busy = false;
+        if (outcome.IsOk) { detail = outcome.Value; if (success is not null) Toasts.Success(success); return true; }
+        error = QualityUi.Message(outcome);
+        return false;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (await Run(s => Ncrs.UpdateAsync(s, Number, new UpdateNcrCommand(f.Title, f.Description, f.Severity, f.Stage, f.Lot, f.Serial, f.Supplier, f.Quantity, f.Unit), CurrentUser.NewCorrelationId()), "Changes saved.")) editing = false;
+    }
+
+    private async Task SaveDisposition()
+    {
+        if (await Run(s => Ncrs.ProposeDispositionAsync(s, Number, new ProposeDispositionCommand(dispCode, dispWhy), CurrentUser.NewCorrelationId()), "Proposal saved.")) (dispCode, dispWhy) = ("", "");
+    }
+
+    private async Task ConfirmPending()
+    {
+        var what = pending;
+        var text = reasonText;
+        var ok = await Run(s => what == "close" ? Ncrs.CloseAsync(s, Number, text, CurrentUser.NewCorrelationId()) : Ncrs.CancelAsync(s, Number, text, CurrentUser.NewCorrelationId()), "State changed.");
+        if (ok) { pending = null; reasonText = ""; }
+    }
+
+    private async Task<string?> SaveMarkings(Markings m, string reason)
+    {
+        var outcome = await Ncrs.ChangeMarkingsAsync(await Users.GetAsync(), Number, m, reason, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) return QualityUi.Message(outcome);
+        detail = outcome.Value;
+        return null;
+    }
+}

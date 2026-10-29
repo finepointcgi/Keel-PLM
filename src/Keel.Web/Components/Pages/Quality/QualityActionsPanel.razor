@@ -1,0 +1,111 @@
+@inject CurrentUser Users
+@inject QualityActions Actions
+
+@* Action items of a nonconformance report (containment, correction) or a corrective action (corrective, preventive): owner, due date, start, complete with a note. *@
+<section class="panel" aria-labelledby="actions-heading">
+    <h3 id="actions-heading">@Heading</h3>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Items.Count == 0)
+    {
+        <p class="muted">No action items yet.</p>
+    }
+    else
+    {
+        <div class="table-wrap"><table class="data">
+            <thead><tr><th scope="col">Action</th><th scope="col">Type</th><th scope="col">What</th><th scope="col">Owner</th><th scope="col">Due</th><th scope="col">Status</th><th scope="col">Note</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+                @foreach (var a in Items)
+                {
+                    <tr>
+                        <td>@a.Number</td>
+                        <td>@a.ActionType</td>
+                        <td>@a.Description</td>
+                        <td>@a.OwnerName (@a.OwnerUsername)</td>
+                        <td class="@(a.Overdue ? "error" : null)">@QualityUi.DueText(a.DueDate, a.Overdue)</td>
+                        <td>@QualityUi.StatusLabel(a.Status)</td>
+                        <td>@(a.CompletionNote ?? a.CancelReason)</td>
+                        <td>
+                            @if (a.CanStart) { <button type="button" class="secondary" disabled="@busy" @onclick="() => Start(a)">Start</button> }
+                            @if (a.CanComplete || a.CanCancel)
+                            {
+                                <input aria-label="Note for @a.Number" placeholder="@(a.CanComplete ? "What was done, or why cancelled" : "Why cancelled")" @bind="notes[a.Number]" />
+                                @if (a.CanComplete) { <button type="button" disabled="@busy" @onclick="() => Complete(a)">Complete</button> }
+                                @if (a.CanCancel) { <button type="button" class="secondary" disabled="@busy" @onclick="() => Cancel(a)">Cancel action</button> }
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    }
+
+    @if (CanModify && !Final)
+    {
+        <h4>New action item</h4>
+        <div class="grid-form">
+            <label>Type <select @bind="type">@foreach (var t in Types) { <option value="@t">@t</option> }</select></label>
+            <label>Due date <input type="date" @bind="due" /></label>
+            <label>
+                Owner *
+                <input list="owner-options" placeholder="Name or login" @bind="owner" @bind:event="oninput" @bind:after="FindUsers" />
+                <datalist id="owner-options">
+                    @foreach (var u in candidates) { <option value="@u.Username">@u.DisplayName</option> }
+                </datalist>
+            </label>
+            <label class="wide">What has to be done * <input maxlength="2000" @bind="description" /></label>
+        </div>
+        <div class="toolbar"><button type="button" disabled="@(busy || description.Trim().Length == 0 || owner.Trim().Length == 0)" @onclick="Create">Add action item</button></div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    [Parameter, EditorRequired] public required IReadOnlyList<ActionView> Items { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    [Parameter] public bool Final { get; set; }
+    [Parameter] public string Heading { get; set; } = "Action items";
+    /// <summary>Raised after any change so the page reads the record again.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private readonly Dictionary<string, string> notes = new(StringComparer.Ordinal);
+    private string description = "", owner = "";
+    private string type = "";
+    private DateTime? due;
+    private IReadOnlyList<UserChoice> candidates = [];
+    private bool busy;
+    private string? error;
+
+    private IReadOnlyList<string> Types => Kind == QualityKinds.Ncr ? ActionTypes.Ncr : ActionTypes.Capa;
+
+    protected override void OnParametersSet()
+    {
+        foreach (var a in Items) notes.TryAdd(a.Number, "");
+        if (type.Length == 0 || !Types.Contains(type)) type = Types[0];
+    }
+
+    private async Task FindUsers() => candidates = owner.Trim().Length < 2 ? [] : await Actions.SearchUsersAsync(owner);
+
+    private Task Create() => Run(async s =>
+    {
+        var outcome = await Actions.AddAsync(s, Kind, Number, new CreateActionCommand(type, description, owner.Trim(), QualityUi.ParseDate(due)), CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) (description, owner, due) = ("", "", null);
+        return outcome.IsOk ? "" : QualityUi.Message(outcome);
+    });
+
+    private Task Start(ActionView a) => Run(async s => Result(await Actions.StartAsync(s, Kind, Number, a.Number, CurrentUser.NewCorrelationId())));
+    private Task Complete(ActionView a) => Run(async s => Result(await Actions.CompleteAsync(s, Kind, Number, a.Number, notes[a.Number], CurrentUser.NewCorrelationId())));
+    private Task Cancel(ActionView a) => Run(async s => Result(await Actions.CancelAsync(s, Kind, Number, a.Number, notes[a.Number], CurrentUser.NewCorrelationId())));
+
+    private static string Result(Outcome<ActionView> o) => o.IsOk ? "" : QualityUi.Message(o);
+
+    private async Task Run(Func<Subject, Task<string>> op)
+    {
+        busy = true;
+        error = null;
+        var message = await op(await Users.GetAsync());
+        busy = false;
+        if (message.Length == 0) await OnChanged.InvokeAsync();
+        else error = message;
+    }
+}
