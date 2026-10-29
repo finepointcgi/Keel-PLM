@@ -109,8 +109,15 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
     {
         await Expect(TopBanner(page)).ToBeVisibleAsync();
         await Expect(BottomBanner(page)).ToBeVisibleAsync();
-        var top = (await TopBanner(page).InnerTextAsync()).Trim();
-        var bottom = (await BottomBanner(page).InnerTextAsync()).Trim();
+        // A page that loads its data after the first render updates both banners together; read them again until they agree (the two reads are not atomic).
+        string top = "", bottom = "";
+        for (var attempt = 0; attempt < 40; attempt++)
+        {
+            top = (await TopBanner(page).InnerTextAsync()).Trim();
+            bottom = (await BottomBanner(page).InnerTextAsync()).Trim();
+            if (top == bottom && !string.IsNullOrWhiteSpace(top)) break;
+            await Task.Delay(250);
+        }
         Assert.False(string.IsNullOrWhiteSpace(top), "The top marking banner is empty.");
         Assert.Equal(top, bottom);
     }
