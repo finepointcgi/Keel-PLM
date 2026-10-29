@@ -29,7 +29,7 @@ else
                 <caption class="sr-only">Schedule items</caption>
                 <thead><tr>
                     <th scope="col">Item</th><th scope="col">Kind</th><th scope="col">Owner</th><th scope="col">Planned</th><th scope="col">Forecast end</th><th scope="col" class="num">Float</th>
-                    <th scope="col">Status</th><th scope="col" class="num">Done</th><th scope="col">Against baseline</th><th scope="col">Markings</th><th scope="col"><span class="sr-only">Actions</span></th>
+                    <th scope="col">Status</th><th scope="col" class="num">Done</th><th scope="col">Against baseline</th><th scope="col"><span class="sr-only">Actions</span></th>
                 </tr></thead>
                 <tbody>
                     @foreach (var r in Rows())
@@ -37,7 +37,7 @@ else
                         if (r.Item is { } i)
                         {
                             <tr class="@(i.Key == selectedKey ? "selected" : null)" data-item="@i.Key">
-                                <td>@(new string(' ', Depth(i) * 3))<strong>@i.Key</strong> @i.Title@if (i.GateNumber is not null) { <text> (<a href="@ProgramUi.GateHref(i.GateNumber)">@i.GateType gate</a>)</text> }</td>
+                                <td>@(new string(' ', Depth(i) * 3))<strong>@i.Key</strong> @i.Title <MarkingChip Text="@i.Banner" />@if (i.GateNumber is not null) { <text> (<a href="@ProgramUi.GateHref(i.GateNumber)">@i.GateType gate</a>)</text> }</td>
                                 <td>@i.Kind</td>
                                 <td>@(i.OwnerName ?? "Nobody")</td>
                                 <td class="@(i.Overdue ? "error" : null)">@(i.Kind == ProgramKinds.Milestone ? ProgramUi.Date(i.PlannedEnd) : $"{ProgramUi.Date(i.PlannedStart)} to {ProgramUi.Date(i.PlannedEnd)}")@(i.Overdue ? " (overdue)" : "")</td>
@@ -46,13 +46,12 @@ else
                                 <td>@i.StatusLabel</td>
                                 <td class="num">@ProgramUi.Percent(i.Percent)</td>
                                 <td>@(i.BaselineSlipDays is { } bs ? ProgramUi.Slip(bs) : "No baseline")</td>
-                                <td><MarkingChip Text="@i.Banner" /></td>
                                 <td>@if (i.CanModify) { <button type="button" class="secondary" aria-label="@($"Edit {i.Key}")" @onclick="() => Select(i)">Edit</button> }</td>
                             </tr>
                         }
                         else
                         {
-                            <tr class="restricted"><td><em>Restricted item</em></td><td></td><td></td><td>@ProgramUi.Date(r.Hidden!.PlannedStart) to @ProgramUi.Date(r.Hidden.PlannedEnd)</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                            <tr class="restricted"><td><em>Restricted item</em></td><td></td><td></td><td>@ProgramUi.Date(r.Hidden!.PlannedStart) to @ProgramUi.Date(r.Hidden.PlannedEnd)</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
                         }
                     }
                 </tbody>

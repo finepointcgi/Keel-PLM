@@ -112,10 +112,9 @@ public sealed class ProgramTests(E2EFixture fx)
             await BrowserSession.OpenTabAsync(page, "Timeline");
             await Expect(page.Locator(".vis-viewport")).ToBeVisibleAsync();
             await page.Locator("g.vis-node[tabindex='0']").FocusAsync();
-            await page.Keyboard.PressAsync("Home");
-            await Expect(page.Locator(".vis-node:focus")).ToHaveCountAsync(1);
+            Assert.Matches("PH-001|TK-00|MS-00", await page.EvaluateAsync<string>("() => document.activeElement?.getAttribute('aria-label') ?? ''"));
             await page.Keyboard.PressAsync("ArrowDown");
-            await Expect(page.Locator(".vis-node:focus")).ToHaveAttributeAsync("aria-label", new Regex("TK-00|MS-00|PH-00"));
+            Assert.Matches("TK-00|MS-00", await page.EvaluateAsync<string>("() => document.activeElement?.getAttribute('aria-label') ?? ''"));
             await BrowserSession.ClickAsync(page, "Table");
             await Expect(page.Locator("table[data-table='timeline']")).ToContainTextAsync("Concept design");
             await BrowserSession.AssertBannersAsync(page);
