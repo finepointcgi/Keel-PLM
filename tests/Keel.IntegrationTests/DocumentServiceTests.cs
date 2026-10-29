@@ -92,9 +92,10 @@ public sealed class DocumentServiceTests(PostgresFixture pg)
         Assert.Equal(("D-000001", "A.1", "InWork"), (bare.Number, bare.Iteration.Label, bare.Revision.State));
         Assert.Empty(bare.Iteration.Files);
         Assert.Equal("CUI//EXPT · ITAR USML XI(d) · DISTRIBUTION D · PROGRAM ORCA", bare.Banner);
-        // Submitting needs content.
+        // Review is entered through the workflow engine only (7.6): the manual transition is closed, and the gateway demands content (see DocumentReviewTests).
         Assert.False(bare.Transitions.Single().Allowed);
-        Assert.Contains("primary file", (await env.Docs.SetStateAsync(Alice, "D-000001", "UnderReview", null, false, null)).Errors[0]);
+        Assert.Equal("workflow", bare.Transitions.Single().Via);
+        Assert.Contains("review workflow", (await env.Docs.SetStateAsync(Alice, "D-000001", "UnderReview", null, false, null)).Errors[0]);
 
         var bytes = Unique("specification body");
         var withFile = (await env.Docs.CreateAsync(Alice, Cmd("Bracket drawing", type: "Drawing"), File("bracket.txt", bytes, "Text/Plain; charset=utf-8"), null)).Value!;
@@ -325,7 +326,7 @@ public sealed class DocumentServiceTests(PostgresFixture pg)
         var env = await Setup();
         await env.Docs.CreateAsync(Alice, Cmd("Spacer drawing"), File("spacer.txt", Unique("spacer")), null);
 
-        var review = (await env.Docs.SetStateAsync(Alice, "D-000001", "UnderReview", null, false, null)).Value!;
+        var review = (await env.Docs.SetStateAsync(Ada, "D-000001", "UnderReview", "Test: lock the document", true, null)).Value!;
         Assert.True(review.Revision.IsLocked);
         Assert.Contains("locked", (await env.Docs.CheckOutAsync(Alice, "D-000001", null)).Errors[0]);
         Assert.Contains("approved review", (await env.Docs.SetStateAsync(Alice, "D-000001", "Released", null, false, null)).Errors[0]);

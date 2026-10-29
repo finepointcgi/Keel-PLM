@@ -131,10 +131,11 @@
         {
             case OutcomeKind.Ok:
                 comment = "";
+                var noun = outcome.Value!.Target.ObjectType switch { "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "ecn" or "ecr" => "change", _ => "part" };
                 message = outcome.Value!.Status switch
                 {
-                    InstanceStatus.Approved => "Signed. All approvals are in and the part is released.",
-                    InstanceStatus.Rejected => "Signed. The review was rejected and the part is back In Work.",
+                    InstanceStatus.Approved => $"Signed. All approvals are in and the {noun} is released.",
+                    InstanceStatus.Rejected => $"Signed. The review was rejected and the {noun} is back In Work.",
                     _ => "Signed.",
                 };
                 var refreshed = await Flow.GetTaskAsync(user, Id, CurrentUser.NewCorrelationId());

@@ -11,3 +11,7 @@ docs/
 deploy/
 scripts/
 **/*.md
+
+# Licence texts copied into the image (Dockerfile): re-included after the docs/ and *.md exclusions above.
+!docs/third-party/viewer-licenses/
+!docs/third-party/viewer-licenses/*.txt

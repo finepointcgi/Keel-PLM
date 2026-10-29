@@ -35,7 +35,7 @@ The `markings` are the markings of the event: handle the data as marked.
 |---|---|---|
 | `part.released` | A part revision is released (review workflow, change notice, or administrator override: `via`) | `partId, revisionId, number, name, partType, source, defaultUnit, revision, iteration, state, description, attributes, via, stateChangedBy` |
 | `part.obsoleted` | A released part revision becomes obsolete | same as `part.released` |
-| `document.released` / `document.obsoleted` | A document revision is released or obsoleted (administrator override today) | `documentId, revisionId, number, name, documentType, revision, iteration, state, via, files[role,fileName,mediaType,sizeBytes,sha256]` |
+| `document.released` / `document.obsoleted` | A document revision is released (review workflow, `via` = workflow; or administrator override, `via` = admin) or obsoleted | `documentId, revisionId, number, name, documentType, revision, iteration, state, via, files[role,fileName,mediaType,sizeBytes,sha256]` |
 | `change.approved` | An engineering change request is approved by the board | `changeId, number, type, title, description, changeClass, priority, reason, sourceChange, submission, affected[], approvedAt` |
 | `change.released` | An engineering change notice is released | as above plus `resulting[objectType, number, revision, iteration]`, `obsoleted[]`, `retainedByEffectivity[]`, `releasedAt`; each `affected` item has `action` and `effectivity` |
 | `baseline.established` | A baseline is established | `baselineId, number, name, type, state, milestone, root{number,revision,iteration}, configuration, itemCount, documentCount, contentSha256, establishedAt, establishReason` |

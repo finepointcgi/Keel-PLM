@@ -1,6 +1,7 @@
 @page "/documents/{Number}"
 @using Keel.Documents
 @using Keel.Documents.Vault
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject DocumentService Docs
 @inject VaultOptions Vault
@@ -140,6 +141,11 @@
                             }
                         </section>
                         break;
+                    case "review":
+                        @* 7.6 (ADR-0033): review, e-signature and release through the workflow engine, exactly as for parts. *@
+                        <DocumentReviewPanel Number="@d.Number" State="@d.Revision.State" Latest="@d.Revision.IsLatest" CheckedOut="@(d.Checkout is not null)"
+                                             CanModify="@d.Permissions.CanModify" HasPrimary="@d.Iteration.Files.Any(f => f.Role == FileRoles.Primary)" OnChanged="Reload" />
+                        break;
                     case "timeline":
                         @* UX-3: the life of the document; the page banner also covers the other objects its entries name. *@
                         <TimelinePanel ObjectType="document" Key="@d.Number" Version="@($"{d.Revision.Revision}.{d.Iteration.Iteration}.{d.Revision.State}")"
@@ -240,8 +246,8 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "usedby", "history", "timeline", "security", .. AwarenessTabs.Ids];
-    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("usedby", "Used by"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings")];
+    private static readonly string[] TabIds = ["overview", "usedby", "history", "review", "timeline", "security", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("usedby", "Used by"), new("history", "History"), new("review", "Review & release"), new("timeline", "Timeline"), new("security", "Security markings")];
     private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
 
     private DocumentDetail? doc;
@@ -296,6 +302,8 @@
         if (outcome.IsOk)
             parts = (await Docs.GetDocumentPartsAsync(subject, Number, Corr())).Value;
     }
+
+    private async Task Reload() => await OnParametersSetAsync();
 
     private void Apply(DocumentDetail? d)
     {

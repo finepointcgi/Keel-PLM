@@ -59,6 +59,8 @@ public sealed partial class ArchitectureTests
             // PartWorkflowGateway loads ONE object by id for the workflow engine, which evaluates AccessPolicy on the
             // returned markings (live subject) before acting; its WHERE clause is appended by callers.
             if (file.EndsWith("PartWorkflowGateway.cs", StringComparison.Ordinal)) continue;
+            // DocumentWorkflowGateway (7.6, ADR-0033) is the same: keyed loads for the workflow engine, which evaluates AccessPolicy on the returned markings.
+            if (file.EndsWith("DocumentWorkflowGateway.cs", StringComparison.Ordinal)) continue;
             // PartChangeGateway does the same for change management: single objects by id (or a batch of ids for display) that the caller
             // evaluates with AccessPolicy on the returned markings before showing anything.
             if (file.EndsWith("PartChangeGateway.cs", StringComparison.Ordinal)) continue;

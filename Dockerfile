@@ -60,6 +60,8 @@ RUN rm -f /usr/bin/microdnf /usr/bin/dnf /usr/bin/yum /usr/bin/curl \
 COPY --from=publish --chown=0:0 /out/api /app
 COPY --from=publish --chown=0:0 /out/audit /app/audit
 COPY --from=publish --chown=0:0 /out/vault /app/vault
+# Licence texts of the vendored viewer files travel in the image (LGPL/MIT/Apache notices).
+COPY --chown=0:0 docs/third-party/viewer-licenses /app/licenses
 # Application files are read-only for the runtime user (owned by root, world-readable).
 RUN chmod -R a=rX /app
 

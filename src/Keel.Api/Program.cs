@@ -122,6 +122,7 @@ builder.Services.AddKeelDocuments(builder.Configuration);
 builder.Services.AddKeelViewerHost(builder.Configuration); // 6.0 file viewer
 Keel.Bom.BomModule.AddKeelBom(builder.Services); // 1.4 BOM
 builder.Services.AddSingleton<IWorkflowObjectGateway, Keel.Parts.PartWorkflowGateway>();
+builder.Services.AddSingleton<IWorkflowObjectGateway, Keel.Documents.DocumentWorkflowGateway>(); // 7.6: documents are reviewed and released through the same engine
 builder.Services.AddSingleton<IChangeObjectGateway, Keel.Parts.PartChangeGateway>(); // 1.6 change management
 builder.Services.AddSingleton<ILinkedDocumentProvider, Keel.Documents.LinkedDocumentProvider>();
 builder.Services.AddSingleton<IDocumentPinProvider, Keel.Documents.DocumentPinProvider>(); // 2.1 baselines pin documents

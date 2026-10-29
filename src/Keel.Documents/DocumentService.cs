@@ -698,7 +698,9 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
 
     private static string ViaMessage(string via, string targetLabel) => via switch
     {
-        "workflow" => $"{targetLabel} is reached through an approved review. Submit the document for review to release it.",
+        "workflow" => targetLabel == "Released"
+            ? $"{targetLabel} is reached through an approved review. Submit the document for review (Review & release tab) to release it."
+            : $"{targetLabel} is entered and left through the review workflow. Use Submit for review on the Review & release tab; a rejected or cancelled review returns the document to In Work.",
         "change" => $"{targetLabel} is reached only through a released change notice.",
         _ => $"Transition to {targetLabel} is not available.",
     };

@@ -10,7 +10,11 @@ namespace Keel.Documents;
 /// <summary>Reports document revision releases and obsolescence to the integration outbox (ADR-0025), in the transaction of the state change.</summary>
 internal static class DocumentEvents
 {
-    public static async Task EmitAsync(IDomainEventSink? sink, DbConnection conn, DbTransaction tx, Guid revisionId, string eventType, Subject actor, DateTimeOffset now, string? correlationId, CancellationToken ct)
+    /// <summary>How the state change came about: an administrator override or obsolescence ("admin"), or the review workflow (7.6, ADR-0033).</summary>
+    public const string ViaAdmin = "admin";
+    public const string ViaWorkflow = "workflow";
+
+    public static async Task EmitAsync(IDomainEventSink? sink, DbConnection conn, DbTransaction tx, Guid revisionId, string eventType, Subject actor, DateTimeOffset now, string? correlationId, CancellationToken ct, string via = ViaAdmin)
     {
         if (sink is null) return;
         var c = (NpgsqlConnection)conn;
@@ -43,7 +47,7 @@ internal static class DocumentEvents
                 ["revision"] = revision,
                 ["iteration"] = $"{revision}.{r.GetInt32(5).ToString(CultureInfo.InvariantCulture)}",
                 ["state"] = r.GetString(6),
-                ["via"] = "admin",
+                ["via"] = via,
             };
         }
         var files = new JsonArray();

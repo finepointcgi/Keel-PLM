@@ -118,18 +118,16 @@ public sealed class AdminLifecycleTests(PostgresFixture pg)
     public async Task A_workflow_transition_needs_a_bound_workflow_template_and_change_lifecycles_are_view_only()
     {
         var env = await AdminEnv.CreateAsync(pg);
-        // Documents have no review workflow: a NEW workflow-tagged transition is refused, the seeded one is kept.
+        // Documents have a review workflow since 0017 (template document-release-review): a NEW workflow-tagged transition is accepted because a template is active.
         var doc = await CurrentAsync(env, "document-default");
         var withNew = doc with
         {
             States = [.. doc.States, new LifecycleStateDef("Qualified", "Qualified", 15, false, false, false)],
             Transitions = [.. doc.Transitions, new LifecycleTransitionDef("InWork", "Qualified", "workflow"), new LifecycleTransitionDef("Qualified", "InWork", "manual")],
         };
-        var refused = await env.Lifecycles.PublishVersionAsync(Ada, "document-default", withNew, "x", null);
-        Assert.Equal(OutcomeKind.Invalid, refused.Kind);
-        Assert.Contains("no workflow template is active for document", AdminEnv.Errors(refused), StringComparison.Ordinal);
-        var ok = withNew with { Transitions = [.. doc.Transitions, new LifecycleTransitionDef("InWork", "Qualified", "manual"), new LifecycleTransitionDef("Qualified", "InWork", "manual")] };
-        AdminEnv.Ok(await env.Lifecycles.PublishVersionAsync(Ada, "document-default", ok, "Qualification", null));
+        AdminEnv.Ok(await env.Lifecycles.PublishVersionAsync(Ada, "document-default", withNew, "Qualification", null));
+        // The seeded review transitions stay workflow-tagged in version 1 (migration 0017).
+        Assert.Contains(doc.Transitions, t => t.From == "InWork" && t.To == "UnderReview" && t.Via == "workflow");
 
         var ecn = await CurrentAsync(env, "ecn-default");
         var e = await Assert.ThrowsAsync<NotSupportedException>(() => env.Lifecycles.PublishVersionAsync(Ada, "ecn-default", ecn with { States = [.. ecn.States] }, "x", null));

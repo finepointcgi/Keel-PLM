@@ -55,6 +55,7 @@ public static class WorkflowText
     public static string? ObjectLink(string objectType, string key) => objectType switch
     {
         "part" => $"parts/{Uri.EscapeDataString(key)}",
+        "document" => $"documents/{Uri.EscapeDataString(key)}", // 7.6: documents are reviewed through the same engine
         "ecr" or "ecn" => $"changes/{Uri.EscapeDataString(key)}", // 1.6: change requests and change notices
         "baseline" => $"baselines/{Uri.EscapeDataString(key)}", // 2.1: baselines established by signatures
         _ => null,
