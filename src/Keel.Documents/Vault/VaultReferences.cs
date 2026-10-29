@@ -34,6 +34,7 @@ public static class VaultReferences
         new("plm", "document_checkout_file", "sha256", "files of working copies not yet checked in"),
         new("src", "response_file", "sha256", "files a supplier uploaded with a response in the supplier portal (immutable rows)"),
         new("rec", "archive", "package_sha256", "WORM-style archive packages (8.6): immutable rows, never garbage"),
+        new("rpt", "artifact", "sha256", "generated release package PDFs (8.9): immutable rows, content addressed"),
     ];
 
     /// <summary>Hash columns that do not name vault objects, or name content without keeping it alive.</summary>
@@ -68,6 +69,9 @@ public static class VaultReferences
         new("rec", "archive", "manifest_sha256", "hash of the signed manifest inside an archive package (8.6), not a vault object"),
         new("rec", "certificate", "body_sha256", "hash of a certificate of destruction body (8.6), not a vault object"),
         new("rec", "destruction_confirmation", "sha256", "names content that was destroyed; a confirmation never keeps bytes alive (8.6)"),
+        new("proc", "plan_iteration", "content_sha256", "digest over the canonical content of a process plan iteration (ADR-0042), not a vault object"),
+        new("proc", "plan_revision", "bound_mbom_sha", "content digest of the released MBOM revision a plan revision is written against (ADR-0042), not a vault object"),
+        new("proc", "review_binding", "review_sha256", "hash binding a process plan review to its content and MBOM revision (ADR-0042), not a vault object"),
         new("audit", "event", "hash", "audit chain"),
         new("audit", "event", "prev_hash", "audit chain"),
         new("audit", "checkpoint", "hash", "audit checkpoint"),

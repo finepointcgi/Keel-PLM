@@ -62,6 +62,7 @@ public static class WorkflowText
         "gate" => AwarenessKinds.Path("gate", key), // 8.8: gate reviews approved by signatures
         "reqspec" => $"requirements/{Uri.EscapeDataString(key)}", // 8.3: requirement specifications released by signatures
         "supplier" => $"suppliers/{Uri.EscapeDataString(key)}", // 8.2: supplier approval
+        "process_plan" => $"process/plans/{Uri.EscapeDataString(key)}", // 8.7: process plan release
         "source_entry" => $"sourcing/entries/{Uri.EscapeDataString(key)}", // 8.2: approved list entries
         "retention_schedule" => $"records/schedules/{key.TrimStart('v')}", // 8.6: retention schedule publication
         "legal_hold" => $"records/holds/{Uri.EscapeDataString(key)}", // 8.6: legal hold release

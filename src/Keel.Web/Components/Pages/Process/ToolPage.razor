@@ -1,0 +1,189 @@
+@page "/process/tools/{Number}"
+@inject CurrentUser Users
+@inject ToolingService Tooling
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Tool @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        var s = d.Summary;
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.Tool" Number="@s.Number" />
+            <CommentCount Kind="@ObjectKinds.Tool" Number="@s.Number" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (s.CalibrationState is "overdue" or "never")
+            {
+                <p class="notice" role="status">@(s.CalibrationState == "never" ? "This tool has never been calibrated." : $"Calibration was due on {s.DueOn:yyyy-MM-dd}."). Plans that use it cannot be submitted for review until it is calibrated.</p>
+            }
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs(d), commentCount)" Active="@tab" ActiveChanged="id => tab = id" Label="Tool sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <section class="panel stack" aria-labelledby="facts-heading">
+                            <h2 id="facts-heading">Record</h2>
+                            <dl class="facts">
+                                <dt>Number</dt><dd>@s.Number</dd>
+                                <dt>Name</dt><dd>@s.Name</dd>
+                                <dt>Kind</dt><dd>@ToolKinds.Label(s.Kind)</dd>
+                                <dt>Plant</dt><dd>@s.Plant</dd>
+                                <dt>Status</dt><dd>@(s.Status == "retired" ? "Retired" : "Active")</dd>
+                                <dt>Calibration</dt><dd><span class="badge @ProcessUi.CalibrationClass(s.CalibrationState)">@ProcessRules.CalibrationLabel(s.CalibrationState)</span>@(s.RequiresCalibration ? $", every {s.IntervalDays} days" : "")</dd>
+                                @if (s.RequiresCalibration) { <dt>Last calibrated</dt><dd>@(s.LastCalibratedOn?.ToString("yyyy-MM-dd") ?? "never")</dd><dt>Due</dt><dd>@(s.DueOn?.ToString("yyyy-MM-dd") ?? "now")</dd> }
+                                @if (d.Description is not null) { <dt>Description</dt><dd>@d.Description</dd> }
+                            </dl>
+                        </section>
+                        @if (d.CanModify)
+                        {
+                            <EditForm Model="this" OnSubmit="Save" FormName="edit-tool" class="panel stack">
+                                <h3>Edit the record</h3>
+                                <div class="grid-form">
+                                    <label class="wide">Name * <InputText @bind-Value="editName" maxlength="200" required /></label>
+                                    <label class="inline"><InputCheckbox @bind-Value="editRequires" /> Needs calibration</label>
+                                    @if (editRequires) { <label>Interval (days) <InputNumber @bind-Value="editInterval" min="1" max="3660" /></label> }
+                                    <label class="wide">Description <InputText @bind-Value="editDescription" maxlength="1000" /></label>
+                                </div>
+                                <div class="toolbar"><button type="submit" disabled="@busy">Save</button></div>
+                            </EditForm>
+                            <section class="panel stack" aria-labelledby="status-heading">
+                                <h3 id="status-heading">@(s.Status == "retired" ? "Restore" : "Retire")</h3>
+                                <p class="muted small">A retired tool cannot be added to plans; plans that use it show an error until changed.</p>
+                                <div class="toolbar">
+                                    <input aria-label="Reason" placeholder="Reason (required)" class="grow" @bind="reason" />
+                                    <button type="button" class="secondary" disabled="@busy" @onclick="ToggleStatus">@(s.Status == "retired" ? "Restore" : "Retire")</button>
+                                </div>
+                            </section>
+                        }
+                        break;
+                    case "calibration":
+                        <section class="panel stack" aria-labelledby="cal-heading">
+                            <h2 id="cal-heading">Calibration history</h2>
+                            @if (!s.RequiresCalibration) { <p class="muted">This tool does not need calibration.</p> }
+                            else
+                            {
+                                @if (d.CanModify && s.Status == "active")
+                                {
+                                    <EditForm Model="this" OnSubmit="Calibrate" FormName="calibrate" class="stack">
+                                        <div class="grid-form">
+                                            <label>Calibrated on * <InputDate @bind-Value="calDate" /></label>
+                                            <label>Certificate or record reference <InputText @bind-Value="calRef" maxlength="100" /></label>
+                                            <label class="wide">Note <InputText @bind-Value="calNote" maxlength="500" /></label>
+                                        </div>
+                                        <p class="muted small">The next due date is the calibration date plus @s.IntervalDays days. Only a reference is stored, never the certificate itself.</p>
+                                        <div class="toolbar"><button type="submit" disabled="@busy">Record calibration</button></div>
+                                    </EditForm>
+                                }
+                                @if (d.History.Count == 0) { <p class="muted">No calibration recorded yet.</p> }
+                                else
+                                {
+                                    <div class="table-wrap">
+                                        <table class="data">
+                                            <caption class="sr-only">Calibration history</caption>
+                                            <thead><tr><th scope="col">Calibrated</th><th scope="col">Next due</th><th scope="col">Reference</th><th scope="col">Note</th><th scope="col">Recorded</th></tr></thead>
+                                            <tbody>
+                                                @foreach (var h in d.History)
+                                                {
+                                                    <tr><th scope="row">@h.CalibratedOn.ToString("yyyy-MM-dd")</th><td>@h.NextDueOn.ToString("yyyy-MM-dd")</td><td>@h.Reference</td><td>@h.Note</td><td>@UiText.Utc(h.RecordedAt) by @h.RecordedBy</td></tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            }
+                        </section>
+                        break;
+                    case "used":
+                        <section class="panel stack" aria-labelledby="used-heading">
+                            <h2 id="used-heading">Process plans that use this tool</h2>
+                            @if (d.UsedBy.Count == 0) { <p class="muted">No process plan you can read uses this tool.</p> }
+                            else
+                            {
+                                <div class="table-wrap">
+                                    <table class="data">
+                                        <caption class="sr-only">Process plans that use the tool</caption>
+                                        <thead><tr><th scope="col">Plan</th><th scope="col">Part</th><th scope="col">Plant</th><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var u in d.UsedBy)
+                                            {
+                                                <tr><th scope="row"><a href="@ProcessUi.PlanHref(u.PlanNumber)">@u.PlanNumber</a></th><td>@u.PartNumber</td><td>@u.Plant</td><td>@u.Revision</td><td>@u.State</td><td><MarkingChip Text="@u.Banner" /></td></tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </section>
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Tool" Number="@s.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Tool" Number="@s.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading the tool" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    private ToolDetail? detail;
+    private bool notFound, busy, editRequires;
+    private string? error, seenUri;
+    private string tab = "overview", editName = "", editDescription = "", reason = "", calRef = "", calNote = "";
+    private int? editInterval;
+    private DateTime? calDate = DateTime.UtcNow.Date;
+    private int? commentCount;
+    private static readonly string[] TabIds = ["overview", "calibration", "used", .. AwarenessTabs.Ids];
+
+    private string Banner => detail?.Summary.Banner ?? UiText.Unclassified;
+    private string PageTitle => detail is null ? "Tool" : $"{detail.Summary.Number} · {detail.Summary.Name}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Process plans", "process/plans"), new("Tools and gauges", "process/tools"), new(detail?.Summary.Number ?? Number)];
+
+    private IReadOnlyList<TabInfo> Tabs(ToolDetail d) => [new("overview", "Overview"), new("calibration", "Calibration", d.History.Count), new("used", "Used in plans", d.UsedBy.Count)];
+
+    private RenderFragment HeaderFragment(ToolDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Summary.Banner" Subtitle="@($"{ToolKinds.Label(d.Summary.Kind)} · plant {d.Summary.Plant}")">
+        <Badges>
+            @if (d.Summary.Status == "retired") { <span class="badge state-obsolete">Retired</span> }
+            <span class="badge @ProcessUi.CalibrationClass(d.Summary.CalibrationState)">@ProcessRules.CalibrationLabel(d.Summary.CalibrationState)</span>
+            <FavoriteButton Kind="@ObjectKinds.Tool" Number="@d.Summary.Number" />
+            <WatchButton Kind="@ObjectKinds.Tool" Number="@d.Summary.Number" />
+        </Badges>
+    </ObjectHeader>;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        var outcome = await Tooling.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is null) return;
+        (editName, editDescription, editRequires, editInterval) = (detail.Summary.Name, detail.Description ?? "", detail.Summary.RequiresCalibration, detail.Summary.IntervalDays);
+    }
+
+    private async Task Apply(Func<Subject, string, Task<Outcome<ToolDetail>>> action)
+    {
+        busy = true; error = null;
+        var outcome = await action(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await Reload();
+    }
+
+    private Task Save() => Apply((s, c) => Tooling.UpdateAsync(s, Number, new UpdateToolCommand(editName, editDescription, editRequires, editInterval), detail!.Revision, c));
+    private Task Calibrate() => Apply((s, c) => Tooling.RecordCalibrationAsync(s, Number, DateOnly.FromDateTime(calDate ?? DateTime.UtcNow.Date), calRef, calNote, c));
+    private async Task ToggleStatus() { await Apply((s, c) => Tooling.SetStatusAsync(s, Number, detail!.Summary.Status != "retired", reason, c)); if (error is null) reason = ""; }
+}

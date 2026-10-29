@@ -1,0 +1,111 @@
+@page "/process/plans"
+@inject CurrentUser Users
+@inject ProcessPlanService Plans
+@inject MbomService Mboms
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="Process plans" Crumbs="@Crumbs">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search process plans" placeholder="Plan, part or MBOM number or name" class="grow" @bind="text" />
+        <select aria-label="Plant" @bind="plant" @bind:after="() => Search(0)">
+            <option value="">All plants</option>
+            @foreach (var p in plants) { <option value="@p.Code">@p.Code @p.Name</option> }
+        </select>
+        <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
+            <option value="">Any state</option>
+            @foreach (var s in new[] { PlanStates.InWork, PlanStates.UnderReview, PlanStates.Released, PlanStates.Obsolete }) { <option value="@s">@PlanStates.Label(s)</option> }
+        </select>
+        <label class="inline"><input type="checkbox" @bind="staleOnly" @bind:after="() => Search(0)" /> Stale only</label>
+        <button type="submit">Search</button>
+        <a class="button secondary" href="process/tools">Tools and gauges</a>
+        <AuthorizeView Roles="@Roles.Admin" Context="adm"><a class="button secondary" href="process/work-centers">Work centers</a></AuthorizeView>
+    </form>
+
+    <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")" Context="auth">
+        <details class="panel">
+            <summary>New process plan</summary>
+            <EditForm Model="this" OnSubmit="Create" FormName="new-plan" class="stack">
+                <p class="muted small">A plan is written against the released revision of a manufacturing BOM. It starts as a working copy that you check in and then submit for review.</p>
+                @if (error is not null) { <p class="error" role="alert">@error</p> }
+                <div class="grid-form">
+                    <label>Manufacturing BOM number * <InputText @bind-Value="mbomNumber" maxlength="40" required placeholder="MB-000001" /></label>
+                    <label class="wide">Description <InputText @bind-Value="description" maxlength="4000" /></label>
+                </div>
+                <div class="toolbar"><button type="submit" disabled="@busy">Create plan</button></div>
+            </EditForm>
+        </details>
+    </AuthorizeView>
+
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total process plan@(result.Total == 1 ? "" : "s") you can access</p>
+        <DataTable TItem="PlanSummary" TableId="process-plans" Items="result.Items" Columns="Columns" Caption="Process plans" OnServerSort="OnSort" ServerSort="sort">
+            <Empty>
+                <EmptyState Title="@(Filtered ? "No plans match" : "No process plans yet")" IconName="mbom">
+                    @(Filtered ? "Try a different search or clear the filters." : "Create the routing and work instructions of a manufacturing BOM that has a released revision.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded, staleOnly, busy;
+    private string text = "", plant = "", state = "", mbomNumber = "", description = "";
+    private string? error;
+    private int offset;
+    private PlanResults? result;
+    private IReadOnlyList<PlantInfo> plants = [];
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Process plans")];
+    private bool Filtered => text.Length > 0 || plant != "" || state != "" || staleOnly;
+    private string Banner => result?.Banner ?? UiText.Unclassified;
+
+    private static readonly IReadOnlyList<DataColumn<PlanSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Plan", Required = true, ServerSortKey = "number", Cell = p => @<a href="@ProcessUi.PlanHref(p.Number)">@p.Number</a> },
+        new() { Key = "part", Title = "Part", ServerSortKey = "part", Text = p => $"{p.PartNumber} {p.PartName}" },
+        new() { Key = "mbom", Title = "MBOM", ServerSortKey = "mbom", Text = p => $"{p.MbomNumber} (rev {p.BoundMbomRevision})" },
+        new() { Key = "plant", Title = "Plant", ServerSortKey = "plant", Text = p => p.Plant },
+        new() { Key = "version", Title = "Version", Text = p => p.IterationLabel },
+        new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = p => @<span class="badge @ProcessUi.StateClass(p.State)">@p.StateLabel</span> },
+        new() { Key = "stale", Title = "MBOM", Cell = p => @<span>@(p.Stale == Staleness.Current ? "Current" : p.Stale == Staleness.Stale ? "Stale" : "No released revision")</span> },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = p => @<MarkingChip Text="@p.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (plants.Count == 0) plants = await Mboms.ListPlantsAsync();
+        _ = ProcessPlanService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        var outcome = await Plans.SearchAsync(await Users.GetAsync(), new PlanSearch(text, plant == "" ? null : plant, state == "" ? null : state, staleOnly, PageSize, offset, sort), CurrentUser.NewCorrelationId());
+        result = outcome.Value;
+    }
+
+    private async Task Create()
+    {
+        busy = true; error = null;
+        var outcome = await Plans.CreateAsync(await Users.GetAsync(), new CreatePlanCommand(mbomNumber.Trim(), description), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        Nav.NavigateTo(ProcessUi.PlanHref(outcome.Value!.Summary.Number));
+    }
+}

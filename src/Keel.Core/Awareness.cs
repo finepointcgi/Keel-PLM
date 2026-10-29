@@ -24,7 +24,12 @@ public static class AwarenessKinds
     public const string Program = "program";
     public const string Gate = "gate";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, ReqSpec, Program, Gate];
+    /// <summary>8.7 manufacturing process data: a process plan (routing, operations, work instructions) and a tool, fixture or gauge.</summary>
+    public const string ProcessPlan = "process_plan";
+    public const string Tool = "tool";
+
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, ReqSpec, ProcessPlan, Tool, Program, Gate];
+
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -43,6 +48,8 @@ public static class AwarenessKinds
         ReqSpec => "requirements/" + Uri.EscapeDataString(number),
         Program => "programs/" + Uri.EscapeDataString(number),
         Gate => "programs/gates/" + Uri.EscapeDataString(number),
+        ProcessPlan => "process/plans/" + Uri.EscapeDataString(number),
+        Tool => "process/tools/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -60,6 +67,8 @@ public static class AwarenessKinds
         ReqSpec => "Requirement specification",
         Program => "Program",
         Gate => "Gate review",
+        ProcessPlan => "Process plan",
+        Tool => "Tool",
         _ => kind,
     };
 
@@ -90,6 +99,8 @@ public static class AwarenessKinds
         "reqspec" => ReqSpec,
         "program" => Program,
         "gate" => Gate,
+        "process_plan" => ProcessPlan,
+        "tool" => Tool,
         _ => null,
     };
 
@@ -184,4 +195,7 @@ public static class NotificationKindCodes
     /// <summary>8.8 programs: a milestone you own is due soon / is overdue (raised by the system, pointer only).</summary>
     public const string MilestoneDue = "milestone_due";
     public const string MilestoneOverdue = "milestone_overdue";
+    /// <summary>8.7 process data: a tool, fixture or gauge is due for calibration soon / is overdue. Pointer is the tool.</summary>
+    public const string ToolCalibrationDue = "tool_calibration_due";
+    public const string ToolCalibrationOverdue = "tool_calibration_overdue";
 }

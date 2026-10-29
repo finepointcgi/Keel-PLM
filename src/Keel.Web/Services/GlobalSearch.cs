@@ -59,6 +59,8 @@ public sealed record ParsedQuery(string Text, IReadOnlyList<string> Kinds, strin
                 case "sub": return new(rest, [ObjectKinds.Substance], null);
                 case "rs": return new(rest, [ObjectKinds.ReqSpec], null);
                 case "pg": return new(rest, [ObjectKinds.Program], null);
+                case "pp": return new(rest, [ObjectKinds.ProcessPlan], null);
+                case "tl": return new(rest, [ObjectKinds.Tool], null);
             }
         }
         return new(text, ObjectKinds.All, null);
@@ -100,7 +102,7 @@ public static class StateText
 /// Global search through the modules' own search methods (ADR-0028): each one applies <c>AccessPolicy.BuildReadFilter</c> in its SQL and audits the search, so
 /// nothing the user may not read can appear, and a total is a count of what they may read. No result is cached or stored. Results are merged and ranked here.
 /// </summary>
-public sealed class GlobalSearchService(CurrentUser users, PartService parts, DocumentService documents, ChangeService changes, BaselineService baselines, MbomService mboms, WorkspaceReads reads, SupplierService? suppliers = null, Keel.Quality.QualityQueries? quality = null, RegulatoryCatalogService? substances = null, RequirementService? requirements = null, Keel.Programs.ProgramService? programs = null) : IGlobalSearch
+public sealed class GlobalSearchService(CurrentUser users, PartService parts, DocumentService documents, ChangeService changes, BaselineService baselines, MbomService mboms, WorkspaceReads reads, SupplierService? suppliers = null, Keel.Quality.QualityQueries? quality = null, RegulatoryCatalogService? substances = null, RequirementService? requirements = null, Keel.Process.ProcessPlanService? plans = null, Keel.Process.ToolingService? tools = null, Keel.Programs.ProgramService? programs = null) : IGlobalSearch
 {
     public async Task<IReadOnlyList<SearchHit>> RecentAsync(int take, CancellationToken ct) =>
         (await reads.RecentAsync(take, ct)).Items.Select(i => new SearchHit(i.Kind, i.Number, i.Name, i.StateLabel, i.Banner, i.Href, 0)).ToList();
@@ -182,6 +184,20 @@ public sealed class GlobalSearchService(CurrentUser users, PartService parts, Do
                 var o = await requirements.SearchAsync(subject, new SpecSearch(Query: text.Length == 0 ? null : text, Limit: limit, Offset: offset), corr, ct);
                 if (o.Value is not { } page) return new(kind, [], 0, UiText.Unclassified);
                 return new(kind, page.Items.Select(sp => Hit(sp.Number, sp.Name, sp.StateLabel, sp.Banner)).ToList(), page.Total, page.PageBanner);
+            }
+            case ObjectKinds.ProcessPlan:
+            {
+                if (plans is null) return new(kind, [], 0, UiText.Unclassified);
+                var o = await plans.SearchAsync(subject, new Keel.Process.PlanSearch(Text: text.Length == 0 ? null : text, Limit: limit, Offset: offset), corr, ct);
+                if (o.Value is not { } page) return new(kind, [], 0, UiText.Unclassified);
+                return new(kind, page.Items.Select(pl => Hit(pl.Number, $"{pl.PartName} ({pl.Plant})", pl.StateLabel, pl.Banner)).ToList(), page.Total, page.Banner);
+            }
+            case ObjectKinds.Tool:
+            {
+                if (tools is null) return new(kind, [], 0, UiText.Unclassified);
+                var o = await tools.SearchAsync(subject, new Keel.Process.ToolSearch(Text: text.Length == 0 ? null : text, Limit: limit, Offset: offset), corr, ct);
+                if (o.Value is not { } page) return new(kind, [], 0, UiText.Unclassified);
+                return new(kind, page.Items.Select(t => Hit(t.Number, t.Name, Keel.Process.ToolKinds.Label(t.Kind), t.Banner)).ToList(), page.Total, page.Banner);
             }
             case ObjectKinds.Program:
             {

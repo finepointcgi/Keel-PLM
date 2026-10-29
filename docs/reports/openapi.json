@@ -1,0 +1,756 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Keel PLM output and bulk work API",
+    "description": "Release package PDFs (refused when any included object is unreadable, aggregate marking on every page), Excel and CSV BOM export and import proposals, mass change with preview, apply and undo, and the report builder over a fixed catalog of datasets. Every result is read-filtered for the caller and carries its marking banner.",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/v1/output/packages": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "The release packages of a part, ECN or baseline that you may read completely.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Generates a release package PDF. Refused (403) when any object it needs is unreadable; the package is never redacted.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/packages/{number}/download": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Downloads a package. 404 unless you may read every object it includes.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/bom/export": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Exports the resolved EBOM or MBOM as .xlsx or CSV (kind, number, variant, spec, depth, context, serial, lot, date, format).",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "number",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "spec",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "serial",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "lot",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/bom/template.xlsx": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "The workbook template for BOM changes.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/bom/imports": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Reads a workbook or CSV (the body is the file) into a reviewable proposal with row-level errors. Nothing is changed.",
+        "parameters": [
+          {
+            "name": "fileName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            },
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            },
+            "text/csv": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Your import proposals.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/bom/imports/{number}": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/bom/imports/{number}/apply": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Applies a clean proposal through the part and BOM services (check-out, edit, check-in). Repeating it skips assemblies already changed.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/bom/imports/{number}/discard": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/mass/preview": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Shows which objects an operation would change and which are refused, and why. Changes nothing.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MassPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/mass": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Your mass change numbers, newest first.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/mass/{number}": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/mass/{number}/apply": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Applies a previewed operation object by object through the normal services. 409 reports partial failure; apply again to retry only the failed objects.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/mass/{number}/undo": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Undoes a fully applied reversible operation.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/reports/datasets": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "The datasets a report can be built on, with their columns.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/reports/definitions": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Your saved reports and those shared with everyone.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/reports/definitions/{id}": {
+      "put": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/reports/run": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Runs a report as you: only rows you may read, the aggregate banner of the rows shown, counts per group.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/reports/export": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Runs a report and returns it as csv, xlsx or pdf, with the banner on the file.",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DatasetFilter": {
+        "required": [
+          "column",
+          "op",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "GeneratePackageRequest": {
+        "required": [
+          "kind",
+          "key"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        }
+      },
+      "JsonObject": {
+        "type": "object"
+      },
+      "MassPreviewRequest": {
+        "required": [
+          "objectKind",
+          "keys",
+          "operation",
+          "parameters"
+        ],
+        "type": "object",
+        "properties": {
+          "objectKind": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "operation": {
+            "type": "string"
+          },
+          "parameters": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            ]
+          }
+        }
+      },
+      "ReportRunRequest": {
+        "required": [
+          "dataset",
+          "spec"
+        ],
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ReportSpec"
+          }
+        }
+      },
+      "ReportSpec": {
+        "required": [
+          "columns"
+        ],
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DatasetFilter"
+            }
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "parameter": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sortColumn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "descending": {
+            "type": "boolean",
+            "default": false
+          },
+          "groupBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SaveReportRequest": {
+        "required": [
+          "name",
+          "dataset",
+          "spec"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "dataset": {
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ReportSpec"
+          },
+          "shared": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Output and bulk work"
+    }
+  ]
+}

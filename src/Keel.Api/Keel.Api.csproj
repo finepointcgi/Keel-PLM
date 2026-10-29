@@ -22,10 +22,12 @@
     <ProjectReference Include="..\Keel.Notifications\Keel.Notifications.csproj" />
     <ProjectReference Include="..\Keel.Cad\Keel.Cad.csproj" />
     <ProjectReference Include="..\Keel.Sourcing\Keel.Sourcing.csproj" />
+    <ProjectReference Include="..\Keel.Process\Keel.Process.csproj" />
     <ProjectReference Include="..\Keel.Variants\Keel.Variants.csproj" />
     <ProjectReference Include="..\Keel.Records\Keel.Records.csproj" />
     <ProjectReference Include="..\Keel.Compliance\Keel.Compliance.csproj" />
     <ProjectReference Include="..\Keel.Requirements\Keel.Requirements.csproj" />
+    <ProjectReference Include="..\Keel.Reports\Keel.Reports.csproj" />
     <ProjectReference Include="..\Keel.Web\Keel.Web.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="prometheus-net.AspNetCore" />

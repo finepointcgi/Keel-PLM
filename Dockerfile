@@ -1,8 +1,11 @@
-# syntax=docker/dockerfile:1.7
 # Keel PLM API + Blazor UI host and the keel-audit verifier (ADR-0012, ADR-0020).
 #
-#   docker build -t keel/api:1.7.0 \
+#   docker build --target runtime -t keel/api:1.7.0 \
 #     --build-arg SDK_IMAGE="$SDK_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" .      # values from deploy/images.env
+#
+# The LAST stage is `demo` (ADR-0045): one self-contained image with PostgreSQL 17, an S3 store and the guarded demo sign-in, for Google Cloud Run
+# ("Deploy from repository" builds the last stage by default). Production builds MUST pass `--target runtime` (scripts/package-offline.sh does).
+# This file uses plain Dockerfile syntax only (no BuildKit-only features), because Cloud Build's default builder rejects them.
 #
 # Entrypoints (same image, one artifact to scan, sign and ship):
 #   default                                     the web host (UI + REST API) on :8080
@@ -14,6 +17,9 @@
 # CI separately builds the solution with -warnaserror on the pinned SDK before an image is cut.
 ARG SDK_IMAGE=registry.access.redhat.com/ubi9/dotnet-100:latest
 ARG RUNTIME_IMAGE=registry.access.redhat.com/ubi9/dotnet-100-aspnet:latest
+# Demo image only (the `demo` stage at the end of this file). WEED_IMAGE is the same pin as KEEL_VAULT_IMAGE in deploy/images.env (a test keeps them equal).
+ARG DEMO_BASE_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0-noble
+ARG WEED_IMAGE=chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
 
 FROM ${SDK_IMAGE} AS publish
 USER 0
@@ -21,6 +27,10 @@ WORKDIR /src
 COPY Directory.Build.props Directory.Packages.props ./
 COPY src ./src
 COPY db/migrations ./db/migrations
+# Keel.Cad embeds its JSON schema from docs/ (a build input, not documentation).
+COPY docs/integration/cad/structure-v1.schema.json ./docs/integration/cad/structure-v1.schema.json
+# The demo sign-in people are read from the dev realm file, embedded in Keel.Web at build time (ADR-0045).
+COPY deploy/compose/keycloak/keel-realm.json ./deploy/compose/keycloak/keel-realm.json
 # Deterministic, CI-style build; analyzers' warnings-as-errors are enforced by CI on the pinned SDK, not re-evaluated here.
 RUN dotnet publish src/Keel.Api/Keel.Api.csproj -c Release -o /out/api --nologo \
         -p:UseAppHost=false -p:ContinuousIntegrationBuild=true -p:Deterministic=true -p:TreatWarningsAsErrors=false \
@@ -82,3 +92,60 @@ EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD ["dotnet", "/app/Keel.Api.dll", "--healthcheck", "http://127.0.0.1:8080/health/live"]
 ENTRYPOINT ["dotnet", "/app/Keel.Api.dll"]
+
+# ---------------------------------------------------------------------------------------------------------------------------------------
+# DEMO (ADR-0045, docs/ops/cloud-run-demo.md). Everything below this line is for the Cloud Run demo and is not part of the production image.
+# The seeder (keel-seed) is published here, on the same SDK as the host; it needs the shared test generator project it references.
+FROM publish AS demo-publish
+COPY tests/Keel.TestSupport ./tests/Keel.TestSupport
+RUN dotnet publish src/Keel.Seed/Keel.Seed.csproj -c Release -o /out/seed --nologo \
+        -p:UseAppHost=false -p:ContinuousIntegrationBuild=true -p:Deterministic=true -p:TreatWarningsAsErrors=false \
+ && test -f /out/seed/keel-seed.dll
+
+# The vault of the demo is SeaweedFS (Apache-2.0), the same store the dev stack uses: only its `weed` binary is taken from the pinned image.
+FROM ${WEED_IMAGE} AS weed
+
+# One container, three processes: PostgreSQL 17 (PGDG packages), SeaweedFS S3 on loopback, and the Keel host on $PORT. Debian-family base because the
+# UBI runtime image has no PostgreSQL 17 package source that is usable without a subscription. Packages are fetched at BUILD time only; nothing is
+# downloaded at runtime. The entrypoint starts as root (Cloud Run does too), prepares /data and drops each process to its own non-root user.
+FROM ${DEMO_BASE_IMAGE} AS demo
+ARG KEEL_VERSION=0.0.0-dev
+ARG KEEL_REVISION=unknown
+LABEL org.opencontainers.image.title="Keel PLM demo" \
+      org.opencontainers.image.description="Keel PLM demonstration: synthetic data, demo sign-in, in-container PostgreSQL and S3 vault. Never for real data." \
+      org.opencontainers.image.version="${KEEL_VERSION}" \
+      org.opencontainers.image.revision="${KEEL_REVISION}"
+USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl openssl util-linux postgresql-common \
+ && install -d /usr/share/postgresql-common/pgdg \
+ && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+ && . /etc/os-release \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && sed -i 's/^#\?create_main_cluster.*/create_main_cluster = false/' /etc/postgresql-common/createcluster.conf \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-17 \
+ && rm -rf /var/lib/apt/lists/* \
+ && /usr/lib/postgresql/17/bin/postgres --version
+COPY --from=weed /usr/bin/weed /usr/local/bin/weed
+WORKDIR /app
+COPY --from=publish --chown=0:0 /out/api /app
+COPY --from=demo-publish --chown=0:0 /out/seed /app/seed
+COPY --chown=0:0 deploy/demo/entrypoint.sh /usr/local/bin/keel-demo
+RUN rm -f /app/appsettings.Development.json /app/web.config \
+ && chmod -R a=rX /app \
+ && chmod 0755 /usr/local/bin/keel-demo /usr/local/bin/weed \
+ && mkdir -p /data && chmod 0755 /data
+# Demo mode takes both: the Demo environment and Keel:Demo:Enabled (the host refuses to start with only the second).
+ENV ASPNETCORE_ENVIRONMENT=Demo \
+    Keel__Demo__Enabled=true \
+    PORT=8080 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_gcServer=0 \
+    DOTNET_TieredPGO=0
+EXPOSE 8080
+VOLUME /data
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT:-8080}/health/live" || exit 1
+ENTRYPOINT ["/usr/local/bin/keel-demo"]

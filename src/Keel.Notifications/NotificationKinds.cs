@@ -58,6 +58,8 @@ public static class NotificationKinds
     public const string ComplianceSupplierDeclaration = NotificationKindCodes.ComplianceSupplierDeclaration;
     public const string MilestoneDue = NotificationKindCodes.MilestoneDue;
     public const string MilestoneOverdue = NotificationKindCodes.MilestoneOverdue;
+    public const string ToolCalibrationDue = NotificationKindCodes.ToolCalibrationDue;
+    public const string ToolCalibrationOverdue = NotificationKindCodes.ToolCalibrationOverdue;
 
     private const string TasksLocked = "A task or review that waits for you cannot be turned off: it would be missed.";
     private const string MentionLocked = "Someone asked for you by name: this cannot be turned off.";
@@ -116,6 +118,10 @@ public static class NotificationKinds
             "A compliance declaration expires soon", true, null, false, false, 34),
         new(ComplianceSupplierDeclaration, NotificationGroups.Watching, "Supplier declaration received", "A supplier-provided compliance declaration was recorded for a part you watch.",
             "{actor} recorded a compliance declaration provided by a supplier", true, null, false, false, 36),
+        new(ToolCalibrationOverdue, NotificationGroups.Watching, "Tool calibration overdue", "A tool, fixture or gauge you watch is past its calibration due date.",
+            "Calibration is overdue", true, null, false, true, 45),
+        new(ToolCalibrationDue, NotificationGroups.Watching, "Tool calibration due soon", "A tool, fixture or gauge you watch is due for calibration within a few weeks.",
+            "Calibration is due soon", true, null, false, false, 35),
         new(WatchedState, NotificationGroups.Watching, "Watched object changed state", "An object you watch moved to another lifecycle state.",
             "Changed state (by {actor})", true, null, true, false, 30),
         new(WatchedChanged, NotificationGroups.Watching, "Watched object changed", "A new version of an object you watch was checked in.",

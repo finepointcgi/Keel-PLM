@@ -29,7 +29,7 @@ public sealed record CardResult<T>(IReadOnlyList<T> Items, string Banner);
 /// were raised, or whose program the user left, silently disappears. Workflow and change tasks come from the module services. Each call audits what it returned
 /// (kind and numbers), like the module searches do.
 /// </summary>
-public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace, NpgsqlDataSource db, IAuditLog audit, WorkflowService flow, ChangeService changes, MbomService mboms, TimeProvider clock, RequirementService? requirements = null)
+public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace, NpgsqlDataSource db, IAuditLog audit, WorkflowService flow, ChangeService changes, MbomService mboms, TimeProvider clock, RequirementService? requirements = null, Keel.Process.ProcessPlanService? plans = null, Keel.Process.ToolingService? tools = null)
 {
     public const int CardSize = 8;
     public static readonly TimeSpan ReleasedWindow = TimeSpan.FromDays(30);
@@ -80,6 +80,8 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
                 ObjectKinds.Ncr or ObjectKinds.Capa or ObjectKinds.Deviation => await QueryAsync(subject, group.Key, numbers, ct),
                 ObjectKinds.ReqSpec => await SpecRowsAsync(subject, numbers, corr, ct),
                 ObjectKinds.Program => await QueryAsync(subject, ObjectKinds.Program, numbers, ct),
+                ObjectKinds.ProcessPlan => await PlanRowsAsync(subject, numbers, ct),
+                ObjectKinds.Tool => await ToolRowsAsync(subject, numbers, ct),
                 _ => [],
             };
             foreach (var r in rows)
@@ -172,6 +174,13 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
         }
         return rows;
     }
+
+    /// <summary>Process plans and tools (8.7) are read through their services, which apply the plan, MBOM and tool read filters.</summary>
+    private async Task<IReadOnlyList<(string, string, string, Markings)>> PlanRowsAsync(Subject subject, string[] numbers, CancellationToken ct) =>
+        plans is null ? [] : [.. (await plans.FindReadableAsync(subject, numbers.Take(CardSize * 2).ToArray(), ct)).Select(p => (p.Number, $"{p.PartName} ({p.Plant})", p.StateLabel, p.Markings))];
+
+    private async Task<IReadOnlyList<(string, string, string, Markings)>> ToolRowsAsync(Subject subject, string[] numbers, CancellationToken ct) =>
+        tools is null ? [] : [.. (await tools.FindReadableAsync(subject, numbers.Take(CardSize * 2).ToArray(), ct)).Select(t => (t.Number, t.Name, t.Status == "retired" ? "Retired" : Keel.Process.ToolKinds.Label(t.Kind), t.Markings))];
 
     /// <summary>Requirement specifications live in the requirements module's schema, so they are read through its search (exact number), which applies the read filter itself.</summary>
     private async Task<IReadOnlyList<(string, string, string, Markings)>> SpecRowsAsync(Subject subject, string[] numbers, string corr, CancellationToken ct)

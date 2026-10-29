@@ -46,3 +46,6 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0039](0039-configuration-and-variants.md) | Configuration and variants: options, rules, 150% BOM conditions | Accepted |
 | [0040](0040-product-compliance.md) | Product compliance: substances, regulatory lists, declarations and roll-up | Accepted |
 | [0041](0041-records-management.md) | Records management: retention, legal hold, disposition, WORM-style archive | Accepted |
+| [0042](0042-manufacturing-process-data.md) | Manufacturing process data: plans, routings, work instructions, tooling | Accepted |
+| [0044](0044-output-and-bulk-work.md) | Output and bulk work: release packages, Excel BOM exchange, mass change, report builder | Accepted |
+| [0045](0045-cloud-run-demo.md) | Guarded self-contained demo on Google Cloud Run: demo sign-in, in-container PostgreSQL and S3 vault | Accepted |

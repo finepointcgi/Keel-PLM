@@ -1,0 +1,176 @@
+@page "/output/mass"
+@inject CurrentUser Users
+@inject MassChangeService Mass
+@inject PartService Parts
+
+@* Mass change of parts: choose objects, preview exactly what would change and what is refused, apply object by object, undo what can be undone (ADR-0044). *@
+<PageFrame Banner="@(banner ?? UiText.Unclassified)" Title="Mass change" Crumbs="@Crumbs">
+    <p class="muted">Change many parts in one go. You see first which parts will change and which are refused, and why. Each part is changed through its normal rules: released parts are refused, every change is recorded one part at a time, and most operations can be undone.</p>
+
+    <section class="panel stack" aria-labelledby="select-heading">
+        <h2 id="select-heading">1. Choose parts</h2>
+        <label>Part numbers, one per line (at most @ReportsLimits.MaxMassObjects)
+            <textarea @bind="numbersText" @bind:event="oninput" rows="6" data-testid="mass-numbers"></textarea>
+        </label>
+        <div class="grid-form">
+            <label>Or find parts by text <input @bind="searchText" maxlength="100" data-testid="mass-search" /></label>
+            <div class="toolbar"><button type="button" class="secondary" @onclick="AddFromSearch" disabled="@busy" data-testid="mass-search-add">Add up to 200 results</button></div>
+        </div>
+    </section>
+
+    <section class="panel stack" aria-labelledby="op-heading">
+        <h2 id="op-heading">2. Choose the change</h2>
+        <fieldset class="grid-form">
+            <legend>Operation</legend>
+            <label>Operation
+                <InputSelect @bind-Value="operation" data-testid="mass-operation">
+                    @foreach (var o in MassChangeService.AllOperations) { <option value="@o">@OutputText.OperationLabel(o)</option> }
+                </InputSelect>
+            </label>
+            @switch (operation)
+            {
+                case MassOperations.SetAttribute:
+                    <label>Attribute name * <InputText @bind-Value="attrName" maxlength="60" data-testid="mass-attr-name" /></label>
+                    <label>New value * <InputText @bind-Value="attrValue" maxlength="500" data-testid="mass-attr-value" /></label>
+                    break;
+                case MassOperations.ChangeMarkings:
+                    <label class="wide">Reason * <InputText @bind-Value="reason" maxlength="500" /></label>
+                    break;
+                case MassOperations.BaselineProposal:
+                    <label>Proposal name * <InputText @bind-Value="proposalName" maxlength="120" data-testid="mass-proposal-name" /></label>
+                    break;
+                case MassOperations.Watch:
+                    <label>Watch level <InputSelect @bind-Value="watchLevel"><option value="all">All changes</option><option value="decisions">Decisions only</option></InputSelect></label>
+                    break;
+                case MassOperations.SubmitReview:
+                    <label>Review slot name * <InputText @bind-Value="slot" maxlength="60" /></label>
+                    <label>Reviewers (login names, comma separated) * <InputText @bind-Value="reviewers" maxlength="300" /></label>
+                    break;
+            }
+        </fieldset>
+        @if (operation == MassOperations.ChangeMarkings)
+        {
+            <fieldset class="grid-form"><legend>New markings (you can only set markings you could work with yourself)</legend><MarkingsFields Value="markings" /></fieldset>
+        }
+        @if (errors is not null) { <ul class="error" role="alert" data-testid="mass-error">@foreach (var e in errors) { <li>@e</li> }</ul> }
+        <div class="toolbar"><button type="button" @onclick="PreviewAsync" disabled="@busy" data-testid="mass-preview">Preview</button></div>
+    </section>
+
+    @if (view is { } v)
+    {
+        <section class="panel stack" aria-labelledby="preview-heading" data-testid="mass-result">
+            <h2 id="preview-heading">@v.Number: @OutputText.OperationLabel(v.Operation)</h2>
+            <p aria-live="polite">
+                <span class="badge" data-testid="mass-status">@Status(v)</span>
+                @v.WillChange will change, @v.Refused refused@(v.Applied > 0 ? $", {v.Applied} changed" : "")@(v.Failed > 0 ? $", {v.Failed} failed" : "")@(v.Undone > 0 ? $", {v.Undone} undone" : "").
+            </p>
+            <div class="table-wrap"><table class="data" data-testid="mass-items">
+                <caption class="sr-only">Parts and what happens to each</caption>
+                <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">State</th><th scope="col">Outcome</th><th scope="col">Why</th></tr></thead>
+                <tbody>
+                @foreach (var i in v.Items)
+                {
+                    <tr>
+                        <td>@i.Key</td><td>@i.Name</td><td>@i.State</td>
+                        <td>@(i.Result == "pending" ? (i.CanApply ? "Will change" : "Refused") : OutputText.ResultLabel(i.Result))</td>
+                        <td>@(i.Result is "pending" ? i.Reason : i.Detail ?? i.Reason)</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+            @if (applyMessage is not null) { <p class="error" role="alert">@applyMessage</p> }
+            <div class="toolbar">
+                @if (v.CanApply) { <button type="button" @onclick="ApplyAsync" disabled="@busy" data-testid="mass-apply">Apply to @v.Items.Count(i => i.CanApply && i.Result is "pending" or "failed") part(s)</button> }
+                @if (v.CanUndo) { <button type="button" class="secondary" @onclick="UndoAsync" disabled="@busy" data-testid="mass-undo">Undo</button> }
+            </div>
+        </section>
+    }
+
+    <h2>Your recent mass changes</h2>
+    @if (recent is null || recent.Count == 0) { <p class="muted">None yet.</p> }
+    else { <ul>@foreach (var n in recent) { <li><a href="output/mass?change=@n">@n</a></li> }</ul> }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Mass change")];
+    [SupplyParameterFromQuery(Name = "change")] public string? ChangeNumber { get; set; }
+    private string numbersText = "", searchText = "", operation = MassOperations.SetAttribute, attrName = "", attrValue = "", reason = "", proposalName = "", watchLevel = "all", slot = "reviewers", reviewers = "";
+    private readonly MarkingsInput markings = new();
+    private MassPreview? view;
+    private IReadOnlyList<string>? recent, errors;
+    private string? applyMessage, banner;
+    private bool busy;
+
+    private static string Status(MassPreview v) => v.Status switch { "previewed" => v.Applied > 0 ? "Partly applied" : "Preview", "applied" => "Applied", "undone" => "Undone", _ => v.Status };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var who = await Users.GetAsync();
+        if (ChangeNumber is { Length: > 0 } n && await Mass.GetAsync(who, n) is { IsOk: true } got) view = got.Value;
+        recent = await Mass.ListAsync(who);
+    }
+
+    private async Task AddFromSearch()
+    {
+        var r = await Parts.SearchAsync(await Users.GetAsync(), searchText, null, 200, 0, CurrentUser.NewCorrelationId());
+        var existing = numbersText.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
+        foreach (var p in r.Items) existing.Add(p.Number);
+        numbersText = string.Join("\n", existing);
+        banner = r.PageBanner;
+    }
+
+    private JsonObject? Parameters()
+    {
+        switch (operation)
+        {
+            case MassOperations.SetAttribute: return new JsonObject { ["name"] = attrName.Trim(), ["value"] = attrValue };
+            case MassOperations.ChangeMarkings:
+                var m = markings.ToMarkings();
+                if (!m.IsSuccess) { errors = m.Errors; return null; }
+                return new JsonObject { ["reason"] = reason.Trim(), ["markings"] = MassParameters.MarkingsJson(m.Value) };
+            case MassOperations.BaselineProposal: return new JsonObject { ["name"] = proposalName.Trim() };
+            case MassOperations.Watch: return new JsonObject { ["level"] = watchLevel };
+            case MassOperations.SubmitReview:
+                return new JsonObject { ["participants"] = new JsonObject { [slot.Trim()] = new JsonArray([.. reviewers.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => (JsonNode?)x)]) } };
+            default: return [];
+        }
+    }
+
+    private async Task PreviewAsync()
+    {
+        errors = null; applyMessage = null; busy = true;
+        try
+        {
+            var p = Parameters();
+            if (p is null) return;
+            var keys = numbersText.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var r = await Mass.PreviewAsync(await Users.GetAsync(), new MassRequest("part", keys, operation, p), CurrentUser.NewCorrelationId());
+            if (r.IsOk) { view = r.Value; banner = string.Join(" | ", r.Value!.Items.Select(i => i.Banner).Where(b => b is not null).Distinct()); if (banner.Length == 0) banner = null; recent = await Mass.ListAsync(await Users.GetAsync()); } else errors = r.Kind == OutcomeKind.Invalid ? r.Errors : [OutputText.Message(r)];
+        }
+        finally { busy = false; }
+    }
+
+    private async Task ApplyAsync()
+    {
+        applyMessage = null; busy = true;
+        try
+        {
+            var r = await Mass.ApplyAsync(await Users.GetAsync(), view!.Number, CurrentUser.NewCorrelationId());
+            if (r.Value is not null) view = r.Value;
+            else if (await Mass.GetAsync(await Users.GetAsync(), view!.Number) is { IsOk: true } again) view = again.Value;
+            if (!r.IsOk) applyMessage = OutputText.Message(r);
+        }
+        finally { busy = false; }
+    }
+
+    private async Task UndoAsync()
+    {
+        applyMessage = null; busy = true;
+        try
+        {
+            var r = await Mass.UndoAsync(await Users.GetAsync(), view!.Number, CurrentUser.NewCorrelationId());
+            if (r.IsOk) view = r.Value; else applyMessage = OutputText.Message(r);
+        }
+        finally { busy = false; }
+    }
+}

@@ -21,7 +21,18 @@ public static class IntegrationMetrics
 /// </summary>
 public sealed class DeliveryDispatcher(DeliveryStore store, SinkRegistry sinks, IntegrationOptions options, ILogger<DeliveryDispatcher> logger) : BackgroundService
 {
-    private readonly string _instance = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}"[..48];
+    private readonly string _instance = InstanceId();
+
+    /// <summary>
+    /// Names this dispatcher in the lease table: machine, process and a random part, at most 48 characters. The machine name is cut to 10 characters and the random part
+    /// to 24, never assuming a length: a managed container platform reports a short machine name such as "localhost", a Kubernetes pod a long one.
+    /// </summary>
+    internal static string InstanceId()
+    {
+        var machine = Environment.MachineName;
+        if (machine.Length > 10) machine = machine[..10];
+        return $"{machine}:{Environment.ProcessId}:{Guid.NewGuid().ToString("N")[..24]}";
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

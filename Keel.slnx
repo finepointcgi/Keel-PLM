@@ -14,6 +14,7 @@
     <Project Path="src/Keel.Integration/Keel.Integration.csproj" />
     <Project Path="src/Keel.Migration/Keel.Migration.csproj" />
     <Project Path="src/Keel.Notifications/Keel.Notifications.csproj" />
+    <Project Path="src/Keel.Reports/Keel.Reports.csproj" />
     <Project Path="src/Keel.Requirements/Keel.Requirements.csproj" />
     <Project Path="src/Keel.Parts/Keel.Parts.csproj" />
     <Project Path="src/Keel.Records/Keel.Records.csproj" />
@@ -25,6 +26,7 @@
     <Project Path="src/Keel.Seed/Keel.Seed.csproj" />
     <Project Path="src/Keel.Siem/Keel.Siem.csproj" />
     <Project Path="src/Keel.Sourcing/Keel.Sourcing.csproj" />
+    <Project Path="src/Keel.Process/Keel.Process.csproj" />
     <Project Path="src/Keel.Variants/Keel.Variants.csproj" />
     <Project Path="src/Keel.Compliance/Keel.Compliance.csproj" />
     <Project Path="src/Keel.Viewer/Keel.Viewer.csproj" />
