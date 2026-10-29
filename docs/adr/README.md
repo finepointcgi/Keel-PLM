@@ -38,3 +38,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0031](0031-list-sorting-and-admin-completeness.md) | Server-side list sorting (whitelisted keys) and admin completeness | Accepted |
 | [0032](0032-platform-hardening.md) | Platform hardening: database-backed session lock, outbox retention, e-mail channel, broker sink deferred | Accepted |
 | [0033](0033-document-review.md) | Document review and release through the workflow engine | Accepted |
+| [0034](0034-accessibility-and-scale.md) | Accessibility audit (axe-core, test-only) and performance budgets at scale | Accepted |
