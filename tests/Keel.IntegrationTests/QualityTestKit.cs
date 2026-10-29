@@ -24,6 +24,9 @@ internal sealed class QualityEnv
     public required QualityServices Q { get; init; }
     public required WorkflowService Flow { get; init; }
     public required NotificationCenter Center { get; init; }
+    public required ObjectAccessResolver Objects { get; init; }
+    public required NotificationWriter Writer { get; init; }
+    public required NotificationOptions NotificationOptions { get; init; }
     public required TestDatabase Db { get; init; }
 
     public NcrService Ncrs => Q.Ncrs;
@@ -58,7 +61,7 @@ internal sealed class QualityEnv
         var flow = new WorkflowService(b.Ds, audit,
             [new PartWorkflowGateway([new ChangeBindingGuard()]), new QualityWorkflowGateway(QualityKinds.Ncr, audit), new QualityWorkflowGateway(QualityKinds.Capa, audit), new QualityWorkflowGateway(QualityKinds.Deviation, audit)],
             new WorkflowOptions(), b.Clock, sink);
-        return new QualityEnv { Base = b, Ds = b.Ds, Clock = b.Clock, Audit = audit, Q = q, Flow = flow, Db = b.Db, Center = new NotificationCenter(b.Ds, objects, audit, b.Clock, hub) };
+        return new QualityEnv { Base = b, Ds = b.Ds, Clock = b.Clock, Audit = audit, Q = q, Flow = flow, Db = b.Db, Center = new NotificationCenter(b.Ds, objects, audit, b.Clock, hub), Objects = objects, Writer = writer, NotificationOptions = options };
     }
 
     // ---------------------------------------------------------------- parts

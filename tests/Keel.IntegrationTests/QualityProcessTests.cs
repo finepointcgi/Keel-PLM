@@ -418,6 +418,57 @@ public sealed class QualityProcessTests(PostgresFixture pg)
         Assert.Equal(0, (await env.Queries.DashboardAsync(Alice, null)).OverdueActions);
     }
 
+    [Fact]
+    public async Task Quality_records_join_the_activity_feed_comments_and_watch_lists_without_leaking_text()
+    {
+        var env = await QualityEnv.CreateAsync(pg);
+        var part = await env.ReleasedPartAsync();
+        var ncr = await env.NewNcrAsync(Alice, part);
+        await env.AddActionAsync(Alice, "ncr", ncr.Number, "Containment", "bob");
+        var feed = new ActivityService(env.Ds, env.Objects, env.Audit);
+        var page = await feed.GetAsync(QualityEnv.Rita, "ncr", ncr.Number, null, 50, false, null);
+        Assert.True(page.IsOk);
+        Assert.Contains(page.Value!.Entries, e => e.Sentence.Contains("created the nonconformance report", StringComparison.Ordinal));
+        Assert.Contains(page.Value.Entries, e => e.Sentence.Contains("added an action item", StringComparison.Ordinal));
+        Assert.DoesNotContain(page.Value.Entries, e => e.Sentence.Contains("ncr.", StringComparison.Ordinal) || e.Details.Any(d => d.Value.Contains("Synthetic defect", StringComparison.Ordinal)));
+        Assert.Equal(OutcomeKind.NotFound, (await feed.GetAsync(QualityEnv.Eve, "ncr", ncr.Number, null, 50, false, null)).Kind);
+
+        var comments = new CommentService(env.Ds, env.Objects, env.Audit, env.NotificationOptions, env.Writer, env.Clock);
+        var posted = await comments.PostAsync(QualityEnv.Rita, "ncr", ncr.Number, $"Please also check {part} @alice", null, null);
+        Assert.True(posted.IsOk, string.Join("; ", posted.Errors));
+        Assert.Equal(1, await comments.CountAsync(QualityEnv.Rita, "ncr", ncr.Number));
+        Assert.Null(await comments.CountAsync(QualityEnv.Eve, "ncr", ncr.Number));
+        Assert.Contains((await env.Center.ListAsync(Alice, NotificationFilter.Mentions, 0, 10)).Items, i => i.Number == ncr.Number);
+
+        var watches = new WatchService(env.Ds, env.Objects, env.Audit, env.NotificationOptions, env.Clock);
+        Assert.Contains((await watches.ListAsync(Alice)), w => w.Number == ncr.Number); // the reporter watches what she creates
+        Assert.DoesNotContain((await watches.ListAsync(QualityEnv.Eve)), w => w.Number == ncr.Number);
+    }
+
+    [Fact]
+    public async Task The_awareness_constraints_are_widened_by_pattern_so_the_order_with_other_migrations_does_not_matter()
+    {
+        var env = await QualityEnv.CreateAsync(pg);
+        var sql = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "db", "migrations", "0019_quality.sql"));
+        var start = sql.LastIndexOf("DO $$", StringComparison.Ordinal);
+        var block = sql[start..(sql.IndexOf("$$;", start + 6, StringComparison.Ordinal) + 3)];
+        await using var conn = new NpgsqlConnection(env.Db.SuperuserConnectionString);
+        await conn.OpenAsync();
+        async Task Exec(string text) { await using var c = new NpgsqlCommand(text, conn); await c.ExecuteNonQueryAsync(); }
+        async Task<string> Def() { await using var c = new NpgsqlCommand("SELECT string_agg(pg_get_constraintdef(oid), ' | ') FROM pg_constraint WHERE conrelid = 'ntf.watch'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%object_type%'", conn); return (string)(await c.ExecuteScalarAsync())!; }
+
+        var applied = await Def();
+        Assert.Contains("^[a-z]", applied, StringComparison.Ordinal); // already a pattern after the migrations ran
+        await Exec(block); // running it again changes nothing (idempotent)
+        Assert.Equal(applied, await Def());
+
+        // an older database whose constraint still lists the first five kinds is widened by the same block
+        await Exec("ALTER TABLE ntf.watch DROP CONSTRAINT watch_object_type_known; ALTER TABLE ntf.watch ADD CONSTRAINT legacy_kinds CHECK (object_type IN ('part', 'document', 'change', 'baseline', 'mbom'))");
+        await Exec(block);
+        Assert.Contains("^[a-z]", await Def(), StringComparison.Ordinal);
+        await Exec("INSERT INTO ntf.watch (id, user_sub, object_type, object_number, level, created_at) VALUES (gen_random_uuid(), 'x', 'ncr', 'NCR-000009', 'all', now())");
+    }
+
     private static async Task<long> CountNotificationsAsync(QualityEnv env, string kind, string number, string recipient)
     {
         await using var cmd = env.Ds.CreateCommand("SELECT count(*) FROM ntf.notification WHERE kind = @k AND object_number = @n AND recipient_sub = @r");
