@@ -47,6 +47,49 @@ public sealed class PolishTests(E2EFixture fx)
         });
     }
 
+    /// <summary>Marking chips wrap only between segments: no segment is wider than its chip (so no word is split or clipped) at 800, 1280 and 375 px, and the page never scrolls sideways.</summary>
+    [E2EFact(Timeout = 600_000)]
+    public async Task Marking_chips_never_split_a_word_or_overflow_at_three_widths()
+    {
+        await using var session = new BrowserSession(fx, nameof(Marking_chips_never_split_a_word_or_overflow_at_three_widths));
+        await session.RunAsync(async () =>
+        {
+            var alice = await session.SignInAsync("alice", width: 1280, height: 800);
+            var page = alice.Page;
+            var problems = new List<string>();
+            foreach (var width in new[] { 800, 1280, 375 })
+            {
+                await page.SetViewportSizeAsync(width, 800);
+                foreach (var path in new[] { "/parts", "/documents", "/changes", "/baselines", "/mboms", "/" })
+                {
+                    await session.GotoAsync(alice, path);
+                    await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+                    await page.WaitForTimeoutAsync(500);
+                    var bad = await page.EvaluateAsync<string[]>(@"() => {
+                        const out = [];
+                        for (const chip of document.querySelectorAll('.chip')) {
+                            const c = chip.getBoundingClientRect();
+                            for (const seg of chip.querySelectorAll('.seg')) {
+                                const r = seg.getBoundingClientRect();
+                                if (r.right > c.right + 1 || r.width > c.width) out.push(seg.textContent);
+                            }
+                        }
+                        if (document.documentElement.scrollWidth > window.innerWidth + 1) out.push('PAGE SCROLLS SIDEWAYS');
+                        return out;
+                    }");
+                    foreach (var b in bad) problems.Add($"{width}px {path}: {b}");
+                }
+                await page.Locator("[data-action=open-palette]").ClickAsync();
+                await page.Keyboard.TypeAsync("bracket");
+                await page.WaitForTimeoutAsync(1200);
+                var palette = await page.EvaluateAsync<string[]>("() => [...document.querySelectorAll('.palette-item .chip .seg')].filter(s => s.getBoundingClientRect().right > s.closest('.chip').getBoundingClientRect().right + 1).map(s => s.textContent)");
+                foreach (var b in palette) problems.Add($"{width}px palette: {b}");
+                await page.Keyboard.PressAsync("Escape");
+            }
+            Assert.True(problems.Count == 0, string.Join("\n", problems));
+        });
+    }
+
     [E2EFact(Timeout = 600_000)]
     public async Task Polish_screenshots_are_written_on_request()
     {
