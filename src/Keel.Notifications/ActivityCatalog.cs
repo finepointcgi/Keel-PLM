@@ -305,7 +305,6 @@ public static partial class ActivityCatalog
         ["baseline.documents"] = "{actor} listed the baseline documents",
         ["mbom.read"] = "{actor} viewed the manufacturing BOM",
         ["mbom.read_released"] = "{actor} viewed the released manufacturing BOM",
-        ["mbom.process_read"] = "{actor} read the manufacturing BOM for process planning",
         ["mbom.search"] = "{actor} found the manufacturing BOM in a search",
         ["mbom.lines"] = "{actor} viewed the lines",
         ["mbom.explode"] = "{actor} exploded the manufacturing BOM",

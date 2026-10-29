@@ -1,12 +1,10 @@
-using System.Globalization;
-using Keel.Audit;
 using Keel.Core;
 using Npgsql;
 
 namespace Keel.Bom;
 
-/// <summary>The MBOM module's side of process planning (ADR-0042): headers, latest Released revision and lines of a frozen revision, all under the caller's access.</summary>
-internal sealed class MbomProcessSource(NpgsqlDataSource dataSource, IAuditLog audit) : IMbomProcessSource
+/// <summary>The MBOM module's side of process planning (ADR-0042): headers, latest Released revision and lines of a frozen revision, all under the caller's access. It writes no audit events: the calling module audits its own reads, and an event written here would wait for the audit chain lock the caller's transaction may already hold.</summary>
+internal sealed class MbomProcessSource(NpgsqlDataSource dataSource) : IMbomProcessSource
 {
     private static async Task<MbomForProcess> ToRefAsync(NpgsqlConnection conn, NpgsqlTransaction tx, MbomHead head, CancellationToken ct)
     {
@@ -28,13 +26,7 @@ internal sealed class MbomProcessSource(NpgsqlDataSource dataSource, IAuditLog a
         await using var tx = await conn.BeginTransactionAsync(ct);
         var head = await MbomStore.LoadByNumberAsync(conn, tx, mbomNumber, null, false, ct);
         if (head is null) return null;
-        var read = MbomService.CanRead(subject, head);
-        if (!read.Permitted)
-        {
-            await audit.AppendAsync(tx, MbomService.Entry(subject, "mbom.process_read", AuditOutcome.Denied, mbomNumber, correlationId, ("reasons", string.Join(",", read.Reasons))), ct);
-            await tx.CommitAsync(ct);
-            return null;
-        }
+        if (!MbomService.CanRead(subject, head).Permitted) return null;
         var result = await ToRefAsync(conn, tx, head, ct);
         await tx.CommitAsync(ct);
         return result;
@@ -80,16 +72,8 @@ internal sealed class MbomProcessSource(NpgsqlDataSource dataSource, IAuditLog a
         await using var tx = await conn.BeginTransactionAsync(ct);
         var head = await MbomStore.LoadByNumberAsync(conn, tx, mbomNumber, revision, false, ct);
         if (head is null || head.State is not ("Released" or "Obsolete")) return Outcome<IReadOnlyList<MbomLineRef>>.NotFound();
-        var read = MbomService.CanRead(subject, head);
-        if (!read.Permitted)
-        {
-            await audit.AppendAsync(tx, MbomService.Entry(subject, "mbom.process_read", AuditOutcome.Denied, mbomNumber, correlationId, ("reasons", string.Join(",", read.Reasons))), ct);
-            await tx.CommitAsync(ct);
-            return Outcome<IReadOnlyList<MbomLineRef>>.NotFound();
-        }
+        if (!MbomService.CanRead(subject, head).Permitted) return Outcome<IReadOnlyList<MbomLineRef>>.NotFound();
         var views = await MbomService.LoadLineViewsAsync(conn, tx, subject, false, head.IterationId, null, new MarkingCache(), ct);
-        await audit.AppendAsync(tx, MbomService.Entry(subject, "mbom.process_read", AuditOutcome.Success, mbomNumber, correlationId,
-            ("revision", head.Label), ("lines", views.Count.ToString(CultureInfo.InvariantCulture))), ct);
         await tx.CommitAsync(ct);
         IReadOnlyList<MbomLineRef> lines = [.. views.Select(v => new MbomLineRef(v.FindNumber, v.Alt, v.Redacted, v.Redacted ? null : v.ChildMasterId, v.ChildNumber, v.ChildName, v.Quantity, v.Unit, v.Phantom, v.SupplyType, v.Redacted ? null : v.Markings))];
         return Outcome<IReadOnlyList<MbomLineRef>>.Ok(lines);
