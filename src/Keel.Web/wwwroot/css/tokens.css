@@ -8,78 +8,84 @@
 :root[data-theme="light"],
 :root[data-theme="system"] {
   color-scheme: light;
-  --c-bg: #f4f6f9;
+  --c-bg: #f4f6fa;
   --c-surface: #ffffff;
-  --c-surface-2: #eef1f5;
-  --c-text: #1a2028;
-  --c-muted: #4d5766;
-  --c-border: #cfd6df;
-  --c-border-strong: #7a8594;
-  --c-accent: #1d4ed8;
+  --c-surface-2: #edf0f6;
+  --c-text: #172033;
+  --c-muted: #4a5568;
+  --c-border: #dbe1ea;
+  --c-border-strong: #717d90;
+  --c-accent: #2a4fd0;
   --c-on-accent: #ffffff;
-  --c-link: #1a47c2;
-  --c-focus: #1d4ed8;
-  --c-success: #0f6b3a;
+  --c-accent-bg: #e6ecfd;
+  --c-link: #2447b8;
+  --c-focus: #2a4fd0;
+  --c-success: #0e6b3b;
   --c-warning: #8a5300;
   --c-danger: #b3261e;
+  --c-on-danger: #ffffff;
   --c-info: #0b5cad;
   --c-success-bg: #e3f4ea;
   --c-warning-bg: #fff1d6;
   --c-danger-bg: #fde7e5;
   --c-info-bg: #e3effc;
-  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.08);
-  --shadow-2: 0 8px 28px rgba(16, 24, 40, 0.22);
+  --shadow-1: 0 1px 2px rgba(20, 30, 60, 0.07), 0 1px 1px rgba(20, 30, 60, 0.04);
+  --shadow-2: 0 14px 36px rgba(20, 30, 60, 0.2), 0 2px 8px rgba(20, 30, 60, 0.1);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --c-bg: #101419;
-  --c-surface: #181d24;
-  --c-surface-2: #212831;
-  --c-text: #e8ecf1;
-  --c-muted: #a7b2c0;
-  --c-border: #323b46;
-  --c-border-strong: #6b7685;
-  --c-accent: #6f9bff;
-  --c-on-accent: #0a1020;
-  --c-link: #8db4ff;
-  --c-focus: #8db4ff;
+  --c-bg: #0f1318;
+  --c-surface: #171c23;
+  --c-surface-2: #1f262f;
+  --c-text: #e9edf3;
+  --c-muted: #a9b4c3;
+  --c-border: #2a323d;
+  --c-border-strong: #6e7a8a;
+  --c-accent: #7ca4ff;
+  --c-on-accent: #0a1226;
+  --c-accent-bg: #1a2742;
+  --c-link: #94b8ff;
+  --c-focus: #94b8ff;
   --c-success: #5fd08f;
   --c-warning: #f0b95a;
   --c-danger: #ff8a80;
+  --c-on-danger: #000000;
   --c-info: #7cb8ff;
   --c-success-bg: #12301f;
   --c-warning-bg: #3a2a0c;
   --c-danger-bg: #3d1614;
   --c-info-bg: #12283f;
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.6);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 14px 36px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="high-contrast"]):not([data-theme="dark"]) {
     color-scheme: dark;
-    --c-bg: #101419;
-    --c-surface: #181d24;
-    --c-surface-2: #212831;
-    --c-text: #e8ecf1;
-    --c-muted: #a7b2c0;
-    --c-border: #323b46;
-    --c-border-strong: #6b7685;
-    --c-accent: #6f9bff;
-    --c-on-accent: #0a1020;
-    --c-link: #8db4ff;
-    --c-focus: #8db4ff;
+    --c-bg: #0f1318;
+    --c-surface: #171c23;
+    --c-surface-2: #1f262f;
+    --c-text: #e9edf3;
+    --c-muted: #a9b4c3;
+    --c-border: #2a323d;
+    --c-border-strong: #6e7a8a;
+    --c-accent: #7ca4ff;
+    --c-on-accent: #0a1226;
+    --c-accent-bg: #1a2742;
+    --c-link: #94b8ff;
+    --c-focus: #94b8ff;
     --c-success: #5fd08f;
     --c-warning: #f0b95a;
     --c-danger: #ff8a80;
+    --c-on-danger: #000000;
     --c-info: #7cb8ff;
     --c-success-bg: #12301f;
     --c-warning-bg: #3a2a0c;
     --c-danger-bg: #3d1614;
     --c-info-bg: #12283f;
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.6);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-2: 0 14px 36px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -94,11 +100,94 @@
   --c-border-strong: #ffffff;
   --c-accent: #ffd60a;
   --c-on-accent: #000000;
+  --c-accent-bg: #1f1a00;
   --c-link: #7fdbff;
   --c-focus: #ffd60a;
   --c-success: #5dff9a;
   --c-warning: #ffd60a;
   --c-danger: #ff9a94;
+  --c-on-danger: #000000;
+  --c-info: #7fdbff;
+  --c-success-bg: #001a0a;
+  --c-warning-bg: #2a2200;
+  --c-danger-bg: #2a0806;
+  --c-info-bg: #001a29;
+  --shadow-1: none;
+  --shadow-2: 0 0 0 2px #ffffff;
+}
+
+/* Theme scopes for the style guide (docs/ux/design-system.md): the same values as the three blocks above, applied to a container so one page can show every theme at once.
+   A unit test checks that these copies equal the real theme blocks. */
+.sg-theme[data-sg-theme="light"] {
+  color-scheme: light;
+  --c-bg: #f4f6fa;
+  --c-surface: #ffffff;
+  --c-surface-2: #edf0f6;
+  --c-text: #172033;
+  --c-muted: #4a5568;
+  --c-border: #dbe1ea;
+  --c-border-strong: #717d90;
+  --c-accent: #2a4fd0;
+  --c-on-accent: #ffffff;
+  --c-accent-bg: #e6ecfd;
+  --c-link: #2447b8;
+  --c-focus: #2a4fd0;
+  --c-success: #0e6b3b;
+  --c-warning: #8a5300;
+  --c-danger: #b3261e;
+  --c-on-danger: #ffffff;
+  --c-info: #0b5cad;
+  --c-success-bg: #e3f4ea;
+  --c-warning-bg: #fff1d6;
+  --c-danger-bg: #fde7e5;
+  --c-info-bg: #e3effc;
+  --shadow-1: 0 1px 2px rgba(20, 30, 60, 0.07), 0 1px 1px rgba(20, 30, 60, 0.04);
+  --shadow-2: 0 14px 36px rgba(20, 30, 60, 0.2), 0 2px 8px rgba(20, 30, 60, 0.1);
+}
+.sg-theme[data-sg-theme="dark"] {
+  color-scheme: dark;
+  --c-bg: #0f1318;
+  --c-surface: #171c23;
+  --c-surface-2: #1f262f;
+  --c-text: #e9edf3;
+  --c-muted: #a9b4c3;
+  --c-border: #2a323d;
+  --c-border-strong: #6e7a8a;
+  --c-accent: #7ca4ff;
+  --c-on-accent: #0a1226;
+  --c-accent-bg: #1a2742;
+  --c-link: #94b8ff;
+  --c-focus: #94b8ff;
+  --c-success: #5fd08f;
+  --c-warning: #f0b95a;
+  --c-danger: #ff8a80;
+  --c-on-danger: #000000;
+  --c-info: #7cb8ff;
+  --c-success-bg: #12301f;
+  --c-warning-bg: #3a2a0c;
+  --c-danger-bg: #3d1614;
+  --c-info-bg: #12283f;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 14px 36px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.sg-theme[data-sg-theme="high-contrast"] {
+  color-scheme: dark;
+  --c-bg: #000000;
+  --c-surface: #000000;
+  --c-surface-2: #0d0d0d;
+  --c-text: #ffffff;
+  --c-muted: #e0e0e0;
+  --c-border: #ffffff;
+  --c-border-strong: #ffffff;
+  --c-accent: #ffd60a;
+  --c-on-accent: #000000;
+  --c-accent-bg: #1f1a00;
+  --c-link: #7fdbff;
+  --c-focus: #ffd60a;
+  --c-success: #5dff9a;
+  --c-warning: #ffd60a;
+  --c-danger: #ff9a94;
+  --c-on-danger: #000000;
   --c-info: #7fdbff;
   --c-success-bg: #001a0a;
   --c-warning-bg: #2a2200;
@@ -126,10 +215,15 @@
   --fs-xs: 0.75rem;
   --fs-sm: 0.8125rem;
   --fs-md: 0.9375rem;
-  --fs-lg: 1.125rem;
-  --fs-xl: 1.375rem;
+  --fs-lg: 1.0625rem;
+  --fs-xl: 1.5rem;
   --fs-2xl: 1.75rem;
-  --lh: 1.45;
+  --lh: 1.5;
+  --lh-tight: 1.25;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --tracking-caps: 0.06em;
 
   --sp-1: 4px;
   --sp-2: 8px;
@@ -138,17 +232,21 @@
   --sp-5: 24px;
   --sp-6: 32px;
 
-  --radius-1: 4px;
-  --radius-2: 8px;
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --radius-3: 14px;
   --radius-pill: 999px;
 
   --target: 32px;          /* minimum height of an interactive control (WCAG 2.2 target size is 24 px) */
-  --row-pad-y: 8px;        /* table row padding: density */
-  --row-pad-x: 12px;
+  --row-pad-y: 9px;        /* table row padding: density */
+  --row-pad-x: 14px;
   --rail-w: 236px;
   --rail-w-collapsed: 56px;
   --content-max: 1280px;
-  --focus-ring: 2px solid var(--c-focus);
+  --focus-ring: 3px solid var(--c-focus);
+  --dur-1: 120ms;          /* motion: short, CSS only; base.css switches it off for prefers-reduced-motion */
+  --dur-2: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
 
   /* Legacy names still used by bom.css and older components; they follow the active theme. */
   --bg: var(--c-bg);
@@ -164,7 +262,7 @@
 :root[data-density="compact"] {
   --target: 28px;
   --row-pad-y: 3px;
-  --row-pad-x: 8px;
+  --row-pad-x: 10px;
   --fs-md: 0.875rem;
   --sp-4: 12px;
 }

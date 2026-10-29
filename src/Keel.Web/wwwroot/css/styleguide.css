@@ -1,0 +1,23 @@
+/* Living style guide (/tools/style-guide, ADR-0046). Tokens only. Swatches are classes because inline styles are blocked by the CSP. */
+.sg-toc { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); margin: 0 0 var(--sp-4); }
+.sg-swatches { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-3); }
+.sg-swatches li { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); min-width: 0; }
+.sg-swatches.compact { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.sg-swatch { width: 36px; height: 36px; border-radius: var(--radius-1); border: 1px solid var(--c-border-strong); flex: none; }
+.sw-bg { background: var(--c-bg); } .sw-surface { background: var(--c-surface); } .sw-surface-2 { background: var(--c-surface-2); } .sw-text { background: var(--c-text); }
+.sw-muted { background: var(--c-muted); } .sw-border { background: var(--c-border); } .sw-border-strong { background: var(--c-border-strong); } .sw-accent { background: var(--c-accent); }
+.sw-accent-bg { background: var(--c-accent-bg); } .sw-link { background: var(--c-link); } .sw-focus { background: var(--c-focus); } .sw-success { background: var(--c-success); }
+.sw-success-bg { background: var(--c-success-bg); } .sw-warning { background: var(--c-warning); } .sw-warning-bg { background: var(--c-warning-bg); } .sw-danger { background: var(--c-danger); }
+.sw-danger-bg { background: var(--c-danger-bg); } .sw-info { background: var(--c-info); } .sw-info-bg { background: var(--c-info-bg); }
+.sg-type p { margin: 0 0 var(--sp-2); }
+.sg-t-2xl { font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -0.02em; } .sg-t-xl { font-size: var(--fs-xl); font-weight: 700; } .sg-t-lg { font-size: var(--fs-lg); font-weight: 700; }
+.sg-t-md { font-size: var(--fs-md); } .sg-t-sm { font-size: var(--fs-sm); } .sg-t-xs { font-size: var(--fs-xs); }
+.sg-space { display: flex; align-items: flex-end; gap: var(--sp-3); }
+.sg-step { display: inline-block; background: var(--c-accent); border-radius: var(--radius-1); }
+.sg-step.sp-1 { width: var(--sp-1); height: var(--sp-1); } .sg-step.sp-2 { width: var(--sp-2); height: var(--sp-2); } .sg-step.sp-3 { width: var(--sp-3); height: var(--sp-3); }
+.sg-step.sp-4 { width: var(--sp-4); height: var(--sp-4); } .sg-step.sp-5 { width: var(--sp-5); height: var(--sp-5); } .sg-step.sp-6 { width: var(--sp-6); height: var(--sp-6); }
+.sg-banner { position: static; margin-bottom: var(--sp-2); border-radius: var(--radius-1); }
+.toast.sg-static { animation: none; max-width: 420px; }
+.sg-themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--sp-4); }
+.sg-theme { background: var(--c-bg); color: var(--c-text); border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); padding: var(--sp-4); min-width: 0; color-scheme: inherit; }
+.sg-theme a { color: var(--c-link); }
