@@ -49,8 +49,13 @@ public sealed class UxTests(E2EFixture fx)
             var alice = await session.SignInAsync("alice");
             await session.GotoAsync(alice, "/parts");
             var page = alice.Page;
-            await page.Keyboard.PressAsync("Control+k");
             var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Command palette" });
+            // The shortcut is registered after the circuit's first render, so a key pressed the instant the page appears can be lost: press until it opens.
+            for (var attempt = 0; attempt < 10 && await dialog.CountAsync() == 0; attempt++)
+            {
+                await page.Keyboard.PressAsync("Control+k");
+                await page.WaitForTimeoutAsync(300);
+            }
             await Expect(dialog).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Combobox, new PageGetByRoleOptions { Name = "Search or run a command" })).ToBeFocusedAsync();
             await page.Keyboard.TypeAsync(m.GimbalBracket);
