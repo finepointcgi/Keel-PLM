@@ -95,7 +95,7 @@ public static class ReportsEndpoints
     {
         var r = await svc.DownloadAsync(SubjectFactory.Require(c), number, CorrelationId.Get(c), ct);
         if (!r.IsOk) return r.ToHttp();
-        c.Response.Headers["X-Keel-Markings"] = r.Value!.Banner;
+        c.Response.Headers["X-Keel-Markings"] = Uri.EscapeDataString(r.Value!.Banner);
         c.Response.Headers["X-Keel-Sha256"] = r.Value.Sha256;
         return Results.File(r.Value.Content, "application/pdf", r.Value.FileName);
     }
@@ -103,7 +103,7 @@ public static class ReportsEndpoints
     private static async Task<IResult> BomExport(string kind, string number, string? variant, string? spec, int? depth, string? context, long? serial, long? lot, DateOnly? date, string? format, HttpContext c, BomExchangeService svc, CancellationToken ct)
     {
         var r = await svc.ExportAsync(SubjectFactory.Require(c), new BomExchangeRequest(kind, number, variant, spec ?? "released", depth, context, serial, lot, date), format ?? "xlsx", CorrelationId.Get(c), ct);
-        if (r.IsOk) c.Response.Headers["X-Keel-Markings"] = r.Value!.Banner;
+        if (r.IsOk) c.Response.Headers["X-Keel-Markings"] = Uri.EscapeDataString(r.Value!.Banner);
         return r.ToHttp(Download);
     }
 }
