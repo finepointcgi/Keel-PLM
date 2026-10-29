@@ -7,7 +7,7 @@
 
 @* One manufacturing BOM (ADR-0024): header, lines with EBOM-link indicators, working-copy editing, reconciliation, update from the EBOM, release review and structure.
    The page banner is the aggregate of the MBOM and every row any panel displays (ADR-0014). *@
-<PageFrame Banner="@BannerMerge.Union(detail?.Summary.Banner ?? UiText.Unclassified, linesBanner, reconBanner, BannerOf(structureMarkings), BannerOf(editorMarkings))" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+<PageFrame Banner="@BannerMerge.Union(detail?.Summary.Banner ?? UiText.Unclassified, linesBanner, reconBanner, BannerOf(structureMarkings), BannerOf(editorMarkings), timelineBanner)" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
     @if (notFound)
     {
         <p class="error" role="alert">The manufacturing BOM @Number was not found, or you are not authorized to see it.</p>
@@ -122,6 +122,11 @@
                     case "structure":
             <MbomStructure Detail="d" OnMarkings="m => structureMarkings = m" />
                         break;
+                    case "timeline":
+                        @* UX-3: the life of the manufacturing BOM. *@
+                        <TimelinePanel ObjectType="mbom" Key="@s.Number" Version="@($"{d.Displayed.Revision}.{d.Iteration.Iteration}.{d.Displayed.State}")"
+                                       OnShown="m => timelineBanner = BannerOf(m)" />
+                        break;
                 }
             </TabSet>
         </article>
@@ -136,8 +141,8 @@
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery(Name = "revision")] public string? Revision { get; set; }
 
-    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure"];
-    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure")];
+    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure", "timeline"];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure"), new("timeline", "Timeline")];
     private string tab = "overview";
     private IReadOnlyList<LifecycleState> steps = [];
     private string PageTitle => detail is null ? "Manufacturing BOM" : $"{detail.Summary.Number} · {detail.Summary.PartName} ({detail.Plant.Code})";
@@ -165,11 +170,13 @@
         // Panels of a tab that is no longer shown no longer contribute to the banner.
         reconBanner = null;
         structureMarkings = editorMarkings = [];
+        timelineBanner = null;
     }
 
     private MbomDetail? detail;
     private MbomLines? lines;
     private bool notFound, busy;
+    private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
     private string? error, linesBanner, reconBanner, comment = "", obsoleteReason = "", reviseReason = "";
     private IReadOnlyList<Markings> structureMarkings = [], editorMarkings = [];
 

@@ -1,0 +1,22 @@
+@* Switches between the pictures of a panel and its table alternative (UX-3). Buttons with aria-pressed, in a labelled group; the choice is the host's. *@
+<div class="view-switch segmented" role="group" aria-label="@Label">
+    @foreach (var option in Options)
+    {
+        var selected = option.Id == Value;
+        <button type="button" aria-pressed="@(selected ? "true" : "false")" data-view="@option.Id" @onclick="() => Choose(option.Id)">@option.Title</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<ViewOption> Options { get; set; }
+    [Parameter, EditorRequired] public required string Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "View";
+
+    private async Task Choose(string id)
+    {
+        if (id == Value) return;
+        Value = id;
+        await ValueChanged.InvokeAsync(id);
+    }
+}

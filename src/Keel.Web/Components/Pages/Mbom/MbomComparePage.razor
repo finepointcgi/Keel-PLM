@@ -21,7 +21,12 @@
     @if (comparison is { } c)
     {
         <p class="muted" aria-live="polite">@c.From to @c.To: @c.Lines.Count change@(c.Lines.Count == 1 ? "" : "s"), @c.Unchanged unchanged</p>
-        @if (c.Lines.Count > 0)
+        <ViewSwitch Label="Comparison view" Options="DiffViews.Options" Value="@(visual ? "visual" : "table")" ValueChanged='id => visual = id == "visual"' />
+        @if (visual && diffModel is not null)
+        {
+            <StructureDiffView Model="diffModel" />
+        }
+        else if (c.Lines.Count > 0)
         {
             <div class="table-wrap"><table class="data">
                 <caption class="sr-only">Differences between the versions</caption>
@@ -50,6 +55,8 @@
     private IReadOnlyList<string> versions = [];
     private string from = "", to = "";
     private string? error;
+    private DiffModel? diffModel; // UX-3: the same result for the side-by-side view
+    private bool visual;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -65,7 +72,7 @@
     {
         error = null;
         var outcome = await Mbom.CompareAsync(await Users.GetAsync(), Number, from, to, CurrentUser.NewCorrelationId());
-        if (outcome.IsOk) comparison = outcome.Value;
-        else { comparison = null; error = UiText.Message(outcome); }
+        if (outcome.IsOk) { comparison = outcome.Value; diffModel = StructureDiffModel.FromMbom(comparison!); }
+        else { comparison = null; diffModel = null; error = UiText.Message(outcome); }
     }
 }

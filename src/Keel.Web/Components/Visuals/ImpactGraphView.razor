@@ -1,0 +1,197 @@
+@* The impact map of a change as a picture, with its legend, a detail panel for the selected item and the same facts as an accessible table (UX-3, ADR-0029).
+   Presentational: the graph was built from the impact analysis by ImpactGraphBuilder, so everything here is something the viewer may see; a restricted item is drawn
+   as "Restricted item" with no label, banner or link and cannot be opened. Keyboard: focus the map, arrow keys follow connections (right to the items that depend on
+   it, left back to its source, up and down inside a column), Enter opens the object in this tab, Ctrl+Enter in a new tab, Space selects, Home and End jump to the first
+   and last item. Below 600 px the table is shown first. *@
+@inject VisualsJs Js
+
+@if (Graph.Truncated)
+{
+    <p class="notice" role="status">This map shows only the first @NodeCap items. Use the level and kind filters to narrow it, or the table view.</p>
+}
+<div class="vis-split">
+    @if (table)
+    {
+        <div class="table-wrap vis-table"><table class="data" aria-label="Impact map as a table">
+            <caption class="sr-only">Every item of the impact map and how it connects</caption>
+            <thead><tr><th scope="col">Kind</th><th scope="col">Item</th><th scope="col">Details</th><th scope="col">Connected from</th><th scope="col">Marking</th></tr></thead>
+            <tbody>
+                @foreach (var n in ordered)
+                {
+                    <tr class="@(n.IsRestricted ? "restricted" : null)">
+                        <td>@GraphGeometry.KindName(n.Kind)</td>
+                        <td>
+                            @if (n.IsRestricted) { <span class="restricted-label">@ImpactGraphBuilder.RestrictedLabel</span> }
+                            else if (n.Href is { } href) { <a href="@href">@n.Label</a> }
+                            else { <span>@n.Label</span> }
+                        </td>
+                        <td>@(n.IsRestricted ? n.Description : n.Sublabel)</td>
+                        <td>@Incoming(n)</td>
+                        <td>@if (n.Banner is not null) { <MarkingChip Text="@n.Banner" /> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    }
+    else
+    {
+        <div class="vis-main">
+            <DiagramViewport Width="@geometry.Width" Height="@geometry.Height" Label="@MapLabel" FirstId="@(order.Count > 0 ? order[0] : null)" LastId="@(order.Count > 0 ? order[^1] : null)" ContentKey="@contentKey">
+                @{
+                    var ctx = context;
+                    <g class="vis-edges" aria-hidden="true">
+                        @foreach (var e in geometry.Edges)
+                        {
+                            var active = selected is not null && (e.From == selected || e.To == selected);
+                            <g class="vis-edge @(active ? "is-active" : null)" @key="@($"{e.From}>{e.To}")">
+                                <path d="@e.Path" fill="none" marker-end="@ctx.Arrow" />
+                                @if (active)
+                                {
+                                    <g><text class="vis-edge-label" x="@Num((e.X1 + e.X2) / 2)" y="@Num((e.Y1 + e.Y2) / 2 - 5)" text-anchor="middle">@GraphGeometry.Shorten(EdgeLabel(e), 40)</text></g>
+                                }
+                            </g>
+                        }
+                    </g>
+                    <g class="vis-nodes">
+                        @foreach (var p in geometry.Nodes)
+                        {
+                            var n = nodes[p.Id];
+                            var nav = navigation[p.Id];
+                            <g id="@ctx.NodeId(p.Id)" class="vis-node vis-k-@n.Kind.ToString().ToLowerInvariant() @(n.Highlight ? "is-alert" : null) @(selected == p.Id ? "is-selected" : null)"
+                               role="@(n.Openable ? "link" : "button")" tabindex="@(p.Id == order[0] ? 0 : -1)" @key="p.Id"
+                               aria-label="@Describe(n)" data-tip="@Tip(n)" data-href="@n.Href"
+                               data-x="@Num(p.X)" data-y="@Num(p.Y)" data-w="@Num(p.Width)" data-h="@Num(p.Height)"
+                               data-right="@Ids(ctx, nav.Right)" data-left="@Ids(ctx, nav.Left)" data-up="@(nav.Up is null ? null : ctx.NodeId(nav.Up))" data-down="@(nav.Down is null ? null : ctx.NodeId(nav.Down))"
+                               @onclick="() => Select(n)">
+                                <path class="vis-shape" d="@GraphGeometry.Outline(n.Kind, p.X, p.Y, p.Width, p.Height)" />
+                                @if (n.IsRestricted) { <path d="@GraphGeometry.Outline(n.Kind, p.X, p.Y, p.Width, p.Height)" fill="@ctx.Pattern("hatch")" stroke="none" class="vis-hatch" /> }
+                                else if (n.Highlight) { <path d="@GraphGeometry.Outline(n.Kind, p.X, p.Y, p.Width, p.Height)" fill="@ctx.Pattern("dots")" stroke="none" class="vis-dots" /> }
+                                <use class="vis-icon" href="_content/Keel.Web/icons.svg#i-@GraphGeometry.IconFor(n.Kind)" x="@Num(p.X + 8)" y="@Num(p.Y + 8)" width="16" height="16" />
+                                <text class="vis-label" x="@Num(p.X + 30)" y="@Num(p.Y + 21)">@(n.IsRestricted ? ImpactGraphBuilder.RestrictedLabel : GraphGeometry.Shorten(n.Label, 20))</text>
+                                @if (!n.IsRestricted && n.Sublabel is { Length: > 0 })
+                                {
+                                    <g><text class="vis-sub" x="@Num(p.X + 10)" y="@Num(p.Y + 40)">@GraphGeometry.Shorten(n.Sublabel, 27)</text></g>
+                                }
+                                @if (n.Kind != GraphNodeKind.Change && n.Kind != GraphNodeKind.Restricted && n.Kind != GraphNodeKind.More)
+                                {
+                                    <g><text class="vis-kind" x="@Num(p.X + p.Width - 8)" y="@Num(p.Y + 14)" text-anchor="end">@KindTag(n.Kind)</text></g>
+                                }
+                            </g>
+                        }
+                    </g>
+                }
+            </DiagramViewport>
+        </div>
+        <aside class="vis-side" aria-label="Item details">
+            @if (selectedNode is { } s)
+            {
+                <h4>@(s.IsRestricted ? ImpactGraphBuilder.RestrictedLabel : s.Label)</h4>
+                <p class="muted small">@GraphGeometry.KindName(s.Kind)</p>
+                <p>@s.Description</p>
+                @if (s.Facts is { Count: > 0 } facts && !s.IsRestricted)
+                {
+                    <dl class="facts compact">
+                        @foreach (var f in facts.Where(f => f.Value.Length > 0)) { <dt>@f.Key</dt><dd>@f.Value</dd> }
+                    </dl>
+                }
+                @if (s.Banner is not null) { <p><MarkingChip Text="@s.Banner" /></p> }
+                @if (s.Href is { } href) { <p><a class="button secondary" href="@href">Open</a> <a href="@href" target="_blank" rel="noopener">Open in a new tab</a></p> }
+                else if (s.Kind == GraphNodeKind.More) { <p><button type="button" class="secondary" @onclick="ShowMore">Show one more level</button></p> }
+                else if (s.IsRestricted) { <p class="muted small">You are not authorized to open this item.</p> }
+            }
+            else { <p class="muted">Select an item, or move to it with the arrow keys and press Space, to see its details here.</p> }
+        </aside>
+    }
+</div>
+@if (!table)
+{
+    <Legend Label="Legend" Items="legend" />
+}
+
+@code {
+    private ImpactGraph graph = new([], [], false, 0, 0, "UNCLASSIFIED");
+    private GraphLayout geometry = new([], [], 48, 48, 0);
+    private Dictionary<string, GraphNode> nodes = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, NodeNavigation> navigation = new Dictionary<string, NodeNavigation>();
+    private IReadOnlyList<string> order = [];
+    private List<GraphNode> ordered = [];
+    private string? selected;
+    private bool table;
+    private string contentKey = "";
+
+    public const int NodeCap = 500;
+
+    [Parameter, EditorRequired] public required ImpactGraph Graph { get; set; }
+    /// <summary>Raised when the person asks for one more level in the "more" item.</summary>
+    [Parameter] public EventCallback OnShowMoreLevels { get; set; }
+    /// <summary>Raised when the table or the picture is chosen, so the host can offer the same switch in its toolbar.</summary>
+    [Parameter] public bool ShowTable { get; set; }
+    [Parameter] public EventCallback<bool> ShowTableChanged { get; set; }
+    [Parameter] public string MapLabel { get; set; } = "Impact map";
+
+    private static readonly IReadOnlyList<LegendItem> legend =
+    [
+        new("Change (this notice or request), thick outline", "change", LegendItem.Rounded),
+        new("Affected part, and assemblies that use it", "part", LegendItem.Rect),
+        new("Linked document", "document", LegendItem.Document),
+        new("Stale manufacturing BOM (dotted)", "mbom", LegendItem.Hexagon, "dots"),
+        new("Other open change touching the same objects: conflict (octagon, dotted)", "conflict", LegendItem.Octagon, "dots"),
+        new("Restricted item, you may not see it (hatched)", "restricted", LegendItem.Rect, "hatch"),
+        new("More levels, activate to expand (rounded)", "more", LegendItem.Pill),
+    ];
+
+    protected override void OnParametersSet()
+    {
+        table = ShowTable;
+        if (!ReferenceEquals(graph, Graph))
+        {
+            graph = Graph;
+            nodes = graph.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+            var inputs = graph.Nodes.Select(n => { var (w, h) = GraphGeometry.Size(n.Kind); return new LayoutNodeInput(n.Id, n.Layer, w, h); }).ToList();
+            geometry = LayeredLayout.Compute(inputs, [.. graph.Edges.Select(e => new LayoutEdgeInput(e.From, e.To))]);
+            navigation = GraphGeometry.Navigation(geometry);
+            order = GraphGeometry.FocusOrder(geometry);
+            ordered = [.. order.Select(id => nodes[id])];
+            if (selected is not null && !nodes.ContainsKey(selected)) selected = null;
+            contentKey = string.Join('|', graph.Nodes.Select(n => n.Id).Take(40)) + graph.Nodes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    private GraphNode? selectedNode => selected is not null && nodes.TryGetValue(selected, out var n) ? n : null;
+
+    private static string Num(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Ids(DiagramContext ctx, IReadOnlyList<string> ids) => string.Join(' ', ids.Select(ctx.NodeId));
+
+    private static string KindTag(GraphNodeKind kind) => kind switch
+    {
+        GraphNodeKind.Affected => "affected",
+        GraphNodeKind.Parent => "used in",
+        GraphNodeKind.Document => "document",
+        GraphNodeKind.Mbom => "MBOM",
+        GraphNodeKind.Conflict => "conflict",
+        _ => "",
+    };
+
+    private string Describe(GraphNode n) =>
+        n.IsRestricted ? $"{ImpactGraphBuilder.RestrictedLabel}. {n.Description}. You may not open it." : $"{GraphGeometry.KindName(n.Kind)}. {n.Description}{(n.Openable ? ". Press Enter to open." : "")}";
+
+    private static string? Tip(GraphNode n) => n.IsRestricted ? ImpactGraphBuilder.RestrictedLabel : $"{n.Label}{(n.Sublabel is null ? "" : " · " + n.Sublabel)}";
+
+    private string EdgeLabel(PlacedEdge e) => graph.Edges.FirstOrDefault(x => x.From == e.From && x.To == e.To)?.Label ?? "";
+
+    private string Incoming(GraphNode n)
+    {
+        var from = graph.Edges.Where(e => e.To == n.Id).Select(e => (Node: nodes.GetValueOrDefault(e.From), e.Label)).Where(x => x.Node is not null)
+            .Select(x => x.Node!.IsRestricted ? $"{ImpactGraphBuilder.RestrictedLabel} ({x.Label})" : $"{x.Node.Label} ({x.Label})");
+        return string.Join("; ", from);
+    }
+
+    private Task Select(GraphNode n)
+    {
+        selected = n.Id;
+        return n.Kind == GraphNodeKind.More ? OnShowMoreLevels.InvokeAsync() : Task.CompletedTask;
+    }
+
+    private Task ShowMore() => OnShowMoreLevels.InvokeAsync();
+}

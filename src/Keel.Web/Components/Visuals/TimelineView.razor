@@ -1,0 +1,166 @@
+@* The life of an object in time order (UX-3, ADR-0029). Two views of the same entries: a list (the default, and the accessible one) grouped by revision or by month, and a horizontal
+   time line you can pan and zoom. Filter chips choose the kinds; "A restricted item was involved" entries are neutral placeholders (time only). Every entry that can be opened
+   links to the exact revision or object it names. *@
+@using System.Globalization
+
+<div class="stack tl">
+    <div class="toolbar vis-filters">
+        <ViewSwitch Label="Timeline view" Options="views" Value="@(mode)" ValueChanged="OnView" />
+        <label class="inline">Group by
+            <select aria-label="Group by" @bind="grouping" @bind:after="Refresh">
+                <option value="revision">Revision</option>
+                <option value="month">Month</option>
+                <option value="none">Nothing (one list)</option>
+            </select>
+        </label>
+    </div>
+    <div class="diff-chips tl-chips" role="group" aria-label="Kinds of event shown">
+        @foreach (var kind in kinds)
+        {
+            var on = !hiddenKinds.Contains(kind);
+            <button type="button" class="chip-toggle tl-k-@kind" aria-pressed="@(on ? "true" : "false")" @onclick="() => ToggleKind(kind)">
+                <Icon Name="@KindIcon(kind)" /> @TimelineKinds.Label(kind) <span class="count">@Events.Count(e => e.Kind == kind)</span>
+            </button>
+        }
+    </div>
+    <p class="muted small" aria-live="polite">@shown.Count of @Events.Count event@(Events.Count == 1 ? "" : "s") shown, oldest first.</p>
+
+    @if (shown.Count == 0)
+    {
+        <EmptyState Title="Nothing to show">No event matches the chosen kinds.</EmptyState>
+    }
+    else if (mode == "list")
+    {
+        @foreach (var group in Groups())
+        {
+            <section class="tl-group" aria-labelledby="@GroupId(group.Key)">
+                @if (group.Key.Length > 0) { <h4 id="@GroupId(group.Key)">@group.Key</h4> }
+                <ol class="tl-list">
+                    @foreach (var e in group.Items)
+                    {
+                        <li class="tl-item tl-k-@e.Kind @(e.Redacted ? "restricted" : null)" tabindex="0" aria-label="@Aria(e)">
+                            <span class="tl-marker"><Icon Name="@KindIcon(e.Kind)" /></span>
+                            <div class="tl-body">
+                                <div class="tl-title">
+                                    <span class="tl-kind">@TimelineKinds.Label(e.Kind)</span>
+                                    @if (e.Href is { } href) { <a href="@href">@e.Title</a> } else { <strong>@e.Title</strong> }
+                                    @if (e.Revision is { Length: > 0 } rev) { <span class="badge">Rev @rev</span> }
+                                </div>
+                                <div class="muted small"><time datetime="@Iso(e.At)">@Utc(e.At) UTC</time>@(e.Actor is null ? "" : $" · {e.Actor}")</div>
+                                @if (!string.IsNullOrWhiteSpace(e.Detail)) { <div class="tl-detail">@e.Detail</div> }
+                                @if (e.Markings is not null) { <MarkingChip Text="@e.Markings.BannerText()" /> }
+                            </div>
+                        </li>
+                    }
+                </ol>
+            </section>
+        }
+    }
+    else
+    {
+        <DiagramViewport Width="@axis.Width" Height="@axis.Height" Label="Timeline" FirstId="@(shown.Count > 0 ? "e0" : null)" LastId="@(shown.Count > 0 ? "e" + (shown.Count - 1).ToString(CultureInfo.InvariantCulture) : null)" ContentKey="@(grouping + shown.Count)">
+            @{
+                var ctx = context;
+                <line class="tl-axis" x1="@Num(20)" y1="@Num(axis.AxisY)" x2="@Num(axis.Width - 20)" y2="@Num(axis.AxisY)" />
+                @foreach (var t in axis.Ticks)
+                {
+                    <g><text class="vis-sub" x="@Num(t.X)" y="@Num(axis.AxisY - 14)" text-anchor="middle">@t.Label</text></g>
+                    <line class="tl-tick" x1="@Num(t.X)" y1="@Num(axis.AxisY - 8)" x2="@Num(t.X)" y2="@Num(axis.AxisY + 8)" />
+                }
+                @for (var i = 0; i < axis.Items.Count; i++)
+                {
+                    var it = axis.Items[i];
+                    var e = it.Event;
+                    var idx = i;
+                    <g id="@ctx.NodeId("e" + i.ToString(CultureInfo.InvariantCulture))" class="vis-node tl-node tl-k-@e.Kind @(e.Redacted ? "vis-k-restricted" : null)" role="@(e.Href is null ? "img" : "link")" tabindex="@(i == 0 ? 0 : -1)" @key="@($"{e.At.Ticks}-{e.Order}-{e.SourceRank}")"
+                       aria-label="@Aria(e)" data-tip="@(e.Title + " · " + Utc(e.At) + " UTC")" data-href="@e.Href"
+                       data-x="@Num(it.X - 8)" data-y="@Num(it.LabelY - 2)" data-w="@Num(it.Width)" data-h="44"
+                       data-right="@(i + 1 < axis.Items.Count ? ctx.NodeId("e" + (i + 1).ToString(CultureInfo.InvariantCulture)) : null)" data-left="@(i > 0 ? ctx.NodeId("e" + (i - 1).ToString(CultureInfo.InvariantCulture)) : null)">
+                        <line class="tl-stem" x1="@Num(it.X)" y1="@Num(axis.AxisY)" x2="@Num(it.X)" y2="@Num(it.LabelY)" />
+                        <circle class="tl-dot" cx="@Num(it.X)" cy="@Num(axis.AxisY)" r="6" />
+                        <rect class="vis-shape" x="@Num(it.X - 8)" y="@Num(it.LabelY)" width="@Num(it.Width)" height="40" rx="4" />
+                        <use class="vis-icon" href="_content/Keel.Web/icons.svg#i-@KindIcon(e.Kind)" x="@Num(it.X - 2)" y="@Num(it.LabelY + 4)" width="14" height="14" />
+                        <g><text class="vis-label" x="@Num(it.X + 16)" y="@Num(it.LabelY + 16)">@GraphGeometry.Shorten(e.Title, 24)</text></g>
+                        <g><text class="vis-sub" x="@Num(it.X - 2)" y="@Num(it.LabelY + 33)">@Utc(e.At)</text></g>
+                    </g>
+                }
+            }
+        </DiagramViewport>
+        <p class="muted small">Use the list view for full text. The time line shows the same events from left (oldest) to right.</p>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<ViewOption> views = [new("list", "List"), new("line", "Time line")];
+    private string mode = "list";
+    private string grouping = "revision";
+    private readonly HashSet<string> hiddenKinds = [];
+    private List<TimelineEvent> shown = [];
+    private IReadOnlyList<string> kinds = [];
+    private TimelineAxis axis = TimelineAxis.Empty;
+    private IReadOnlyList<TimelineEvent>? lastEvents;
+
+    [Parameter, EditorRequired] public required IReadOnlyList<TimelineEvent> Events { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(lastEvents, Events))
+        {
+            lastEvents = Events;
+            kinds = [.. TimelineKinds.All.Where(k => Events.Any(e => e.Kind == k))];
+        }
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        shown = [.. Events.Where(e => !hiddenKinds.Contains(e.Kind))];
+        axis = TimelineAxis.Build(shown, grouping == "month");
+    }
+
+    private void OnView(string id) => mode = id;
+
+    private void ToggleKind(string kind)
+    {
+        if (!hiddenKinds.Add(kind)) hiddenKinds.Remove(kind);
+        Refresh();
+    }
+
+    private IEnumerable<(string Key, List<TimelineEvent> Items)> Groups()
+    {
+        if (grouping == "none") return [("", shown)];
+        if (grouping == "month")
+            return shown.GroupBy(e => e.At.UtcDateTime.ToString("yyyy-MM", CultureInfo.InvariantCulture), StringComparer.Ordinal).Select(g => (g.Key, g.ToList()));
+        // By revision: an entry belongs to the revision it names; entries that name none (links, baselines of the whole part) go with the revision current at their time.
+        var current = "";
+        var groups = new List<(string Key, List<TimelineEvent> Items)>();
+        foreach (var e in shown)
+        {
+            if (!string.IsNullOrEmpty(e.Revision)) current = e.Revision;
+            var key = current.Length == 0 ? "Before the first revision" : $"Revision {current}";
+            if (groups.Count == 0 || groups[^1].Key != key) groups.Add((key, []));
+            groups[^1].Items.Add(e);
+        }
+        return groups;
+    }
+
+    private static string GroupId(string key) => "tlg-" + new string([.. key.Where(char.IsLetterOrDigit)]);
+    private static string Utc(DateTimeOffset t) => t.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    private static string Iso(DateTimeOffset t) => t.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+    private static string Num(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
+    private static string Aria(TimelineEvent e) => e.Redacted ? $"{Utc(e.At)} UTC. A restricted item was involved." : $"{Utc(e.At)} UTC. {TimelineKinds.Label(e.Kind)}: {e.Title}{(e.Revision is null ? "" : $", revision {e.Revision}")}.";
+
+    public static string KindIcon(string kind) => kind switch
+    {
+        TimelineKinds.Revision => "revision",
+        TimelineKinds.Iteration => "checkin",
+        TimelineKinds.Lifecycle => "lifecycle",
+        TimelineKinds.Signature => "signature",
+        TimelineKinds.Change => "change",
+        TimelineKinds.Baseline => "baseline",
+        TimelineKinds.Mbom => "mbom",
+        TimelineKinds.Link => "link",
+        TimelineKinds.Markings => "markings",
+        _ => "lock",
+    };
+}

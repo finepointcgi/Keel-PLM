@@ -28,7 +28,12 @@
                 @(result.Lines.Count == 0 ? "No differences in direct components." : $"{result.Lines.Count} difference{(result.Lines.Count == 1 ? "" : "s")}")
                 · @result.Unchanged unchanged. Compares the direct components of @result.From and @result.To.
             </p>
-            @if (result.Lines.Count > 0)
+            <ViewSwitch Label="Comparison view" Options="DiffViews.Options" Value="@(visual ? "visual" : "table")" ValueChanged='id => visual = id == "visual"' />
+            @if (visual && diffModel is not null)
+            {
+                <StructureDiffView Model="diffModel" />
+            }
+            else if (result.Lines.Count > 0)
             {
                 <div class="table-wrap"><table class="data">
                     <thead><tr><th scope="col">Change</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Find</th><th scope="col">Qty</th><th scope="col">Details</th><th scope="col">Markings</th></tr></thead>
@@ -56,6 +61,8 @@
     [Parameter] public required string Number { get; set; }
     private PartDetail? part;
     private BomComparison? result;
+    private DiffModel? diffModel; // UX-3: the same result for the side-by-side view
+    private bool visual;
     private string? error;
     private string from = "", to = "";
 
@@ -75,6 +82,7 @@
         var outcome = await Bom.CompareAsync(await Users.GetAsync(), Number, from, to, CurrentUser.NewCorrelationId());
         error = outcome.IsOk ? null : UiText.Message(outcome);
         result = outcome.Value;
+        diffModel = result is null ? null : StructureDiffModel.FromShallow(result);
     }
 
     private static string Q(decimal d) => d.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);

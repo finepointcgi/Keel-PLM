@@ -7,7 +7,7 @@
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
 
-<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner)" Title="@PageTitle"
+<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner, timelineBanner)" Title="@PageTitle"
            Crumbs="@Crumbs" Header="@(part is not null && defs is not null ? HeaderFragment(part) : null)">
     @if (notFound)
     {
@@ -127,6 +127,11 @@
                             <TdpExportPanel ObjectType="part" Number="@p.Number" Revision="@p.Revision.Revision" OnBanner="b => tdpBanner = b" />
                         </div>
                         break;
+                    case "timeline":
+                        @* UX-3: the life of the part; the page banner also covers the other objects its entries name. *@
+                        <TimelinePanel ObjectType="part" Key="@p.Number" Version="@($"{p.Revision.Revision}.{p.Iteration.Iteration}.{p.Revision.State}")"
+                                       OnShown="m => timelineBanner = m.Count == 0 ? null : Markings.AggregateBanner(m)" />
+                        break;
                     case "classification":
                         @if (p.Revision.IsLatest)
                         {
@@ -209,11 +214,11 @@
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery] public string? Revision { get; set; }
 
-    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "security"];
+    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security"];
     private static readonly IReadOnlyList<TabInfo> Tabs =
     [
         new("overview", "Overview"), new("structure", "Structure"), new("documents", "Documents"), new("changes", "Changes"),
-        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("security", "Security markings"),
+        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"),
     ];
 
     private PartDetail? part;
@@ -229,6 +234,7 @@
     private string? mbomBanner; // aggregate banner reported by the manufacturing BOM section
     private string? changesBanner; // aggregate banner reported by the changes panel
     private string? tdpBanner; // banner of the previewed Technical Data Package
+    private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
 
     private string PageTitle => part is null ? "Part" : $"{part.Number} · {part.Name}";
     private IReadOnlyList<Crumb> Crumbs => [new("Parts", "parts"), new(part?.Number ?? Number)];
@@ -272,7 +278,7 @@
     {
         tab = id;
         // Panels of a tab that is no longer shown no longer contribute to the banner.
-        bomBanner = mbomBanner = changesBanner = tdpBanner = null;
+        bomBanner = mbomBanner = changesBanner = tdpBanner = timelineBanner = null;
     }
 
     protected override async Task OnParametersSetAsync()

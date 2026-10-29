@@ -1,0 +1,74 @@
+@* The pan-and-zoom frame shared by every relationship picture (UX-3, ADR-0029). It owns the toolbar (zoom in, zoom out, fit), the SVG viewport, the shared patterns and
+   arrow head, and the tooltip. wwwroot/js/visuals.js moves the content layer (transform attribute) and handles the keys; this component draws nothing about the data.
+   Keyboard: focus the frame, then + - 0 and the arrow keys; nodes (".vis-node") move focus with the arrow keys, Enter opens, Ctrl+Enter opens in a new tab.
+   Phone width: the frame scrolls and pans inside its own box and always shows the Fit button; hosts offer their table first below 600 px. *@
+@implements IAsyncDisposable
+@inject VisualsJs Js
+
+<div class="vis-viewport" @ref="root" data-vis-w="@Num(Width)" data-vis-h="@Num(Height)" data-vis-first="@(FirstId is null ? null : Uid + "-" + FirstId)" data-vis-last="@(LastId is null ? null : Uid + "-" + LastId)" tabindex="-1">
+    <div class="vis-toolbar" role="toolbar" aria-label="@(Label) controls">
+        <button type="button" class="secondary vis-btn" data-vis-action="in" aria-label="Zoom in"><span aria-hidden="true">+</span></button>
+        <button type="button" class="secondary vis-btn" data-vis-action="out" aria-label="Zoom out"><span aria-hidden="true">−</span></button>
+        <button type="button" class="secondary vis-btn vis-fit" data-vis-action="fit">Fit</button>
+        <span class="muted small vis-hint">Ctrl + scroll or +/− to zoom, drag to move, 0 to fit, arrow keys between items</span>
+    </div>
+    <svg class="vis-svg" role="group" aria-label="@Label" aria-describedby="@(Uid)-hint" focusable="false">
+        <defs>
+            <pattern id="@(Uid)-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="vis-pattern-line" x1="0" y1="0" x2="0" y2="8" stroke-width="2" /></pattern>
+            <pattern id="@(Uid)-dots" width="8" height="8" patternUnits="userSpaceOnUse"><circle class="vis-pattern-dot" cx="4" cy="4" r="1.6" /></pattern>
+            <pattern id="@(Uid)-cross" width="8" height="8" patternUnits="userSpaceOnUse"><path class="vis-pattern-line" d="M0 0 L8 8 M8 0 L0 8" stroke-width="1.2" /></pattern>
+            <pattern id="@(Uid)-horiz" width="8" height="6" patternUnits="userSpaceOnUse"><line class="vis-pattern-line" x1="0" y1="3" x2="8" y2="3" stroke-width="1.5" /></pattern>
+            <pattern id="@(Uid)-vert" width="6" height="8" patternUnits="userSpaceOnUse"><line class="vis-pattern-line" x1="3" y1="0" x2="3" y2="8" stroke-width="1.5" /></pattern>
+            <marker id="@(Uid)-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="vis-arrow" d="M0 0 L10 5 L0 10 z" /></marker>
+        </defs>
+        <g data-vis-content="true">
+            @ChildContent?.Invoke(new DiagramContext(Uid))
+        </g>
+    </svg>
+    <p class="sr-only" id="@(Uid)-hint">Diagram. Focus an item and use the arrow keys to move along connections, Enter to open it, Control plus Enter to open it in a new tab. A table with the same information is available.</p>
+    <div class="vis-tip" role="tooltip" hidden></div>
+</div>
+
+@code {
+    private ElementReference root;
+    private bool attached;
+    private string? lastKey;
+
+    /// <summary>A unique prefix for ids inside this diagram (several diagrams can share a page).</summary>
+    public string Uid { get; } = "vis" + Guid.NewGuid().ToString("N")[..8];
+
+    [Parameter, EditorRequired] public required double Width { get; set; }
+    [Parameter, EditorRequired] public required double Height { get; set; }
+    [Parameter, EditorRequired] public required string Label { get; set; }
+    /// <summary>The node ids (without the frame prefix) focused by Home and End.</summary>
+    [Parameter] public string? FirstId { get; set; }
+    [Parameter] public string? LastId { get; set; }
+    /// <summary>Changes when the content is replaced (a drill-down, a new analysis): the view is fitted again.</summary>
+    [Parameter] public string? ContentKey { get; set; }
+    [Parameter] public RenderFragment<DiagramContext>? ChildContent { get; set; }
+
+    private static string Num(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Js.AttachAsync(root);
+            attached = true;
+            lastKey = ContentKey;
+        }
+        else if (attached && ContentKey != lastKey)
+        {
+            lastKey = ContentKey;
+            await Js.RefitAsync(root);
+        }
+    }
+
+    /// <summary>Moves focus to the first node (after the content was replaced by a drill-down).</summary>
+    public ValueTask FocusFirstAsync() => Js.FocusFirstAsync(root);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (attached) await Js.DetachAsync(root);
+    }
+}

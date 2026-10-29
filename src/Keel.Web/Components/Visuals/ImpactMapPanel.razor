@@ -1,0 +1,117 @@
+@* The "Impact map" tab of a change (UX-3, ADR-0029): runs the same impact analysis as the Impact analysis tab (same service, same read filter, same audit event), turns it
+   into a picture and keeps the page banner in step with the items that are drawn. Filters (levels, kinds, conflicts only) work on the analysis already loaded. *@
+@using Keel.Change
+@inject CurrentUser Users
+@inject ImpactAnalysisService Impact
+@inject VisualsJs Js
+
+<section class="panel stack" aria-labelledby="impact-map-heading">
+    <h3 id="impact-map-heading">Impact map</h3>
+    <p class="muted small">The change on the left, the parts it affects, the assemblies that use them level by level, linked documents, manufacturing BOMs that go stale and other open changes touching the same objects (conflicts). Items you may not see are drawn as restricted items.</p>
+    <div class="toolbar vis-filters">
+        <ViewSwitch Label="Impact map view" Options="views" Value="@(table ? "table" : "graph")" ValueChanged="OnView" />
+        <label class="inline">Levels shown
+            <select aria-label="Levels shown" @bind="showLevels" @bind:after="Rebuild">
+                @for (var l = 1; l <= 10; l++) { <option value="@l">@l</option> }
+            </select>
+        </label>
+        <fieldset class="inline-fieldset vis-kinds">
+            <legend class="sr-only">Item kinds shown</legend>
+            <label class="inline-check"><input type="checkbox" checked="@showDocuments" @onchange="e => Toggle(GraphNodeKind.Document, e.Value is true)" /> Documents</label>
+            <label class="inline-check"><input type="checkbox" checked="@showMboms" @onchange="e => Toggle(GraphNodeKind.Mbom, e.Value is true)" /> Manufacturing BOMs</label>
+            <label class="inline-check"><input type="checkbox" checked="@showConflicts" @onchange="e => Toggle(GraphNodeKind.Conflict, e.Value is true)" /> Other changes</label>
+        </fieldset>
+        <label class="inline-check"><input type="checkbox" checked="@onlyConflicts" @onchange="e => { onlyConflicts = e.Value is true; Rebuild(); }" /> Only conflicts</label>
+        <button type="button" class="secondary" disabled="@busy" @onclick="Load">@(report is null ? "Run impact analysis" : "Run again")</button>
+        @if (graph is not null)
+        {
+            <a class="button secondary" download data-enhance-nav="false" href="@ExportUrl()">Export SVG</a>
+        }
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (busy && graph is null) { <Skeleton Lines="4" Label="Running the impact analysis" /> }
+    @if (graph is not null)
+    {
+        <p class="muted small" aria-live="polite">
+            @graph.Nodes.Count item@(graph.Nodes.Count == 1 ? "" : "s") shown
+            @if (graph.MoreParents > 0) { <text> · @graph.MoreParents more assembl@(graph.MoreParents == 1 ? "y" : "ies") at deeper levels (restricted ones are not counted)</text> }
+        </p>
+        <ImpactGraphView Graph="graph" ShowTable="table" OnShowMoreLevels="MoreLevels" />
+    }
+</section>
+
+@code {
+    private static readonly IReadOnlyList<ViewOption> views = [new("graph", "Map"), new("table", "Table")];
+
+    private ImpactReport? report;
+    private ImpactGraph? graph;
+    private bool busy, table, tableChosen, showDocuments = true, showMboms = true, showConflicts = true, onlyConflicts;
+    private int showLevels = 3;
+    private string? error;
+
+    [Parameter, EditorRequired] public required ChangeDetail Detail { get; set; }
+    /// <summary>Raised with the banner of the items that are drawn, so the page banner covers them.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Phone width: the table first; the person can still switch to the picture.
+        if (await Js.IsNarrowAsync() && !tableChosen) { table = true; StateHasChanged(); }
+        await Load();
+    }
+
+    private void OnView(string id) { table = id == "table"; tableChosen = true; }
+
+    private async Task Load()
+    {
+        busy = true;
+        error = null;
+        StateHasChanged();
+        var outcome = await Impact.AnalyzeAsync(await Users.GetAsync(), Detail.Number, ImpactAnalysisService.DefaultLevels, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { report = outcome.Value; await RebuildAsync(); }
+        else { error = UiText.Message(outcome); graph = null; await OnBanner.InvokeAsync(UiText.Unclassified); }
+        StateHasChanged();
+    }
+
+    private HashSet<GraphNodeKind> Hidden()
+    {
+        var hidden = new HashSet<GraphNodeKind>();
+        if (!showDocuments) hidden.Add(GraphNodeKind.Document);
+        if (!showMboms) hidden.Add(GraphNodeKind.Mbom);
+        if (!showConflicts) hidden.Add(GraphNodeKind.Conflict);
+        return hidden;
+    }
+
+    private void Rebuild() => _ = RebuildAsync();
+
+    private async Task RebuildAsync()
+    {
+        if (report is null) return;
+        graph = ImpactGraphBuilder.Build(Detail, report, new ImpactGraphOptions(showLevels, Hidden(), onlyConflicts));
+        await OnBanner.InvokeAsync(graph.Banner);
+        StateHasChanged();
+    }
+
+    private Task Toggle(GraphNodeKind kind, bool on)
+    {
+        switch (kind)
+        {
+            case GraphNodeKind.Document: showDocuments = on; break;
+            case GraphNodeKind.Mbom: showMboms = on; break;
+            default: showConflicts = on; break;
+        }
+        return RebuildAsync();
+    }
+
+    private Task MoreLevels()
+    {
+        showLevels = Math.Min(10, showLevels + 1);
+        return RebuildAsync();
+    }
+
+    private string ExportUrl() =>
+        $"ui/changes/{Uri.EscapeDataString(Detail.Number)}/impact-map.svg?levels={showLevels}&documents={showDocuments.ToString().ToLowerInvariant()}&mboms={showMboms.ToString().ToLowerInvariant()}"
+        + $"&conflicts={showConflicts.ToString().ToLowerInvariant()}&only={onlyConflicts.ToString().ToLowerInvariant()}";
+}

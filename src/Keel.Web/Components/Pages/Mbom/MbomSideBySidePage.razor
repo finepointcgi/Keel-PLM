@@ -14,6 +14,13 @@
     @if (view is { } v)
     {
         <p class="muted" aria-live="polite">MBOM @v.Number version @v.MbomLabel against EBOM: @v.EbomSource</p>
+        <ViewSwitch Label="Comparison view" Options="DiffViews.Options" Value="@(visual ? "visual" : "table")" ValueChanged='id => visual = id == "visual"' />
+        @if (visual && diffModel is not null)
+        {
+            <StructureDiffView Model="diffModel" />
+        }
+        else
+        {
         <div class="table-wrap"><table class="data side-by-side">
             <caption class="sr-only">EBOM lines and the MBOM lines that implement them</caption>
             <thead><tr><th scope="col">EBOM line</th><th scope="col">Relationship</th><th scope="col">MBOM line</th></tr></thead>
@@ -37,6 +44,7 @@
             }
             </tbody>
         </table></div>
+        }
     }
 </PageFrame>
 
@@ -45,6 +53,8 @@
 
     private readonly Keel.Web.Services.EbomSpecForm specForm = new() { Kind = "" };
     private SideBySide? view;
+    private DiffModel? diffModel; // UX-3: the same result as a two-pane picture
+    private bool visual;
     private string? error;
 
     protected override async Task OnParametersSetAsync() => await Load();
@@ -61,7 +71,7 @@
         var (spec, problem) = specForm.ToSpec();
         if (problem is not null) { error = problem; return; }
         var outcome = await Mbom.SideBySideAsync(await Users.GetAsync(), Number, spec, CurrentUser.NewCorrelationId());
-        if (outcome.IsOk) view = outcome.Value;
-        else { view = null; error = UiText.Message(outcome); }
+        if (outcome.IsOk) { view = outcome.Value; diffModel = StructureDiffModel.FromSideBySide(view!); }
+        else { view = null; diffModel = null; error = UiText.Message(outcome); }
     }
 }

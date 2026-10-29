@@ -4,6 +4,7 @@ using Keel.Audit;
 using Keel.Core;
 using Keel.Parts;
 using Keel.Security;
+using Keel.Web.Services.Visuals;
 using Keel.Workflow;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -67,6 +68,7 @@ public static class KeelUi
         services.AddScoped<ShellState>();
         services.AddScoped<PaletteState>();
         services.AddScoped<WorkspaceReads>();
+        services.AddKeelVisuals(); // UX-3 relationship pictures (ADR-0029)
         services.AddScoped<IGlobalSearch, GlobalSearchService>();
         services.AddSingleton(options);
 
