@@ -23,21 +23,21 @@ public sealed class ComplianceTests(E2EFixture fx)
             var page = alice.Page;
             await session.GotoAsync(alice, $"/parts/{fx.Manifest.OpenFastener}?tab=compliance");
             await BrowserSession.AssertBannersAsync(page);
-            await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = ComplianceSeed.FastenerDeclaration, Exact = true })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = ComplianceSeed.FastenerDeclaration, Exact = true }).First).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Rowheader, new PageGetByRoleOptions { Name = "RoHS" })).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add the declaration" })).ToBeVisibleAsync();
 
             // A line of lead above the RoHS threshold makes the part non-compliant for RoHS: the standing says so in words, with what was found.
-            await page.GetByLabel("CAS number").First.FillAsync("7439-92-1");
-            await page.GetByLabel("Amount").First.FillAsync("0.5");
+            await BrowserSession.FillAsync(page.GetByLabel("CAS number").First, "7439-92-1");
+            await BrowserSession.FillAsync(page.GetByLabel("Amount", new PageGetByLabelOptions { Exact = true }), "0.5");
             await BrowserSession.ClickAsync(page, "Add the declaration");
             await Expect(page.GetByText("Above the threshold").First).ToBeVisibleAsync();
             await Expect(page.GetByText("Non-compliant").First).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
 
             // A mistake is explained and nothing is stored.
-            await page.GetByLabel("CAS number").First.FillAsync("7439-92-2");
-            await page.GetByLabel("Amount").First.FillAsync("1");
+            await BrowserSession.FillAsync(page.GetByLabel("CAS number").First, "7439-92-2");
+            await BrowserSession.FillAsync(page.GetByLabel("Amount", new PageGetByLabelOptions { Exact = true }), "1");
             await BrowserSession.ClickAsync(page, "Add the declaration");
             await Expect(page.GetByRole(AriaRole.Alert).First).ToContainTextAsync("not a valid CAS number");
 
@@ -65,7 +65,7 @@ public sealed class ComplianceTests(E2EFixture fx)
             await session.GotoAsync(alice, $"/compliance?mode=ebom&number={fx.Manifest.TopAssembly}");
             await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = fx.Manifest.TopAssembly }).First).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
-            await Expect(page.GetByText("RoHS").First).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "RoHS" }).First).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Conflict minerals (CSV)" })).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Material declaration (XML)" })).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Table).First).ToBeVisibleAsync();
@@ -75,7 +75,7 @@ public sealed class ComplianceTests(E2EFixture fx)
             await Expect(page.Locator("svg.vis-svg")).ToBeVisibleAsync();
             await Expect(page.Locator("g.vis-tile").First).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
-            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Table", Exact = true }).ClickAsync();
+            await page.GetByLabel("Compliance picture").GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Table", Exact = true }).ClickAsync();
             await Expect(page.GetByRole(AriaRole.Table).First).ToBeVisibleAsync();
 
             // The export is a file download, not a page.
@@ -124,7 +124,7 @@ public sealed class ComplianceTests(E2EFixture fx)
             await ComplianceSeed.EnsureAsync(fx);
             var lena = await session.SignInAsync("lena");
             await session.GotoAsync(lena, $"/parts/{fx.Manifest.GimbalBracket}?tab=compliance");
-            await Expect(lena.Page.GetByRole(AriaRole.Alert)).ToContainTextAsync("not available to you");
+            await Expect(lena.Page.GetByRole(AriaRole.Alert)).ToContainTextAsync("not found, or you are not authorized");
             await BrowserSession.AssertBannersAsync(lena.Page);
             Assert.DoesNotContain(ComplianceSeed.BracketDeclaration, await lena.Page.ContentAsync(), StringComparison.Ordinal);
             await session.GotoAsync(lena, $"/compliance/declarations/{ComplianceSeed.BracketDeclaration}");
@@ -147,8 +147,11 @@ public sealed class ComplianceTests(E2EFixture fx)
                          "/compliance/lists", "/compliance/lists/rohs", "/compliance/lists/rohs/versions/1", "/compliance/substances", "/compliance/materials", $"/parts/{fx.Manifest.OpenFastener}?tab=compliance", "/" })
             {
                 await session.GotoAsync(alice, path);
+                await Expect(alice.Page.Locator("h1")).ToBeVisibleAsync();
+                await alice.Page.WaitForTimeoutAsync(800); // pages that load a list set their banner when the list arrives
                 await BrowserSession.AssertBannersAsync(alice.Page);
-                Assert.True(await alice.Page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"), $"{path} scrolls sideways at 375 px");
+                var wide = await alice.Page.EvaluateAsync<string>("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1 || e.scrollWidth > e.clientWidth + 1).slice(0, 8).map(e => e.tagName + '.' + e.className).join(' | ')");
+                Assert.True(await alice.Page.EvaluateAsync<bool>("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"), $"{path} scrolls sideways at 375 px: {wide}");
             }
         });
     }

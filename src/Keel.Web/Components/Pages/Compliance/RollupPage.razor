@@ -14,15 +14,13 @@
                 <option value="mbom">Manufacturing BOM (MBOM number)</option>
             </select>
         </label>
-        <label class="grow">Number <input @bind="number" placeholder="@(mode == "ebom" ? "P-000001" : "MB-000001")" /></label>
-        <label>As of <input type="date" @bind="asOf" /></label>
+        <label>Number <input @bind="number" size="12" placeholder="@(mode == "ebom" ? "P-000001" : "MB-000001")" /></label>
         <button type="submit">Assess compliance</button>
     </form>
-    @if (lists.Count > 0)
-    {
-        <details class="panel">
-            <summary>Choose list versions (the default is the version in force on the date)</summary>
-            <div class="grid-form">
+    <details class="panel">
+        <summary>Choose the date and the list versions (the default is today and the version in force on that date)</summary>
+        <div class="grid-form">
+            <label>As of <input type="date" @bind="asOf" /></label>
                 @foreach (var l in lists)
                 {
                     <label>
@@ -33,9 +31,8 @@
                         </select>
                     </label>
                 }
-            </div>
-        </details>
-    }
+        </div>
+    </details>
     @if (error is not null) { <p class="error" role="alert">@error</p> }
     @if (report is not null)
     {
