@@ -16,6 +16,7 @@
                     EmptyTitle="No open changes" EmptyText="Open change requests and notices of the programs you belong to appear here." />
         <ObjectCard Id="released" Title="Recently released" IconName="rocket" Load="() => Reads.RecentlyReleasedAsync()" OnBanner="SetBanner" ShowDate="true"
                     EmptyTitle="Nothing released recently" EmptyText="Parts and documents released in the last 30 days that you can read are listed here." />
+        <WatchedActivityCard OnBanner="SetBanner" />
         <QuickActionsCard />
     </div>
 </PageFrame>

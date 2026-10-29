@@ -15,7 +15,7 @@ namespace Keel.Parts;
 /// transaction as its change (ADR-0005), including denials. Per-part operations serialize on the master row.
 /// </summary>
 public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock,
-    IEnumerable<IPartIterationParticipant>? participants = null, IDomainEventSink? events = null)
+    IEnumerable<IPartIterationParticipant>? participants = null, IDomainEventSink? events = null, INotificationSink? notifications = null)
 {
     // 1.4: modules owning per-iteration data (BOM links) hook into check-out/check-in/undo; empty when none are registered.
     private readonly IPartIterationParticipant[] _participants = participants?.ToArray() ?? [];
@@ -109,6 +109,7 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
         }
         await audit.AppendAsync(tx, Entry(subject, "part.create", AuditOutcome.Success, number, correlationId,
             ("revision", "A.1"), ("markings", cmd.Markings.BannerText()), ("name", name)), ct);
+        await PartAwareness.AfterAsync(notifications, conn, tx, "part.create", number, cmd.Markings, subject, [], ct); // UX-4: the creator watches the part
         var detail = await LoadDetailAsync(conn, tx, subject, number, null, ct);
         await tx.CommitAsync(ct);
         return Outcome<PartDetail>.Ok(detail!);
@@ -432,6 +433,7 @@ public sealed partial class PartService(NpgsqlDataSource dataSource, IAuditLog a
             return step.Kind == OutcomeKind.Invalid ? Outcome<PartDetail>.Invalid(step.Errors) : Outcome<PartDetail>.Conflict(step.Errors[0]);
         }
         await audit.AppendAsync(tx, Entry(subject, action, AuditOutcome.Success, number, correlationId, step.Details), ct);
+        await PartAwareness.AfterAsync(notifications, conn, tx, action, number, head.Markings, subject, step.Details, ct); // UX-4: watchers, auto-watch
         var detail = await LoadDetailAsync(conn, tx, subject, number, null, ct);
         await tx.CommitAsync(ct);
         return Outcome<PartDetail>.Ok(detail!);

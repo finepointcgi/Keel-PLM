@@ -18,6 +18,7 @@
         var s = d.Summary;
         <article class="stack">
             <ViewTracker Kind="@ObjectKinds.Mbom" Number="@s.Number" />
+            <CommentCount Kind="@ObjectKinds.Mbom" Number="@s.Number" OnCount="c => commentCount = c" />
 
             @if (d.Revisions.Count > 1)
             {
@@ -31,7 +32,7 @@
             @if (error is not null) { <p class="error" role="alert">@error</p> }
             @if (!d.Permissions.CanModify) { <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p> }
 
-            <TabSet Tabs="Tabs" Active="@tab" ActiveChanged="OnTabChanged" Label="Manufacturing BOM sections">
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs, commentCount)" Active="@tab" ActiveChanged="OnTabChanged" Label="Manufacturing BOM sections">
                 @switch (tab)
                 {
                     case "overview":
@@ -122,6 +123,12 @@
                     case "structure":
             <MbomStructure Detail="d" OnMarkings="m => structureMarkings = m" />
                         break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Mbom" Number="@s.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Mbom" Number="@s.Number" OnCount="c => commentCount = c" />
+                        break;
                 }
             </TabSet>
         </article>
@@ -136,9 +143,10 @@
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery(Name = "revision")] public string? Revision { get; set; }
 
-    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure"];
+    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure", .. AwarenessTabs.Ids];
     private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure")];
     private string tab = "overview";
+    private int? commentCount; // number of comments, shown on the Comments tab (UX-4)
     private IReadOnlyList<LifecycleState> steps = [];
     private string PageTitle => detail is null ? "Manufacturing BOM" : $"{detail.Summary.Number} · {detail.Summary.PartName} ({detail.Plant.Code})";
     private IReadOnlyList<Crumb> Crumbs => [new("Manufacturing BOMs", "mboms"), new(detail?.Summary.Number ?? Number)];
@@ -150,6 +158,7 @@
             <span class="badge @MbomUiText.StateClass(d.Displayed.State)">@d.Displayed.StateLabel</span>
             @if (d.Summary.ReconciliationStatus is { } rs) { <span class="badge @MbomUiText.StatusClass(rs)">@ReconcileStatuses.Label(rs)</span> }
             <FavoriteButton Kind="@ObjectKinds.Mbom" Number="@d.Summary.Number" />
+            <WatchButton Kind="@ObjectKinds.Mbom" Number="@d.Summary.Number" />
         </Badges>
         <Steps>
             @if (steps.Count > 0)

@@ -1,0 +1,51 @@
+@* The notifications of one list (the flyout of the bell and the notifications page). Every row was rendered from the live object after a read check; a row whose object the
+   viewer can no longer read says only "A notification you can no longer view" (no number, no name, no kind). The marking chip of each readable row is shown because the title
+   is the object's name. Unread rows are marked with a dot AND the word "Unread" for people who cannot see the dot. *@
+
+<ul class="notif-list @(Compact ? "compact" : null)" aria-label="@Label">
+    @foreach (var n in Items)
+    {
+        var item = n;
+        <li class="notif @(item.IsRead ? "read" : "unread")" id="@("n-" + item.Id.ToString("N"))" data-restricted="@(item.Restricted ? "true" : null)">
+            @if (Selectable)
+            {
+                <input type="checkbox" class="notif-select" aria-label="@(item.Restricted ? "Select this notification" : $"Select notification about {item.Number}")"
+                       checked="@Selected.Contains(item.Id)" @onchange="e => OnSelect.InvokeAsync((item.Id, (bool)e.Value!))" />
+            }
+            <div class="notif-body">
+                @if (item.Restricted)
+                {
+                    <span class="notif-text restricted">@item.Text</span>
+                }
+                else
+                {
+                    <a class="notif-title" href="@item.Href" @onclick="() => OnOpen.InvokeAsync(item)">@item.Number · @item.Name</a>
+                    <span class="notif-text">@item.Text@(item.Occurrences > 1 ? $" ({item.Occurrences} times)" : "")</span>
+                }
+                <span class="notif-meta">
+                    @if (!item.IsRead) { <span class="unread-dot" aria-hidden="true"></span><span class="visually-hidden">Unread. </span> }
+                    <TimeStamp At="item.At" />@if (!item.Restricted) { <span> · @item.ObjectLabel</span> }
+                </span>
+            </div>
+            @if (!item.Restricted && item.Banner is { } banner) { <MarkingChip Text="@banner" /> }
+            @if (ShowMarkRead && !item.IsRead)
+            {
+                <button type="button" class="secondary small" @onclick="() => OnMarkRead.InvokeAsync(item)"
+                        aria-label="@(item.Restricted ? "Mark this notification as read" : $"Mark the notification about {item.Number} as read")">Mark read</button>
+            }
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<NotificationItem> Items { get; set; }
+    [Parameter] public string Label { get; set; } = "Notifications";
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool Selectable { get; set; }
+    [Parameter] public bool ShowMarkRead { get; set; }
+    [Parameter] public IReadOnlySet<Guid> Selected { get; set; } = new HashSet<Guid>();
+    /// <summary>A readable notification was opened (its link was followed): the caller marks it read.</summary>
+    [Parameter] public EventCallback<NotificationItem> OnOpen { get; set; }
+    [Parameter] public EventCallback<NotificationItem> OnMarkRead { get; set; }
+    [Parameter] public EventCallback<(Guid Id, bool Selected)> OnSelect { get; set; }
+}

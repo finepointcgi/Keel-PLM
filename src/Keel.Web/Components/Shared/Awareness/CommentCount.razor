@@ -1,0 +1,22 @@
+@* Renders nothing: reads the number of live comments of an object (null when the user may not read it) for the "Comments" tab label. *@
+@inject CurrentUser Users
+@inject ICommentService Comments
+
+@code {
+    private string? loadedKey;
+
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    [Parameter] public EventCallback<int?> OnCount { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Kind + "|" + Number;
+        if (key == loadedKey) return;
+        loadedKey = key;
+        int? count = null;
+        try { count = await Comments.CountAsync(await Users.GetAsync(), Kind, Number); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { /* the tab simply shows no number */ }
+        await OnCount.InvokeAsync(count);
+    }
+}

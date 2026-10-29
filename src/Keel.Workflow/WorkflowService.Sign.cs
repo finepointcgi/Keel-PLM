@@ -127,6 +127,7 @@ public sealed partial class WorkflowService
                 ("instance", inst.Id.ToString("D")), ("task", skipped.Id.ToString("D")), ("reason", "vote.decided")), ct);
         }
         await RecordCreatedTasksAsync(conn, tx, subject, inst, advance.Created, correlationId, now, ct);
+        await WorkflowAwareness.SignedAsync(notifications, conn, tx, inst, subject, ct); // UX-4: whoever signs watches the object
 
         var finalInstance = inst;
         if (advance.Outcome is { } outcome)
@@ -150,6 +151,7 @@ public sealed partial class WorkflowService
             await audit.AppendAsync(tx, Entry(subject, "workflow.complete", AuditOutcome.Success, inst.ObjectType, inst.ObjectKey, correlationId,
                 ("instance", inst.Id.ToString("D")), ("outcome", outcome.ToString()), ("revision", inst.ObjectRevision), ("iteration", inst.IterationLabel),
                 ("objectState", released ? "released" : "in_work")), ct);
+            await WorkflowAwareness.DecidedAsync(notifications, conn, tx, inst, released, obj.Markings, subject, ct); // UX-4: the submitter hears the decision
             finalInstance = (await WorkflowStore.LoadInstanceAsync(conn, tx, inst.Id, forUpdate: false, ct))!;
         }
 

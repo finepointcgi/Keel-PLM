@@ -18,6 +18,7 @@
         var p = part;
         <article class="stack">
             <ViewTracker Kind="@ObjectKinds.Part" Number="@p.Number" />
+            <CommentCount Kind="@ObjectKinds.Part" Number="@p.Number" OnCount="c => commentCount = c" />
             <UnsavedGuard Dirty="@IsDirty" />
 
             @* Sticky action bar: the primary actions are reachable from every tab. *@
@@ -64,7 +65,7 @@
                 <p class="muted small">@t.Label: @t.Reason</p>
             }
 
-            <TabSet Tabs="Tabs" Active="@tab" ActiveChanged="OnTabChanged" Label="Part sections">
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs, commentCount)" Active="@tab" ActiveChanged="OnTabChanged" Label="Part sections">
                 @switch (tab)
                 {
                     case "overview":
@@ -186,6 +187,12 @@
                             }
                         </section>
                         break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Part" Number="@p.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Part" Number="@p.Number" OnCount="c => commentCount = c" />
+                        break;
                 }
             </TabSet>
         </article>
@@ -209,7 +216,7 @@
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery] public string? Revision { get; set; }
 
-    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "security"];
+    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "security", .. AwarenessTabs.Ids];
     private static readonly IReadOnlyList<TabInfo> Tabs =
     [
         new("overview", "Overview"), new("structure", "Structure"), new("documents", "Documents"), new("changes", "Changes"),
@@ -222,6 +229,7 @@
     private bool notFound, busy, confirmUndo, confirmOverride;
     private string? error;
     private string tab = "overview";
+    private int? commentCount; // number of comments, shown on the Comments tab (UX-4)
     private string workingDescription = "", comment = "", overrideState = "", markingsReason = "";
     private AttributeInput? workingAttributes;
     private MarkingsInput? editMarkings;
@@ -248,6 +256,7 @@
             <span class="badge state-@p.Revision.State.ToLowerInvariant()">@p.Revision.StateLabel</span>
             @if (p.Revision.IsLocked) { <span class="badge">Locked</span> }
             <FavoriteButton Kind="@ObjectKinds.Part" Number="@p.Number" />
+            <WatchButton Kind="@ObjectKinds.Part" Number="@p.Number" />
         </Badges>
         <Steps>
             @if (lifecycle is not null)

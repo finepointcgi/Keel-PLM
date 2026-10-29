@@ -1,0 +1,83 @@
+/* UX-4 awareness: the bell, notification lists, watch controls, comments and the activity feed (ADR-0030). Only tokens (var(--…)); never inline styles (CSP). */
+
+/* ---- the bell of the top bar */
+.bell { position: relative; }
+.bell-button { position: relative; }
+.bell-count {
+  position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-pill);
+  background: var(--c-accent); color: var(--c-on-accent); font-size: var(--fs-xs); font-weight: 700; line-height: 18px; text-align: center;
+  border: 2px solid var(--c-surface);
+}
+.bell-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; width: 420px; max-width: calc(100vw - 24px); max-height: 70vh; overflow-y: auto;
+  background: var(--c-surface); border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); box-shadow: var(--shadow-2); padding: var(--sp-3);
+}
+.bell-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.bell-head h2 { font-size: var(--fs-md); margin: 0; }
+.bell-foot { display: flex; justify-content: space-between; gap: var(--sp-3); border-top: 1px solid var(--c-border); margin-top: var(--sp-3); padding-top: var(--sp-2); }
+.bell-empty { margin: var(--sp-3) 0; }
+button.small { min-height: var(--target); padding: 2px 10px; font-size: var(--fs-sm); }
+
+/* ---- notification lists */
+.notif-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.notif { display: flex; gap: var(--sp-2); align-items: flex-start; justify-content: space-between; padding: var(--sp-2) 0; border-top: 1px solid var(--c-border); min-width: 0; flex-wrap: wrap; }
+.notif:first-child { border-top: 0; }
+.notif .notif-body { display: flex; flex-direction: column; flex: 1 1 220px; min-width: 0; gap: 2px; }
+.notif .notif-title { font-weight: 600; overflow-wrap: anywhere; }
+.notif.read .notif-title { font-weight: 400; }
+.notif .notif-text { overflow-wrap: anywhere; }
+.notif .notif-text.restricted { color: var(--c-muted); font-style: italic; }
+.notif .notif-meta { color: var(--c-muted); font-size: var(--fs-sm); display: inline-flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; }
+.unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-accent); }
+.notif.unread { border-left: 3px solid var(--c-accent); padding-left: var(--sp-2); }
+.notif-select { margin-top: 6px; }
+.notif-list.compact .notif { padding: 6px 0; }
+.notif-day { font-size: var(--fs-md); margin: var(--sp-4) 0 var(--sp-1); color: var(--c-muted); }
+.notif-day:first-child { margin-top: 0; }
+
+/* ---- preferences and the watch list */
+.pref-table td, .pref-table th { vertical-align: top; }
+.pref-locked { color: var(--c-muted); font-size: var(--fs-sm); }
+.watch-control { display: inline-flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
+.watch-level { min-height: var(--target); }
+
+/* ---- comments */
+.comments, .activity { display: flex; flex-direction: column; gap: var(--sp-3); }
+.comments-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
+.comments-head h3 { margin: 0; }
+.composer { display: flex; flex-direction: column; gap: var(--sp-2); background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-2); padding: var(--sp-3); }
+.composer label { font-weight: 600; }
+.composer textarea { width: 100%; }
+.composer.reply { margin: var(--sp-2) 0 0 var(--sp-5); }
+.mention-list { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.comment-thread, .comment-replies { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.comment-replies { margin: var(--sp-2) 0 0 var(--sp-5); padding-left: var(--sp-3); border-left: 2px solid var(--c-border); gap: var(--sp-2); }
+.comment { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-2); padding: var(--sp-3); }
+.comment.target { border-color: var(--c-accent); box-shadow: var(--focus-ring); }
+.comment.removed { background: var(--c-surface-2); }
+.comment-author { margin: 0 0 var(--sp-1); font-size: var(--fs-md); display: flex; gap: var(--sp-2); align-items: baseline; flex-wrap: wrap; }
+.comment-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-removed { margin: 0; color: var(--c-muted); font-style: italic; }
+.comment-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+.mention { font-weight: 700; color: var(--c-link); }
+.ref-chip { display: inline-block; border: 1px solid var(--c-border-strong); border-radius: var(--radius-pill); padding: 0 8px; font-size: var(--fs-sm); text-decoration: none; background: var(--c-surface-2); }
+
+/* ---- activity feed */
+.activity-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.activity-item { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--sp-3); padding: var(--sp-2) 0 var(--sp-2) var(--sp-3); border-left: 3px solid var(--c-border-strong); margin-left: var(--sp-1); }
+.activity-item + .activity-item { border-top: 1px solid var(--c-border); }
+.activity-item.cat-state, .activity-item.cat-review { border-left-color: var(--c-warning); }
+.activity-item.cat-version, .activity-item.cat-created, .activity-item.cat-baseline { border-left-color: var(--c-success); }
+.activity-item.cat-markings { border-left-color: var(--c-danger); }
+.activity-item.view { border-left-style: dashed; color: var(--c-muted); }
+.activity-text { overflow-wrap: anywhere; }
+.activity-meta { color: var(--c-muted); font-size: var(--fs-sm); white-space: nowrap; }
+.activity-details { grid-column: 1 / -1; }
+.activity-details summary { cursor: pointer; color: var(--c-link); font-size: var(--fs-sm); }
+
+@media (max-width: 480px) {
+  .bell-panel { position: fixed; left: var(--sp-3); right: var(--sp-3); top: calc(var(--banner-h) + 52px); width: auto; max-width: none; }
+  .comment-replies { margin-left: var(--sp-2); padding-left: var(--sp-2); }
+  .composer.reply { margin-left: var(--sp-2); }
+  .activity-item { grid-template-columns: 1fr; }
+}

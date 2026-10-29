@@ -63,6 +63,7 @@ public sealed partial class ChangeService
                 await ins.ExecuteNonQueryAsync(ct);
             }
             await ChangeStore.AppendHistoryAsync(conn, tx, c.Head.Id, id, subject, "Task created", $"{number}: {title}, assigned to {user.Username}.", c.Now, ct);
+            await ChangeAwareness.TaskAssignedAsync(notifications, conn, tx, c.Head, user.Sub, subject, ct); // UX-4: the assignee hears about the task
             return Done(("task", number), ("title", title), ("assignee", user.Username), ("due", cmd.DueDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
         }, ct);
 

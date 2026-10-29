@@ -1,0 +1,200 @@
+@* The bell of the top bar: a badge with the unread count (its accessible name includes the count), a flyout with the latest eight notifications, "Mark all read" and "See all".
+   It lives only in the unlocked layout, so a locked session has no bell and no notification text in the DOM (ADR-0026); a call that still arrives while locked is refused by
+   CurrentUser and clears everything. The count is kept fresh without a reload: the in-process hub tells this circuit that something was written (it re-queries after a short
+   debounce), and a 60-second poll is the fallback (several nodes, or a missed signal). New notifications are announced politely (aria-live) and never take the focus. *@
+@implements IAsyncDisposable
+@inject CurrentUser Users
+@inject INotificationCenter Center
+@inject INotificationHub Hub
+@inject ShellJs Js
+
+<div class="bell" @ref="root">
+    <button type="button" class="icon-button bordered bell-button" id="bell-button" aria-haspopup="true" aria-expanded="@(open ? "true" : "false")" aria-controls="bell-panel"
+            aria-label="@ButtonLabel" data-unread="@unread" @onclick="ToggleAsync">
+        <Icon Name="bell" />
+        @if (unread > 0) { <span class="bell-count" aria-hidden="true">@(unread > 99 ? "99+" : unread.ToString(System.Globalization.CultureInfo.InvariantCulture))</span> }
+    </button>
+    <span class="visually-hidden" id="bell-announce" aria-live="polite" aria-atomic="true">@announcement</span>
+    @if (open)
+    {
+        <div class="bell-panel" id="bell-panel" role="group" aria-label="Latest notifications">
+            <div class="bell-head">
+                <h2>Notifications</h2>
+                <button type="button" class="secondary small" data-action="mark-all-read" disabled="@(unread == 0)" @onclick="MarkAllReadAsync">Mark all read</button>
+            </div>
+            @if (loading)
+            {
+                <p class="muted">Loading…</p>
+            }
+            else if (items.Count == 0)
+            {
+                <p class="muted bell-empty">You have no notifications yet. Tasks, mentions and changes to things you watch will appear here.</p>
+            }
+            else
+            {
+                <NotificationList Items="items" Compact="true" Label="Latest notifications" OnOpen="OnOpenedAsync" />
+            }
+            <div class="bell-foot">
+                <a href="notifications" @onclick="Close">See all notifications</a>
+                <a href="notifications/preferences" @onclick="Close">Preferences</a>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(250);
+
+    private readonly CancellationTokenSource cts = new();
+    private ElementReference root;
+    private DotNetObjectReference<NotificationBell>? self;
+    private IDisposable? subscription;
+    private IReadOnlyList<NotificationItem> items = [];
+    private bool open, watching, loading, disposed;
+    private int unread, signalSeq;
+    private string announcement = "";
+
+    /// <summary>The polling fallback (every 60 seconds by default).</summary>
+    [Parameter] public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(60);
+
+    private string ButtonLabel => unread == 0 ? "Notifications, none unread" : $"Notifications, {unread} unread";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var me = await Users.GetAsync();
+            unread = await Center.CountUnreadAsync(me);
+            subscription = Hub.Subscribe(me.Id, OnSignal);
+            _ = PollAsync(cts.Token);
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) // includes SessionLockedException
+        {
+            unread = 0;
+        }
+    }
+
+    private void OnSignal() => _ = DebouncedAsync();
+
+    private async Task DebouncedAsync()
+    {
+        var mine = Interlocked.Increment(ref signalSeq);
+        try { await Task.Delay(Debounce, cts.Token); }
+        catch (OperationCanceledException) { return; }
+        if (mine != signalSeq || disposed) return;
+        await InvokeAsync(RefreshAsync);
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(PollInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct)) await InvokeAsync(RefreshAsync);
+        }
+        catch (OperationCanceledException) { /* disposed */ }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (disposed) return;
+        try
+        {
+            var me = await Users.GetAsync();
+            var previous = unread;
+            unread = await Center.CountUnreadAsync(me);
+            if (unread > previous) announcement = unread == 1 ? "1 unread notification" : $"{unread} unread notifications";
+            if (open) items = (await Center.ListAsync(me, NotificationFilter.All, 0, AwarenessLimits.FlyoutSize)).Items;
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) // a locked session clears the bell
+        {
+            unread = 0;
+            items = [];
+            open = false;
+            announcement = "";
+        }
+        StateHasChanged();
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (open) { await CloseAsync(refocus: true); return; }
+        open = true;
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            var me = await Users.GetAsync();
+            var page = await Center.ListAsync(me, NotificationFilter.All, 0, AwarenessLimits.FlyoutSize);
+            items = page.Items;
+            unread = page.Unread;
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            items = [];
+        }
+        loading = false;
+        if (!watching)
+        {
+            watching = true;
+            self = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("watchDismiss", root, self);
+        }
+    }
+
+    private async Task OnOpenedAsync(NotificationItem item)
+    {
+        open = false;
+        try { await Center.MarkReadAsync(await Users.GetAsync(), item.Id); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { /* the link still works; the row stays unread */ }
+        if (!item.IsRead) unread = Math.Max(0, unread - 1);
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        try
+        {
+            var me = await Users.GetAsync();
+            await Center.MarkAllReadAsync(me);
+            unread = 0;
+            items = (await Center.ListAsync(me, NotificationFilter.All, 0, AwarenessLimits.FlyoutSize)).Items;
+            announcement = "All notifications marked as read";
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { /* locked or unavailable: nothing changes */ }
+    }
+
+    private void Close() => open = false;
+
+    private async Task CloseAsync(bool refocus)
+    {
+        open = false;
+        if (watching)
+        {
+            watching = false;
+            await Js.InvokeVoidAsync("stopWatchDismiss", root);
+        }
+        if (refocus) await Js.InvokeVoidAsync("focusSelector", "#bell-button");
+    }
+
+    [JSInvokable]
+    public async Task Dismiss(string reason)
+    {
+        var wasOpen = open && reason == "escape";
+        await InvokeAsync(async () =>
+        {
+            await CloseAsync(refocus: false);
+            StateHasChanged();
+        });
+        if (wasOpen) await Js.InvokeVoidAsync("focusSelector", "#bell-button");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        subscription?.Dispose();
+        await cts.CancelAsync();
+        cts.Dispose();
+        if (watching) await Js.InvokeVoidAsync("stopWatchDismiss", root);
+        self?.Dispose();
+    }
+}

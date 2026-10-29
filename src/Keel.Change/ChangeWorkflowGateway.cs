@@ -20,7 +20,7 @@ namespace Keel.Change;
 /// the ECN is Released and its ECR (when all its notices are) Implemented, all in the engine's transaction, or none of it.
 /// </para>
 /// </summary>
-internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnumerable<IChangeObjectGateway> objectGateways, IRevisionEffectivity? effectivity = null, IDomainEventSink? events = null) : IWorkflowObjectGateway
+internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnumerable<IChangeObjectGateway> objectGateways, IRevisionEffectivity? effectivity = null, IDomainEventSink? events = null, INotificationSink? notifications = null) : IWorkflowObjectGateway
 {
     private const string Draft = "Draft";
     private const string UnderReview = "UnderReview";
@@ -180,6 +180,7 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
             // 4.0 (ADR-0025): the approved change request is reported to the ERP, in the same transaction.
             if (events is not null && await LoadSnapshotAsync(conn, tx, boundIterationId, ct) is { } ecrSnapshot)
                 await ChangeEvents.EmitAsync(events, conn, tx, EventTypes.ChangeApproved, row, ChangeSnapshot.Parse(ecrSnapshot), [], [], actor, now, ct);
+            await ChangeAwareness.DecidedAsync(notifications, conn, tx, row, approved: true, actor, ct); // UX-4: the requester hears the decision
             return GatewayResult.Ok;
         }
 
@@ -249,6 +250,7 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
             ("obsoleted", string.Join(",", obsoleted)), ("retainedByEffectivity", string.Join(",", retained)), ("ecr", implemented is null ? null : "implemented"));
         // 4.0 (ADR-0025): the released change notice (affected and resulting revisions, effectivity) is reported to the ERP, in the same transaction.
         await ChangeEvents.EmitAsync(events, conn, tx, EventTypes.ChangeReleased, row, data, obsoleted, retained, actor, now, ct);
+        await ChangeAwareness.DecidedAsync(notifications, conn, tx, row, approved: true, actor, ct); // UX-4: the requester hears the decision
         return GatewayResult.Ok;
     }
 
@@ -310,6 +312,7 @@ internal sealed class ChangeWorkflowGateway(string type, IAuditLog audit, IEnume
         await ChangeStore.AppendHistoryAsync(conn, tx, row.Id, null, actor, what,
             $"{(to == "Rejected" ? "The change request was rejected." : "Back to Draft; editable again.")}{(returned > 0 ? $" {returned} resulting revision(s) returned to In Work." : "")}", now, ct);
         await Audit(tx, actor, rejected ? "change.reject" : "change.review_cancel", row, ("to", to), ("returnedRevisions", returned.ToString(CultureInfo.InvariantCulture)));
+        if (rejected) await ChangeAwareness.DecidedAsync(notifications, conn, tx, row, approved: false, actor, ct); // UX-4: the requester hears the decision
         return GatewayResult.Ok;
     }
 

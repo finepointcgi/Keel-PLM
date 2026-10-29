@@ -1,0 +1,77 @@
+@* Watch / Unwatch next to the favorite star in an object header. Watching is a pointer (the object's type and number); it is offered only on a page the user could open, and the
+   service checks read access again when it is set. A watcher hears about changes, comments, decisions and releases of the object (what exactly, and how much, is chosen on the
+   notification preferences and by the level here: "all" or "decisions only"). *@
+@inject CurrentUser Users
+@inject IWatchService Watches
+@inject ToastService Toasts
+
+<span class="watch-control">
+    <button type="button" class="secondary icon-button bordered" aria-pressed="@(level is not null ? "true" : "false")" data-action="watch" @onclick="ToggleAsync"
+            aria-label="@(level is not null ? $"Stop watching {Number}" : $"Watch {Number}")" title="@(level is not null ? "Stop watching" : "Watch for changes, comments and decisions")">
+        <Icon Name="eye" Class="@(level is not null ? "filled" : null)" /> <span class="label">@(level is not null ? "Watching" : "Watch")</span>
+    </button>
+    @if (level is not null)
+    {
+        <select class="watch-level" aria-label="@($"What to tell me about {Number}")" data-action="watch-level" @onchange="ChangeLevelAsync">
+            <option value="all" selected="@(level == WatchLevel.All)">Everything</option>
+            <option value="decisions" selected="@(level == WatchLevel.Decisions)">Decisions only</option>
+        </select>
+    }
+</span>
+
+@code {
+    private WatchLevel? level;
+    private string? loadedKey;
+
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Kind + "|" + Number;
+        if (key == loadedKey) return;
+        loadedKey = key;
+        try { level = await Watches.GetAsync(await Users.GetAsync(), Kind, Number); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { level = null; }
+    }
+
+    private async Task ToggleAsync()
+    {
+        try
+        {
+            var me = await Users.GetAsync();
+            if (level is not null)
+            {
+                await Watches.RemoveAsync(me, Kind, Number);
+                level = null;
+                Toasts.Info($"You no longer watch {Number}.");
+                return;
+            }
+            var outcome = await Watches.SetAsync(me, Kind, Number, WatchLevel.All, CurrentUser.NewCorrelationId());
+            if (outcome.IsOk)
+            {
+                level = outcome.Value;
+                Toasts.Success($"You are watching {Number}.");
+            }
+            else Toasts.Warning(outcome.Kind == OutcomeKind.Conflict ? outcome.Errors[0] : "You cannot watch this object.");
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            Toasts.Error("Your watch list could not be changed right now.");
+        }
+    }
+
+    private async Task ChangeLevelAsync(ChangeEventArgs e)
+    {
+        var chosen = e.Value?.ToString() == "decisions" ? WatchLevel.Decisions : WatchLevel.All;
+        try
+        {
+            var outcome = await Watches.SetAsync(await Users.GetAsync(), Kind, Number, chosen, CurrentUser.NewCorrelationId());
+            if (outcome.IsOk) level = outcome.Value;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            Toasts.Error("Your watch list could not be changed right now.");
+        }
+    }
+}

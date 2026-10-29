@@ -25,6 +25,9 @@ public static class BomModule
         // Phase 4 integration (ADR-0025): the released-EBOM snapshot for bom.published events and the structure source of Technical Data Packages.
         services.AddSingleton<IBomPublicationSource, BomPublicationSource>();
         services.AddSingleton<ITdpStructureSource, TdpStructureSource>();
+        // UX-4 (ADR-0030): notifications, comments and activity feeds find baselines and manufacturing BOMs through these key lookups.
+        services.AddSingleton<IObjectAccess, BaselineObjectAccess>();
+        services.AddSingleton<IObjectAccess, MbomObjectAccess>();
         return services;
     }
 }

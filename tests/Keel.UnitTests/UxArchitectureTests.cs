@@ -53,7 +53,7 @@ public sealed partial class UxArchitectureTests
     public void The_shell_documents_and_assets_load_nothing_from_outside_the_application()
     {
         var offenders = new List<string>();
-        var assets = new[] { "wwwroot/css/tokens.css", "wwwroot/css/base.css", "wwwroot/css/layout.css", "wwwroot/css/components.css", "wwwroot/bom.css", "wwwroot/js/shell.js", "wwwroot/session-lock.js", "wwwroot/icons.svg" };
+        var assets = new[] { "wwwroot/css/tokens.css", "wwwroot/css/base.css", "wwwroot/css/layout.css", "wwwroot/css/components.css", "wwwroot/bom.css", "wwwroot/css/awareness.css", "wwwroot/js/shell.js", "wwwroot/session-lock.js", "wwwroot/icons.svg" };
         foreach (var asset in assets)
         {
             var text = File.ReadAllText(Path.Combine(Web, asset));

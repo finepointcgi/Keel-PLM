@@ -1,0 +1,8 @@
+@* A time shown as "5 min ago" with the exact UTC time in the tooltip and in the machine-readable attribute. *@
+@inject TimeProvider Clock
+
+<time datetime="@At.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture)" title="@(UiText.Utc(At)) UTC">@RelativeTime.Format(At, Clock.GetUtcNow())</time>
+
+@code {
+    [Parameter, EditorRequired] public required DateTimeOffset At { get; set; }
+}

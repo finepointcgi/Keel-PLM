@@ -1,0 +1,55 @@
+@* "Activity in things I watch": the latest events on the objects the user watches, from the audit log. Each object is read again under the user's current access first: an object
+   the user can no longer read contributes nothing. The card reports the aggregate banner of exactly the objects it shows. *@
+@inject CurrentUser Users
+@inject IActivityFeed Feed
+
+<section class="card" aria-labelledby="card-watched">
+    <h2 id="card-watched"><Icon Name="eye" /> Activity in things I watch</h2>
+    @if (loading)
+    {
+        <Skeleton Lines="4" Label="Loading activity" />
+    }
+    else if (error is not null)
+    {
+        <p class="error" role="alert">@error</p>
+    }
+    else if (items.Count == 0)
+    {
+        <EmptyState Title="Nothing to report" IconName="eye">Watch a part, document or change with the Watch button on its page. What happens to it is listed here.</EmptyState>
+    }
+    else
+    {
+        <ul class="items">
+            @foreach (var w in items)
+            {
+                <li>
+                    <span class="main">
+                        <a href="@(w.Href + "#activity")">@w.Number · @w.Name</a>
+                        <span class="sub">@w.Entry.Sentence · <TimeStamp At="w.Entry.At" /></span>
+                    </span>
+                    <MarkingChip Text="@w.Banner" />
+                </li>
+            }
+        </ul>
+        <p class="small"><a href="watching">Things I watch</a></p>
+    }
+</section>
+
+@code {
+    private bool loading = true;
+    private string? error;
+    private IReadOnlyList<WatchedActivity> items = [];
+
+    [Parameter] public EventCallback<(string Id, string? Banner)> OnBanner { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { items = await Feed.WatchedActivityAsync(await Users.GetAsync(), 8); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "This list could not be loaded. The rest of the page is not affected.";
+        }
+        loading = false;
+        await OnBanner.InvokeAsync(("watched", items.Count == 0 ? null : Markings.AggregateBanner(items.Select(i => i.Markings).ToList())));
+    }
+}

@@ -85,6 +85,7 @@ internal static class ShellTestKit
         ctx.Services.AddScoped<ShellState>();
         ctx.Services.AddScoped<PaletteState>();
         ctx.Services.AddScoped<ToastService>();
+        _ = AwarenessTestKit.Register(ctx); // UX-4: the bell is part of the layout
         return (store, search);
     }
 }

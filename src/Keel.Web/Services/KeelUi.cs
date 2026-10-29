@@ -67,6 +67,7 @@ public static class KeelUi
         services.AddScoped<ShellState>();
         services.AddScoped<PaletteState>();
         services.AddScoped<WorkspaceReads>();
+        services.AddScoped<CommentDrafts>(); // UX-4: comment drafts live in the circuit only
         services.AddScoped<IGlobalSearch, GlobalSearchService>();
         services.AddSingleton(options);
 

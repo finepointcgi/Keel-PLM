@@ -35,11 +35,12 @@ public static class ChangeModule
     public static IServiceCollection AddKeelChange(this IServiceCollection services)
     {
         services.AddSingleton(sp => new ChangeService(sp.GetRequiredService<Npgsql.NpgsqlDataSource>(), sp.GetRequiredService<Keel.Audit.IAuditLog>(),
-            sp.GetServices<IChangeObjectGateway>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<IRevisionEffectivity>()));
+            sp.GetServices<IChangeObjectGateway>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<IRevisionEffectivity>(), sp.GetService<INotificationSink>()));
         services.AddSingleton<ImpactAnalysisService>();
         services.AddSingleton<IChangeBindingGuard, ChangeBindingGuard>();
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecr, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>(), sp.GetService<IDomainEventSink>()));
-        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecn, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>(), sp.GetService<IDomainEventSink>()));
+        services.AddSingleton<IObjectAccess, ChangeObjectAccess>(); // UX-4: notifications, comments and activity find changes through this lookup
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecr, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>(), sp.GetService<IDomainEventSink>(), sp.GetService<INotificationSink>()));
+        services.AddSingleton<IWorkflowObjectGateway>(sp => new ChangeWorkflowGateway(ChangeTypes.Ecn, sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetServices<IChangeObjectGateway>(), sp.GetService<IRevisionEffectivity>(), sp.GetService<IDomainEventSink>(), sp.GetService<INotificationSink>()));
         return services;
     }
 }
