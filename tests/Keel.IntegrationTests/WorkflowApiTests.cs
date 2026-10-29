@@ -207,7 +207,7 @@ public sealed class WorkflowApiTests(PostgresFixture pg)
         Assert.Equal(2, (await Json(created)).GetProperty("version").GetInt32());
         var active = (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates")).EnumerateArray().Single(t => t.GetProperty("id").GetString() == "part-release-review");
         Assert.Equal("Part release review, any approver", active.GetProperty("name").GetString());
-        Assert.Equal(7, (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates?all=true")).GetArrayLength()); // two part versions, ECR, ECN, baseline, MBOM, document
+        Assert.Equal(9, (await alice.GetFromJsonAsync<JsonElement>("/api/v1/workflow/templates?all=true")).GetArrayLength()); // two part versions, ECR, ECN, baseline, MBOM, document, and the two sourcing templates
     }
 
     [Fact]

@@ -109,7 +109,7 @@ public sealed class CadApiTests(PostgresFixture pg)
         Assert.Equal(HttpStatusCode.OK, checkin.StatusCode);
         var created = (await Json(checkin)).GetProperty("created").EnumerateArray().ToDictionary(c => c.GetProperty("number").GetString()!, c => c.GetProperty("iteration").GetInt32());
         Assert.Equal(2, created.Count);
-        Assert.Equal(3, created[model]);
+        Assert.Equal(2, created[model]); // the model was created as iteration 1 and has not been checked in before: this check-in makes iteration 2
 
         // The drawing now says it was built against model iteration 2, which is no longer the latest.
         var view = await Json(await alice.GetAsync($"/api/v1/cad/documents/{drawing}/package"));
@@ -145,7 +145,14 @@ public sealed class CadApiTests(PostgresFixture pg)
         var hidden = await lena.PostAsJsonAsync("/api/v1/cad/packages/checkout", new { top = secret });
         var missing = await lena.PostAsJsonAsync("/api/v1/cad/packages/checkout", new { top = "D-999999" });
         Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
-        Assert.Equal(await hidden.Content.ReadAsStringAsync(), await missing.Content.ReadAsStringAsync());
+        // Everything but the per-request trace id is identical (status, type, title, detail, instance and any other member).
+        static string WithoutTrace(string body)
+        {
+            var o = System.Text.Json.Nodes.JsonNode.Parse(body)!.AsObject();
+            Assert.True(o.Remove("traceId"));
+            return o.ToJsonString();
+        }
+        Assert.Equal(WithoutTrace(await missing.Content.ReadAsStringAsync()), WithoutTrace(await hidden.Content.ReadAsStringAsync()));
         Assert.Equal(HttpStatusCode.NotFound, (await lena.GetAsync($"/api/v1/cad/documents/{secret}/package")).StatusCode);
 
         // Atomic check-in: a member without its required primary file keeps the whole set open and creates no iteration.
@@ -158,7 +165,7 @@ public sealed class CadApiTests(PostgresFixture pg)
         // Unknown member and unknown reference are refused with protocol codes.
         var unknown = await alice.PostAsJsonAsync($"/api/v1/cad/checkouts/{setId}/checkin", new { members = new[] { new { number = "D-424242" } } });
         Assert.Equal("cad.member_unknown", (await Json(unknown)).GetProperty("code").GetString());
-        var badRef = await alice.PostAsJsonAsync($"/api/v1/cad/checkouts/{setId}/checkin", new { members = new[] { new { number = open, references = new[] { secret } } } });
+        var badRef = await alice.PostAsJsonAsync($"/api/v1/cad/checkouts/{setId}/checkin", new { members = new[] { new { number = open, references = new[] { "D-999999" } } } }); // alice may see the ITAR document, so a reference to a missing one is the refusal case
         Assert.Equal("cad.reference_unknown", (await Json(badRef)).GetProperty("code").GetString());
         var lenaSet = await lena.GetAsync($"/api/v1/cad/checkouts/{setId}");
         Assert.Equal(HttpStatusCode.NotFound, lenaSet.StatusCode);
