@@ -1,0 +1,129 @@
+@page "/process/tools"
+@inject CurrentUser Users
+@inject ToolingService Tooling
+@inject MbomService Mboms
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="Tools, fixtures and gauges" Crumbs="@Crumbs">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search tools" placeholder="Number or name" class="grow" @bind="text" />
+        <select aria-label="Kind" @bind="kind" @bind:after="() => Search(0)">
+            <option value="">All kinds</option>
+            @foreach (var k in ToolKinds.All) { <option value="@k">@ToolKinds.Label(k)</option> }
+        </select>
+        <select aria-label="Plant" @bind="plant" @bind:after="() => Search(0)">
+            <option value="">All plants</option>
+            @foreach (var p in plants) { <option value="@p.Code">@p.Code @p.Name</option> }
+        </select>
+        <label class="inline"><input type="checkbox" @bind="dueOnly" @bind:after="() => Search(0)" /> Calibration due or overdue</label>
+        <label class="inline"><input type="checkbox" @bind="retired" @bind:after="() => Search(0)" /> Include retired</label>
+        <button type="submit">Search</button>
+        <a class="button secondary" href="process/plans">Process plans</a>
+    </form>
+
+    <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")" Context="auth">
+        <details class="panel">
+            <summary>New tool, fixture or gauge</summary>
+            <EditForm Model="this" OnSubmit="Create" FormName="new-tool" class="stack">
+                @if (error is not null) { <p class="error" role="alert">@error</p> }
+                <div class="grid-form">
+                    <label class="wide">Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+                    <label>Kind
+                        <InputSelect @bind-Value="newKind">@foreach (var k in ToolKinds.All) { <option value="@k">@ToolKinds.Label(k)</option> }</InputSelect>
+                    </label>
+                    <label>Plant *
+                        <InputSelect @bind-Value="newPlant">@foreach (var p in plants) { <option value="@p.Code">@p.Code @p.Name</option> }</InputSelect>
+                    </label>
+                    <label class="inline"><InputCheckbox @bind-Value="requires" /> Needs calibration</label>
+                    @if (requires)
+                    {
+                        <label>Interval (days) * <InputNumber @bind-Value="interval" min="1" max="3660" /></label>
+                        <label>Last calibrated on <InputDate @bind-Value="lastCalibrated" /></label>
+                    }
+                    <label class="wide">Description <InputText @bind-Value="description" maxlength="1000" /></label>
+                </div>
+                <MarkingsFields Value="markings" />
+                <div class="toolbar"><button type="submit" disabled="@busy">Create</button></div>
+            </EditForm>
+        </details>
+    </AuthorizeView>
+
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total tool@(result.Total == 1 ? "" : "s") you can access</p>
+        <DataTable TItem="ToolSummary" TableId="tools" Items="result.Items" Columns="Columns" Caption="Tools, fixtures and gauges" OnServerSort="OnSort" ServerSort="sort">
+            <Empty>
+                <EmptyState Title="@(Filtered ? "No tools match" : "No tools yet")" IconName="folder">
+                    @(Filtered ? "Try a different search or clear the filters." : "Add the tools, fixtures and gauges your work instructions refer to.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded, dueOnly, retired, busy, requires;
+    private string text = "", kind = "", plant = "", name = "", newKind = ToolKinds.Tool, newPlant = "", description = "";
+    private int? interval = 90;
+    private DateTime? lastCalibrated;
+    private string? error;
+    private int offset;
+    private ToolResults? result;
+    private IReadOnlyList<PlantInfo> plants = [];
+    private readonly MarkingsInput markings = new() { ExportJurisdiction = ExportJurisdiction.None, UsmlCategory = "", CuiCategories = "", DistributionStatement = DistributionStatement.A, ControllingOffice = "", DistributionReason = "", Program = "", OwningOrg = "ENG" };
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Process plans", "process/plans"), new("Tools and gauges")];
+    private bool Filtered => text.Length > 0 || kind != "" || plant != "" || dueOnly || retired;
+    private string Banner => result?.Banner ?? UiText.Unclassified;
+
+    private static readonly IReadOnlyList<DataColumn<ToolSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = t => @<a href="@ProcessUi.ToolHref(t.Number)">@t.Number</a> },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = t => t.Name },
+        new() { Key = "kind", Title = "Kind", ServerSortKey = "kind", Text = t => ToolKinds.Label(t.Kind) },
+        new() { Key = "plant", Title = "Plant", ServerSortKey = "plant", Text = t => t.Plant },
+        new() { Key = "due", Title = "Calibration due", ServerSortKey = "due", Text = t => t.DueOn?.ToString("yyyy-MM-dd") ?? "" },
+        new() { Key = "cal", Title = "Calibration", Cell = t => @<span class="badge @ProcessUi.CalibrationClass(t.CalibrationState)">@ProcessRules.CalibrationLabel(t.CalibrationState)</span> },
+        new() { Key = "status", Title = "Status", ServerSortKey = "status", Text = t => t.Status == "retired" ? "Retired" : "Active" },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = t => @<MarkingChip Text="@t.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (plants.Count == 0) { plants = await Mboms.ListPlantsAsync(); newPlant = plants.FirstOrDefault()?.Code ?? ""; }
+        _ = ToolingService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        var outcome = await Tooling.SearchAsync(await Users.GetAsync(), new ToolSearch(text, plant == "" ? null : plant, kind == "" ? null : kind, dueOnly, retired, PageSize, offset, sort), CurrentUser.NewCorrelationId());
+        result = outcome.Value;
+    }
+
+    private async Task Create()
+    {
+        busy = true; error = null;
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { error = string.Join(" ", m.Errors); busy = false; return; }
+        var outcome = await Tooling.CreateAsync(await Users.GetAsync(),
+            new CreateToolCommand(name, newKind, newPlant, description, requires, requires ? interval : null, requires && lastCalibrated is { } d ? DateOnly.FromDateTime(d) : null, m.Value), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        Nav.NavigateTo(ProcessUi.ToolHref(outcome.Value!.Summary.Number));
+    }
+}

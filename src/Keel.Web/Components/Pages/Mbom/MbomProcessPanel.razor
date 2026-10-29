@@ -1,0 +1,32 @@
+@using Keel.Process
+@inject CurrentUser Users
+@inject ProcessPlanService Plans
+
+@* The "Process plan" tab of an MBOM (8.7, ADR-0042): the plan written against it, or how to start one. The plan is read under the reader's own access (plan, MBOM and part). *@
+<section class="panel stack" aria-labelledby="proc-heading">
+    <h2 id="proc-heading">Process plan</h2>
+    @if (plan is null) { <p class="muted">There is no process plan for this manufacturing BOM that you can read. @(CanCreate ? "Create one from the process plans page." : "A plan can be created once a revision is released.")</p> }
+    else
+    {
+        <p><a href="process/plans/@Uri.EscapeDataString(plan.Number)">@plan.Number</a>, revision @plan.Revision (@plan.StateLabel), written against MBOM revision @plan.BoundMbomRevision.</p>
+        @if (plan.Stale != Staleness.Current) { <p class="notice" role="status">@plan.StaleText.</p> }
+        <p><MarkingChip Text="@plan.Banner" /></p>
+    }
+    @if (plan is null && CanCreate) { <p><a class="button secondary" href="process/plans">Process plans</a></p> }
+</section>
+
+@code {
+    private PlanSummary? plan;
+    private string? loadedFor;
+
+    [Parameter, EditorRequired] public required string MbomNumber { get; set; }
+    [Parameter] public bool CanCreate { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == MbomNumber) return;
+        loadedFor = MbomNumber;
+        var outcome = await Plans.ForMbomAsync(await Users.GetAsync(), MbomNumber, CurrentUser.NewCorrelationId());
+        plan = outcome.Value?.FirstOrDefault();
+    }
+}

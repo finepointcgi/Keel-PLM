@@ -96,7 +96,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
             Add("alice", $"/baselines/{x.DesignBaseline}?tab={tab}");
         Add("alice", $"/baselines/compare?from={x.DesignBaseline}&to={x.ReleaseBaseline}");
 
-        foreach (var tab in new[] { "overview", "lines", "reconciliation", "review", "structure", "timeline", "security", "activity", "comments" })
+        foreach (var tab in new[] { "overview", "lines", "reconciliation", "review", "structure", "process", "timeline", "security", "activity", "comments" })
             Add("alice", $"/mboms/{x.ReleasedMbom}?tab={tab}");
         Add("alice", $"/mboms/{x.StaleMbom}?tab=reconciliation", $"/mboms/{x.ReleasedMbom}/compare", $"/mboms/{x.ReleasedMbom}/side-by-side");
 
@@ -135,6 +135,13 @@ public sealed class AccessibilityTests(E2EFixture fx)
         foreach (var tab in new[] { "overview", "disposition", "actions", "links", "review", "history", "activity", "comments" }) Add("alice", $"/quality/ncrs/{q.Ncr}?tab={tab}");
         foreach (var tab in new[] { "overview", "analysis", "actions", "verification", "links", "review", "history", "activity", "comments" }) Add("alice", $"/quality/capas/{q.Capa}?tab={tab}");
         foreach (var tab in new[] { "overview", "scope", "links", "review", "history", "activity", "comments" }) Add("alice", $"/quality/deviations/{q.Deviation}?tab={tab}");
+
+        // Manufacturing process data (8.7, ADR-0042): plans, every tab, the shop floor view, tools and the administrator's work centers.
+        ProcessSeed.EnsureAsync(fx).GetAwaiter().GetResult();
+        foreach (var tab in new[] { "overview", "routing", "flow", "matrix", "review", "timeline", "activity", "comments" })
+            Add("alice", $"/process/plans/{ProcessSeed.Plan}?tab={tab}");
+        Add("alice", "/process/plans", $"/process/plans/{ProcessSeed.Plan}/shop-floor", "/process/tools", $"/process/tools/{ProcessSeed.Tool}", $"/process/tools/{ProcessSeed.Tool}?tab=calibration", $"/process/tools/{ProcessSeed.Tool}?tab=used");
+        Add("ada", "/process/work-centers");
 
         Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
             "/admin/integration/profiles", "/admin/integration/sinks", "/admin/integration/tdp-categories", "/admin/lifecycles", "/admin/lists", "/admin/migration",

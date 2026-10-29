@@ -1,0 +1,89 @@
+@page "/process/plans/{Number}/shop-floor"
+@inject CurrentUser Users
+@inject ProcessPlanService Plans
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+<PageFrame Banner="@Banner" Title="@Title" Crumbs="@Crumbs">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Process plan @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (message is not null)
+    {
+        <p class="notice" role="status">@message</p>
+        <p><a href="@ProcessUi.PlanHref(Number)">Back to the plan</a></p>
+    }
+    else if (view is not null)
+    {
+        var v = view;
+        @* The banner of everything shown, repeated on every printed page (print stylesheet); on screen the shell banners are used. *@
+        <div class="sf-print-banner sf-print-top" aria-hidden="true">@v.Banner</div>
+        <div class="sf-print-banner sf-print-bottom" aria-hidden="true">@v.Banner</div>
+        <article class="stack sf" aria-labelledby="sf-title">
+            <header>
+                <h2 id="sf-title">@v.PartNumber @v.PartName</h2>
+                <dl class="facts compact">
+                    <dt>Process plan</dt><dd>@v.PlanNumber, revision @v.Revision</dd>
+                    <dt>Plant</dt><dd>@v.Plant</dd>
+                    <dt>Manufacturing BOM revision</dt><dd>@v.BoundMbomRevision</dd>
+                    <dt>Routing</dt><dd>@v.Routing.Code: @v.Routing.Name@(v.Routing.IsPrimary ? " (primary)" : "")</dd>
+                    @if (v.Routing.Condition is not null) { <dt>Applies when</dt><dd>@v.Routing.Condition</dd> }
+                    <dt>Printed</dt><dd>@UiText.Utc(v.GeneratedAt) UTC</dd>
+                </dl>
+            </header>
+            @if (v.Stale != Staleness.Current)
+            {
+                <p class="notice sf-stale" role="status">Check before use: this plan was written against MBOM revision @v.BoundMbomRevision@(v.MbomReleasedRevision is null ? ", which has no released successor" : $", and revision {v.MbomReleasedRevision} is now released").</p>
+            }
+            <div class="toolbar sf-noprint">
+                @if (v.OtherRoutings.Count > 0)
+                {
+                    <label>Routing
+                        <select value="@v.Routing.Code" @onchange="e => Choose(e.Value?.ToString())">
+                            <option value="@v.Routing.Code">@v.Routing.Code</option>
+                            @foreach (var r in v.OtherRoutings) { <option value="@r">@r</option> }
+                        </select>
+                    </label>
+                }
+                <button type="button" @onclick="Print">Print this view</button>
+                <a class="button secondary" href="@ProcessUi.PlanHref(v.PlanNumber)">Back to the plan</a>
+            </div>
+            @if (v.Routing.Operations.Count == 0) { <p class="muted">This routing has no operations.</p> }
+            @foreach (var o in v.Routing.Operations) { <OperationBlock Operation="o" /> }
+        </article>
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading the shop floor view" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    [SupplyParameterFromQuery(Name = "routing")] public string? Routing { get; set; }
+    [SupplyParameterFromQuery(Name = "revision")] public string? RevisionParam { get; set; }
+
+    private ShopFloorView? view;
+    private bool notFound;
+    private string? message, loadedFor;
+
+    private string Banner => view?.Banner ?? UiText.Unclassified;
+    private string Title => view is null ? "Shop floor view" : $"Shop floor view · {view.PlanNumber}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Process plans", "process/plans"), new(Number, ProcessUi.PlanHref(Number)), new("Shop floor view")];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Number}|{Routing}|{RevisionParam}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        var outcome = await Plans.GetShopFloorAsync(await Users.GetAsync(), Number, RevisionParam, Routing, CurrentUser.NewCorrelationId());
+        notFound = outcome.Kind == OutcomeKind.NotFound;
+        message = outcome.Kind is OutcomeKind.Conflict or OutcomeKind.Invalid ? UiText.Message(outcome) : null;
+        view = outcome.Value;
+    }
+
+    private void Choose(string? code) => Nav.NavigateTo(ProcessUi.ShopFloorHref(Number, code) + (RevisionParam is null ? "" : "&revision=" + Uri.EscapeDataString(RevisionParam)));
+
+    private async Task Print() => await Js.InvokeVoidAsync("print");
+}

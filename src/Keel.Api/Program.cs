@@ -150,6 +150,8 @@ builder.Services.AddKeelSourcingOpenApi();
 Keel.Variants.VariantModule.AddKeelVariants(builder.Services); // 8.4 options, variants and usage conditions
 builder.Services.AddSingleton<Keel.Web.Services.VariantWhereUsedService>(); // 8.4 which variants use a part (composes BOM and variants)
 builder.Services.AddKeelVariantsOpenApi();
+Keel.Process.ProcessModule.AddKeelProcess(builder.Services, builder.Configuration); // 8.7 process plans, work instructions, tooling
+builder.Services.AddKeelProcessOpenApi();
 builder.Services.AddKeelRecordsHost(builder.Configuration); // 8.6 records management: retention, legal hold, disposition, WORM-style archive
 Keel.Compliance.ComplianceModule.AddKeelCompliance(builder.Services, builder.Configuration); // 8.5 substances, regulatory lists, declarations, roll-up
 builder.Services.AddSingleton<Keel.Web.Services.ComplianceRollupService>(); // 8.5 BOM-level compliance roll-up (composes BOM, MBOM and compliance)
@@ -275,6 +277,7 @@ app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration adm
 app.MapCadEndpoints(); // 8.0 CAD connector protocol
 app.MapSourcingEndpoints(); // 8.2 suppliers, approved lists, requests and the supplier portal
 app.MapVariantEndpoints(); // 8.4 options, variants, usage conditions and resolved structures
+app.MapProcessEndpoints(); // 8.7 process plans, work instructions, shop floor view, tools
 app.MapRecordsEndpoints(); // 8.6 records management
 app.MapQualityEndpoints(); // 8.1 quality records
 app.MapProductComplianceEndpoints(); // 8.5 substances, regulatory lists, declarations, roll-up and exports

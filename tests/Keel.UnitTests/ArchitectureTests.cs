@@ -23,7 +23,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Integration (ADR-0025) reaches parts, BOM, documents and change data only through Keel.Core interfaces implemented by their owners.
         ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality", "Keel.Compliance", "Keel.Requirements"],
+        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality", "Keel.Compliance", "Keel.Requirements", "Keel.Process"],
         // Personal workspace data (UX-1, ADR-0028): preferences, recent items, favorites, saved searches. Pointers only; Keel.Web re-authorizes them through the module services.
         ["Keel.Workspace"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
@@ -47,6 +47,8 @@ public sealed partial class ArchitectureTests
         ["Keel.Compliance"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Requirements and traceability (8.3, ADR-0038): reaches parts, documents, changes and baselines only through key lookups, read filters and Keel.Core interfaces.
         ["Keel.Requirements"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        // Manufacturing process data (8.7, ADR-0042): the MBOM, its lines and plants are reached only through IMbomProcessSource; attachments through IViewableFileSource; both in Keel.Core.
+        ["Keel.Process"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
     [Fact]
@@ -98,6 +100,9 @@ public sealed partial class ArchitectureTests
             // (SourcingArchitectureTests checks the module's own statements); RequestService reads the parts and recipients of ONE request, keyed by its id, after the caller
             // was checked against the request's markings and each part again.
             if (file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "EntryStore.cs", StringComparison.Ordinal) || file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "RequestService.cs", StringComparison.Ordinal)) continue;
+            // Process planning (8.7, ADR-0042): the calibration job is a system read of tool due dates (no end user; it writes audit events and pointer-only notifications), and the tool-use index
+            // copies pointer rows for tool ids the caller's save already validated through the read filter. ProcessArchitectureTests checks every other statement of the module.
+            if (file.EndsWith("Keel.Process" + Path.DirectorySeparatorChar + "CalibrationExpiry.cs", StringComparison.Ordinal) || file.EndsWith("Keel.Process" + Path.DirectorySeparatorChar + "ProcessToolUse.cs", StringComparison.Ordinal)) continue;
             var text = File.ReadAllText(file);
             foreach (Match m in SqlFromMarkedTable().Matches(text))
             {
@@ -293,7 +298,7 @@ public sealed partial class ArchitectureTests
     [GeneratedRegex(@"(FROM|JOIN)\s+(wf\.instance)\b", RegexOptions.IgnoreCase)]
     private static partial Regex WorkflowInstanceOrDocuments();
 
-    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change|cfg\.baseline|mbom\.mbom)\b[^\n]*", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(FROM|JOIN)\s+(plm\.part_master|plm\.document_master|wf\.instance|chg\.change|cfg\.baseline|mbom\.mbom|proc\.plan|proc\.tool)\b[^\n]*", RegexOptions.IgnoreCase)]
     private static partial Regex SqlFromMarkedTable();
 
     [GeneratedRegex(@"(FROM|JOIN)\s+mbom\.(usage|working_usage|reconciliation_finding)\b[^\n]*", RegexOptions.IgnoreCase)]
@@ -312,7 +317,7 @@ public sealed partial class ArchitectureTests
     private static partial Regex OtherModuleTables();
 
     // source_id: the objects created from one already-authorized change (counted by process rules; every list shown to a user carries the filter).
-    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key|source_id|part_master_id)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"WHERE\s+(\w+\.)?(number|id|object_id|object_key|source_id|part_master_id|mbom_number)\s*=\s*@\w+", RegexOptions.IgnoreCase)]
     private static partial Regex KeyLookup();
 
     private static string FindRepoRoot()
