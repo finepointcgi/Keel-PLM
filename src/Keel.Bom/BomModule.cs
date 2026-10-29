@@ -20,6 +20,7 @@ public static class BomModule
         services.AddSingleton<MbomService>();
         services.AddSingleton<IWorkflowObjectGateway>(sp => new MbomWorkflowGateway(sp.GetRequiredService<Keel.Audit.IAuditLog>(), sp.GetService<IDomainEventSink>()));
         services.AddSingleton<IManufacturingBomSource, MbomBomSource>();
+        services.AddSingleton<IMbomProcessSource, MbomProcessSource>(); // 8.7 process planning
         services.AddSingleton<IManufacturingImpactProvider, MbomImpactProvider>();
         // ---- end 2.3
         // Phase 4 integration (ADR-0025): the released-EBOM snapshot for bom.published events and the structure source of Technical Data Packages.

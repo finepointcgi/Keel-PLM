@@ -146,6 +146,7 @@ builder.Services.AddKeelSourcingOpenApi();
 Keel.Variants.VariantModule.AddKeelVariants(builder.Services); // 8.4 options, variants and usage conditions
 builder.Services.AddSingleton<Keel.Web.Services.VariantWhereUsedService>(); // 8.4 which variants use a part (composes BOM and variants)
 builder.Services.AddKeelVariantsOpenApi();
+Keel.Process.ProcessModule.AddKeelProcess(builder.Services, builder.Configuration); // 8.7 process plans, work instructions, tooling
 builder.Services.AddKeelRecordsHost(builder.Configuration); // 8.6 records management: retention, legal hold, disposition, WORM-style archive
 Keel.Compliance.ComplianceModule.AddKeelCompliance(builder.Services, builder.Configuration); // 8.5 substances, regulatory lists, declarations, roll-up
 builder.Services.AddSingleton<Keel.Web.Services.ComplianceRollupService>(); // 8.5 BOM-level compliance roll-up (composes BOM, MBOM and compliance)

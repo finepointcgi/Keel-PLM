@@ -31,7 +31,7 @@ public sealed class MigrationPerformanceTests(PostgresFixture pg)
                 while (!_cts.IsCancellationRequested)
                 {
                     PeakHeap = Math.Max(PeakHeap, GC.GetTotalMemory(false));
-                    PeakWorkingSet = Math.Max(PeakWorkingSet, Process.GetCurrentProcess().WorkingSet64);
+                    PeakWorkingSet = Math.Max(PeakWorkingSet, System.Diagnostics.Process.GetCurrentProcess().WorkingSet64);
                     try { await Task.Delay(20, _cts.Token); } catch (OperationCanceledException) { }
                 }
             });
