@@ -1,0 +1,32 @@
+@inherits ErrorBoundaryBase
+@using Microsoft.Extensions.Logging
+@inject ILogger<SessionLockGuard> Logger
+
+@* Guards the page body against a lock that happens while the page renders (7.5, session lock on reload). A SessionLockedException from a page component is
+   swallowed: nothing is rendered here and the layout, which hears the lock change, shows the lock panel. Any other exception keeps its normal handling:
+   this component throws it again from its own render, so it reaches the renderer as unhandled exactly as if no guard were there. *@
+@if (CurrentException is null)
+{
+    @ChildContent
+}
+else if (CurrentException is not SessionLockedException)
+{
+    @Rethrow(CurrentException)
+}
+
+@code {
+    protected override void OnParametersSet()
+    {
+        // A swallowed lock is not an error state to stay in: when the layout renders the body again (the lock is gone) the page runs again.
+        if (CurrentException is SessionLockedException) Recover();
+    }
+
+    protected override Task OnErrorAsync(Exception exception)
+    {
+        if (exception is SessionLockedException)
+            Logger.LogInformation("A page was refused because the session is locked; the lock panel is shown instead.");
+        return Task.CompletedTask;
+    }
+
+    private static RenderFragment Rethrow(Exception exception) => throw exception;
+}
