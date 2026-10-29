@@ -71,6 +71,7 @@ public static class VaultReferences
         new("proc", "plan_iteration", "content_sha256", "digest over the canonical content of a process plan iteration (ADR-0042), not a vault object"),
         new("proc", "plan_revision", "bound_mbom_sha", "content digest of the released MBOM revision a plan revision is written against (ADR-0042), not a vault object"),
         new("proc", "review_binding", "review_sha256", "hash binding a process plan review to its content and MBOM revision (ADR-0042), not a vault object"),
+        new("mdl", "iteration_metrics", "file_sha256", "names the bytes that were measured; the document_file row is the reference, a measurement never keeps bytes alive (ADR-0046)"),
         new("audit", "event", "hash", "audit chain"),
         new("audit", "event", "prev_hash", "audit chain"),
         new("audit", "checkpoint", "hash", "audit checkpoint"),

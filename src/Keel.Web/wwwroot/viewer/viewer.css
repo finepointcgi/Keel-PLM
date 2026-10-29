@@ -110,6 +110,20 @@ body.banner-tampered .viewer-stage, body.banner-tampered .viewer-toolbar { displ
 }
 .viewer-measure-label[hidden] { display: none; }
 
+/* Model version comparison (increment 9.1) */
+.compare-legend { padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 13px; flex: 0 0 auto; }
+.compare-summary { font-weight: 700; font-size: 15px; margin: 0 0 6px; }
+.compare-key { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.compare-key li { overflow-wrap: anywhere; }
+.compare-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; border: 1px solid var(--border); }
+.compare-swatch-a { background: #3b82f6; }
+.compare-swatch-b { background: #f59e0b; }
+.compare-divider { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; background: #ffffff; z-index: 6; pointer-events: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
+.compare-divider[hidden], .compare-tag[hidden] { display: none; }
+.compare-tag { position: absolute; top: 34px; z-index: 6; padding: 1px 8px; border-radius: 3px; font-weight: 700; font-size: 13px; color: #0b1020; pointer-events: none; }
+.compare-tag-a { background: #3b82f6; }
+.compare-tag-b { background: #f59e0b; }
+
 /* Image */
 .image-frame { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; background: repeating-conic-gradient(#2b3340 0% 25%, #232a35 0% 50%) 50% / 24px 24px; }
 .image-frame:active { cursor: grabbing; }

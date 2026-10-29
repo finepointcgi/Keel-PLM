@@ -8,6 +8,12 @@
       "vendored": false
     },
     {
+      "path": "compare.js",
+      "sha256": "582b89cb9545cedf3f5bb776d6015b5f1d2db833f66e27b8004e75596e27c34c",
+      "size": 14393,
+      "vendored": false
+    },
+    {
       "path": "step-worker.js",
       "sha256": "030fba98cf38bb51e2c39598fa27113d7597f9b5f1081d270259d607e2ea912b",
       "size": 1340,
@@ -79,8 +85,8 @@
     },
     {
       "path": "viewer.css",
-      "sha256": "3dbc7158c0bfbe48f22f89c6759a0f76be597c6ba1c033164b5e80405300f319",
-      "size": 7770,
+      "sha256": "5c8b89d823fc26ff719685ec45d4537849c91b5ebb0b3ef5e7f99d0622b67844",
+      "size": 8915,
       "vendored": false
     },
     {
