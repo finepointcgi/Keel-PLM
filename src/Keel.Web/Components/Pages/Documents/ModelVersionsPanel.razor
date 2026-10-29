@@ -125,7 +125,7 @@
                             <p class="compare-summary-text" data-testid="compare-summary"><strong>@c.Delta.Summary</strong></p>
                             @if (c.Delta.Comparable)
                             {
-                                <div class="table-wrap"><table class="data">
+                                <div class="table-wrap" tabindex="0" role="group" aria-label="Numeric comparison of @c.A.Label and @c.B.Label (scrollable)"><table class="data">
                                     <caption class="sr-only">Numeric comparison of @c.A.Label and @c.B.Label</caption>
                                     <thead><tr><th scope="col">Measure</th><th scope="col">A (@c.A.Label)</th><th scope="col">B (@c.B.Label)</th><th scope="col">Change</th><th scope="col">Change in %</th></tr></thead>
                                     <tbody>
