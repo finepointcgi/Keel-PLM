@@ -179,7 +179,7 @@ public sealed class QualityProcessE2ETests(E2EFixture fx)
             var card = page.Locator("section[aria-labelledby='card-quality']");
             await Expect(card).ToBeVisibleAsync();
             await Expect(card.Locator("[data-count='active-deviations']")).ToHaveTextAsync(new Regex("^[1-9]"));
-            await Expect(card.Locator("[data-count='open-ncrs']")).ToHaveTextAsync(new Regex("^[1-9]"));
+            await Expect(card.Locator("[data-count='open-capas']")).ToHaveTextAsync(new Regex("^[1-9]"));
         });
     }
 
