@@ -13,7 +13,7 @@
 </head>
 <body class="viewer-page" data-viewer="@Model.ViewerType" data-status="@Model.Status" data-format="@Model.FormatId"
       data-meta-url="@Model.MetaUrl" data-content-url="@Model.ContentUrl" data-asset-base="@ViewerUi.AssetBase" data-max-triangles="@Model.MaxTriangles">
-    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="note" aria-label="Marking banner (top)" data-position="top" data-viewer-banner>@Model.Banner</div>
+    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="region" aria-label="Marking banner (top)" data-position="top" data-viewer-banner>@Model.Banner</div>
     <header class="viewer-bar">
         <a class="viewer-back" href="@Model.BackUrl">Back to document</a>
         <h1 class="viewer-title" tabindex="-1">@Model.Title</h1>
@@ -31,8 +31,8 @@
             }
         }
     </header>
-    <div id="viewer-toolbar" class="viewer-toolbar" role="toolbar" aria-label="Viewer tools" hidden></div>
     <main id="viewer-root" class="viewer-main" tabindex="-1">
+        <div id="viewer-toolbar" class="viewer-toolbar" role="toolbar" aria-label="Viewer tools" hidden></div>
         @if (Model.Status == "not-found")
         {
             <p class="viewer-error" role="alert">@Model.Message</p>
@@ -76,7 +76,7 @@
             }
         </section>
     }
-    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="note" aria-label="Marking banner (bottom)" data-position="bottom" data-viewer-banner>@Model.Banner</div>
+    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="region" aria-label="Marking banner (bottom)" data-position="bottom" data-viewer-banner>@Model.Banner</div>
     @if (Model.Status == "ready")
     {
         <script type="module" src="@(ViewerUi.AssetBase)viewer.js"></script>

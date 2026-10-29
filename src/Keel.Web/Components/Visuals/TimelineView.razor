@@ -33,7 +33,7 @@
     {
         @foreach (var group in Groups())
         {
-            <section class="tl-group" aria-labelledby="@GroupId(group.Key)">
+            <div class="tl-group" role="group" aria-labelledby="@(group.Key.Length > 0 ? GroupId(group.Key) : null)">
                 @if (group.Key.Length > 0) { <h4 id="@GroupId(group.Key)">@group.Key</h4> }
                 <ol class="tl-list">
                     @foreach (var e in group.Items)
@@ -53,7 +53,7 @@
                         </li>
                     }
                 </ol>
-            </section>
+            </div>
         }
     }
     else

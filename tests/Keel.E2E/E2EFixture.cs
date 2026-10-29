@@ -7,6 +7,7 @@ using DotNet.Testcontainers.Containers;
 using Keel.Audit;
 using Keel.Documents.Vault;
 using Keel.Seed;
+using Keel.TestSupport;
 using Microsoft.Playwright;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -42,6 +43,9 @@ public sealed class E2EFixture : IAsyncLifetime
     private readonly List<IAsyncDisposable> _containers = [];
     private Process? _api;
     private Process? _lockApi;
+    private Process? _scaleApi;
+    private string _adminCs = "", _appCsMain = "", _migratorCsMain = "";
+    private int _scalePort;
     private Func<int, Dictionary<string, string>>? _envFor;
     private string _apiBin = "";
     private IPlaywright? _playwright;
@@ -59,6 +63,12 @@ public sealed class E2EFixture : IAsyncLifetime
     public const double LockIdleMinutes = 0.2;
     public const int LockWarningSeconds = 4;
     public const double LockTerminateMinutes = 0.4;
+    /// <summary>
+    /// A third host on its OWN throwaway database (created in this run's PostgreSQL container, never the main E2E database and never a dev or demo database) that holds a
+    /// 50,000-line synthetic structure, started on first use (gap wave D, ADR-0034). The ordinary tests never see that data.
+    /// </summary>
+    public string ScaleHostUrl { get; private set; } = "";
+    public SyntheticBom? ScaleBom { get; private set; }
     public string IdpUrl { get; private set; } = "";
     public DemoManifest Manifest { get; private set; } = null!;
     public IBrowser Browser { get; private set; } = null!;
@@ -76,8 +86,10 @@ public sealed class E2EFixture : IAsyncLifetime
         {
             var appPort = FreePort();
             var lockPort = FreePort();
+            _scalePort = FreePort();
             BaseUrl = $"http://localhost:{appPort}";
             LockHostUrl = $"http://localhost:{lockPort}";
+            ScaleHostUrl = $"http://localhost:{_scalePort}";
 
             // Start the three containers side by side; they do not depend on each other.
             var postgres = StartPostgresAsync();
@@ -85,6 +97,8 @@ public sealed class E2EFixture : IAsyncLifetime
             var keycloak = StartKeycloakAsync(appPort, lockPort);
             await Task.WhenAll(postgres, vault, keycloak);
             var (appCs, migratorCs) = await postgres;
+            _appCsMain = appCs;
+            _migratorCsMain = migratorCs;
             var vaultOptions = await vault;
             Vault = vaultOptions;
             IdpUrl = await keycloak;
@@ -152,6 +166,11 @@ public sealed class E2EFixture : IAsyncLifetime
             try { _lockApi.Kill(entireProcessTree: true); await _lockApi.WaitForExitAsync(); } catch (InvalidOperationException) { }
         }
         _lockApi?.Dispose();
+        if (_scaleApi is { HasExited: false })
+        {
+            try { _scaleApi.Kill(entireProcessTree: true); await _scaleApi.WaitForExitAsync(); } catch (InvalidOperationException) { }
+        }
+        _scaleApi?.Dispose();
         if (AppDb is not null) await AppDb.DisposeAsync();
         foreach (var c in _containers) { try { await c.DisposeAsync(); } catch (Exception e) { Log("container cleanup: " + e.Message); } }
         _containers.Clear();
@@ -192,6 +211,7 @@ public sealed class E2EFixture : IAsyncLifetime
             }
             catch (NpgsqlException) when (attempt < 60) { await Task.Delay(500); }
         }
+        _adminCs = new NpgsqlConnectionStringBuilder(container.GetConnectionString()) { Database = "postgres" }.ConnectionString;
         return (Cs("keel_app", "keel_app_dev"), Cs("keel_migrator", "keel_migrator_dev"));
     }
 
@@ -227,9 +247,10 @@ public sealed class E2EFixture : IAsyncLifetime
         var client = realm["clients"]!.AsArray().Single(c => c!["clientId"]!.GetValue<string>() == "keel-web")!;
         var origin = $"http://localhost:{appPort}";
         var lockOrigin = $"http://localhost:{lockPort}";
-        client["redirectUris"] = new JsonArray($"{origin}/signin-oidc", $"{lockOrigin}/signin-oidc");
-        client["webOrigins"] = new JsonArray(origin, lockOrigin);
-        client["attributes"]!["post.logout.redirect.uris"] = $"{origin}/signout-callback-oidc##{lockOrigin}/signout-callback-oidc";
+        var scaleOrigin = $"http://localhost:{_scalePort}";
+        client["redirectUris"] = new JsonArray($"{origin}/signin-oidc", $"{lockOrigin}/signin-oidc", $"{scaleOrigin}/signin-oidc");
+        client["webOrigins"] = new JsonArray(origin, lockOrigin, scaleOrigin);
+        client["attributes"]!["post.logout.redirect.uris"] = $"{origin}/signout-callback-oidc##{lockOrigin}/signout-callback-oidc##{scaleOrigin}/signout-callback-oidc";
         var patched = Path.Combine(_workDir, "keel-realm.json");
         await File.WriteAllTextAsync(patched, realm.ToJsonString());
 
@@ -291,6 +312,21 @@ public sealed class E2EFixture : IAsyncLifetime
         _api.BeginErrorReadLine();
     }
 
+    /// <summary>
+    /// Stops the short-idle-lock host. Lock state is shared through the database, so while that host runs it also ends the idle sessions of tests on the main host
+    /// (anything idle for more than about 24 s: step-up waits, long audits). Tests that sign in on any other host therefore stop it first; the next lock test restarts it.
+    /// </summary>
+    public async Task StopLockHostAsync()
+    {
+        if (_lockApi is null) return;
+        if (!_lockApi.HasExited)
+        {
+            try { _lockApi.Kill(entireProcessTree: true); await _lockApi.WaitForExitAsync(); } catch (InvalidOperationException) { }
+        }
+        _lockApi.Dispose();
+        _lockApi = null;
+    }
+
     /// <summary>Starts the short-idle-lock host (once) and waits until it is ready.</summary>
     public async Task EnsureLockHostAsync()
     {
@@ -319,6 +355,57 @@ public sealed class E2EFixture : IAsyncLifetime
             await Task.Delay(500);
         }
         throw new TimeoutException("The lock host did not become ready within 90 seconds.");
+    }
+
+    /// <summary>
+    /// Creates the scale database (a second database in this run's container, owned like the main one), migrates it with the real migrator, fills it with a ten-level,
+    /// 50,000-line synthetic structure through the application role, and starts a host on it (once). Synthetic data only.
+    /// </summary>
+    public async Task EnsureScaleHostAsync()
+    {
+        if (_scaleApi is not null) return;
+        const string database = "keel_scale";
+        await using (var admin = new NpgsqlConnection(_adminCs))
+        {
+            await admin.OpenAsync();
+            await using var cmd = new NpgsqlCommand($"CREATE DATABASE {database} OWNER keel_migrator; GRANT CONNECT ON DATABASE {database} TO keel_app; REVOKE ALL ON DATABASE {database} FROM PUBLIC;", admin);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await using (var owner = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(_adminCs) { Database = database }.ConnectionString))
+        {
+            await owner.OpenAsync();
+            await using var cmd = new NpgsqlCommand("REVOKE CREATE ON SCHEMA public FROM PUBLIC; ALTER SCHEMA public OWNER TO keel_migrator;", owner);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        string For(string cs) => new NpgsqlConnectionStringBuilder(cs) { Database = database }.ConnectionString;
+        var appCs = For(_appCsMain);
+        var migratorCs = For(_migratorCsMain);
+        var env = _envFor!(_scalePort);
+        env["Keel__Database__AppConnectionString"] = appCs;
+        env["Keel__Database__MigratorConnectionString"] = migratorCs;
+        await RunToCompletionAsync(_apiBin, ["Keel.Api.dll", "--migrate"], env, "migrate-scale");
+        await using (var ds = NpgsqlDataSource.Create(appCs))
+        {
+            ScaleBom = await SyntheticBomGenerator.InsertAsync(ds, new SyntheticBomOptions { Seed = 23, Levels = 10, TargetLines = 50_000, ReleasedFraction = 0.3 });
+        }
+        Log($"The scale database holds {ScaleBom!.Parts.Count} parts and {ScaleBom.Lines.Count} usage lines (root {ScaleBom.RootNumber}).");
+        _scaleApi = Process.Start(NewStart(_apiBin, ["Keel.Api.dll"], env)) ?? throw new InvalidOperationException("Could not start the scale host.");
+        var log = new StreamWriter(Path.Combine(ResultsDir, "api-scale.log")) { AutoFlush = true };
+        _scaleApi.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (log) log.WriteLine(e.Data); };
+        _scaleApi.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (log) log.WriteLine("ERR " + e.Data); };
+        _scaleApi.BeginOutputReadLine();
+        _scaleApi.BeginErrorReadLine();
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_scaleApi.HasExited) throw new InvalidOperationException($"The scale host exited with code {_scaleApi.ExitCode}; see {Path.Combine(ResultsDir, "api-scale.log")}.");
+            try { if ((await http.GetAsync($"{ScaleHostUrl}/health/ready")).IsSuccessStatusCode) { Log("The scale host is ready."); return; } }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
+            await Task.Delay(500);
+        }
+        throw new TimeoutException("The scale host did not become ready within 90 seconds.");
     }
 
     private static ProcessStartInfo NewStart(string workDir, string[] args, Dictionary<string, string> env)

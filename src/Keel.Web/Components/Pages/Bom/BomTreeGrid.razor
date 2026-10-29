@@ -16,7 +16,7 @@
         <span role="columnheader">Effectivity</span>
         <span role="columnheader">Markings</span>
     </div>
-    <div class="bom-body" tabindex="-1">
+    <div class="bom-body" role="rowgroup" tabindex="0" aria-label="@(AriaLabel) rows">
         <Virtualize TItem="BomLine" Items="rows" ItemSize="BomTreeModel.RowHeight" OverscanCount="8" Context="line">
             @{ var index = IndexOf(line); }
             <div class="bom-row @RowClass(line)" role="row" @key="line.Path" data-path="@line.Path"

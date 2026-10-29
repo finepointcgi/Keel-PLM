@@ -29,7 +29,7 @@
             <div class="table-wrap"><table class="data">
                 <thead><tr><th scope="col">Level</th><th scope="col">Used in</th><th scope="col">Name</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Via</th><th scope="col">Find</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Markings</th></tr></thead>
                 <tbody>
-                @foreach (var r in result.Rows)
+                @foreach (var r in result.Rows.Skip(offset).Take(PageSize))
                 {
                     <tr class="@(r.Redacted ? "restricted" : "")">
                         <td>@r.Level</td>
@@ -46,6 +46,8 @@
                 }
                 </tbody>
             </table></div>
+            @* The table holds one page: a standard part can be used on thousands of lines, and every row is DOM (GAP-D-3). The banner stays that of the whole result. *@
+            <Pager Total="result.Rows.Count" Offset="offset" PageSize="PageSize" OnPage="@((int o) => { offset = o; })" />
         }
     }
 </PageFrame>
@@ -55,11 +57,14 @@
     private WhereUsedResult? result;
     private string? error;
     private int levels = 1;
+    private int offset;
+    private const int PageSize = 100;
 
     protected override Task OnParametersSetAsync() => Load();
 
     private async Task Load()
     {
+        offset = 0;
         var outcome = await Bom.WhereUsedAsync(await Users.GetAsync(), Number, levels, CurrentUser.NewCorrelationId());
         error = outcome.IsOk ? null : UiText.Message(outcome);
         result = outcome.Value;

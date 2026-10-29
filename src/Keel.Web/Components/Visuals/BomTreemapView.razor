@@ -108,7 +108,7 @@
                     Area: @(metric == TreemapMetric.ExtendedQuantity ? "extended quantity (units are not converted)" : "number of parts below").
                 </p>
             </div>
-            <aside class="vis-side" aria-label="Part details">
+            <div class="vis-side" role="group" aria-label="Part details">
                 @if (SelectedNode() is { } s)
                 {
                     <h4>@(s.Redacted ? "Restricted" : s.Label)</h4>
@@ -131,7 +131,7 @@
                     }
                 }
                 else { <p class="muted">Select a tile to see its details. Enter on an assembly drills into it.</p> }
-            </aside>
+            </div>
         </div>
         <Legend Label="Legend" Items="TreemapStyle.Legend(colour)" />
     }

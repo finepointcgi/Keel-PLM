@@ -118,9 +118,11 @@ nav.breadcrumbs li[aria-current="page"] { color: var(--c-muted); overflow-wrap: 
   .rail-backdrop { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, 0.45); border: 0; min-height: 0; padding: 0; border-radius: 0; }
   main { padding: var(--sp-4) var(--sp-4) var(--sp-5); }
   .topbar { gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }
-  .topbar .session-hint, .topbar .brand .brand-text { display: none; }
+  .topbar .session-hint { display: none; }
+  /* Hidden visually but kept in the accessibility tree: display:none would leave the brand link and the user menu button without a name. */
+  .topbar .brand .brand-text, .user-menu > button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; margin: -1px; padding: 0; border: 0; }
   .search-trigger { width: auto; flex: 1 1 auto; min-width: 44px; }
-  .user-menu > button .label, .user-menu > button .icon:last-child { display: none; }
+  .user-menu > button .icon:last-child { display: none; }
   .stepper li + li::before { width: 12px; margin: 0 var(--sp-1); }
   .search-trigger kbd { display: none; }
   .page-header h1 { font-size: var(--fs-xl); }

@@ -193,7 +193,8 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
     {
         var s = await users.GetAsync();
         if (s.Programs.Count == 0) return new([], UiText.Unclassified);
-        var open = await changes.SearchAsync(s, new ChangeSearchQuery(OpenOnly: true, Limit: 200), CurrentUser.NewCorrelationId(), ct);
+        // The program filter is part of the query (a client-side filter over the newest 200 open changes of all programs would miss a program's changes on a busy system); the read filter still applies.
+        var open = await changes.SearchAsync(s, new ChangeSearchQuery(OpenOnly: true, Limit: 200, Programs: [.. s.Programs]), CurrentUser.NewCorrelationId(), ct);
         var items = open.Items
             .Where(c => c.Type is "ECR" or "ECN" && c.Markings.Program is { } p && s.Programs.Contains(p))
             .OrderByDescending(c => c.CreatedAt).ThenBy(c => c.Number, StringComparer.Ordinal).Take(take)

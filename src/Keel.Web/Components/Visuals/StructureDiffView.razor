@@ -59,6 +59,10 @@
             }
         </div>
     }
+    @if (truncated)
+    {
+        <p class="muted small" role="note">The picture shows the first @MaxRows lines. Narrow it with the kind buttons or by collapsing assemblies, or use the table view for every line.</p>
+    }
     @if (Model.Unchanged > 0)
     {
         <p class="muted small">@Model.Unchanged unchanged line@(Model.Unchanged == 1 ? "" : "s") @(Model.Unchanged == 1 ? "is" : "are") not listed: the comparison only returns what differs.</p>
@@ -67,6 +71,9 @@
 
 @code {
     private readonly string uid = "df" + Guid.NewGuid().ToString("N")[..8];
+    /// <summary>Every row is DOM, so the picture shows at most this many lines; the table view of the same comparison is paged and complete (GAP-D-3).</summary>
+    public const int MaxRows = 500;
+    private bool truncated;
     private bool showAdded = true, showRemoved = true, showChanged = true, showSame = true;
     private readonly HashSet<string> collapsed = new(StringComparer.Ordinal);
     private string? focused;
@@ -119,7 +126,8 @@
             list.Add(r);
             if (collapsed.Contains(r.Id)) hideBelow = r.Depth;
         }
-        rows = list;
+        truncated = list.Count > MaxRows;
+        rows = truncated ? list.GetRange(0, MaxRows) : list;
         changes = [.. rows.Select((r, i) => (r, i)).Where(x => x.r.IsChange).Select(x => x.i)];
     }
 
