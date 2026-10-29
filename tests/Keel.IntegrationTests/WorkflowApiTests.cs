@@ -187,7 +187,7 @@ public sealed class WorkflowApiTests(PostgresFixture pg)
         var part = listed.EnumerateArray().Single(t => t.GetProperty("objectType").GetString() == "part");
         Assert.Equal("part-release-review", part.GetProperty("id").GetString());
         Assert.Equal(2, part.GetProperty("slots").GetArrayLength());
-        Assert.Equal(["baseline", "capa", "deviation", "disposition", "document", "ecn", "ecr", "legal_hold", "mbom", "ncr", "part", "reg_list_version", "reqspec", "retention_schedule", "source_entry", "supplier"], listed.EnumerateArray().Select(t => t.GetProperty("objectType").GetString()!).Order()); // 1.6 seeds ECR and ECN templates
+        Assert.Equal(["baseline", "capa", "deviation", "disposition", "document", "ecn", "ecr", "gate", "legal_hold", "mbom", "ncr", "part", "reg_list_version", "reqspec", "retention_schedule", "source_entry", "supplier"], listed.EnumerateArray().Select(t => t.GetProperty("objectType").GetString()!).Order()); // 1.6 seeds ECR and ECN templates
 
         var invalid = await admin.PostAsJsonAsync("/api/v1/workflow/templates", new { id = "orphans", name = "O", objectType = "part", start = "flow",
             nodes = new object[] { new { id = "flow", type = "Serial", steps = new[] { "done" } }, new { id = "done", type = "End", outcome = "Release" }, new { id = "lost", type = "End", outcome = "Release" } } });
