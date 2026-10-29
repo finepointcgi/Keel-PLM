@@ -276,6 +276,7 @@
             @if (d.Revision.IsLocked) { <span class="badge">Locked</span> }
             <FavoriteButton Kind="@ObjectKinds.Document" Number="@d.Number" />
             <WatchButton Kind="@ObjectKinds.Document" Number="@d.Number" />
+            <Keel.Web.Components.Pages.Records.RecordsChip Kind="document" Number="@d.Number" />
         </Badges>
         <Steps>
             <Stepper States="lifecycleStates" Current="@d.Revision.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Document lifecycle" />

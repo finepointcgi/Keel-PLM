@@ -60,6 +60,9 @@ public static class WorkflowText
         "baseline" => $"baselines/{Uri.EscapeDataString(key)}", // 2.1: baselines established by signatures
         "supplier" => $"suppliers/{Uri.EscapeDataString(key)}", // 8.2: supplier approval
         "source_entry" => $"sourcing/entries/{Uri.EscapeDataString(key)}", // 8.2: approved list entries
+        "retention_schedule" => $"records/schedules/{key.TrimStart('v')}", // 8.6: retention schedule publication
+        "legal_hold" => $"records/holds/{Uri.EscapeDataString(key)}", // 8.6: legal hold release
+        "disposition" => $"records/disposition/{Uri.EscapeDataString(key)}", // 8.6: disposition approval
         _ => null,
     };
 

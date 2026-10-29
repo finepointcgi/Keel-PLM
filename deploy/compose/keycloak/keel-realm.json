@@ -36,6 +36,10 @@
       {
         "name": "plm-supplier",
         "description": "An external supplier's user (supplier portal): sees only the requests addressed to the one supplier an administrator linked the user to. Grants no access to any internal object."
+      },
+      {
+        "name": "plm-records",
+        "description": "Records management: retention schedules, legal holds, disposition and archives. Grants no access to any object by itself; what the holder can see is still decided by the viewer role and the security markings."
       }
     ]
   },
@@ -339,6 +343,46 @@
         "plm-author"
       ],
       "id": "d0f8df8c-51d0-5241-8c4f-f39864b95d21"
+    },
+    {
+      "username": "rex",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Rex",
+      "lastName": "Records",
+      "email": "rex@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "ENG"
+        ],
+        "programs": [
+          "ORCA"
+        ],
+        "export_authorizations": [],
+        "cui_categories": [
+          "EXPT",
+          "CTI"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "keel-dev-rex",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "plm-viewer",
+        "plm-author",
+        "plm-records"
+      ],
+      "id": "7d3a1c52-0e64-5b0a-9f21-6a0c2e8b4d17"
     },
     {
       "username": "bob",

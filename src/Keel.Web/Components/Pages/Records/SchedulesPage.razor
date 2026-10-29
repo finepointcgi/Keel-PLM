@@ -1,0 +1,121 @@
+@page "/records/schedules"
+@inject CurrentUser Users
+@inject ScheduleService Schedules
+@inject RetentionClassificationService Classification
+@inject NavigationManager Nav
+
+@* Schedules and program events name no object: nothing here is marked data. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Retention schedules" Crumbs="@Crumbs">
+    <RecordsNav Current="schedules" />
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (message is not null) { <p class="notice" role="status">@message</p> }
+
+    <section class="panel stack" aria-labelledby="sched-list">
+        <h2 id="sched-list">Versions</h2>
+        <p class="muted">A schedule lists record classes: which objects each class covers, how long they are kept, what starts the clock, and what happens afterwards. A new version is signed by approvers before it applies; older versions stay on record.</p>
+        @if (list is null) { <Skeleton Lines="3" Label="Loading schedules" /> }
+        else if (list.Count == 0) { <EmptyState Title="No schedule yet" IconName="config">Start the first draft, add record classes and submit it for publication.</EmptyState> }
+        else
+        {
+            <DataTable TItem="ScheduleSummary" TableId="schedules" Items="list" Columns="Columns" Caption="Retention schedule versions" />
+        }
+        <AuthorizeView Roles="@($"{Roles.RecordsManager},{Roles.Admin}")" Context="auth">
+            <EditForm Model="this" OnSubmit="CreateDraft" FormName="new-schedule" class="toolbar">
+                <label>Title of the new draft <InputText @bind-Value="title" maxlength="200" /></label>
+                <button type="submit" disabled="@busy">Start a draft</button>
+            </EditForm>
+            <p class="muted small">The draft starts as a copy of the published version. Only one draft can be open.</p>
+        </AuthorizeView>
+    </section>
+
+    <section class="panel stack" aria-labelledby="sched-events">
+        <h2 id="sched-events">Program events</h2>
+        <p class="muted">Some classes start their clock when a program closes or a contract ends. Record the date here; a correction is a new entry and the earlier ones stay on record.</p>
+        @if (events is { Count: > 0 })
+        {
+            <ul class="plain" aria-label="Program events">
+                @foreach (var e in events) { <li>Program @e.Program: @(TriggerEvents.Label(e.Event).ToLowerInvariant()) on @e.OccurredOn.ToString("yyyy-MM-dd") (recorded by @e.RecordedBy)</li> }
+            </ul>
+        }
+        else { <p class="muted">No program events are recorded.</p> }
+        <AuthorizeView Roles="@($"{Roles.RecordsManager},{Roles.Admin}")" Context="auth">
+            <EditForm Model="this" OnSubmit="RecordEvent" FormName="program-event" class="toolbar">
+                <label>Program <InputText @bind-Value="evProgram" maxlength="64" /></label>
+                <label>Event
+                    <select @bind="evKind">
+                        <option value="@TriggerEvents.ProgramClose">Program close</option>
+                        <option value="@TriggerEvents.ContractEnd">Contract end</option>
+                    </select>
+                </label>
+                <label>Date <input type="date" @bind="evDate" /></label>
+                <button type="submit" disabled="@busy">Record event</button>
+            </EditForm>
+            <div class="toolbar">
+                <button type="button" class="secondary" disabled="@busy" @onclick="Classify">Re-classify records now</button>
+                <span class="muted small">Refreshes which class every document and part belongs to and when it is due. The disposition queue uses this list; carrying out a disposal always checks again.</span>
+            </div>
+        </AuthorizeView>
+    </section>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Records", "records"), new("Retention schedules")];
+    private IReadOnlyList<ScheduleSummary>? list;
+    private IReadOnlyList<ProgramEventView>? events;
+    private string title = "", evProgram = "", evKind = TriggerEvents.ProgramClose;
+    private string? error, message;
+    private DateTime evDate = DateTime.UtcNow.Date;
+    private bool busy;
+
+    private static readonly IReadOnlyList<DataColumn<ScheduleSummary>> Columns =
+    [
+        new() { Key = "version", Title = "Version", Required = true, Cell = s => @<a href="@RecordsUi.ScheduleHref(s.Version)">Version @s.Version</a> },
+        new() { Key = "title", Title = "Title", Text = s => s.Title },
+        new() { Key = "status", Title = "Status", Cell = s => @<span class="badge @RecordsUi.StatusClass(s.Status)">@ScheduleStatuses.Label(s.Status)</span> },
+        new() { Key = "classes", Title = "Classes", Text = s => s.Classes.ToString() },
+        new() { Key = "created", Title = "Created", Text = s => UiText.Utc(s.CreatedAt) + " by " + s.CreatedBy },
+        new() { Key = "published", Title = "Published", Text = s => s.PublishedAt is { } p ? UiText.Utc(p) + " by " + s.PublishedBy : "" },
+    ];
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var me = await Users.GetAsync();
+        var corr = CurrentUser.NewCorrelationId();
+        var l = await Schedules.ListAsync(me, corr);
+        if (!l.IsOk) { error = RecordsUi.Message(l); return; }
+        list = l.Value;
+        var e = await Schedules.ListProgramEventsAsync(me, corr);
+        events = e.IsOk ? e.Value : [];
+    }
+
+    private async Task CreateDraft()
+    {
+        busy = true; error = null;
+        var o = await Schedules.CreateDraftAsync(await Users.GetAsync(), title, null, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        Nav.NavigateTo(RecordsUi.ScheduleHref(o.Value!.Version));
+    }
+
+    private async Task RecordEvent()
+    {
+        busy = true; error = null; message = null;
+        var o = await Schedules.RecordProgramEventAsync(await Users.GetAsync(), evProgram, evKind, DateOnly.FromDateTime(evDate), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        message = "The event was recorded.";
+        evProgram = "";
+        await Load();
+    }
+
+    private async Task Classify()
+    {
+        busy = true; error = null; message = null;
+        var o = await Classification.ClassifyAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        message = $"Checked {o.Value!.Examined} records against version {o.Value.ScheduleVersion}: {o.Value.Classified} belong to a class and have a due date.";
+    }
+}

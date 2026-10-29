@@ -34,6 +34,8 @@ public static class PaletteActions
             new("go:access", "Go to Access check", "Go to", "access", "access", "permission can i see"),
             new("go:profile", "Go to My access", "Go to", "user", "profile", "profile roles clearance"),
         };
+        if (roles.Contains(Roles.RecordsManager) || roles.Contains(Roles.Admin) || roles.Contains(Roles.Auditor))
+            list.Add(new("go:records", "Go to Records management", "Go to", "folder", "records", "retention legal hold disposition archive destroy"));
         if (roles.Contains(Roles.Auditor)) list.Add(new("go:audit", "Go to Audit log", "Go to", "audit", "audit", "events verify chain"));
         if (roles.Contains(Roles.Admin)) list.Add(new("go:admin", "Go to Administration", "Go to", "admin", "admin", "settings configuration"));
         if (canCreate)

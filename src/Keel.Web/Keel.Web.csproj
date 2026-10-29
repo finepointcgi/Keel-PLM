@@ -19,6 +19,7 @@
     <ProjectReference Include="..\Keel.Notifications\Keel.Notifications.csproj" />
     <ProjectReference Include="..\Keel.Sourcing\Keel.Sourcing.csproj" />
     <ProjectReference Include="..\Keel.Variants\Keel.Variants.csproj" />
+    <ProjectReference Include="..\Keel.Records\Keel.Records.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
   </ItemGroup>
   <ItemGroup>

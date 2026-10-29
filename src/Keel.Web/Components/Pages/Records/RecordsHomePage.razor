@@ -1,0 +1,57 @@
+@page "/records"
+@inject CurrentUser Users
+@inject ScheduleService Schedules
+@inject HoldService Holds
+@inject DispositionService Disposition
+@inject ArchiveService Archives
+
+@* The overview shows counts of what the caller may see, never names of objects, so it carries no marked data. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Records management" Crumbs="@Crumbs">
+    <RecordsNav Current="overview" />
+    <p class="muted">Keep records for as long as the rules require, protect them while a legal matter needs them, and dispose of them in a way that leaves a signed record behind. Everything here is limited to what you are allowed to see.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    <div class="cards">
+        <section class="card" aria-labelledby="rec-sched"><h2 id="rec-sched"><Icon Name="config" /> Retention schedule</h2>
+            @if (published is null) { <p class="muted">No schedule is published yet.</p> }
+            else { <p>Version @published.Version: @published.Title, @published.Classes.Count record class@(published.Classes.Count == 1 ? "" : "es").</p> }
+            <p class="small"><a href="records/schedules">Open retention schedules</a></p>
+        </section>
+        <section class="card" aria-labelledby="rec-holds"><h2 id="rec-holds"><Icon Name="lock" /> Legal holds</h2>
+            <p>@activeHolds active hold@(activeHolds == 1 ? "" : "s").</p>
+            <p class="small"><a href="records/holds">Open legal holds</a></p>
+        </section>
+        <section class="card" aria-labelledby="rec-disp"><h2 id="rec-disp"><Icon Name="tasks" /> Disposition</h2>
+            <p>@dueNow record@(dueNow == 1 ? "" : "s") you can see @(dueNow == 1 ? "is" : "are") due, and @openRequests request@(openRequests == 1 ? "" : "s") @(openRequests == 1 ? "is" : "are") open.</p>
+            <p class="small"><a href="records/disposition">Open the disposition queue</a></p>
+        </section>
+        <section class="card" aria-labelledby="rec-arch"><h2 id="rec-arch"><Icon Name="folder" /> Archives</h2>
+            <p>@archiveCount archive@(archiveCount == 1 ? "" : "s") you can see.</p>
+            <p class="small"><a href="records/archives">Open archives</a></p>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Records")];
+    private ScheduleView? published;
+    private int activeHolds, archiveCount, openRequests;
+    private long dueNow;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var me = await Users.GetAsync();
+        var corr = CurrentUser.NewCorrelationId();
+        var s = await Schedules.GetPublishedAsync(me, corr);
+        if (s.Kind == OutcomeKind.Forbidden) { error = "Your roles do not permit records management."; return; }
+        published = s.IsOk ? s.Value : null;
+        var h = await Holds.ListAsync(me, false, corr);
+        activeHolds = h.IsOk ? h.Value!.Count : 0;
+        var q = await Disposition.EligibleAsync(me, new EligibleQuery(Limit: 1), corr);
+        dueNow = q.IsOk ? q.Value!.Total : 0;
+        var d = await Disposition.ListAsync(me, null, corr);
+        openRequests = d.IsOk ? d.Value!.Count(x => x.Status is DispositionStatuses.Draft or DispositionStatuses.InReview or DispositionStatuses.Approved) : 0;
+        var a = await Archives.ListAsync(me, corr);
+        archiveCount = a.IsOk ? a.Value!.Count : 0;
+    }
+}

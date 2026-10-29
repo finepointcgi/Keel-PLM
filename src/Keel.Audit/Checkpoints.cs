@@ -13,6 +13,9 @@ public sealed class CheckpointSigner(ECDsa privateKey, NpgsqlDataSource dataSour
 {
     public string KeyId { get; } = CheckpointKeys.KeyId(privateKey);
 
+    /// <summary>Signs a message with the checkpoint key (ECDSA P-256 / SHA-256, DER). Used by records management for certificates and archive manifests (8.6), always over a domain-separated message.</summary>
+    public byte[] SignMessage(byte[] message) => privateKey.SignData(message, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+
     /// <summary>Returns the new checkpoint, or null when the log is empty or the head is already checkpointed.</summary>
     public async Task<AuditCheckpoint?> CreateAsync(CancellationToken ct = default)
     {

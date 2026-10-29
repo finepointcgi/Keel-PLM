@@ -114,6 +114,16 @@ public sealed partial class DocumentService : IViewableFileSource
             await tx.CommitAsync(ct);
             return read.Permitted ? Outcome<ViewableFile>.Forbidden(decision.Reasons) : Outcome<ViewableFile>.NotFound();
         }
+        // 8.6 records management: content of a document disposed of under a retention schedule is released to the vault sweeper and cannot be viewed.
+        await using (var gone = new NpgsqlCommand("SELECT rec.is_tombstoned('document', @id)", conn, tx))
+        {
+            gone.Parameters.AddWithValue("id", head.MasterId);
+            if ((bool)(await gone.ExecuteScalarAsync(ct))!)
+            {
+                await tx.CommitAsync(ct);
+                return Outcome<ViewableFile>.Conflict("The content of this document was disposed of under a retention schedule.");
+            }
+        }
 
         await using var cmd = new NpgsqlCommand(
             """

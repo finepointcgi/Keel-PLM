@@ -1,0 +1,71 @@
+@page "/records/archives"
+@inject CurrentUser Users
+@inject ArchiveService Archives
+@inject NavigationManager Nav
+
+<PageFrame Banner="@PageBanner" Title="Archives" Crumbs="@Crumbs">
+    <RecordsNav Current="archives" />
+    <p class="muted">An archive keeps the released versions of a set of records, their files, their signatures and the matching part of the audit log in one sealed package. The package carries a signed list of hashes, so any later change is detected. Read what an archive can and cannot guarantee in the records management guide.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (list is null && error is null) { <Skeleton Lines="3" Label="Loading archives" /> }
+    else if (list is not null)
+    {
+        <DataTable TItem="ArchiveSummary" TableId="archives" Items="list" Columns="Columns" Caption="Archives">
+            <Empty><EmptyState Title="No archives yet" IconName="folder">Create an archive to keep a set of released records in a sealed package.</EmptyState></Empty>
+        </DataTable>
+    }
+
+    <AuthorizeView Roles="@($"{Roles.RecordsManager},{Roles.Admin}")" Context="auth">
+        <section class="panel stack" aria-labelledby="new-archive">
+            <h2 id="new-archive">Create an archive</h2>
+            <EditForm Model="this" OnSubmit="Create" FormName="new-archive" class="stack">
+                <label>Title * <InputText @bind-Value="title" maxlength="200" /></label>
+                <label>Records you can see (one per line, for example D-000001 or P-000001) <InputTextArea @bind-Value="objects" rows="4" /></label>
+                <p class="muted small">Only released and obsolete versions are archived. Records of one program go in one archive.</p>
+                <div class="toolbar"><button type="submit" disabled="@busy">Create archive</button></div>
+            </EditForm>
+        </section>
+    </AuthorizeView>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Records", "records"), new("Archives")];
+    private IReadOnlyList<ArchiveSummary>? list;
+    private string title = "", objects = "";
+    private string? error;
+    private bool busy;
+    private string PageBanner => BannerMerge.Union([.. (list ?? []).Select(a => a.Banner)]);
+
+    private static readonly IReadOnlyList<DataColumn<ArchiveSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Archive", Required = true, Cell = a => @<a href="@RecordsUi.ArchiveHref(a.Number)">@a.Number</a> },
+        new() { Key = "title", Title = "Title", Text = a => a.Title },
+        new() { Key = "objects", Title = "Records", Text = a => a.Objects.ToString() },
+        new() { Key = "files", Title = "Files", Text = a => a.Files.ToString() },
+        new() { Key = "size", Title = "Size", Text = a => RecordsUi.Size(a.Size) },
+        new() { Key = "worm", Title = "Protection", Text = a => RecordsUi.WormText(a.WormMode) },
+        new() { Key = "created", Title = "Created", Text = a => UiText.Utc(a.CreatedAt) + " by " + a.CreatedBy },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = a => @<MarkingChip Text="@a.Banner" /> },
+    ];
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var o = await Archives.ListAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        list = o.Value;
+    }
+
+    private async Task Create()
+    {
+        error = null;
+        var (items, errors) = RecordsUi.ParseObjects(objects);
+        if (errors.Count > 0) { error = string.Join(" ", errors); return; }
+        busy = true;
+        var o = await Archives.CreateAsync(await Users.GetAsync(), new CreateArchiveCommand(title, items), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        Nav.NavigateTo(RecordsUi.ArchiveHref(o.Value!.Number));
+    }
+}

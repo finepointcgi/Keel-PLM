@@ -3,7 +3,12 @@ using Npgsql;
 namespace Keel.Documents.Vault;
 
 /// <summary>A database column whose value is the content address (SHA-256) of a vault object that must be kept while the row exists.</summary>
-public sealed record VaultReferenceSource(string Schema, string Table, string Column, string Why)
+/// <param name="LivePredicate">
+/// Optional SQL over the row alias <c>r</c>: when set, a row keeps its object alive only while the predicate is true. Records management (8.6) uses it so the files of a
+/// document disposed of under a retention schedule (and not under legal hold) stop counting as references and the existing sweeper, with its grace period and integrity
+/// checks, removes the content.
+/// </param>
+public sealed record VaultReferenceSource(string Schema, string Table, string Column, string Why, string? LivePredicate = null)
 {
     public string Qualified => $"{Schema}.{Table}.{Column}";
 }
@@ -24,9 +29,11 @@ public static class VaultReferences
     /// <summary>Columns that keep a vault object alive. Rows are never deleted while the object may still be needed.</summary>
     public static readonly IReadOnlyList<VaultReferenceSource> Sources =
     [
-        new("plm", "document_file", "sha256", "files of document iterations (immutable rows; also the files of migrated documents)"),
+        new("plm", "document_file", "sha256", "files of document iterations (immutable rows; also the files of migrated documents); content of a document disposed of under a retention schedule is released unless a legal hold covers it (8.6)",
+            "NOT rec.iteration_content_released(r.iteration_id)"),
         new("plm", "document_checkout_file", "sha256", "files of working copies not yet checked in"),
         new("src", "response_file", "sha256", "files a supplier uploaded with a response in the supplier portal (immutable rows)"),
+        new("rec", "archive", "package_sha256", "WORM-style archive packages (8.6): immutable rows, never garbage"),
     ];
 
     /// <summary>Hash columns that do not name vault objects, or name content without keeping it alive.</summary>
@@ -48,6 +55,9 @@ public static class VaultReferences
         new("mbom", "iteration", "content_sha256", "hash over the canonical lines and links of an MBOM iteration (ADR-0024), not a vault object"),
         new("mbom", "reconciliation_run", "content_sha256", "digest of a stored reconciliation result (ADR-0024), not a vault object"),
         new("mbom", "review_binding", "review_sha256", "hash binding an MBOM review to its content and reconciliation run (ADR-0024), not a vault object"),
+        new("rec", "archive", "manifest_sha256", "hash of the signed manifest inside an archive package (8.6), not a vault object"),
+        new("rec", "certificate", "body_sha256", "hash of a certificate of destruction body (8.6), not a vault object"),
+        new("rec", "destruction_confirmation", "sha256", "names content that was destroyed; a confirmation never keeps bytes alive (8.6)"),
         new("audit", "event", "hash", "audit chain"),
         new("audit", "event", "prev_hash", "audit chain"),
         new("audit", "checkpoint", "hash", "audit checkpoint"),
@@ -60,7 +70,7 @@ public static class VaultReferences
     /// </summary>
     public static string ReferencedKeysSql { get; } =
         "SELECT k FROM unnest(@keys::text[]) AS k WHERE " +
-        string.Join(" OR ", Sources.Select(s => $"EXISTS (SELECT 1 FROM {s.Schema}.{s.Table} r WHERE r.{s.Column} = k)"));
+        string.Join(" OR ", Sources.Select(s => $"EXISTS (SELECT 1 FROM {s.Schema}.{s.Table} r WHERE r.{s.Column} = k{(s.LivePredicate is null ? "" : " AND " + s.LivePredicate)})"));
 
     /// <summary>Of <paramref name="keys"/>, those referenced by any source.</summary>
     public static async Task<HashSet<string>> ReferencedAsync(NpgsqlConnection conn, NpgsqlTransaction? tx, IReadOnlyCollection<string> keys, CancellationToken ct)

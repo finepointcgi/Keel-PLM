@@ -1,0 +1,39 @@
+@page "/records/certificates"
+@inject CurrentUser Users
+@inject DispositionService Disposition
+
+<PageFrame Banner="@PageBanner" Title="Certificates of destruction" Crumbs="@Crumbs">
+    <RecordsNav Current="disposition" />
+    <p class="muted">Every disposal leaves a signed certificate behind. A certificate cannot be changed or removed.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (list is null && error is null) { <Skeleton Lines="3" Label="Loading certificates" /> }
+    else if (list is not null)
+    {
+        <DataTable TItem="CertificateSummary" TableId="certificates" Items="list" Columns="Columns" Caption="Certificates of destruction">
+            <Empty><EmptyState Title="No certificates yet" IconName="signature">A certificate is issued when a disposition request is carried out.</EmptyState></Empty>
+        </DataTable>
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Records", "records"), new("Disposition", "records/disposition"), new("Certificates")];
+    private IReadOnlyList<CertificateSummary>? list;
+    private string? error;
+    private string PageBanner => BannerMerge.Union([.. (list ?? []).Select(c => c.Banner)]);
+
+    private static readonly IReadOnlyList<DataColumn<CertificateSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Certificate", Required = true, Cell = c => @<a href="@RecordsUi.CertificateHref(c.Number)">@c.Number</a> },
+        new() { Key = "request", Title = "Request", Cell = c => @<a href="@RecordsUi.DispositionHref(c.DispositionNumber)">@c.DispositionNumber</a> },
+        new() { Key = "issued", Title = "Issued", Text = c => UiText.Utc(c.IssuedAt) + " by " + c.IssuedBy },
+        new() { Key = "objects", Title = "Records", Text = c => c.Objects.ToString() },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = c => @<MarkingChip Text="@c.Banner" /> },
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var o = await Disposition.ListCertificatesAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        list = o.Value;
+    }
+}

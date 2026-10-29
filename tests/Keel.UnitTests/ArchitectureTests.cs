@@ -23,7 +23,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Integration (ADR-0025) reaches parts, BOM, documents and change data only through Keel.Core interfaces implemented by their owners.
         ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants"],
+        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records"],
         // Personal workspace data (UX-1, ADR-0028): preferences, recent items, favorites, saved searches. Pointers only; Keel.Web re-authorizes them through the module services.
         ["Keel.Workspace"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
@@ -39,6 +39,8 @@ public sealed partial class ArchitectureTests
         // Options and variants (8.4, ADR-0039): the condition language and the variant selection port live in Keel.Core; BOM structure is resolved by Keel.Bom, and the composed
         // "which variants use this part" report is built in Keel.Web, so no module references another.
         ["Keel.Variants"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        // Records management (8.6, ADR-0041): objects are reached by key lookups and the shared tables named in the ADR; the review engine, the vault and S3 Object Lock only through Keel.Core interfaces.
+        ["Keel.Records"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
     [Fact]

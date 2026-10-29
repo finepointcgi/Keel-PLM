@@ -1,0 +1,112 @@
+@page "/records/holds"
+@inject CurrentUser Users
+@inject HoldService Holds
+@inject NavigationManager Nav
+
+@* A hold names no object here: its members are shown only on its own page, filtered by what the reader may see. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Legal holds" Crumbs="@Crumbs">
+    <RecordsNav Current="holds" />
+    <p class="muted">A legal hold stops records from being disposed of, whatever the retention schedule says, until the hold is released with a signature. Only people with a records role can see holds. Do not type controlled information into a name or reason: they are readable by every records user.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    <label class="inline"><input type="checkbox" @bind="includeReleased" @bind:after="Load" /> Include released holds</label>
+    @if (list is null) { <Skeleton Lines="3" Label="Loading holds" /> }
+    else
+    {
+        <DataTable TItem="HoldSummary" TableId="holds" Items="list" Columns="Columns" Caption="Legal holds">
+            <Empty><EmptyState Title="No holds" IconName="lock">Place a hold when records must be kept for a legal matter.</EmptyState></Empty>
+        </DataTable>
+    }
+
+    <AuthorizeView Roles="@($"{Roles.RecordsManager},{Roles.Admin}")" Context="auth">
+        <section class="panel stack" aria-labelledby="place-hold">
+            <h2 id="place-hold">Place a hold</h2>
+            <EditForm Model="this" OnSubmit="Place" FormName="place-hold" class="stack">
+                <fieldset class="grid-form">
+                    <legend>Hold</legend>
+                    <label>Name * <InputText @bind-Value="name" maxlength="200" /></label>
+                    <label class="wide">Reason * <InputText @bind-Value="reason" maxlength="2000" /></label>
+                </fieldset>
+                <fieldset class="grid-form">
+                    <legend>What it covers</legend>
+                    <label>Scope
+                        <select @bind="scope">
+                            <option value="@HoldScopeKinds.Objects">Named objects</option>
+                            <option value="@HoldScopeKinds.Program">Everything in a program</option>
+                            <option value="@HoldScopeKinds.Query">Everything matching a query</option>
+                        </select>
+                    </label>
+                    @if (scope == HoldScopeKinds.Objects)
+                    {
+                        <label class="wide">Objects you can see (one per line, for example D-000001 or P-000001) <InputTextArea @bind-Value="objects" rows="4" /></label>
+                    }
+                    else if (scope == HoldScopeKinds.Program)
+                    {
+                        <label>Program code <InputText @bind-Value="program" maxlength="64" /></label>
+                    }
+                    else
+                    {
+                        <label>Kind
+                            <select @bind="qKind"><option value="">Documents and parts</option><option value="@RecordKinds.Document">Documents</option><option value="@RecordKinds.Part">Parts</option></select>
+                        </label>
+                        <label>Program <InputText @bind-Value="program" maxlength="64" /></label>
+                        <label>Type (for example Specification) <InputText @bind-Value="qType" /></label>
+                        <label>Number starts with <InputText @bind-Value="qPrefix" /></label>
+                        <label>Export jurisdiction (None, Ear or Itar) <InputText @bind-Value="qJurisdiction" /></label>
+                        <label>CUI category <InputText @bind-Value="qCui" /></label>
+                        <label>Created before <input type="date" @bind="qBefore" /></label>
+                    }
+                </fieldset>
+                <p class="muted small">A program or query hold covers every matching object, including ones you cannot see, and keeps covering new ones when it is checked again. The pages only ever list the objects you may see.</p>
+                <div class="toolbar"><button type="submit" disabled="@busy">Place hold</button></div>
+            </EditForm>
+        </section>
+    </AuthorizeView>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Records", "records"), new("Legal holds")];
+    private IReadOnlyList<HoldSummary>? list;
+    private bool includeReleased, busy;
+    private string? error;
+    private string name = "", reason = "", scope = HoldScopeKinds.Objects, objects = "", program = "", qKind = "", qType = "", qPrefix = "", qJurisdiction = "", qCui = "";
+    private DateTime? qBefore;
+
+    private static readonly IReadOnlyList<DataColumn<HoldSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Hold", Required = true, Cell = h => @<a href="@RecordsUi.HoldHref(h.Number)">@h.Number</a> },
+        new() { Key = "name", Title = "Name", Text = h => h.Name },
+        new() { Key = "status", Title = "Status", Cell = h => @<span class="badge @(h.Status == "active" ? "state-underreview" : "state-obsolete")">@(h.Status == "active" ? (h.InRelease ? "Release requested" : "Active") : "Released")</span> },
+        new() { Key = "scope", Title = "Covers", Text = h => HoldScopeKinds.Label(h.ScopeKind) },
+        new() { Key = "placed", Title = "Placed", Text = h => UiText.Utc(h.PlacedAt) + " by " + h.PlacedBy },
+    ];
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var o = await Holds.ListAsync(await Users.GetAsync(), includeReleased, CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        list = o.Value;
+    }
+
+    private async Task Place()
+    {
+        error = null;
+        HoldScope s;
+        if (scope == HoldScopeKinds.Objects)
+        {
+            var (items, errors) = RecordsUi.ParseObjects(objects);
+            if (errors.Count > 0) { error = string.Join(" ", errors); return; }
+            s = new HoldScope(scope, [.. items.Select(i => new HoldObjectRef(i.Kind, i.Number))]);
+        }
+        else if (scope == HoldScopeKinds.Program) s = new HoldScope(scope, Program: program);
+        else s = new HoldScope(scope, Query: new HoldQuery(string.IsNullOrEmpty(qKind) ? null : qKind, Blank(program), Blank(qType), Blank(qPrefix), Blank(qJurisdiction), Blank(qCui), qBefore is { } b ? DateOnly.FromDateTime(b) : null));
+        busy = true;
+        var o = await Holds.PlaceAsync(await Users.GetAsync(), new PlaceHoldCommand(name, reason, s), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = RecordsUi.Message(o); return; }
+        Nav.NavigateTo(RecordsUi.HoldHref(o.Value!.Number));
+    }
+
+    private static string? Blank(string t) => string.IsNullOrWhiteSpace(t) ? null : t.Trim();
+}

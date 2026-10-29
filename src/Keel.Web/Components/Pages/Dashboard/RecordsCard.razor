@@ -1,0 +1,44 @@
+@using Keel.Records
+@* "Records due": how many records the person may see are past their retention period (records roles only; a count, never names). It fails on its own. *@
+@inject CurrentUser Users
+@inject DispositionService Disposition
+@inject HoldService Holds
+
+@if (visible)
+{
+    <section class="card" aria-labelledby="card-records">
+        <h2 id="card-records"><Icon Name="lock" /> Records</h2>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        else
+        {
+            <p>@due record@(due == 1 ? "" : "s") you can see @(due == 1 ? "is" : "are") due for disposition, and @holds active legal hold@(holds == 1 ? "" : "s") @(holds == 1 ? "is" : "are") in place.</p>
+            <p class="small"><a href="records/disposition">Disposition queue</a> · <a href="records/holds">Legal holds</a></p>
+        }
+    </section>
+}
+
+@code {
+    private bool visible;
+    private long due;
+    private int holds;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var me = await Users.GetAsync();
+            visible = RecordsAccess.CanView(me);
+            if (!visible) return;
+            var corr = CurrentUser.NewCorrelationId();
+            var q = await Disposition.EligibleAsync(me, new EligibleQuery(Limit: 1), corr);
+            due = q.IsOk ? q.Value!.Total : 0;
+            var h = await Holds.ListAsync(me, false, corr);
+            holds = h.IsOk ? h.Value!.Count : 0;
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "Records information could not be loaded. The rest of the page is not affected.";
+        }
+    }
+}

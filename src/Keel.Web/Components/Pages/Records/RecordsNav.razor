@@ -1,0 +1,12 @@
+@* The sections of records management, shown on every records page. *@
+<nav class="toolbar" aria-label="Records management">
+    <a href="records" aria-current="@(Current == "overview" ? "page" : null)">Overview</a>
+    <a href="records/schedules" aria-current="@(Current == "schedules" ? "page" : null)">Retention schedules</a>
+    <a href="records/holds" aria-current="@(Current == "holds" ? "page" : null)">Legal holds</a>
+    <a href="records/disposition" aria-current="@(Current == "disposition" ? "page" : null)">Disposition</a>
+    <a href="records/archives" aria-current="@(Current == "archives" ? "page" : null)">Archives</a>
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public required string Current { get; set; }
+}

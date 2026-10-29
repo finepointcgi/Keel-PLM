@@ -269,6 +269,7 @@
             @if (p.Revision.IsLocked) { <span class="badge">Locked</span> }
             <FavoriteButton Kind="@ObjectKinds.Part" Number="@p.Number" />
             <WatchButton Kind="@ObjectKinds.Part" Number="@p.Number" />
+            <Keel.Web.Components.Pages.Records.RecordsChip Kind="part" Number="@p.Number" />
         </Badges>
         <Steps>
             @if (lifecycle is not null)

@@ -26,6 +26,9 @@ public static class NavModel
             new("Change", [new("Changes", "changes", "change")]),
             new("Sourcing", [new("Suppliers", "suppliers", "folder"), new("Supplier requests", "requests", "inbox")]),
         };
+        // 8.6 records management: records managers, administrators and auditors (the pages and services check the role again)
+        if (roles.Contains(Roles.RecordsManager) || admin || auditor)
+            groups.Add(new("Records", [new("Records management", "records", "folder", ExactMatch: true), new("Retention schedules", "records/schedules", "config"), new("Legal holds", "records/holds", "lock"), new("Disposition", "records/disposition", "tasks"), new("Archives", "records/archives", "folder")]));
         if (admin)
         {
             groups.Add(new("Configuration", [new("Workflows", "workflows", "workflow"), new("Lifecycles", "admin/lifecycles", "config"), new("Classification", "admin/classification", "folder")]));
