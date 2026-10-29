@@ -81,7 +81,7 @@ public sealed class VariantsTests(E2EFixture fx)
             await BrowserSession.AssertBannersAsync(page);
             await session.GotoAsync(alice, $"/parts/{top}/variants");
             await BrowserSession.AssertBannersAsync(page);
-            await session.GotoAsync(alice, $"/parts/{top}?variant={Uri.EscapeDataString(VariantsSeed.Left)}");
+            await session.GotoAsync(alice, $"/parts/{top}?tab=structure&variant={Uri.EscapeDataString(VariantsSeed.Left)}");
             await Expect(page.GetByLabel("Variant", new PageGetByLabelOptions { Exact = true }).First).ToBeVisibleAsync();
 
             await page.SetViewportSizeAsync(375, 800);
