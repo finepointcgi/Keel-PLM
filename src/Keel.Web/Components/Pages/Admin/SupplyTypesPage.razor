@@ -1,0 +1,114 @@
+@page "/admin/supply-types"
+@attribute [Authorize(Policy = Policies.Admin)]
+@using Keel.Bom
+@inject CurrentUser Users
+@inject MbomService Mbom
+@inject ToastService Toasts
+
+@* The supply types of manufacturing BOM lines (Make, Buy, Consume and the ones an administrator adds). Administrator data, not controlled data. Types are retired,
+   never deleted, because existing lines refer to them; retiring or restoring one needs a reason, and every change is audited with its before and after (GAP-A-2). *@
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: supply types">
+    <AdminNav />
+    <div class="stack">
+        <p>How a line of a manufacturing BOM is supplied. A retired type is no longer offered for new lines; lines that already use it keep it. <strong>Make</strong>, <strong>Buy</strong> and <strong>Consume</strong> are built in and cannot be retired.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+        <section class="panel" aria-labelledby="supply-list-heading">
+            <h2 id="supply-list-heading">Supply types</h2>
+            <div class="table-wrap"><table class="data">
+                <caption class="visually-hidden">Supply types</caption>
+                <thead><tr><th scope="col">Code</th><th scope="col">Label</th><th scope="col">Order</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var t in types)
+                    {
+                        <tr class="@(t.IsActive ? "" : "retired")">
+                            <td><code>@t.Code</code></td>
+                            <td>@t.Label</td>
+                            <td>@t.SortOrder</td>
+                            <td>@(t.IsSystem ? "Built in" : "Added")</td>
+                            <td>@(t.IsActive ? "Active" : "Retired")</td>
+                            <td class="actions-cell">
+                                <button type="button" class="secondary" @onclick="() => Edit(t)">Edit<span class="visually-hidden"> @t.Code</span></button>
+                                @if (!t.IsSystem)
+                                {
+                                    <button type="button" class="secondary" @onclick="() => AskToggle(t)">@(t.IsActive ? "Retire" : "Restore")<span class="visually-hidden"> @t.Code</span></button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+
+        <ConfirmDialog @bind-Open="confirmingToggle" Title="@($"{(toggling?.IsActive == true ? "Retire" : "Restore")} {toggling?.Code}?")" Destructive="true"
+                       ConfirmText="@(toggling?.IsActive == true ? "Retire" : "Restore")" ReasonLabel="Reason" ReasonRequired="true" OnConfirm="ConfirmToggle" OnCancel="() => toggling = null">
+            <p>@(toggling?.IsActive == true ? "Lines that use this type keep it; it is no longer offered for new lines." : "The type is offered for new lines again.") The reason and your name are recorded in the audit log.</p>
+        </ConfirmDialog>
+
+        <section class="panel" aria-labelledby="supply-form-heading">
+            <h2 id="supply-form-heading">@(editingCode is null ? "Add a supply type" : $"Edit {editingCode}")</h2>
+            <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <label>Code * <input @bind="code" maxlength="20" readonly="@(editingCode is not null)" required /></label>
+                <label>Label * <input @bind="label" maxlength="60" required /></label>
+                <label>Sort order <input type="number" @bind="sortOrder" /></label>
+                <div class="toolbar wide">
+                    <button type="submit" disabled="@busy">@(editingCode is null ? "Add supply type" : "Save changes")</button>
+                    @if (editingCode is not null) { <button type="button" class="secondary" @onclick="ResetForm">Cancel edit</button> }
+                </div>
+            </form>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<SupplyTypeInfo> types = [];
+    private string code = "", label = "";
+    private int sortOrder = 100;
+    private string? editingCode, error;
+    private SupplyTypeInfo? toggling;
+    private bool busy, confirmingToggle;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load() => types = await Mbom.ListSupplyTypesAsync(true);
+
+    private void Edit(SupplyTypeInfo t)
+    {
+        editingCode = code = t.Code;
+        label = t.Label;
+        sortOrder = t.SortOrder;
+    }
+
+    private void ResetForm()
+    {
+        editingCode = null;
+        code = label = "";
+        sortOrder = 100;
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        error = null;
+        var active = editingCode is null || (types.FirstOrDefault(t => t.Code == editingCode)?.IsActive ?? true);
+        var outcome = await Mbom.SaveSupplyTypeAsync(await Users.GetAsync(), new SaveSupplyTypeCommand(code.Trim(), label, active, sortOrder), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { Toasts.Success($"Saved {outcome.Value!.Code}."); ResetForm(); await Load(); }
+        else error = outcome.Kind == OutcomeKind.Invalid ? string.Join(" ", outcome.Errors) : UiText.Message(outcome);
+    }
+
+    private void AskToggle(SupplyTypeInfo t) => (toggling, confirmingToggle) = (t, true);
+
+    private async Task ConfirmToggle(string? reason)
+    {
+        if (toggling is null) return;
+        busy = true;
+        error = null;
+        var t = toggling;
+        var outcome = await Mbom.SaveSupplyTypeAsync(await Users.GetAsync(), new SaveSupplyTypeCommand(t.Code, t.Label, !t.IsActive, t.SortOrder, reason), CurrentUser.NewCorrelationId());
+        busy = false;
+        toggling = null;
+        if (outcome.IsOk) { Toasts.Success($"{(outcome.Value!.IsActive ? "Restored" : "Retired")} {outcome.Value.Code}."); await Load(); }
+        else error = outcome.Kind == OutcomeKind.Invalid ? string.Join(" ", outcome.Errors) : UiText.Message(outcome);
+    }
+}

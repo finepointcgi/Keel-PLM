@@ -27,7 +27,7 @@
     @if (mine is { Items.Count: > 0 })
     {
         <section class="panel" aria-labelledby="my-tasks-heading">
-            <h3 id="my-tasks-heading">My change tasks</h3>
+            <h2 id="my-tasks-heading">My change tasks</h2>
             <div class="table-wrap"><table class="data">
                 <thead><tr><th scope="col">Task</th><th scope="col">Title</th><th scope="col">Change notice</th><th scope="col">State</th><th scope="col">Due</th></tr></thead>
                 <tbody>
@@ -49,7 +49,7 @@
     @if (result is not null)
     {
         <p class="muted">@result.Total change@(result.Total == 1 ? "" : "s") you can access</p>
-        <DataTable TItem="ChangeSummary" TableId="changes" Items="result.Items" Columns="Columns" Caption="Changes">
+        <DataTable TItem="ChangeSummary" TableId="changes" Items="result.Items" Columns="Columns" Caption="Changes" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
                 <EmptyState Title="@(Filtered ? "No changes match" : "No changes yet")" IconName="change">
                     @(Filtered ? "Try a different search or clear the filters." : "Start a problem report or a change request when something about a released part or document needs to change.")
@@ -62,6 +62,26 @@
 
 @code {
     private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+
+    // The order lives in the address bar (GAP-A-1). A stale or hand-edited value that is not one of the module's sort keys falls back to the default order.
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = ChangeService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
     private string text = "", type = "", state = "";
     private bool openOnly;
     private int offset;
@@ -73,13 +93,13 @@
 
     private static readonly IReadOnlyList<DataColumn<ChangeSummary>> Columns =
     [
-        new() { Key = "number", Title = "Number", Required = true, SortValue = c => c.Number, Cell = c => @<a href="@ChangeUi.Href(c.Number)">@c.Number</a> },
-        new() { Key = "type", Title = "Type", SortValue = c => c.Type, Text = c => c.Type },
-        new() { Key = "title", Title = "Title", SortValue = c => c.Title, Text = c => c.Title },
-        new() { Key = "class", Title = "Class", SortValue = c => c.ChangeClass, Text = c => c.ChangeClass ?? "" },
-        new() { Key = "priority", Title = "Priority", SortValue = c => c.Priority, Text = c => c.Priority },
-        new() { Key = "state", Title = "State", SortValue = c => c.StateLabel, Cell = c => @<span class="badge @ChangeUi.StateClass(c.State)">@c.StateLabel</span> },
-        new() { Key = "requester", Title = "Requester", SortValue = c => c.RequesterName, Text = c => c.RequesterName, DefaultHidden = false },
+        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = c => @<a href="@ChangeUi.Href(c.Number)">@c.Number</a> },
+        new() { Key = "type", Title = "Type", ServerSortKey = "type", Text = c => c.Type },
+        new() { Key = "title", Title = "Title", ServerSortKey = "title", Text = c => c.Title },
+        new() { Key = "class", Title = "Class", ServerSortKey = "class", Text = c => c.ChangeClass ?? "" },
+        new() { Key = "priority", Title = "Priority", ServerSortKey = "priority", Text = c => c.Priority },
+        new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = c => @<span class="badge @ChangeUi.StateClass(c.State)">@c.StateLabel</span> },
+        new() { Key = "requester", Title = "Requester", ServerSortKey = "requester", Text = c => c.RequesterName, DefaultHidden = false },
         new() { Key = "markings", Title = "Markings", Required = true, Cell = c => @<MarkingChip Text="@c.Banner" /> },
     ];
 
@@ -95,13 +115,12 @@
     protected override async Task OnInitializedAsync()
     {
         mine = await Changes.MyTasksAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
-        await Search(0);
     }
 
     private async Task Search(int newOffset)
     {
         offset = newOffset;
         result = await Changes.SearchAsync(await Users.GetAsync(),
-            new ChangeSearchQuery(type == "" ? null : type, state == "" ? null : state, text, openOnly, PageSize, offset), CurrentUser.NewCorrelationId());
+            new ChangeSearchQuery(type == "" ? null : type, state == "" ? null : state, text, openOnly, PageSize, offset, sort), CurrentUser.NewCorrelationId());
     }
 }

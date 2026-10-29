@@ -15,13 +15,13 @@
         <div class="split">
             <aside class="stack">
                 <section class="panel" aria-label="Class tree">
-                    <h3>Class</h3>
+                    <h2>Class</h2>
                     <p><button type="button" class="link" @onclick="() => SelectClass(null)">All classified parts</button></p>
                     @if (rows.Count > 0) { <ClassTreeNav Rows="rows" Selected="selected" Counts="counts" OnSelect="SelectClass" /> }
                     else { <p class="muted">No classes have been defined.</p> }
                 </section>
                 <section class="panel" aria-label="Attribute filters">
-                    <h3>Attributes</h3>
+                    <h2>Attributes</h2>
                     @if (selected is null) { <p class="muted">Choose a class to filter by its attributes.</p> }
                     else { <FacetPanel Facets="result?.Facets ?? []" Selection="selection" OnChanged="() => Search(0)" /> }
                 </section>

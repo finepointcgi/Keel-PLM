@@ -22,8 +22,9 @@ public static class PartEndpoints
     {
         var parts = app.MapGroup("/api/v1/parts").RequireAuthorization(Policies.AnyPlmRole);
 
-        parts.MapGet("", async (string? q, string? state, int? limit, int? offset, HttpContext ctx, PartService svc, CancellationToken ct) =>
-            await svc.SearchAsync(SubjectFactory.Require(ctx), q, state, limit ?? 50, offset ?? 0, CorrelationId.Get(ctx), ct));
+        parts.MapGet("", async Task<Microsoft.AspNetCore.Http.HttpResults.Results<Microsoft.AspNetCore.Http.HttpResults.Ok<PartSearchResult>, Microsoft.AspNetCore.Http.HttpResults.ValidationProblem>> (string? q, string? state, string? sort, string? dir, int? limit, int? offset, HttpContext ctx, PartService svc, CancellationToken ct) =>
+            !PartService.SortKeys.TryResolve(sort, dir, out var spec, out var error) ? OutcomeResults.BadSort(error!)
+            : TypedResults.Ok(await svc.SearchAsync(SubjectFactory.Require(ctx), q, state, limit ?? 50, offset ?? 0, spec, CorrelationId.Get(ctx), ct)));
 
         parts.MapPost("", async (CreatePartRequest req, HttpContext ctx, PartService svc, CancellationToken ct) =>
         {

@@ -35,8 +35,9 @@ public static class WorkflowEndpoints
             (await svc.StatusForObjectAsync(SubjectFactory.Require(ctx), "part", number, CorrelationId.Get(ctx), ct)).ToHttp());
 
         // ---- tasks
-        any.MapGet("/tasks", async (HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
-            await svc.MyTasksAsync(SubjectFactory.Require(ctx), CorrelationId.Get(ctx), ct));
+        any.MapGet("/tasks", async Task<Microsoft.AspNetCore.Http.HttpResults.Results<Microsoft.AspNetCore.Http.HttpResults.Ok<MyTasks>, Microsoft.AspNetCore.Http.HttpResults.ValidationProblem>> (string? sort, string? dir, HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
+            !WorkflowService.SortKeys.TryResolve(sort, dir, out var spec, out var error) ? OutcomeResults.BadSort(error!)
+            : TypedResults.Ok(await svc.MyTasksAsync(SubjectFactory.Require(ctx), spec, CorrelationId.Get(ctx), ct)));
 
         any.MapGet("/tasks/{id:guid}", async (Guid id, HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
             (await svc.GetTaskAsync(SubjectFactory.Require(ctx), id, CorrelationId.Get(ctx), ct)).ToHttp());

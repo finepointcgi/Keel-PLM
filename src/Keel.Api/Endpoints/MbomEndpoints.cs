@@ -33,7 +33,7 @@ public sealed record MbomLineUpdateRequest(
     string? OperationReference = null, bool MbomOnly = false, string? Notes = null, EffectivityInput? Effectivity = null, bool ClearEffectivity = false);
 public sealed record MbomLinksRequest(LinkInput[] Links);
 public sealed record SavePlantRequest(string Name, bool IsActive = true, bool ReleaseAllowsWarnings = true, int SortOrder = 100);
-public sealed record SaveSupplyTypeRequest(string Label, bool IsActive = true, int SortOrder = 100);
+public sealed record SaveSupplyTypeRequest(string Label, bool IsActive = true, int SortOrder = 100, string? Reason = null);
 
 /// <summary>REST for manufacturing BOMs (ADR-0024). Thin: every rule lives in <see cref="MbomService"/>.</summary>
 public static class MbomEndpoints
@@ -43,14 +43,15 @@ public static class MbomEndpoints
         var g = app.MapGroup("/api/v1/mboms").RequireAuthorization(Policies.AnyPlmRole);
 
         // ---- lists and search (before the {number} routes)
-        g.MapGet("", async (string? q, string? plant, string? state, string? part, int? limit, int? offset, HttpContext ctx, MbomService svc, CancellationToken ct) =>
-            (await svc.SearchAsync(SubjectFactory.Require(ctx), new MbomSearch(q, plant, state, part, limit ?? 50, offset ?? 0), CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapGet("", async (string? q, string? plant, string? state, string? part, string? sort, string? dir, int? limit, int? offset, HttpContext ctx, MbomService svc, CancellationToken ct) =>
+            !MbomService.SortKeys.TryResolve(sort, dir, out var spec, out var error) ? (IResult)OutcomeResults.BadSort(error!)
+            : (await svc.SearchAsync(SubjectFactory.Require(ctx), new MbomSearch(q, plant, state, part, limit ?? 50, offset ?? 0, spec), CorrelationId.Get(ctx), ct)).ToHttp());
         g.MapGet("/plants", async (bool? all, MbomService svc, CancellationToken ct) => Results.Ok(await svc.ListPlantsAsync(all == true, ct)));
         g.MapGet("/supply-types", async (bool? all, MbomService svc, CancellationToken ct) => Results.Ok(await svc.ListSupplyTypesAsync(all == true, ct)));
         g.MapPut("/plants/{code}", async (string code, SavePlantRequest req, HttpContext ctx, MbomService svc, CancellationToken ct) =>
             (await svc.SavePlantAsync(SubjectFactory.Require(ctx), new SavePlantCommand(code, req.Name, req.IsActive, req.ReleaseAllowsWarnings, req.SortOrder), CorrelationId.Get(ctx), ct)).ToHttp());
         g.MapPut("/supply-types/{code}", async (string code, SaveSupplyTypeRequest req, HttpContext ctx, MbomService svc, CancellationToken ct) =>
-            (await svc.SaveSupplyTypeAsync(SubjectFactory.Require(ctx), new SaveSupplyTypeCommand(code, req.Label, req.IsActive, req.SortOrder), CorrelationId.Get(ctx), ct)).ToHttp());
+            (await svc.SaveSupplyTypeAsync(SubjectFactory.Require(ctx), new SaveSupplyTypeCommand(code, req.Label, req.IsActive, req.SortOrder, req.Reason), CorrelationId.Get(ctx), ct)).ToHttp());
         g.MapGet("/where-used/{partNumber}", async (string partNumber, string? plant, HttpContext ctx, MbomService svc, CancellationToken ct) =>
             (await svc.WhereUsedAsync(SubjectFactory.Require(ctx), partNumber, plant, CorrelationId.Get(ctx), ct)).ToHttp());
 

@@ -25,8 +25,9 @@ public static class ChangeEndpoints
         var changes = app.MapGroup("/api/v1/changes").RequireAuthorization(Policies.AnyPlmRole);
 
         // ---- search and create
-        changes.MapGet("", async (string? type, string? state, string? q, bool? open, int? limit, int? offset, HttpContext ctx, ChangeService svc, CancellationToken ct) =>
-            await svc.SearchAsync(SubjectFactory.Require(ctx), new ChangeSearchQuery(type?.ToUpperInvariant(), state, q, open == true, limit ?? 50, offset ?? 0), CorrelationId.Get(ctx), ct));
+        changes.MapGet("", async Task<Microsoft.AspNetCore.Http.HttpResults.Results<Microsoft.AspNetCore.Http.HttpResults.Ok<ChangeSearchResult>, Microsoft.AspNetCore.Http.HttpResults.ValidationProblem>> (string? type, string? state, string? q, bool? open, string? sort, string? dir, int? limit, int? offset, HttpContext ctx, ChangeService svc, CancellationToken ct) =>
+            !ChangeService.SortKeys.TryResolve(sort, dir, out var spec, out var error) ? OutcomeResults.BadSort(error!)
+            : TypedResults.Ok(await svc.SearchAsync(SubjectFactory.Require(ctx), new ChangeSearchQuery(type?.ToUpperInvariant(), state, q, open == true, limit ?? 50, offset ?? 0, spec), CorrelationId.Get(ctx), ct)));
 
         changes.MapPost("", async (CreateChangeRequest req, HttpContext ctx, ChangeService svc, CancellationToken ct) =>
         {

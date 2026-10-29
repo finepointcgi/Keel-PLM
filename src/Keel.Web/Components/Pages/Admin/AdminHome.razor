@@ -7,16 +7,17 @@
     <div class="stack">
         <p>Configure Keel PLM without code changes. Every change is validated, recorded in the tamper-evident audit log with its before and after values, and shown under <a href="admin/history">Change history</a>. Nothing changes live behaviour silently: each page shows the effect first.</p>
         <section class="panel">
-            <h3>Data model</h3>
+            <h2>Data model</h2>
             <ul class="plain">
                 <li><a href="admin/attributes">Attributes</a>: part attribute definitions with units, lists, formats and ranges; retire without losing stored values.</li>
                 <li><a href="admin/lifecycles">Lifecycles</a>: versioned states and transitions. New objects use the new version; migrate existing ones with a state mapping.</li>
                 <li><a href="admin/lists">Types and lists</a>: part types, sources, units, document types, change priorities, and the office and program pickers.</li>
                 <li><a href="admin/classification">Classification</a>: the class hierarchy with inherited attribute sets, safe move and retire, import and export.</li>
+                <li><a href="admin/supply-types">Supply types</a>: how manufacturing BOM lines are supplied (Make, Buy, Consume and your own); retire with a reason, never delete.</li>
             </ul>
         </section>
         <section class="panel">
-            <h3>Process</h3>
+            <h2>Process</h2>
             <ul class="plain">
                 <li><a href="admin/workflow-templates">Workflow templates</a>: edit, validate and publish review workflows; pin the template each object type uses.</li>
                 <li><a href="admin/numbering">Numbering</a>: prefixes and widths with a safe preview of the next number.</li>
@@ -24,7 +25,7 @@
             </ul>
         </section>
         <section class="panel">
-            <h3>Integration</h3>
+            <h2>Integration</h2>
             <ul class="plain">
                 <li><a href="admin/integration/sinks">Sinks</a>: webhook and file-drop destinations for ERP events, with their clearance profiles.</li>
                 <li><a href="admin/integration/profiles">Clearance profiles</a>: what each receiving system and Technical Data Package recipient is cleared for.</li>
@@ -32,7 +33,7 @@
             </ul>
         </section>
         <section class="panel">
-            <h3>Environments</h3>
+            <h2>Environments</h2>
             <ul class="plain">
                 <li><a href="admin/config">Export and import</a>: promote configuration from development to test to production with a dry-run diff.</li>
                 <li><a href="admin/history">Change history</a>: who changed what and when, with differences.</li>

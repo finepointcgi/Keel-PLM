@@ -142,7 +142,15 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         return Outcome<DocumentDetail>.Ok(detail);
     }
 
-    public async Task<DocumentSearchResult> SearchAsync(Subject subject, string? query, string? documentType, string? state, int limit, int offset, string? correlationId, CancellationToken ct = default)
+    /// <summary>The sort keys the document list accepts (GAP-A-1); expressions are constants over rows the read filter already admitted.</summary>
+    public static readonly SortMap SortKeys = new(
+        ("number", ["m.number"]), ("name", ["lower(m.name)"]), ("type", ["lower(m.document_type)"]), ("state", ["r.lifecycle_state"]),
+        ("version", ["length(r.revision)", "r.revision", "r.latest_iteration"]));
+
+    public Task<DocumentSearchResult> SearchAsync(Subject subject, string? query, string? documentType, string? state, int limit, int offset, string? correlationId, CancellationToken ct = default) =>
+        SearchAsync(subject, query, documentType, state, limit, offset, null, correlationId, ct);
+
+    public async Task<DocumentSearchResult> SearchAsync(Subject subject, string? query, string? documentType, string? state, int limit, int offset, SortSpec? sort, string? correlationId, CancellationToken ct = default)
     {
         limit = Math.Clamp(limit, 1, MaxSearchLimit);
         offset = Math.Max(0, offset);
@@ -164,7 +172,7 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
               AND (@q = '' OR m.search @@ websearch_to_tsquery('english', @q) OR m.number ILIKE @like OR m.name ILIKE @like)
               AND (@type::text IS NULL OR m.document_type = @type)
               AND (@state::text IS NULL OR r.lifecycle_state = @state)
-            ORDER BY CASE WHEN m.number ILIKE @prefix THEN 0 ELSE 1 END, m.number
+            ORDER BY {SortKeys.OrderBy(sort, "CASE WHEN m.number ILIKE @prefix THEN 0 ELSE 1 END, m.number", "m.number")}
             LIMIT @limit OFFSET @offset
             """, conn, tx))
         {
@@ -186,7 +194,7 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
             }
         }
         await audit.AppendAsync(tx, Entry(subject, "document.search", AuditOutcome.Success, null, correlationId,
-            ("query", q), ("type", documentType), ("state", state), ("offset", offset.ToString(CultureInfo.InvariantCulture)),
+            ("query", q), ("type", documentType), ("state", state), ("sort", sort is null ? null : $"{sort.Key} {sort.DirectionText}"), ("offset", offset.ToString(CultureInfo.InvariantCulture)),
             ("returned", items.Count.ToString(CultureInfo.InvariantCulture)), ("numbers", string.Join(",", items.Select(i => i.Number)))), ct);
         await tx.CommitAsync(ct);
         return new DocumentSearchResult(items, total, Markings.AggregateBanner(items.Select(i => i.Markings)));

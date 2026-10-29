@@ -73,7 +73,8 @@ public sealed record EbomSpec(EbomSpecKind Kind = EbomSpecKind.LatestReleased, E
 public sealed record PlantInfo(string Code, string Name, bool IsActive, bool ReleaseAllowsWarnings, int SortOrder);
 public sealed record SupplyTypeInfo(string Code, string Label, bool IsActive, int SortOrder, bool IsSystem);
 public sealed record SavePlantCommand(string Code, string Name, bool IsActive = true, bool ReleaseAllowsWarnings = true, int SortOrder = 100);
-public sealed record SaveSupplyTypeCommand(string Code, string Label, bool IsActive = true, int SortOrder = 100);
+/// <summary>Creates or updates a supply type. Retiring or restoring an existing one needs a <see cref="Reason"/> (GAP-A-2).</summary>
+public sealed record SaveSupplyTypeCommand(string Code, string Label, bool IsActive = true, int SortOrder = 100, string? Reason = null);
 
 // ---------------------------------------------------------------- header, search, detail
 
@@ -81,7 +82,7 @@ public sealed record MbomSummary(
     Guid Id, string Number, string PartNumber, string PartName, string Plant, string Revision, int Iteration, string State, string StateLabel,
     string? DerivedFrom, string? ReconciliationStatus, string? CheckedOutBy, string Banner, Markings Markings);
 
-public sealed record MbomSearch(string? Query = null, string? Plant = null, string? State = null, string? PartNumber = null, int Limit = 50, int Offset = 0);
+public sealed record MbomSearch(string? Query = null, string? Plant = null, string? State = null, string? PartNumber = null, int Limit = 50, int Offset = 0, SortSpec? Sort = null);
 
 public sealed record MbomSearchResult(IReadOnlyList<MbomSummary> Items, long Total, string PageBanner);
 

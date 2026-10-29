@@ -24,24 +24,16 @@
         </tbody>
     </table></div>
 
-    @if (retiring is not null)
-    {
-        <section class="panel confirm" role="group" aria-label="Confirm @(retiring.Retired ? "restore" : "retire")">
-            <h3>@(retiring.Retired ? "Restore" : "Retire") attribute @retiring.Label</h3>
-            <p>
-                @if (!retiring.Retired)
-                {
-                    <text>Retiring removes the attribute from new input. @(retiring.ValuesInUse > 0 ? $"{retiring.ValuesInUse} stored value(s) stay readable on existing iterations and are carried forward unchanged." : "No values are stored.")</text>
-                }
-                else { <text>The attribute appears in forms again.</text> }
-            </p>
-            <label>Reason * <input @bind="reason" maxlength="500" /></label>
-            <div class="toolbar">
-                <button type="button" class="danger" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="ConfirmRetire">@(retiring.Retired ? "Confirm restore" : "Confirm retire")</button>
-                <button type="button" class="secondary" @onclick="CancelRetire">Cancel</button>
-            </div>
-        </section>
-    }
+    <ConfirmDialog @bind-Open="confirmingRetire" Title="@($"{(retiring?.Retired == true ? "Restore" : "Retire")} attribute {retiring?.Label}?")" Destructive="true"
+                   ConfirmText="@(retiring?.Retired == true ? "Restore" : "Retire")" ReasonLabel="Reason" ReasonRequired="true" OnConfirm="ConfirmRetire" OnCancel="CancelRetire">
+        <p>
+            @if (retiring is { Retired: false })
+            {
+                <text>Retiring removes the attribute from new input. @(retiring.ValuesInUse > 0 ? $"{retiring.ValuesInUse} stored value(s) stay readable on existing iterations and are carried forward unchanged." : "No values are stored.")</text>
+            }
+            else { <text>The attribute appears in forms again.</text> }
+        </p>
+    </ConfirmDialog>
 
     <section class="panel">
         <h3>@(editing ? $"Edit {form.Name}" : "New attribute")</h3>
@@ -93,7 +85,7 @@
     [Parameter] public EventCallback OnChanged { get; set; }
 
     private AttributeFormModel form = new();
-    private string enumText = "", minText = "", maxText = "", reason = "";
+    private string enumText = "", minText = "", maxText = "";
     private bool editing, busy;
     private AttributeDefinitionDto? retiring;
     private IReadOnlyList<string>? errors, warnings;
@@ -158,19 +150,17 @@
         }
     }
 
-    private void AskRetire(AttributeDefinitionDto d)
-    {
-        retiring = d;
-        reason = "";
-    }
+    private bool confirmingRetire;
+
+    private void AskRetire(AttributeDefinitionDto d) => (retiring, confirmingRetire) = (d, true);
 
     private void CancelRetire() => retiring = null;
 
-    private async Task ConfirmRetire()
+    private async Task ConfirmRetire(string? retireReason)
     {
         if (retiring is null) return;
         busy = true;
-        var outcome = await Retire(retiring.Name, !retiring.Retired, reason);
+        var outcome = await Retire(retiring.Name, !retiring.Retired, retireReason ?? "");
         busy = false;
         if (outcome.IsOk)
         {

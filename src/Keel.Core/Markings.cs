@@ -65,6 +65,26 @@ public sealed partial record Markings
         ExportAuthorizations = exportAuthorizations;
     }
 
+    /// <summary>
+    /// Value equality: two markings are equal when every field is equal, including the CUI categories and export authorizations as sets. (The synthesized record
+    /// equality compares the immutable sets by reference, so "the markings are unchanged" checks never fired for markings built separately, GAP-A-2.)
+    /// </summary>
+    public bool Equals(Markings? other) =>
+        other is not null && ExportJurisdiction == other.ExportJurisdiction && Eccn == other.Eccn && UsmlCategory == other.UsmlCategory
+        && DistributionStatement == other.DistributionStatement && ControllingOffice == other.ControllingOffice && DistributionReason == other.DistributionReason
+        && Program == other.Program && OwningOrg == other.OwningOrg
+        && CuiCategories.SequenceEqual(other.CuiCategories, StringComparer.Ordinal) && ExportAuthorizations.SequenceEqual(other.ExportAuthorizations, StringComparer.Ordinal);
+
+    public override int GetHashCode()
+    {
+        var h = new HashCode();
+        h.Add(ExportJurisdiction); h.Add(Eccn); h.Add(UsmlCategory); h.Add(DistributionStatement); h.Add(ControllingOffice); h.Add(DistributionReason); h.Add(Program); h.Add(OwningOrg);
+        foreach (var c in CuiCategories) h.Add(c);
+        h.Add('|');
+        foreach (var a in ExportAuthorizations) h.Add(a);
+        return h.ToHashCode();
+    }
+
     /// <summary>True when nationality or an export authorization gates access.</summary>
     public bool IsExportControlled =>
         ExportJurisdiction == ExportJurisdiction.Itar ||

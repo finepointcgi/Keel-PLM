@@ -22,7 +22,7 @@
     @if (result is not null)
     {
         <p class="muted">@result.Total part@(result.Total == 1 ? "" : "s") you can access</p>
-        <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="Parts">
+        <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="Parts" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
                 <EmptyState Title="@(query.Length > 0 || state != "" ? "No parts match" : "No parts yet")" IconName="part"
                             ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="New part">
@@ -40,6 +40,26 @@
 
 @code {
     private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+
+    // The order lives in the address bar (GAP-A-1). A stale or hand-edited value that is not one of the module's sort keys falls back to the default order.
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = PartService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
     private string query = "";
     private string state = "";
     private int offset;
@@ -49,19 +69,17 @@
 
     private static readonly IReadOnlyList<DataColumn<PartSummary>> Columns =
     [
-        new() { Key = "number", Title = "Number", Required = true, SortValue = p => p.Number, Cell = p => @<a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a> },
-        new() { Key = "name", Title = "Name", SortValue = p => p.Name, Text = p => p.Name },
-        new() { Key = "type", Title = "Type", SortValue = p => p.PartType, Text = p => p.PartType },
-        new() { Key = "version", Title = "Version", Text = p => $"{p.Revision}.{p.Iteration}" },
-        new() { Key = "state", Title = "State", SortValue = p => p.State, Text = p => StateText.Label(p.State) },
+        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = p => @<a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a> },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = p => p.Name },
+        new() { Key = "type", Title = "Type", ServerSortKey = "type", Text = p => p.PartType },
+        new() { Key = "version", Title = "Version", ServerSortKey = "version", Text = p => $"{p.Revision}.{p.Iteration}" },
+        new() { Key = "state", Title = "State", ServerSortKey = "state", Text = p => StateText.Label(p.State) },
         new() { Key = "markings", Title = "Markings", Required = true, Cell = p => @<MarkingChip Text="@p.Banner" /> },
     ];
-
-    protected override Task OnInitializedAsync() => Search(0);
 
     private async Task Search(int newOffset)
     {
         offset = newOffset;
-        result = await Parts.SearchAsync(await Users.GetAsync(), query, state == "" ? null : state, PageSize, offset, CurrentUser.NewCorrelationId());
+        result = await Parts.SearchAsync(await Users.GetAsync(), query, state == "" ? null : state, PageSize, offset, sort, CurrentUser.NewCorrelationId());
     }
 }

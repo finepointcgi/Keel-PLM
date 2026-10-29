@@ -221,6 +221,8 @@
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery] public string? Revision { get; set; }
 
+    private string? seenUri; // the address the tab was last taken from (GAP-A-4)
+
     private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", .. AwarenessTabs.Ids];
     private static readonly IReadOnlyList<TabInfo> Tabs =
     [
@@ -294,7 +296,7 @@
     {
         bomBanner = null; // the BOM section republishes its aggregate banner after it reloads
         changesBanner = null; // likewise the changes panel
-        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
         await using (var conn = await Db.OpenConnectionAsync())
         {
             defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);

@@ -259,9 +259,10 @@ public sealed class ShellComponentTests : BunitContext
     public void An_empty_state_says_what_to_do_next_and_a_skeleton_is_announced_once()
     {
         var empty = Render<EmptyState>(p => p.Add(x => x.Title, "No parts yet").Add(x => x.ActionHref, "parts/new").Add(x => x.ActionText, "New part").AddChildContent("Create the first part."));
-        Assert.Equal("No parts yet", empty.Find("h3").TextContent);
+        Assert.Equal("No parts yet", empty.Find(".empty-title").TextContent);
+        Assert.Empty(empty.FindAll("h1, h2, h3, h4")); // a message, not a section: it must not add a level to the outline
         Assert.Equal("parts/new", empty.Find("a.button").GetAttribute("href"));
-        Assert.Contains("Create the first part.", empty.Find("p").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Create the first part.", empty.Find("p:not(.empty-title)").TextContent, StringComparison.Ordinal);
 
         var skeleton = Render<Skeleton>(p => p.Add(x => x.Lines, 4).Add(x => x.Label, "Loading parts"));
         Assert.Equal("status", skeleton.Find(".skeleton").GetAttribute("role"));
@@ -326,7 +327,7 @@ public sealed class ShellComponentTests : BunitContext
 
         var empty = Render<Keel.Web.Components.Pages.Dashboard.ObjectCard>(p => p.Add(x => x.Id, "b").Add(x => x.Title, "B").Add(x => x.EmptyTitle, "No favorites yet")
             .Add(x => x.Load, () => Task.FromResult(new CardResult<ResolvedItem>([], UiText.Unclassified))));
-        empty.WaitForAssertion(() => Assert.Equal("No favorites yet", empty.Find(".empty h3").TextContent));
+        empty.WaitForAssertion(() => Assert.Equal("No favorites yet", empty.Find(".empty .empty-title").TextContent));
     }
 
     // ---------------------------------------------------------------- theme switch in the user menu

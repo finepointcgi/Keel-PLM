@@ -238,6 +238,8 @@
     [Parameter] public required string Number { get; set; }
     [SupplyParameterFromQuery] public string? Revision { get; set; }
 
+    private string? seenUri; // the address the tab was last taken from (GAP-A-4)
+
     private static readonly string[] TabIds = ["overview", "usedby", "history", "timeline", "security", .. AwarenessTabs.Ids];
     private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("usedby", "Used by"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings")];
     private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
@@ -283,7 +285,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
         var subject = await Users.GetAsync();
         var outcome = await Docs.GetAsync(subject, Number, Revision, Corr());
         // 2.2: the document's own lifecycle version (versions are data)

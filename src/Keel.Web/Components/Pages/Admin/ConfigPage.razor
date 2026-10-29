@@ -10,13 +10,13 @@
         @if (message is not null) { <p role="status" class="permit">@message</p> }
 
         <section class="panel">
-            <h3>Export</h3>
+            <h2>Export</h2>
             <p><a class="button" href="admin-files/config" download="keel-config.json">Download configuration</a></p>
             <p class="muted small">The file name carries no environment information. The hash is shown when you export through the API or after a download in the history page.</p>
         </section>
 
         <section class="panel" aria-label="Import">
-            <h3>Import</h3>
+            <h2>Import</h2>
             <label>Configuration file (.json) <InputFile OnChange="Loaded" accept=".json" /></label>
             <ValidationList Errors="errors" />
             @if (doc is not null)
@@ -30,15 +30,10 @@
                 @if (plan.Changes.Count > 0 && !plan.Changes.Any(c => c.Kind == "blocked"))
                 {
                     <label>Reason * <input @bind="reason" maxlength="500" /></label>
-                    <div class="toolbar">
-                        @if (!confirming) { <button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="() => confirming = true">Apply import</button> }
-                        else
-                        {
-                            <span>Apply @plan.Changes.Count change(s) to this environment? Each is validated and audited; the import stops at the first error and can be run again.</span>
-                            <button type="button" class="danger" disabled="@busy" @onclick="ApplyAsync">Confirm apply</button>
-                            <button type="button" class="secondary" @onclick="() => confirming = false">Back</button>
-                        }
-                    </div>
+                    <div class="toolbar"><button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(reason))" @onclick="() => confirming = true">Apply import</button></div>
+                    <ConfirmDialog @bind-Open="confirming" Title="Apply this import?" Destructive="true" ConfirmText="Apply import" OnConfirm="_ => ApplyAsync()">
+                        <p>Apply @plan.Changes.Count change(s) to this environment? Each is validated and audited; the import stops at the first error and can be run again.</p>
+                    </ConfirmDialog>
                 }
                 else if (plan.Changes.Any(c => c.Kind == "blocked")) { <p class="notice">Blocked items cannot be applied by an import. Resolve them in the matching admin page, then import again.</p> }
             }

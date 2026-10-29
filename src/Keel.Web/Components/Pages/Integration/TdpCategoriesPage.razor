@@ -10,7 +10,7 @@
         @if (error is not null) { <p class="error" role="alert">@error</p> }
         @if (errors.Count > 0) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
         <section class="panel">
-            <h3>Mapping</h3>
+            <h2>Mapping</h2>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Category rules</caption>
                 <thead><tr><th scope="col">Document type</th><th scope="col">Link type</th><th scope="col">Category</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
@@ -24,7 +24,7 @@
             </table></div>
         </section>
         <section class="panel">
-            <h3>Add or change a rule</h3>
+            <h2>Add or change a rule</h2>
             <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <label>Document type * <input @bind="documentType" maxlength="60" required /></label>
                 <label>Link type <select @bind="linkType"><option value="*">Any</option><option value="describes">describes</option><option value="references">references</option></select></label>

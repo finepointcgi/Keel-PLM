@@ -37,8 +37,9 @@ public static class DocumentEndpoints
     {
         var docs = app.MapGroup("/api/v1/documents").RequireAuthorization(Policies.AnyPlmRole);
 
-        docs.MapGet("", async (string? q, string? type, string? state, int? limit, int? offset, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
-            await svc.SearchAsync(SubjectFactory.Require(ctx), q, type, state, limit ?? 50, offset ?? 0, CorrelationId.Get(ctx), ct));
+        docs.MapGet("", async Task<Microsoft.AspNetCore.Http.HttpResults.Results<Microsoft.AspNetCore.Http.HttpResults.Ok<DocumentSearchResult>, Microsoft.AspNetCore.Http.HttpResults.ValidationProblem>> (string? q, string? type, string? state, string? sort, string? dir, int? limit, int? offset, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
+            !DocumentService.SortKeys.TryResolve(sort, dir, out var spec, out var error) ? OutcomeResults.BadSort(error!)
+            : TypedResults.Ok(await svc.SearchAsync(SubjectFactory.Require(ctx), q, type, state, limit ?? 50, offset ?? 0, spec, CorrelationId.Get(ctx), ct)));
 
         // multipart/form-data: field "metadata" (JSON CreateDocumentRequest), then optional field "file".
         docs.MapPost("", async (HttpContext ctx, DocumentService svc, VaultOptions vault, CancellationToken ct) =>

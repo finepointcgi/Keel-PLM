@@ -26,7 +26,7 @@
         @if (editing is not null)
         {
             <section class="panel">
-                <h3>Numbering for @editing.ObjectType</h3>
+                <h2>Numbering for @editing.ObjectType</h2>
                 <form class="grid-form" @onsubmit="PreviewOrSave" @onsubmit:preventDefault>
                     <label>Prefix * <input @bind="prefix" maxlength="16" required aria-describedby="prefix-help" /></label>
                     <label>Digits * <input type="number" min="4" max="12" @bind="width" required /></label>
@@ -37,7 +37,7 @@
                         <button type="button" class="secondary" @onclick="() => editing = null">Cancel</button>
                     </div>
                 </form>
-                <h4>Move the counter forward</h4>
+                <h3>Move the counter forward</h3>
                 <form class="grid-form" @onsubmit="AdvanceAsync" @onsubmit:preventDefault>
                     <label>Next value * <input type="number" min="@(editing.NextValue + 1)" @bind="advanceTo" /></label>
                     <p class="muted small wide">Use this after importing explicit numbers so generated numbers skip past them. The counter cannot go back.</p>
