@@ -12,3 +12,7 @@ git --no-pager diff --stat -- docs/integration/cad-openapi.json || true
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.SourcingApiTests.The_published_sourcing_openapi_document_equals_the_committed_one_and_lists_no_internal_surface"
 git --no-pager diff --stat -- docs/integration/openapi.json docs/sourcing/openapi.json || true
+# Records management (8.6) has its own document (docs/records/openapi.json).
+KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
+  --filter-method "Keel.IntegrationTests.RecordsApiTests.The_published_records_openapi_document_equals_the_committed_one_and_lists_no_other_surface"
+git --no-pager diff --stat -- docs/records/openapi.json || true

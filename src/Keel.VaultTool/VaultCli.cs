@@ -30,6 +30,7 @@ public static class VaultCli
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextWriter error, Func<string, string?> env, CancellationToken ct)
     {
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help") return Usage(output, 0);
+        if (args[0] == "verify-archive") return ArchiveCli.Run(args.Skip(1).ToArray(), output, error); // 8.6: offline verification of archive packages, no database or vault needed
         if (args[0] != "gc") { error.WriteLine($"Unknown command '{args[0]}'."); return Usage(error, 2); }
         if (!TryParse(args.Skip(1).ToArray(), error, out var opts)) return 2;
 
@@ -146,6 +147,7 @@ public static class VaultCli
         w.WriteLine("usage: keel-vault gc [--dry-run | --delete --confirm-bucket NAME] [--grace-days N] [--max-deletions N] [--page-size N] [--prefix P]");
         w.WriteLine("                     [--continuation TOKEN] [--json] [--operator NAME]");
         w.WriteLine("                     [--connection CS | --settings FILE | --use-dev-stack] [--vault-url URL --vault-access-key K --vault-secret-key S --vault-bucket B]");
+        w.WriteLine("       keel-vault verify-archive --package FILE --public-key PEM [--extract SHA256 --out FILE] [--json]   (offline check of a records archive package)");
         w.WriteLine("The target database is never implied: set Keel__Database__AppConnectionString, or pass --connection / --settings / --use-dev-stack.");
         w.WriteLine("Default is a dry run. A delete run removes only unreferenced objects older than the grace period (default 7 days, at least 1).");
         return code;

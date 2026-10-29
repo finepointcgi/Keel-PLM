@@ -109,6 +109,11 @@ public sealed class AccessibilityTests(E2EFixture fx)
         Add("ada", $"/suppliers/{SourcingSeed.SupplierA}?tab=portal");
         Add("sup-alpha", "/portal", $"/portal/requests/{SourcingSeed.Request}");
 
+        // Records management (8.6, ADR-0041): schedules, holds, disposition, certificates and archives, and the hold chip on an object's page. The rows come from RecordsSeed.
+        RecordsSeed.EnsureAsync(fx).GetAwaiter().GetResult();
+        Add("rex", "/records", "/records/schedules", $"/records/schedules/{RecordsSeed.ScheduleVersion}", "/records/holds", $"/records/holds/{RecordsSeed.Hold}", "/records/disposition",
+            $"/records/disposition/{RecordsSeed.Request}", "/records/archives", "/records/certificates", $"/documents/{m.SystemSpecification}", "/");
+
         Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
             "/admin/integration/profiles", "/admin/integration/sinks", "/admin/integration/tdp-categories", "/admin/lifecycles", "/admin/lists", "/admin/migration",
             "/admin/numbering", "/admin/reasons", "/admin/supply-types", "/admin/workflow-templates", "/audit", "/access", "/parts", "/");
@@ -133,7 +138,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
             var originalTheme = new Dictionary<string, string>();
             try
             {
-                foreach (var name in new[] { "alice", "ada", "sup-alpha" })
+                foreach (var name in new[] { "alice", "ada", "sup-alpha", "rex" })
                 {
                     var up = await session.SignInAsync(name, 1280, 900);
                     originalTheme[name] = await up.Page.EvaluateAsync<string>("document.documentElement.getAttribute('data-theme')");

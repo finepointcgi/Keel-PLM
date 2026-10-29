@@ -208,7 +208,7 @@ internal sealed class HoldWorkflowGateway(IAuditLog audit) : RecordsGatewayBase(
 
 // ---------------------------------------------------------------- disposition approval
 
-internal sealed class DispositionWorkflowGateway(IAuditLog audit, TimeProvider clock) : RecordsGatewayBase(audit)
+internal sealed class DispositionWorkflowGateway(IAuditLog audit, TimeProvider clock) : RecordsGatewayBase(audit), IWorkflowObjectGateway
 {
     public const string ContentFormat = "disposition-content/1";
     public override string ObjectType => "disposition";
