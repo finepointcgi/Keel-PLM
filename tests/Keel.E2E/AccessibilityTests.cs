@@ -87,6 +87,8 @@ public sealed class AccessibilityTests(E2EFixture fx)
         // CAD integration (ADR-0035): the CAD tab of a document, the proposals list and the review page.
         var cadProposal = CadE2ESeed.EnsureAsync(fx).GetAwaiter().GetResult();
         Add("alice", $"/documents/{m.SystemSpecification}?tab=cad", "/cad/bom-proposals", $"/cad/bom-proposals/{cadProposal}");
+        // Output and bulk work (ADR-0044): reports, release packages, BOM exchange, mass change.
+        Add("alice", "/output/reports", "/output/packages", "/output/bom", "/output/mass");
 
         foreach (var tab in new[] { "overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", "activity", "comments", "trace" })
             Add("alice", $"/changes/{m.EcnDraftInWork}?tab={tab}");
