@@ -12,3 +12,7 @@ git --no-pager diff --stat -- docs/integration/cad-openapi.json || true
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.SourcingApiTests.The_published_sourcing_openapi_document_equals_the_committed_one_and_lists_no_internal_surface"
 git --no-pager diff --stat -- docs/integration/openapi.json docs/sourcing/openapi.json || true
+# The quality API has its own document (docs/quality/openapi.json).
+KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
+  --filter-method "Keel.IntegrationTests.QualityApiTests.The_published_quality_openapi_document_equals_the_committed_one_and_lists_nothing_else"
+git --no-pager diff --stat -- docs/quality/openapi.json || true

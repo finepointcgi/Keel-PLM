@@ -227,7 +227,7 @@ public sealed class QualityActions
                 ins.Parameters.AddWithValue("by", QualityStore.Who(subject));
                 await ins.ExecuteNonQueryAsync(ct);
             }
-            await QualityStore.AppendHistoryAsync(conn, tx, kind, c.Head.Id, subject, "Link added", $"{LinkKinds.Label(toKind)} {target.Key}.", c.Now, ct);
+            await QualityStore.AppendHistoryAsync(conn, tx, kind, c.Head.Id, subject, "Link added", $"A link to a {LinkKinds.Label(toKind).ToLowerInvariant()} was added.", c.Now, ct);
             return QStep.Done(("target", target.Key), ("targetKind", toKind));
         }, (conn, tx, id, _) => Task.FromResult<LinkResult?>(new LinkResult(linkId, toKind, key)), ct);
     }
@@ -246,7 +246,7 @@ public sealed class QualityActions
             if (!await r.ReadAsync(ct)) return QStep.Invalid("That link does not exist.");
             var (tk, key) = (r.GetString(0), r.GetString(1));
             await r.CloseAsync();
-            await QualityStore.AppendHistoryAsync(conn, tx, kind, c.Head.Id, subject, "Link removed", $"{LinkKinds.Label(tk)} {key}.", c.Now, ct);
+            await QualityStore.AppendHistoryAsync(conn, tx, kind, c.Head.Id, subject, "Link removed", $"A link to a {LinkKinds.Label(tk).ToLowerInvariant()} was removed.", c.Now, ct);
             return QStep.Done(("target", key), ("targetKind", tk));
         }, (conn, tx, id, _) => Task.FromResult<LinkResult?>(new LinkResult(linkId, "", "")), ct);
 
