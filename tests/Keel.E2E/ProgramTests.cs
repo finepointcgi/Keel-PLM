@@ -75,7 +75,7 @@ public static class ProgramRecords
 
         await session.GotoAsync(alice, "/programs/ORCA?tab=schedule");
         var href = await page.Locator("table[data-table='schedule'] a[href^='programs/gates/']").First.GetAttributeAsync("href");
-        var gate = href![(href.LastIndexOf('/') + 1)..];
+        var gate = href![(href!.LastIndexOf('/') + 1)..];
         return new ProgramData("ORCA", gate, fx.Manifest.GimbalBracket);
     }
 }

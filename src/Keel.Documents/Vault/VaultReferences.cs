@@ -57,6 +57,7 @@ public static class VaultReferences
         new("cfg", "baseline", "content_sha256", "hash over the canonical item list of a baseline (ADR-0021), not a vault object"),
         new("chg", "change_submission", "snapshot_sha256", "hash of a change submission snapshot (ADR-0019), not a vault object"),
         new("qual", "submission", "snapshot_sha256", "hash of a quality review snapshot (ADR-0036), not a vault object"),
+        new("prg", "submission", "snapshot_sha256", "hash of a gate review snapshot (ADR-0043), not a vault object"),
         new("wf", "signature", "content_hash", "hash over the canonical content of a signed iteration (ADR-0018), not a vault object"),
         new("wf", "signature", "signature_hash", "hash over the canonical signed statement (ADR-0018), not a vault object"),
         new("siem", "cursor", "last_hash", "audit chain hash at the forwarding position"),
