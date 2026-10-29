@@ -117,6 +117,70 @@ public sealed class SessionLockTests(E2EFixture fx)
         });
     }
 
+    private string LockHostLogPath => Path.Combine(fx.ResultsDir, "api-lock.log");
+
+    private string LockHostLogFrom(long offset)
+    {
+        using var stream = new FileStream(LockHostLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        stream.Seek(Math.Min(offset, stream.Length), SeekOrigin.Begin);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    private long LockHostLogLength() => File.Exists(LockHostLogPath) ? new FileInfo(LockHostLogPath).Length : 0;
+
+    [E2EFact]
+    public async Task Reloading_a_locked_session_shows_the_lock_dialog_without_page_data_or_a_circuit_error()
+    {
+        await fx.EnsureLockHostAsync();
+        await using var session = new BrowserSession(fx, nameof(Reloading_a_locked_session_shows_the_lock_dialog_without_page_data_or_a_circuit_error));
+        await session.RunAsync(async () =>
+        {
+            var m = fx.Manifest;
+            var logFrom = LockHostLogLength();
+            var alice = await session.SignInAsync("alice", baseUrl: fx.LockHostUrl);
+            var page = alice.Page;
+            var partPath = "/parts/" + m.GimbalBracket;
+            await session.GotoAsync(alice, partPath);
+            await Expect(page.GetByText("Gimbal bracket").First).ToBeVisibleAsync();
+
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Lock now" }).ClickAsync();
+            var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Session locked" });
+            await Expect(dialog).ToBeVisibleAsync();
+
+            // A reload starts a new circuit for a session that is already locked: the lock dialog is the first thing rendered, the part page never runs.
+            await page.ReloadAsync();
+            await Expect(dialog).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 20_000 });
+            await Expect(page.Locator("[data-lock-countdown]")).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign in to unlock" })).ToBeVisibleAsync();
+            await Task.Delay(1500); // a circuit that was going to die has done so by now
+            await Expect(dialog).ToBeVisibleAsync();
+
+            var html = await page.ContentAsync();
+            foreach (var secret in new[] { m.GimbalBracket, "Gimbal bracket", "7075-T6", "ITAR", "USML", "ORCA", "Critical safety", "alice@", "Where used" })
+                Assert.DoesNotContain(secret, html, StringComparison.Ordinal);
+            Assert.Equal(0, await page.Locator("nav[aria-label='Main']").CountAsync());
+            Assert.Equal(0, await page.Locator("[data-position]").CountAsync());
+            Assert.False(await page.Locator("#blazor-error-ui").IsVisibleAsync(), "the error banner of a dead circuit is not shown");
+
+            // The page is still usable: unlocking is the IdP login and returns to the same page.
+            await BrowserSession.ClickAsync(page, "Sign in to unlock");
+            await page.WaitForURLAsync(new Regex(@"/realms/keel/"));
+            await BrowserSession.SubmitKeycloakAsync(page, "alice");
+            await page.WaitForURLAsync(url => url.StartsWith(fx.LockHostUrl + partPath, StringComparison.Ordinal));
+            await Expect(page.GetByText("Gimbal bracket").First).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
+
+            // No circuit error in the browser console or in the server log.
+            Assert.Empty(alice.PageErrors);
+            Assert.DoesNotContain(alice.ConsoleErrors, e => e.Contains("circuit", StringComparison.OrdinalIgnoreCase) || e.Contains("SessionLocked", StringComparison.Ordinal));
+            var log = LockHostLogFrom(logFrom);
+            Assert.DoesNotContain("SessionLockedException", log, StringComparison.Ordinal);
+            Assert.DoesNotContain("Unhandled exception in circuit", log, StringComparison.Ordinal);
+            Assert.DoesNotContain("ObjectDisposedException", log, StringComparison.Ordinal);
+        });
+    }
+
     [E2EFact]
     public async Task Lock_now_locks_at_once_and_a_session_that_stays_locked_is_ended()
     {

@@ -57,9 +57,10 @@
                 @* The page is not rendered while the session is locked: its components are disposed, so no data of it is left in the DOM (ADR-0026). *@
                 <LockedPanel View="Lock.View" />
             }
-            else
+            else if (ready)
             {
-                @Body
+                @* Only once the lock state is known (ready): a reload of a locked session must not run page components, which would read data first. *@
+                <SessionLockGuard>@Body</SessionLockGuard>
             }
         </main>
     </div>

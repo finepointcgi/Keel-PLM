@@ -360,6 +360,79 @@ public sealed class SessionLockTests : BunitContext
         }))));
     }
 
+    /// <summary>A page stand-in that records that it ran and then behaves like a page calling <c>CurrentUser.GetAsync</c>: it throws while the session is locked.</summary>
+    private sealed class ProbePage : ComponentBase
+    {
+        public static int Runs;
+        [Inject] public IServiceProvider Sp { get; set; } = default!;
+        [Parameter] public Exception? Throw { get; set; }
+
+        protected override async Task OnParametersSetAsync()
+        {
+            Interlocked.Increment(ref Runs);
+            if (Throw is not null) throw Throw;
+            var auth = (AuthenticationStateProvider)Sp.GetService(typeof(AuthenticationStateProvider))!;
+            Sp.GetService<SessionLockCoordinator>()?.ThrowIfLocked((await auth.GetAuthenticationStateAsync()).User);
+        }
+
+        protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder b) => b.AddMarkupContent(0, "<article id=\"page-data\">Bracket P-000123</article>");
+    }
+
+    [Fact]
+    public async Task A_circuit_for_an_already_locked_session_shows_the_lock_panel_and_never_runs_the_page()
+    {
+        var (registry, _, _) = Setup();
+        await registry.LockNowAsync("s1"); // as after a reload or a restart: the lock is already stored when the new circuit starts
+        ProbePage.Runs = 0;
+
+        var cut = Render<CascadingAuthenticationState>(p => p.AddChildContent<MainLayout>(l => l.Add(x => x.Body, (RenderFragment)(b => { b.OpenComponent<ProbePage>(0); b.CloseComponent(); }))));
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[role=dialog][data-phase=locked]")));
+        Assert.Equal(0, ProbePage.Runs); // no page component ran, so none could read data
+        Assert.Empty(cut.FindAll("#page-data"));
+        Assert.DoesNotContain("Bracket", cut.Markup, StringComparison.Ordinal);
+        Assert.NotNull(cut.Find("[data-action=unlock]"));
+    }
+
+    [Fact]
+    public async Task A_lock_that_happens_while_the_page_renders_is_swallowed_and_the_lock_panel_shows()
+    {
+        var (registry, _, _) = Setup();
+        ProbePage.Runs = 0;
+        var cut = Render<CascadingAuthenticationState>(p => p.AddChildContent<MainLayout>(l => l.Add(x => x.Body, (RenderFragment)(b => { b.OpenComponent<ProbePage>(0); b.CloseComponent(); }))));
+        Assert.Contains("Bracket P-000123", cut.Markup, StringComparison.Ordinal);
+
+        await registry.LockNowAsync("s1");
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-phase=locked]")));
+        Assert.Empty(cut.FindAll("#page-data"));
+    }
+
+    [Fact]
+    public void The_guard_swallows_a_session_locked_exception_and_renders_nothing()
+    {
+        Services.AddLogging();
+        var cut = Render<SessionLockGuard>(p => p.AddChildContent<ProbePage>(x => x.Add(y => y.Throw, new SessionLockedException())));
+
+        Assert.Empty(cut.Markup.Trim()); // no content, no error UI, and no exception out of the render
+
+        var fine = Render<SessionLockGuard>(p => p.AddChildContent("<p id=\"ok\">content</p>"));
+        Assert.Equal("content", fine.Find("#ok").TextContent);
+    }
+
+    [Fact]
+    public void The_guard_passes_any_other_exception_on_as_unhandled()
+    {
+        Services.AddLogging();
+        var ex = Record.Exception(() =>
+        {
+            var cut = Render<SessionLockGuard>(p => p.AddChildContent<ProbePage>(x => x.Add(y => y.Throw, new InvalidOperationException("boom"))));
+            cut.WaitForAssertion(() => cut.Render()); // the exception is raised on the renderer's dispatcher, which bUnit reports on the next render
+        });
+
+        Assert.NotNull(ex);
+        Assert.Contains("boom", ex!.ToString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Locking_replaces_the_page_so_none_of_its_data_remains_in_the_dom()
     {
