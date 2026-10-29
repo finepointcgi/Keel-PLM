@@ -41,3 +41,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0034](0034-accessibility-and-scale.md) | Accessibility audit (axe-core, test-only) and performance budgets at scale | Accepted |
 | [0035](0035-cad-integration.md) | CAD integration: vendor-neutral connector protocol, package check-in/out, CAD BOM proposals | Accepted |
 | [0037](0037-sourcing.md) | Suppliers, approved lists and supplier portal | Accepted |
+| [0039](0039-configuration-and-variants.md) | Configuration and variants: options, rules, 150% BOM conditions | Accepted |
