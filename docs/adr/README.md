@@ -32,3 +32,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0025](0025-integration-outbox-erp-tdp.md) | Integration outbox, ERP events and TDP export | Accepted |
 | [0026](0026-session-lock-scanning-gc-siem.md) | Session lock, upload scanning, vault GC, SIEM forwarding | Accepted |
 | [0027](0027-file-viewer.md) | In-browser file viewer (3D, PDF, images) | Accepted |
+| [0028](0028-ui-shell-and-workspace.md) | UI shell, design system and personal workspace | Accepted |

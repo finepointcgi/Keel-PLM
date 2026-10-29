@@ -179,9 +179,11 @@ tr[tabindex]:focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
 .palette-input:focus-within { box-shadow: inset 0 -2px 0 var(--c-focus); }
 .palette-list { list-style: none; margin: 0; padding: var(--sp-2); overflow-y: auto; }
 .palette-list .group-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--c-muted); font-weight: 700; padding: var(--sp-2) var(--sp-3) 2px; }
-.palette-item { display: flex; align-items: center; gap: var(--sp-3); padding: 6px var(--sp-3); border-radius: var(--radius-1); cursor: pointer; min-height: 40px; color: var(--c-text); text-decoration: none; }
+.palette-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); padding: 6px var(--sp-3); border-radius: var(--radius-1); cursor: pointer; min-height: 40px; color: var(--c-text); text-decoration: none; }
 .palette-item[aria-selected="true"], .palette-item:hover { background: var(--c-surface-2); box-shadow: inset 3px 0 0 var(--c-accent); }
-.palette-item .main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.palette-item .main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 14rem; }
+/* The marking chip is never truncated; on a narrow row it wraps under the name instead of squeezing it away. */
+.palette-item .chip { flex: 0 0 auto; max-width: 100%; white-space: normal; }
 .palette-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-item .kind { color: var(--c-muted); font-size: var(--fs-xs); }
 .palette-foot { display: flex; gap: var(--sp-4); flex-wrap: wrap; padding: var(--sp-2) var(--sp-4); border-top: 1px solid var(--c-border); font-size: var(--fs-xs); color: var(--c-muted); }
