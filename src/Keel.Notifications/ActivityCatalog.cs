@@ -152,6 +152,7 @@ public static partial class ActivityCatalog
         ["change.search"] = "{actor} found the change in a search",
         ["change.for_object"] = "{actor} listed the changes of an object",
         ["change.impact"] = "{actor} ran an impact analysis",
+        ["change.impact_export"] = "{actor} exported the impact map",
         ["change.task_list"] = "{actor} listed change tasks",
         ["baseline.read"] = "{actor} viewed the baseline",
         ["baseline.search"] = "{actor} found the baseline in a search",
@@ -192,6 +193,7 @@ public static partial class ActivityCatalog
         ["workflow.read"] = "{actor} viewed a review",
         ["workflow.task_read"] = "{actor} viewed a review task",
         ["workflow.status"] = "{actor} viewed the review status",
+        ["workflow.map"] = "{actor} viewed the review progress map",
         ["workflow.verify"] = "{actor} verified a review's signatures",
     };
 
