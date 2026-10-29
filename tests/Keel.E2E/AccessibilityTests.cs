@@ -107,6 +107,11 @@ public sealed class AccessibilityTests(E2EFixture fx)
         foreach (var tab in new[] { "overview", "certifications", "contacts", "parts", "quality", "review", "activity", "comments" })
             Add("alice", $"/suppliers/{SourcingSeed.SupplierA}?tab={tab}");
         Add("ada", $"/suppliers/{SourcingSeed.SupplierA}?tab=portal");
+        // Product compliance (8.5, ADR-0040): the part tab, the roll-up (table, causes and treemap), declarations, regulatory lists, substances and materials; the rows come from ComplianceSeed.
+        Add("alice", $"/parts/{m.OpenFastener}?tab=compliance", $"/parts/{m.GimbalBracket}?tab=compliance", "/compliance", $"/compliance?mode=ebom&number={m.TopAssembly}", "/compliance/declarations",
+            $"/compliance/declarations/{ComplianceSeed.FastenerDeclaration}", $"/compliance/declarations/{ComplianceSeed.BracketDeclaration}", "/compliance/lists", "/compliance/lists/rohs",
+            "/compliance/lists/rohs/versions/1", "/compliance/lists/conflict_minerals/versions/1", "/compliance/substances", "/compliance/substances/SUB-000001", "/compliance/materials");
+        Add("ada", "/compliance/lists/rohs", "/compliance/substances", "/compliance/materials");
         Add("sup-alpha", "/portal", $"/portal/requests/{SourcingSeed.Request}");
 
         Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
@@ -124,6 +129,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
         await session.RunAsync(async () =>
         {
             await SourcingSeed.EnsureAsync(fx);
+            await ComplianceSeed.EnsureAsync(fx);
             var e = fx.Manifest.Extras ?? throw new InvalidOperationException("The demo extras are missing.");
             var extras = new DemoExtrasView(e.DesignBaseline, e.ReleaseBaseline, e.ReleasedMbom, e.StaleMbom);
             var axe = await File.ReadAllTextAsync(AxePath());
