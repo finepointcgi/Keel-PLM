@@ -23,6 +23,7 @@
     <ProjectReference Include="..\Keel.Records\Keel.Records.csproj" />
     <ProjectReference Include="..\Keel.Compliance\Keel.Compliance.csproj" />
     <ProjectReference Include="..\Keel.Requirements\Keel.Requirements.csproj" />
+    <ProjectReference Include="..\Keel.Reports\Keel.Reports.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
   </ItemGroup>
   <ItemGroup>

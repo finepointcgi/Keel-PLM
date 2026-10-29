@@ -1,0 +1,94 @@
+@page "/output/packages"
+@inject CurrentUser Users
+@inject ReleasePackageService Packages
+@inject NavigationManager Nav
+
+@* Release package PDFs of a released part, ECN or baseline. The page banner is the aggregate of the packages listed (ADR-0044). *@
+<PageFrame Banner="@(banner ?? UiText.Unclassified)" Title="Release packages" Crumbs="@Crumbs">
+    <p class="muted">A release package is one PDF: cover sheet, bill of materials, documents with file hashes, signatures and change summary. It carries the combined marking of everything in it on every page. It is made only when you can read every object it needs, and it is never made with parts left out.</p>
+
+    <section class="panel stack" aria-labelledby="make-heading">
+        <h2 id="make-heading">Make a package</h2>
+        <EditForm Model="this" OnSubmit="Generate" FormName="make-package" class="stack">
+            <fieldset class="grid-form">
+                <legend>What to package</legend>
+                <label>Kind
+                    <InputSelect @bind-Value="kind" data-testid="package-kind">
+                        <option value="part">Part or assembly</option>
+                        <option value="ecn">Change notice</option>
+                        <option value="baseline">Baseline</option>
+                    </InputSelect>
+                </label>
+                <label>Number * <InputText @bind-Value="key" maxlength="64" required data-testid="package-key" /></label>
+            </fieldset>
+            @if (error is not null) { <p class="error" role="alert" data-testid="package-error">@error</p> }
+            <div class="toolbar">
+                <button type="submit" disabled="@busy" data-testid="package-generate">@(busy ? "Making the package…" : "Make package")</button>
+                <button type="button" class="secondary" @onclick="Load" disabled="@busy">Show existing packages</button>
+            </div>
+        </EditForm>
+    </section>
+
+    @if (items is not null)
+    {
+        <h2>Packages of @loadedKind @loadedKey</h2>
+        <p class="muted" aria-live="polite">@(items.Count == 0 ? "No packages you may read." : $"{items.Count} package{(items.Count == 1 ? "" : "s")}")</p>
+        @if (items.Count > 0)
+        {
+            <div class="table-wrap"><table class="data" data-testid="package-list">
+                <caption class="sr-only">Release packages</caption>
+                <thead><tr><th scope="col">Package</th><th scope="col">Made</th><th scope="col">Size</th><th scope="col">SHA-256</th><th scope="col">Markings</th></tr></thead>
+                <tbody>
+                @foreach (var a in items)
+                {
+                    <tr>
+                        <td><a href="ui/output/packages/@a.Number" download data-testid="package-download">@(a.Number).pdf</a></td>
+                        <td>@UiText.Utc(a.CreatedAt) by @a.CreatedBy</td>
+                        <td>@(a.SizeBytes / 1024) KiB</td>
+                        <td><code class="small">@a.Sha256[..16]…</code></td>
+                        <td><MarkingChip Text="@a.Banner" /></td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Release packages")];
+    [SupplyParameterFromQuery(Name = "kind")] public string? QueryKind { get; set; }
+    [SupplyParameterFromQuery(Name = "key")] public string? QueryKey { get; set; }
+    private string kind = "part", key = "", loadedKind = "", loadedKey = "";
+    private IReadOnlyList<ArtifactView>? items;
+    private string? error, banner;
+    private bool busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (QueryKind is { Length: > 0 }) kind = QueryKind;
+        if (QueryKey is { Length: > 0 }) { key = QueryKey; await Load(); }
+    }
+
+    private async Task Load()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(key)) { error = "Give a number."; return; }
+        loadedKind = kind; loadedKey = key.Trim();
+        items = await Packages.ListAsync(await Users.GetAsync(), kind, key, default);
+        // Every package listed shows its own banner; the page banner names all of them (the combined text when they differ).
+        banner = items.Count == 0 ? null : string.Join(" | ", items.Select(i => i.Banner).Distinct());
+    }
+
+    private async Task Generate()
+    {
+        error = null; busy = true;
+        try
+        {
+            var r = await Packages.GenerateAsync(await Users.GetAsync(), kind, key, CurrentUser.NewCorrelationId());
+            if (!r.IsOk) { error = OutputText.Message(r); return; }
+            await Load();
+        }
+        finally { busy = false; }
+    }
+}

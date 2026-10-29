@@ -1,0 +1,183 @@
+@page "/output/reports"
+@inject CurrentUser Users
+@inject ReportBuilderService Reports
+
+@* Report builder: saved, shareable report definitions over a fixed catalog of datasets. Every dataset is run through the owning module's access-filtered query; the page banner is the aggregate of the rows shown (ADR-0044). *@
+<PageFrame Banner="@(result?.Banner ?? UiText.Unclassified)" Title="Reports" Crumbs="@Crumbs">
+    <p class="muted">Build a report from a dataset: choose columns, filters, order and a grouping. It shows only what you may read. Saved reports can be shared; whoever runs one sees their own readable rows. Running reports on a schedule is not offered.</p>
+
+    <section class="panel stack" aria-labelledby="builder-heading">
+        <h2 id="builder-heading">Report</h2>
+        <fieldset class="grid-form">
+            <legend>Dataset</legend>
+            <label>Dataset
+                <select @onchange="OnDataset" data-testid="report-dataset">
+                    @foreach (var d in catalog) { <option value="@d.Id" selected="@(d.Id == datasetId)">@d.Title</option> }
+                </select>
+            </label>
+            @if (Current?.ParameterLabel is { } pl) { <label>@pl * <InputText @bind-Value="parameter" maxlength="64" data-testid="report-parameter" /></label> }
+            <label>Search text <InputText @bind-Value="text" maxlength="200" data-testid="report-text" /></label>
+        </fieldset>
+        @if (Current is { } cur)
+        {
+            <p class="muted">@cur.Description</p>
+            <fieldset>
+                <legend>Columns</legend>
+                <div class="checks">
+                @foreach (var c in cur.Columns)
+                {
+                    <label class="inline-check"><input type="checkbox" checked="@selected.Contains(c.Key)" @onchange="e => Toggle(c.Key, (bool)e.Value!)" data-testid="@($"report-col-{c.Key}")" /> @c.Label</label>
+                }
+                </div>
+            </fieldset>
+            <fieldset class="grid-form">
+                <legend>Filter, order and group</legend>
+                <label>Filter column
+                    <select @bind="filterColumn" data-testid="report-filter-column"><option value="">None</option>@foreach (var c in cur.Columns.Where(c => c.Filterable)) { <option value="@c.Key">@c.Label</option> }</select>
+                </label>
+                <label>Condition
+                    <select @bind="filterOp"><option value="contains">contains</option><option value="eq">is</option><option value="starts">starts with</option><option value="gte">at least</option><option value="lte">at most</option></select>
+                </label>
+                <label>Value <InputText @bind-Value="filterValue" maxlength="200" data-testid="report-filter-value" /></label>
+                <label>Order by
+                    <select @bind="sortColumn" data-testid="report-sort"><option value="">Default order</option>@foreach (var c in cur.Columns.Where(c => c.Sortable)) { <option value="@c.Key">@c.Label</option> }</select>
+                </label>
+                <label class="inline-check"><InputCheckbox @bind-Value="descending" /> Descending</label>
+                <label>Group and count by
+                    <select @bind="groupBy" data-testid="report-group"><option value="">No grouping</option>@foreach (var c in cur.Columns.Where(c => c.Groupable)) { <option value="@c.Key">@c.Label</option> }</select>
+                </label>
+            </fieldset>
+        }
+        @if (errors is not null) { <ul class="error" role="alert" data-testid="report-error">@foreach (var e in errors) { <li>@e</li> }</ul> }
+        <div class="toolbar">
+            <button type="button" @onclick="Run" disabled="@busy" data-testid="report-run">Run report</button>
+            <label class="inline-check">Name <InputText @bind-Value="saveName" maxlength="120" data-testid="report-name" /></label>
+            <label class="inline-check"><InputCheckbox @bind-Value="shared" /> Share with everyone</label>
+            <button type="button" class="secondary" @onclick="Save" disabled="@busy" data-testid="report-save">Save</button>
+        </div>
+    </section>
+
+    @if (result is { } r)
+    {
+        <section aria-labelledby="result-heading" data-testid="report-result">
+            <h2 id="result-heading">@r.Title</h2>
+            <p aria-live="polite" data-testid="report-count">@r.RowCount row@(r.RowCount == 1 ? "" : "s")@(r.Truncated ? $" (limited to the first {ReportsLimits.MaxReportRows})" : "")</p>
+            <p>Download:
+                <a href="@ExportUrl("csv")" download>CSV</a> ·
+                <a href="@ExportUrl("xlsx")" download>Excel</a> ·
+                <a href="@ExportUrl("pdf")" download>PDF</a>
+            </p>
+            @if (r.Groups.Count > 0)
+            {
+                <table class="data" data-testid="report-groups"><caption>Counts by @GroupLabel</caption>
+                    <thead><tr><th scope="col">@GroupLabel</th><th scope="col">Count</th></tr></thead>
+                    <tbody>@foreach (var g in r.Groups) { <tr><td>@g.Value</td><td>@g.Count</td></tr> }</tbody></table>
+            }
+            <div class="table-wrap"><table class="data" data-testid="report-table">
+                <caption class="sr-only">Report rows</caption>
+                <thead><tr>@foreach (var l in r.ColumnLabels) { <th scope="col">@l</th> }<th scope="col">Markings</th></tr></thead>
+                <tbody>
+                @foreach (var row in r.Rows) { <tr>@foreach (var c in row.Cells) { <td>@c</td> }<td><MarkingChip Text="@(row.Banner ?? UiText.Unclassified)" /></td></tr> }
+                </tbody>
+            </table></div>
+        </section>
+    }
+
+    <h2>Saved reports</h2>
+    @if (definitions.Count == 0) { <p class="muted">No saved reports yet.</p> }
+    else
+    {
+        <ul data-testid="report-saved">
+        @foreach (var d in definitions)
+        {
+            <li>
+                <button type="button" class="link" @onclick="() => LoadDefinition(d)">@d.Name</button>
+                <span class="muted"> · @d.Dataset · @(d.Mine ? "yours" : $"shared by {d.OwnerName}")@(d.Mine && d.Shared ? " · shared" : "")</span>
+                @if (d.Mine) { <button type="button" class="secondary small" @onclick="() => Delete(d)">Delete</button> }
+            </li>
+        }
+        </ul>
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Reports")];
+    private IReadOnlyList<DatasetInfo> catalog = [];
+    private IReadOnlyList<ReportDefinition> definitions = [];
+    private string datasetId = "parts", parameter = "", text = "", filterColumn = "", filterOp = "contains", filterValue = "", sortColumn = "", groupBy = "", saveName = "";
+    private bool descending, shared, busy;
+    private readonly List<string> selected = [];
+    private ReportResult? result;
+    private IReadOnlyList<string>? errors;
+
+    private DatasetInfo? Current => catalog.FirstOrDefault(d => d.Id == datasetId);
+    private string GroupLabel => Current?.Columns.FirstOrDefault(c => c.Key == groupBy)?.Label ?? groupBy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        catalog = Reports.Catalog();
+        if (catalog.Count > 0 && catalog.All(d => d.Id != datasetId)) datasetId = catalog[0].Id;
+        Reset();
+        definitions = await Reports.ListAsync(await Users.GetAsync());
+    }
+
+    private void Reset() { selected.Clear(); selected.AddRange(Current?.Columns.Take(5).Select(c => c.Key) ?? []); filterColumn = sortColumn = groupBy = ""; }
+    private void OnDataset(ChangeEventArgs e) { datasetId = (string)e.Value!; Reset(); result = null; }
+    private void Toggle(string key, bool on) { if (on && !selected.Contains(key)) selected.Add(key); else if (!on) selected.Remove(key); }
+
+    private ReportSpec Spec()
+    {
+        var order = Current!.Columns.Select(c => c.Key).Where(selected.Contains).ToList();
+        var filters = filterColumn.Length > 0 ? new List<DatasetFilter> { new(filterColumn, filterOp, filterValue) } : [];
+        return new ReportSpec(order, filters, string.IsNullOrWhiteSpace(text) ? null : text, string.IsNullOrWhiteSpace(parameter) ? null : parameter,
+            sortColumn.Length > 0 ? sortColumn : null, descending, groupBy.Length > 0 ? groupBy : null);
+    }
+
+    private string ExportUrl(string format)
+    {
+        var s = Spec();
+        var q = new List<string> { $"dataset={Uri.EscapeDataString(datasetId)}", $"format={format}", $"columns={Uri.EscapeDataString(string.Join(',', s.Columns))}" };
+        if (s.Text is not null) q.Add($"text={Uri.EscapeDataString(s.Text)}");
+        if (s.Parameter is not null) q.Add($"param={Uri.EscapeDataString(s.Parameter)}");
+        if (s.SortColumn is not null) { q.Add($"sort={s.SortColumn}"); q.Add($"dir={(s.Descending ? "desc" : "asc")}"); }
+        if (s.GroupBy is not null) q.Add($"group={s.GroupBy}");
+        foreach (var f in s.Filters ?? []) q.Add($"f={Uri.EscapeDataString($"{f.Column}|{f.Op}|{f.Value}")}");
+        return "ui/output/report-export?" + string.Join('&', q);
+    }
+
+    private async Task Run()
+    {
+        errors = null; busy = true;
+        try
+        {
+            var r = await Reports.RunAsync(await Users.GetAsync(), datasetId, Spec(), CurrentUser.NewCorrelationId());
+            if (r.IsOk) result = r.Value; else { result = null; errors = r.Kind == OutcomeKind.Invalid ? r.Errors : [OutputText.Message(r)]; }
+        }
+        finally { busy = false; }
+    }
+
+    private async Task Save()
+    {
+        errors = null; busy = true;
+        try
+        {
+            var r = await Reports.SaveAsync(await Users.GetAsync(), null, saveName, datasetId, Spec(), shared, CurrentUser.NewCorrelationId());
+            if (r.IsOk) definitions = await Reports.ListAsync(await Users.GetAsync()); else errors = r.Kind == OutcomeKind.Invalid ? r.Errors : [OutputText.Message(r)];
+        }
+        finally { busy = false; }
+    }
+
+    private void LoadDefinition(ReportDefinition d)
+    {
+        datasetId = d.Dataset; selected.Clear(); selected.AddRange(d.Spec.Columns);
+        text = d.Spec.Text ?? ""; parameter = d.Spec.Parameter ?? ""; sortColumn = d.Spec.SortColumn ?? ""; descending = d.Spec.Descending; groupBy = d.Spec.GroupBy ?? "";
+        var f = d.Spec.Filters?.FirstOrDefault();
+        filterColumn = f?.Column ?? ""; filterOp = f?.Op ?? "contains"; filterValue = f?.Value ?? ""; saveName = d.Name; shared = d.Shared; result = null;
+    }
+
+    private async Task Delete(ReportDefinition d)
+    {
+        await Reports.DeleteAsync(await Users.GetAsync(), d.Id, CurrentUser.NewCorrelationId());
+        definitions = await Reports.ListAsync(await Users.GetAsync());
+    }
+}

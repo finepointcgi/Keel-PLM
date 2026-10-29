@@ -376,7 +376,7 @@ public static partial class ActivityCatalog
     }.Concat(Keel.Core.EventTypes.All).ToFrozenSet(StringComparer.Ordinal); // the event types of the ERP contract are outbox events, not audit actions
 
     /// <summary>Whole namespaces that belong to administration and operations, not to an object's story.</summary>
-    public static readonly IReadOnlyList<string> HiddenPrefixes = ["admin.", "integration.", "migration.", "siem.", "vault.", "audit.", "session.", "tdp.", "workspace.", "records."];
+    public static readonly IReadOnlyList<string> HiddenPrefixes = ["admin.", "integration.", "migration.", "siem.", "vault.", "audit.", "session.", "tdp.", "workspace.", "records.", "output."];
 
     public static bool IsHidden(string action) => Hidden.Contains(action) || HiddenPrefixes.Any(p => action.StartsWith(p, StringComparison.Ordinal));
 
