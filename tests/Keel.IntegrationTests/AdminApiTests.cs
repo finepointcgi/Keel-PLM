@@ -88,7 +88,7 @@ public sealed class AdminApiTests(PostgresFixture pg)
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.PutAsJsonAsync("/api/v1/admin/numbering/ecn", new { prefix = "X-", width = 6, reason = "x" })).StatusCode);
 
         var families = await Json(await admin.GetAsync("/api/v1/admin/lifecycles"));
-        Assert.Equal(8, families.GetArrayLength()); // part, document, pr, ecr, ecn, ct + baseline + mbom
+        Assert.Equal(9, families.GetArrayLength()); // part, document, pr, ecr, ecn, ct + baseline + mbom + reqspec
         var current = await Json(await admin.GetAsync("/api/v1/admin/lifecycles/part-default"));
         var states = current.GetProperty("definition").GetProperty("states").EnumerateArray().Select(s => (object)new
         {
