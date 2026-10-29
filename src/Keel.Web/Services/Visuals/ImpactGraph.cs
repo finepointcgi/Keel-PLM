@@ -4,7 +4,7 @@ using Keel.Core;
 
 namespace Keel.Web.Services.Visuals;
 
-public enum GraphNodeKind { Change, Affected, Parent, Document, Conflict, Mbom, Restricted, More }
+public enum GraphNodeKind { Change, Affected, Parent, Document, Conflict, Mbom, Restricted, More, Requirement, TracePart, TraceDocument, TraceChange }
 
 /// <summary>
 /// A node of the impact map. A <see cref="GraphNodeKind.Restricted"/> node carries no number, name, banner or link: <see cref="Label"/> is the fixed text

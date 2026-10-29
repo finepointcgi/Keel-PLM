@@ -7,7 +7,7 @@
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
 
-<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner, timelineBanner, sourcingBanner, qualityBanner)" Title="@PageTitle"
+<PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner, timelineBanner, sourcingBanner, qualityBanner, tab == "trace" ? traceBanner : null)" Title="@PageTitle"
            Crumbs="@Crumbs" Header="@(part is not null && defs is not null ? HeaderFragment(part) : null)">
     @if (notFound)
     {
@@ -128,6 +128,9 @@
                             <TdpExportPanel ObjectType="part" Number="@p.Number" Revision="@p.Revision.Revision" OnBanner="b => tdpBanner = b" />
                         </div>
                         break;
+                    case "trace":
+                        <Keel.Web.Components.Pages.Requirements.ObjectTracePanel Kind="part" Key="@p.Number" OnBanner="b => traceBanner = b" />
+                        break;
                     case "timeline":
                         @* UX-3: the life of the part; the page banner also covers the other objects its entries name. *@
                         <TimelinePanel ObjectType="part" Key="@p.Number" Version="@($"{p.Revision.Revision}.{p.Iteration.Iteration}.{p.Revision.State}")"
@@ -232,11 +235,11 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "sourcing", "quality", "compliance", .. AwarenessTabs.Ids];
+    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "sourcing", "quality", "compliance", "trace", .. AwarenessTabs.Ids];
     private static readonly IReadOnlyList<TabInfo> Tabs =
     [
         new("overview", "Overview"), new("structure", "Structure"), new("documents", "Documents"), new("changes", "Changes"),
-        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"), new("sourcing", "Sourcing"), new("quality", "Quality"), new("compliance", "Compliance"),
+        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"), new("sourcing", "Sourcing"), new("quality", "Quality"), new("compliance", "Compliance"), new("trace", "Trace"),
     ];
 
     private PartDetail? part;
@@ -256,6 +259,7 @@
     private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
     private string? qualityBanner; // banner of the deviations, reports and actions the Quality tab shows (8.1)
     private string? sourcingBanner; // banner of the suppliers and related parts the Sourcing tab shows (8.2)
+    private string? traceBanner; // banner of the requirements the Trace tab names (8.3)
 
     private string PageTitle => part is null ? "Part" : $"{part.Number} · {part.Name}";
     private IReadOnlyList<Crumb> Crumbs => [new("Parts", "parts"), new(part?.Number ?? Number)];

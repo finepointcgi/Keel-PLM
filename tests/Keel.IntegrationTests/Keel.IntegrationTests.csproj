@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Keel.Variants\Keel.Variants.csproj" />
     <ProjectReference Include="..\..\src\Keel.Records\Keel.Records.csproj" />
     <ProjectReference Include="..\..\src\Keel.Compliance\Keel.Compliance.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Requirements\Keel.Requirements.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
     <ProjectReference Include="..\..\src\Keel.Documents\Keel.Documents.csproj" />
     <ProjectReference Include="..\..\src\Keel.Bom\Keel.Bom.csproj" />

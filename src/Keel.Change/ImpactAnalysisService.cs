@@ -15,7 +15,8 @@ namespace Keel.Change;
 /// </summary>
 public sealed class ImpactAnalysisService(
     NpgsqlDataSource dataSource, IAuditLog audit, IEnumerable<IChangeObjectGateway> gateways,
-    IEnumerable<IStructureImpactProvider> structure, IEnumerable<ILinkedDocumentProvider> documents, IEnumerable<IManufacturingImpactProvider>? manufacturing = null)
+    IEnumerable<IStructureImpactProvider> structure, IEnumerable<ILinkedDocumentProvider> documents, IEnumerable<IManufacturingImpactProvider>? manufacturing = null,
+    IEnumerable<IRequirementImpactProvider>? requirementProviders = null)
 {
     public const int DefaultLevels = 10;
 
@@ -50,7 +51,7 @@ public sealed class ImpactAnalysisService(
         var objects = new List<ImpactObject>();
         var affectedMasters = new HashSet<Guid>();
         var parentMasters = new HashSet<Guid>();
-        int parents = 0, redactedParents = 0, docs = 0, redactedDocs = 0, hidden = 0, structureChanges = 0, staleMboms = 0;
+        int parents = 0, redactedParents = 0, docs = 0, redactedDocs = 0, hidden = 0, structureChanges = 0, staleMboms = 0, requirementCount = 0;
 
         foreach (var row in rows)
         {
@@ -122,20 +123,33 @@ public sealed class ImpactAnalysisService(
                 }
             }
 
+            // 8.3: the requirements that trace to this part (allocations, evidence), with their verification state; a restricted requirement is a placeholder (ADR-0038).
+            IReadOnlyList<TracedRequirement>? traced = null;
+            if (requirementProviders?.FirstOrDefault() is { } rp)
+            {
+                var t = await rp.AffectedRequirementsAsync(subject, row.ObjectType, obj.Key, correlationId, ct);
+                if (t.IsOk)
+                {
+                    traced = t.Value!.Requirements;
+                    requirementCount += traced.Count(x => !x.Redacted);
+                    foreach (var x in traced.Where(x => x.Markings is not null)) shown.Add(x.Markings!);
+                }
+            }
+
             objects.Add(new ImpactObject(row.Id, false, row.Action, obj.Key, obj.Name, obj.Revision, obj.Markings.BannerText(), whereUsed,
-                whereUsed.Count(w => w.Redacted), whereUsed.Count == 0 ? 0 : whereUsed.Max(w => w.Level), linked, compare, note, stale, hiddenMboms));
+                whereUsed.Count(w => w.Redacted), whereUsed.Count == 0 ? 0 : whereUsed.Max(w => w.Level), linked, compare, note, stale, hiddenMboms, traced));
         }
 
         var conflicts = await FindConflictsAsync(conn, tx, subject, head, affectedMasters, parentMasters, ct);
         foreach (var c in conflicts) shown.Add(c.Markings);
 
         var banner = Markings.AggregateBanner(shown);
-        var summary = new ImpactSummary(rows.Count, hidden, parents, redactedParents, docs, redactedDocs, conflicts.Count, structureChanges, staleMboms);
+        var summary = new ImpactSummary(rows.Count, hidden, parents, redactedParents, docs, redactedDocs, conflicts.Count, structureChanges, staleMboms, requirementCount);
         await audit.AppendAsync(tx, ChangeStore.Entry(subject, "change.impact", AuditOutcome.Success, objectType, number, correlationId,
             ("levels", levels.ToString(CultureInfo.InvariantCulture)), ("objects", rows.Count.ToString(CultureInfo.InvariantCulture)), ("hiddenObjects", hidden.ToString(CultureInfo.InvariantCulture)),
             ("parents", parents.ToString(CultureInfo.InvariantCulture)), ("redactedParents", redactedParents.ToString(CultureInfo.InvariantCulture)),
             ("documents", docs.ToString(CultureInfo.InvariantCulture)), ("redactedDocuments", redactedDocs.ToString(CultureInfo.InvariantCulture)),
-            ("conflicts", conflicts.Count.ToString(CultureInfo.InvariantCulture)), ("staleMboms", staleMboms.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
+            ("conflicts", conflicts.Count.ToString(CultureInfo.InvariantCulture)), ("staleMboms", staleMboms.ToString(CultureInfo.InvariantCulture)), ("requirements", requirementCount.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
         await tx.CommitAsync(ct);
         return Outcome<ImpactReport>.Ok(new ImpactReport(number, objects, [.. conflicts.Select(c => c.Conflict)], summary, banner, shown));
     }

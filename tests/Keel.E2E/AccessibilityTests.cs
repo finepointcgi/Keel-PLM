@@ -77,18 +77,18 @@ public sealed class AccessibilityTests(E2EFixture fx)
             "/baselines", "/baselines/new", "/baselines/compare", "/mboms", "/mboms/generate", "/tasks", "/workflows", "/search?q=" + m.GimbalBracket, "/search?q=bracket&kind=part",
             "/notifications", "/notifications?tab=unread", "/notifications/preferences", "/watching", "/profile", "/access", "/tdp", "/not-found", "/access-denied");
 
-        foreach (var tab in new[] { "overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "activity", "comments" })
+        foreach (var tab in new[] { "overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "activity", "comments", "trace" })
             Add("alice", $"/parts/{m.GimbalBracket}?tab={tab}");
         Add("alice", $"/parts/{m.TopAssembly}?tab=structure", $"/parts/{m.TopAssembly}?tab=timeline", $"/parts/{m.GimbalBracket}/where-used", $"/parts/{m.TopAssembly}/where-used",
             $"/parts/{m.GimbalBracket}/compare", "/parts/P-000005/compare-units", $"/parts/{m.AvionicsAssemblyUnderReview}?tab=review", $"/parts/{m.OpenFastener}");
 
-        foreach (var tab in new[] { "overview", "usedby", "history", "timeline", "security", "activity", "comments" })
+        foreach (var tab in new[] { "overview", "usedby", "history", "timeline", "security", "activity", "comments", "trace" })
             Add("alice", $"/documents/{m.SystemSpecification}?tab={tab}");
         // CAD integration (ADR-0035): the CAD tab of a document, the proposals list and the review page.
         var cadProposal = CadE2ESeed.EnsureAsync(fx).GetAwaiter().GetResult();
         Add("alice", $"/documents/{m.SystemSpecification}?tab=cad", "/cad/bom-proposals", $"/cad/bom-proposals/{cadProposal}");
 
-        foreach (var tab in new[] { "overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", "activity", "comments" })
+        foreach (var tab in new[] { "overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", "activity", "comments", "trace" })
             Add("alice", $"/changes/{m.EcnDraftInWork}?tab={tab}");
         Add("alice", $"/changes/{m.EcnUnderReview}?tab=review", $"/changes/{m.EcrAwaitingCcb}", $"/changes/{m.ProblemReportOpen}");
 
@@ -99,6 +99,13 @@ public sealed class AccessibilityTests(E2EFixture fx)
         foreach (var tab in new[] { "overview", "lines", "reconciliation", "review", "structure", "timeline", "security", "activity", "comments" })
             Add("alice", $"/mboms/{x.ReleasedMbom}?tab={tab}");
         Add("alice", $"/mboms/{x.StaleMbom}?tab=reconciliation", $"/mboms/{x.ReleasedMbom}/compare", $"/mboms/{x.ReleasedMbom}/side-by-side");
+
+        // Requirements and traceability (8.3, ADR-0038): the demo specification, every tab, the list, the creation page and the administrator's link types.
+        var spec = fx.Manifest.Extras?.RequirementSpec ?? throw new InvalidOperationException("The demo requirement specification is missing.");
+        Add("alice", "/requirements", "/requirements/new", $"/requirements?q={spec}");
+        foreach (var tab in new[] { "overview", "requirements", "trace", "verification", "coverage", "exchange", "review", "timeline", "security", "activity", "comments" })
+            Add("alice", $"/requirements/{spec}?tab={tab}");
+        Add("ada", "/admin/requirement-link-types");
 
         // Suppliers, approved lists, requests and the supplier portal (8.2, ADR-0037): the synthetic rows come from SourcingSeed.
         Add("alice", "/suppliers", "/suppliers/new", "/requests", "/requests/new", "/sourcing/where-sourced", "/sourcing/coverage",

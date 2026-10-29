@@ -19,8 +19,9 @@ public static class AwarenessKinds
     public const string Capa = "capa";
     public const string Deviation = "deviation";
     public const string Supplier = "supplier";
+    public const string ReqSpec = "reqspec";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, ReqSpec];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -36,6 +37,7 @@ public static class AwarenessKinds
         Capa => "quality/capas/" + Uri.EscapeDataString(number),
         Deviation => "quality/deviations/" + Uri.EscapeDataString(number),
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
+        ReqSpec => "requirements/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -50,6 +52,7 @@ public static class AwarenessKinds
         Capa => "CAPA",
         Deviation => "Deviation",
         Supplier => "Supplier",
+        ReqSpec => "Requirement specification",
         _ => kind,
     };
 
@@ -77,6 +80,7 @@ public static class AwarenessKinds
         "capa" => Capa,
         "deviation" => Deviation,
         "supplier" => Supplier,
+        "reqspec" => ReqSpec,
         _ => null,
     };
 

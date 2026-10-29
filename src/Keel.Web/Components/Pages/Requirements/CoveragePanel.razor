@@ -1,0 +1,80 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+
+@* Coverage over what the signed-in user can read: allocation (allocated-to links), verification (records for the current text) and the gaps. A restricted requirement or a link
+   to a restricted object is not counted, so no number reveals one. Optionally within a baseline: an allocation counts when its part is in the baseline (ADR-0038). *@
+<section class="panel stack" aria-labelledby="req-cover-heading">
+    <h3 id="req-cover-heading">Coverage</h3>
+    <div class="toolbar">
+        <label class="inline">Revision
+            <select aria-label="Revision" @bind="revision" @bind:after="LoadAsync">
+                @foreach (var r in Detail.Revisions) { <option value="@r.Revision">@r.Revision (@r.StateLabel)</option> }
+            </select>
+        </label>
+        <label class="inline">Baseline <input aria-label="Baseline number" placeholder="Optional, for example BL-000001" @bind="baseline" /></label>
+        <button type="button" disabled="@busy" @onclick="LoadAsync">Show coverage</button>
+        <label class="inline-check"><input type="checkbox" @bind="onlyGaps" /> Only gaps</label>
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (report is not null)
+    {
+        var s = report.Summary;
+        <div class="cover-bar" role="group" aria-label="Coverage summary">
+            <div class="cover-card"><span class="cover-number">@s.InScope</span> requirements in scope (of @s.Total)</div>
+            <div class="cover-card"><span class="cover-number">@s.Allocated</span> allocated (@RequirementUiText.Percent(s.Allocated, s.InScope))</div>
+            <div class="cover-card"><span class="cover-number">@(s.Verified + s.Waived)</span> verified or waived (@RequirementUiText.Percent(s.Verified + s.Waived, s.InScope))</div>
+            <div class="cover-card"><span class="cover-number">@s.Failed</span> failed</div>
+            <div class="cover-card"><span class="cover-number">@s.Stale</span> need re-verification</div>
+            <div class="cover-card"><span class="cover-number">@s.Gaps</span> gaps</div>
+            <div class="cover-card"><span class="cover-number">@s.SuspectLinks</span> suspect links</div>
+        </div>
+        <p class="muted small">Version @report.Revision.@report.Iteration@(report.Baseline is null ? "" : $" within baseline {report.Baseline}"). Requirements that are deferred or withdrawn are not counted as gaps.</p>
+        <div class="table-wrap"><table class="data">
+            <caption class="sr-only">Coverage per requirement</caption>
+            <thead><tr><th scope="col">No.</th><th scope="col">Requirement</th><th scope="col">Status</th><th scope="col">Allocations</th><th scope="col">Planned verification</th><th scope="col">Verification</th><th scope="col">Suspect links</th><th scope="col">Gap</th><th scope="col">Marking</th></tr></thead>
+            <tbody>
+            @foreach (var r in report.Rows.Where(r => !onlyGaps || (r.InScope && (r.Unallocated || r.Unverified))))
+            {
+                <tr>
+                    <td class="req-outline-number">@r.Outline</td>
+                    <td>@r.Key · @r.Title</td>
+                    <td><span class="badge @RequirementUiText.StatusClass(r.Status)">@ReqStatuses.Label(r.Status)</span></td>
+                    <td>@r.Allocations</td>
+                    <td>@r.PlannedVerifications</td>
+                    <td><span class="badge @RequirementUiText.VerificationClass(r.VerificationState)">@VerificationStates.Label(r.VerificationState)</span></td>
+                    <td>@r.SuspectLinks</td>
+                    <td>@(!r.InScope ? "Not in scope" : r.Unallocated && r.Unverified ? "Not allocated, not verified" : r.Unallocated ? "Not allocated" : r.Unverified ? "Not verified" : "None")</td>
+                    <td><MarkingChip Text="@r.Banner" /></td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</section>
+
+@code {
+    private SpecCoverage? report;
+    private string revision = "", baseline = "";
+    private string? error;
+    private bool busy, onlyGaps;
+
+    [Parameter, EditorRequired] public required SpecDetail Detail { get; set; }
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        revision = Detail.Displayed.Revision;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true; error = null;
+        var latest = Detail.Revisions.FirstOrDefault(r => r.IsLatest)?.Revision;
+        var outcome = await Requirements.GetCoverageAsync(await Users.GetAsync(), Detail.Summary.Number, revision == latest ? null : revision, baseline.Trim().Length == 0 ? null : baseline.Trim(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) report = outcome.Value;
+        else { report = null; error = outcome.Kind is OutcomeKind.Invalid ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); }
+        await OnBanner.InvokeAsync(report?.Banner);
+    }
+}

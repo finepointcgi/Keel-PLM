@@ -72,7 +72,7 @@
                                 {
                                     <g><text class="vis-sub" x="@Num(p.X + 10)" y="@Num(p.Y + 40)">@GraphGeometry.Shorten(n.Sublabel, 27)</text></g>
                                 }
-                                @if (n.Kind != GraphNodeKind.Change && n.Kind != GraphNodeKind.Restricted && n.Kind != GraphNodeKind.More)
+                                @if (n.Kind != GraphNodeKind.Change && n.Kind != GraphNodeKind.Restricted && n.Kind != GraphNodeKind.More && KindTag(n.Kind).Length > 0)
                                 {
                                     <g><text class="vis-kind" x="@Num(p.X + p.Width - 8)" y="@Num(p.Y + 14)" text-anchor="end">@KindTag(n.Kind)</text></g>
                                 }
@@ -105,7 +105,7 @@
 </div>
 @if (!table)
 {
-    <Legend Label="Legend" Items="legend" />
+    <Legend Label="Legend" Items="@(LegendItems ?? legend)" />
 }
 
 @code {
@@ -128,6 +128,8 @@
     [Parameter] public bool ShowTable { get; set; }
     [Parameter] public EventCallback<bool> ShowTableChanged { get; set; }
     [Parameter] public string MapLabel { get; set; } = "Impact map";
+    /// <summary>A legend for pictures that use other kinds (the traceability graph); the impact map's own legend when null.</summary>
+    [Parameter] public IReadOnlyList<LegendItem>? LegendItems { get; set; }
 
     private static readonly IReadOnlyList<LegendItem> legend =
     [
@@ -170,6 +172,10 @@
         GraphNodeKind.Document => "document",
         GraphNodeKind.Mbom => "MBOM",
         GraphNodeKind.Conflict => "conflict",
+        GraphNodeKind.Requirement => "requirement",
+        GraphNodeKind.TracePart => "part",
+        GraphNodeKind.TraceDocument => "document",
+        GraphNodeKind.TraceChange => "change",
         _ => "",
     };
 

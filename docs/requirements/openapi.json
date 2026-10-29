@@ -1,0 +1,1232 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Keel PLM requirements API",
+    "description": "Requirement specifications (revisions, release by review), hierarchical requirements with their own markings, traceability links, verification records, coverage, and import and export. A requirement or link you may not read is never returned; where it has a place in a structure it is a placeholder with no detail.",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/v1/requirements": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Specifications you may read, with the number of requirements you may read.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "program",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Creates a specification (revision A, In Work).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSpecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/link-types": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Traceability link types.",
+        "parameters": [
+          {
+            "name": "all",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/link-types/{code}": {
+      "put": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Creates or updates a link type (administrators).",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLinkTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/suspect-links/sweep": {
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Marks links whose part or document has a newer revision as suspect (administrators).",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/trace/{kind}/{key}": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "The requirements that trace to a part, document or change (kind is part, document or change), with link and verification state.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "A specification: revisions, state and permissions.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/requirements": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "The requirements of a revision in outline order; a requirement you may not read is a placeholder with its place only.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/requirements/{key}": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "One requirement of the latest revision.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/edit": {
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Applies add, update and move changes as one new iteration; all or nothing. Requirements are withdrawn, never deleted.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/markings": {
+      "put": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Changes the markings of the specification with a reason.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecMarkingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/revise": {
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Starts the next revision of a Released specification.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/obsolete": {
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Makes the specification obsolete.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpecReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/requirements/{key}/links": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Links of a requirement in both directions; an end you may not read is a placeholder.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Adds a traceability link from a requirement.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/links/{id}": {
+      "delete": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Removes a link (it stays in the audit log).",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/links/{id}/review": {
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Reviews a suspect link: it is current again.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/requirements/{key}/verifications": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Verification records of a requirement, newest first, and the state of its current content.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Records a verification; a formal one needs the approver role and a fresh authentication (401 with a step-up challenge otherwise).",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/coverage": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Allocation and verification coverage and the gaps, over what you may read; optionally within a baseline.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baseline",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/trace": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Requirements, links and verification state of a revision (what the matrix and the impact graph are drawn from).",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/matrix": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "The traceability matrix of one link type.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "linkType",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/import": {
+      "post": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "Reads a file (format csv, excel or reqif; the body is the file). dryRun defaults to true and reports the plan with its digest; apply with dryRun=false and that digest.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "digest",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "text/csv": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "application/xml": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/requirements/{number}/export": {
+      "get": {
+        "tags": [
+          "Requirements"
+        ],
+        "summary": "The readable requirements of a revision as csv, excel (spreadsheet CSV) or reqif, with the marking banner of what the file holds.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddLinkRequest": {
+        "required": [
+          "linkType"
+        ],
+        "type": "object",
+        "properties": {
+          "linkType": {
+            "type": "string"
+          },
+          "targetSpec": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "targetNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CreateSpecRequest": {
+        "required": [
+          "name",
+          "markings"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "markings": {
+            "$ref": "#/components/schemas/MarkingsDto"
+          },
+          "product": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DistributionStatement": {
+        "enum": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F"
+        ]
+      },
+      "EditOpDto": {
+        "required": [
+          "op",
+          "key",
+          "input"
+        ],
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string"
+          },
+          "key": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RequirementInputDto"
+              }
+            ]
+          }
+        }
+      },
+      "EditRequest": {
+        "required": [
+          "baseIteration",
+          "ops"
+        ],
+        "type": "object",
+        "properties": {
+          "baseIteration": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "ops": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditOpDto"
+            }
+          },
+          "comment": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ExportJurisdiction": {
+        "enum": [
+          "None",
+          "Ear",
+          "Itar"
+        ]
+      },
+      "MarkingsDto": {
+        "required": [
+          "exportJurisdiction",
+          "distributionStatement",
+          "owningOrg"
+        ],
+        "type": "object",
+        "properties": {
+          "exportJurisdiction": {
+            "$ref": "#/components/schemas/ExportJurisdiction"
+          },
+          "distributionStatement": {
+            "$ref": "#/components/schemas/DistributionStatement"
+          },
+          "owningOrg": {
+            "type": "string"
+          },
+          "eccn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "usmlCategory": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cuiCategories": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "controllingOffice": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "distributionReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "program": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "exportAuthorizations": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RequirementInputDto": {
+        "required": [
+          "title",
+          "text",
+          "type",
+          "priority",
+          "method"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "default": "draft"
+          },
+          "parentKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "beforeKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "markings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MarkingsDto"
+              }
+            ]
+          },
+          "confirmRaiseMarkings": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "SaveLinkTypeRequest": {
+        "required": [
+          "label",
+          "reverseLabel",
+          "targetKind"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "reverseLabel": {
+            "type": "string"
+          },
+          "targetKind": {
+            "type": "string"
+          },
+          "coverageRole": {
+            "type": "string",
+            "default": "none"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          },
+          "sortOrder": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 100
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SpecMarkingsRequest": {
+        "required": [
+          "markings",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "markings": {
+            "$ref": "#/components/schemas/MarkingsDto"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "confirmRaise": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "SpecReasonRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "VerificationRequest": {
+        "required": [
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string"
+          },
+          "method": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "waiverReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "evidenceDocuments": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "formal": {
+            "type": "boolean",
+            "default": false
+          },
+          "signatureMeaning": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Requirements"
+    }
+  ]
+}

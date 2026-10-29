@@ -3,6 +3,7 @@ using Keel.Audit;
 using Keel.Bom;
 using Keel.Change;
 using Keel.Core;
+using Keel.Requirements;
 using Keel.Security;
 using Keel.Workflow;
 using Keel.Workspace;
@@ -28,7 +29,7 @@ public sealed record CardResult<T>(IReadOnlyList<T> Items, string Banner);
 /// were raised, or whose program the user left, silently disappears. Workflow and change tasks come from the module services. Each call audits what it returned
 /// (kind and numbers), like the module searches do.
 /// </summary>
-public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace, NpgsqlDataSource db, IAuditLog audit, WorkflowService flow, ChangeService changes, MbomService mboms, TimeProvider clock)
+public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace, NpgsqlDataSource db, IAuditLog audit, WorkflowService flow, ChangeService changes, MbomService mboms, TimeProvider clock, RequirementService? requirements = null)
 {
     public const int CardSize = 8;
     public static readonly TimeSpan ReleasedWindow = TimeSpan.FromDays(30);
@@ -77,6 +78,7 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
                 ObjectKinds.Mbom => await MbomRowsAsync(subject, numbers, corr, ct),
                 ObjectKinds.Supplier => await QueryAsync(subject, ObjectKinds.Supplier, numbers, ct),
                 ObjectKinds.Ncr or ObjectKinds.Capa or ObjectKinds.Deviation => await QueryAsync(subject, group.Key, numbers, ct),
+                ObjectKinds.ReqSpec => await SpecRowsAsync(subject, numbers, corr, ct),
                 _ => [],
             };
             foreach (var r in rows)
@@ -161,6 +163,19 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
         {
             var o = await mboms.SearchAsync(subject, new MbomSearch(Query: number, Limit: 5), corr, ct);
             if (o.Value?.Items.FirstOrDefault(m => m.Number == number) is { } m) rows.Add((m.Number, $"{m.PartName} ({m.Plant})", m.StateLabel, m.Markings));
+        }
+        return rows;
+    }
+
+    /// <summary>Requirement specifications live in the requirements module's schema, so they are read through its search (exact number), which applies the read filter itself.</summary>
+    private async Task<IReadOnlyList<(string, string, string, Markings)>> SpecRowsAsync(Subject subject, string[] numbers, string corr, CancellationToken ct)
+    {
+        var rows = new List<(string, string, string, Markings)>();
+        if (requirements is null) return rows;
+        foreach (var number in numbers.Take(CardSize * 2))
+        {
+            var o = await requirements.SearchAsync(subject, new SpecSearch(Query: number, Limit: 5), corr, ct);
+            if (o.Value?.Items.FirstOrDefault(m => m.Number == number) is { } m) rows.Add((m.Number, m.Name, m.StateLabel, m.Markings));
         }
         return rows;
     }

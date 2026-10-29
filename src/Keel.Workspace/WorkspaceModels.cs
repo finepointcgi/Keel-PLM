@@ -17,7 +17,9 @@ public static class ObjectKinds
     /// <summary>8.5 compliance: a substance of the substance master (found by search and the palette; not a pointer a user can favorite or watch).</summary>
     public const string Substance = "substance";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, Substance];
+    public const string ReqSpec = "reqspec";
+
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, Substance, ReqSpec];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -34,6 +36,7 @@ public static class ObjectKinds
         Deviation => "quality/deviations/" + Uri.EscapeDataString(number),
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
         Substance => "compliance/substances/" + Uri.EscapeDataString(number),
+        ReqSpec => "requirements/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -49,6 +52,7 @@ public static class ObjectKinds
         Deviation => "Deviation",
         Supplier => "Supplier",
         Substance => "Substance",
+        ReqSpec => "Requirement specification",
         _ => kind,
     };
 }

@@ -34,6 +34,7 @@ public static class PaletteActions
             new("go:capas", "Go to Corrective actions", "Go to", "capa", "quality/capas", "capa corrective preventive root cause"),
             new("go:deviations", "Go to Deviations and waivers", "Go to", "deviation", "quality/deviations", "deviation waiver concession"),
             new("go:compliance", "Go to Compliance", "Go to", "check", "compliance", "rohs reach conflict minerals declarations substances regulatory lists material"),
+            new("go:requirements", "Go to Requirements", "Go to", "requirement", "requirements", "specification traceability coverage verification"),
             new("go:suppliers", "Go to Suppliers", "Go to", "folder", "suppliers", "vendors manufacturers sources certifications approved"),
             new("go:access", "Go to Access check", "Go to", "access", "access", "permission can i see"),
             new("go:profile", "Go to My access", "Go to", "user", "profile", "profile roles clearance"),

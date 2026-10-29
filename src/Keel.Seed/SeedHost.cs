@@ -8,6 +8,7 @@ using Keel.Documents;
 using Keel.Documents.Vault;
 using Keel.Integration;
 using Keel.Parts;
+using Keel.Requirements;
 using Keel.Workflow;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -74,6 +75,7 @@ public sealed class SeedHost : IAsyncDisposable
     public BaselineService Baselines => _services.GetRequiredService<BaselineService>();
     public EffectivityService Effectivity => _services.GetRequiredService<EffectivityService>();
     public MbomService Mbom => _services.GetRequiredService<MbomService>();
+    public RequirementService Requirements => _services.GetRequiredService<RequirementService>();
     public TdpService Tdp => _services.GetRequiredService<TdpService>();
     public IntegrationAdminService IntegrationAdmin => _services.GetRequiredService<IntegrationAdminService>();
     public OutboxQueries Outbox => _services.GetRequiredService<OutboxQueries>();
@@ -116,6 +118,7 @@ public sealed class SeedHost : IAsyncDisposable
         services.AddSingleton<ITdpPartSource, PartTdpSource>();
         services.AddSingleton<ITdpDocumentSource, TdpDocumentSource>();
         IntegrationModule.AddKeelIntegration(services, integration);
+        RequirementsModule.AddKeelRequirements(services); // 8.3: requirement specifications are reviewed through the same engine
         return new SeedHost(services.BuildServiceProvider(), temp);
     }
 

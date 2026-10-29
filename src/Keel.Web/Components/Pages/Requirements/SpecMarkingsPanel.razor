@@ -1,0 +1,66 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject ToastService Toasts
+
+@* The security markings of one specification, with a change that needs a reason. The service decides: every requirement stays at least as restrictive, the caller must still be able to modify the specification afterwards, and the change and its audit event are one transaction. *@
+<section class="panel" aria-labelledby="req-markings-heading">
+    <h3 id="req-markings-heading">Security markings</h3>
+    @if (edit is null)
+    {
+        var m = Detail.Summary.Markings;
+        <dl class="facts">
+            <dt>Export jurisdiction</dt>
+            <dd>@(m.ExportJurisdiction switch { ExportJurisdiction.Itar => $"ITAR, USML {m.UsmlCategory}", ExportJurisdiction.Ear => $"EAR, ECCN {m.Eccn}", _ => "None" })</dd>
+            <dt>CUI categories</dt><dd>@(m.CuiCategories.IsEmpty ? "None" : string.Join(", ", m.CuiCategories))</dd>
+            <dt>Distribution</dt><dd>Statement @m.DistributionStatement@(m.ControllingOffice is null ? "" : $": {m.DistributionReason}; controlling office {m.ControllingOffice}")</dd>
+            <dt>Program</dt><dd>@(m.Program ?? "None")</dd>
+            <dt>Owning organization</dt><dd>@m.OwningOrg</dd>
+            <dt>Export authorizations</dt><dd>@(m.ExportAuthorizations.IsEmpty ? "None" : string.Join(", ", m.ExportAuthorizations))</dd>
+        </dl>
+        <p class="muted small">Each requirement is at least as restrictive as this specification and can carry stricter markings of its own.</p>
+        @if (Detail.CanModify && Detail.Editable) { <button type="button" class="secondary" @onclick="Begin">Change markings</button> }
+        else if (Detail.CanModify) { <p class="muted small">The markings of a specification change only while it is In Work.</p> }
+    }
+    else
+    {
+        <div class="stack">
+            <div class="grid-form">
+                <MarkingsFields Value="edit" />
+                <label class="wide">Reason for change (required, audited) <input @bind="reason" maxlength="1000" /></label>
+                <label class="inline-check wide"><input type="checkbox" @bind="confirm" /> Raise requirements that would be less restrictive than the new markings</label>
+            </div>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <div class="toolbar">
+                <button type="button" disabled="@busy" @onclick="SaveAsync">Save markings</button>
+                <button type="button" class="secondary" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private MarkingsInput? edit;
+    private string reason = "";
+    private string? error;
+    private bool busy, confirm;
+
+    [Parameter, EditorRequired] public required SpecDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private void Begin() { edit = MarkingsInput.From(Detail.Summary.Markings); reason = ""; error = null; confirm = false; }
+    private void Cancel() => edit = null;
+
+    private async Task SaveAsync()
+    {
+        var markings = edit!.Effective().ToMarkings();
+        if (!markings.IsSuccess) { error = string.Join(" ", markings.Errors); return; }
+        busy = true;
+        error = null;
+        var outcome = await Requirements.SetMarkingsAsync(await Users.GetAsync(), Detail.Summary.Number, markings.Value, reason, confirm, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        edit = null;
+        Toasts.Success("Markings changed.");
+        await OnChanged.InvokeAsync();
+    }
+}

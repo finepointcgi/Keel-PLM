@@ -1,0 +1,99 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject ToastService Toasts
+
+@* Import and export of requirement files (CSV, spreadsheet CSV, ReqIF-style XML). An import is previewed first: nothing changes until the same file is applied with the digest of its
+   preview. A row naming a requirement you cannot read is a new requirement, and an export leaves restricted requirements out (ADR-0038). *@
+<section class="panel stack" aria-labelledby="req-exchange-heading">
+    <h3 id="req-exchange-heading">Export</h3>
+    <p class="muted small">The file holds the requirements you can read in version @Detail.Displayed.Revision and carries the marking banner of what it holds.</p>
+    <ul class="plain toolbar">
+        @foreach (var f in ImportFormats.All)
+        {
+            <li><a class="button secondary" download data-enhance-nav="false" href="@Href(f)">Export as @ImportFormats.Label(f)</a></li>
+        }
+    </ul>
+</section>
+
+@if (Detail.Editable && Detail.CanModify)
+{
+    <section class="panel stack" aria-labelledby="req-import-heading">
+        <h3 id="req-import-heading">Import</h3>
+        <div class="grid-form">
+            <label>Format
+                <select aria-label="Format of the file" @bind="format">@foreach (var f in ImportFormats.All) { <option value="@f">@ImportFormats.Label(f)</option> }</select>
+            </label>
+            <label>File (up to @(RequirementIo.MaxBytes / (1024 * 1024)) MB) <InputFile aria-label="File to import" OnChange="Pick" /></label>
+        </div>
+        <div class="toolbar">
+            <button type="button" disabled="@(busy || content is null)" @onclick="PreviewAsync">Preview import</button>
+            <button type="button" disabled="@(busy || plan is null || plan.Errors > 0 || plan.Applied)" @onclick="ApplyAsync">Apply the previewed import</button>
+        </div>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (plan is not null)
+        {
+            <p aria-live="polite">@(plan.Applied ? "Applied" : "Preview"): @plan.Created new, @plan.Updated changed, @plan.Unchanged unchanged, @plan.Errors with problems.</p>
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">What each row of the file would do</caption>
+                <thead><tr><th scope="col">Line</th><th scope="col">Id in file</th><th scope="col">Action</th><th scope="col">Requirement</th><th scope="col">Title</th><th scope="col">Problems</th></tr></thead>
+                <tbody>
+                @foreach (var r in plan.Rows)
+                {
+                    <tr class="@(r.Action == "error" ? "error" : null)">
+                        <td>@r.Line</td><td>@r.SourceId</td><td>@ActionText(r.Action)</td><td>@r.Key</td><td>@r.Title</td><td>@string.Join(" ", r.Problems)</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    </section>
+}
+
+@code {
+    private string format = ImportFormats.Csv;
+    private string? content, error;
+    private ImportPlan? plan;
+    private bool busy;
+
+    [Parameter, EditorRequired] public required SpecDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private string Href(string f) => $"ui/requirements/{Uri.EscapeDataString(Detail.Summary.Number)}/export?format={f}{(Detail.Displayed.IsLatest ? "" : "&revision=" + Detail.Displayed.Revision)}";
+
+    private static string ActionText(string a) => a switch { "create" => "New requirement", "update" => "Change", "unchanged" => "No change", _ => "Problem" };
+
+    protected override async Task OnInitializedAsync() => await OnBanner.InvokeAsync(Detail.Summary.Banner);
+
+    private async Task Pick(InputFileChangeEventArgs e)
+    {
+        error = null; plan = null; content = null;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(RequirementIo.MaxBytes);
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+            content = await reader.ReadToEndAsync();
+        }
+        catch (IOException) { error = $"The file is larger than {RequirementIo.MaxBytes / (1024 * 1024)} MB."; }
+    }
+
+    private async Task PreviewAsync()
+    {
+        busy = true; error = null;
+        var outcome = await Requirements.ImportAsync(await Users.GetAsync(), Detail.Summary.Number, format, content!, true, null, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { plan = null; error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        plan = outcome.Value;
+    }
+
+    private async Task ApplyAsync()
+    {
+        busy = true; error = null;
+        var outcome = await Requirements.ImportAsync(await Users.GetAsync(), Detail.Summary.Number, format, content!, false, plan!.Digest, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        plan = outcome.Value;
+        Toasts.Success("Import applied.");
+        await OnChanged.InvokeAsync();
+    }
+}

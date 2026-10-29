@@ -23,7 +23,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Integration (ADR-0025) reaches parts, BOM, documents and change data only through Keel.Core interfaces implemented by their owners.
         ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality", "Keel.Compliance"],
+        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality", "Keel.Compliance", "Keel.Requirements"],
         // Personal workspace data (UX-1, ADR-0028): preferences, recent items, favorites, saved searches. Pointers only; Keel.Web re-authorizes them through the module services.
         ["Keel.Workspace"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
@@ -45,6 +45,8 @@ public sealed partial class ArchitectureTests
         ["Keel.Quality"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Product compliance (8.5, ADR-0040): the structure of an assembly is read by the host through the BOM read paths and handed in; documents and notifications are reached through Keel.Core interfaces.
         ["Keel.Compliance"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        // Requirements and traceability (8.3, ADR-0038): reaches parts, documents, changes and baselines only through key lookups, read filters and Keel.Core interfaces.
+        ["Keel.Requirements"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
     [Fact]
@@ -89,6 +91,9 @@ public sealed partial class ArchitectureTests
             // batch (ids, numbers, markings columns) and returns only counts and source ids, never names or descriptions. This is the ONLY file of the
             // importer that selects from a marked table; every write goes through ImportWriter.
             if (file.EndsWith("Keel.Migration" + Path.DirectorySeparatorChar + "Reconcile" + Path.DirectorySeparatorChar + "Reconciler.cs", StringComparison.Ordinal)) continue;
+            // Requirements (8.3, ADR-0038): the suspect-link job is a system read of part and document revision labels by number (no end user; it writes only audit events and
+            // pointer-only notifications). RequirementsArchitectureTests checks every other statement of the module.
+            if (file.EndsWith("Keel.Requirements" + Path.DirectorySeparatorChar + "RequirementService.Sweep.cs", StringComparison.Ordinal)) continue;
             // Sourcing (8.2, ADR-0037): EntryStore holds the JOIN fragment of list entries, which every caller completes with the part's and the supplier's read filters
             // (SourcingArchitectureTests checks the module's own statements); RequestService reads the parts and recipients of ONE request, keyed by its id, after the caller
             // was checked against the request's markings and each part again.
