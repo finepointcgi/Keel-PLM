@@ -83,7 +83,7 @@ public sealed class ProcessTests(E2EFixture fx)
 
             await session.GotoAsync(alice, $"/process/plans/{ProcessSeed.Plan}");
             await BrowserSession.AssertBannersAsync(page);
-            await Expect(page.GetByText("Current with the released MBOM").Or(page.GetByText("Stale: written against")).First).ToBeVisibleAsync();
+            await Expect(page.GetByText("Written against", new PageGetByTextOptions { Exact = true })).ToBeVisibleAsync();
             await BrowserSession.OpenTabAsync(page, "Routings and instructions");
             await Expect(page.GetByText("Fasten the cover").First).ToBeVisibleAsync();
             await Expect(page.GetByText("Warning (safety):")).ToBeVisibleAsync();
