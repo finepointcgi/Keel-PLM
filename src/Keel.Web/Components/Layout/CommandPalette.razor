@@ -66,6 +66,7 @@
 
     private ElementReference dialog, input;
     private DotNetObjectReference<CommandPalette>? self;
+    private bool disposed;
     private CancellationTokenSource? cts;
     private string query = "";
     private string? error;
@@ -93,9 +94,17 @@
     {
         if (firstRender)
         {
+            // The layout removes the palette for a supplier user once it has read the roles, which can be while this first call still waits for the script module: the
+            // reference is then already disposed. That is not an error (nobody needs the shortcuts of a palette that is gone), and must not end the circuit.
             self = DotNetObjectReference.Create(this);
-            await Js.InvokeVoidAsync("registerShortcuts", self);
-            shortcutsOn = true;
+            try
+            {
+                await Js.InvokeVoidAsync("registerShortcuts", self);
+                shortcutsOn = !disposed;
+                if (disposed) await Js.InvokeVoidAsync("unregisterShortcuts");
+            }
+            catch (ObjectDisposedException) { return; }
+            catch (JSDisconnectedException) { return; }
         }
         if (State.IsOpen && !wasOpen)
         {
@@ -269,10 +278,15 @@
 
     public async ValueTask DisposeAsync()
     {
+        disposed = true;
         State.Changed -= OnStateChanged;
         cts?.Cancel();
         cts?.Dispose();
-        if (shortcutsOn) await Js.InvokeVoidAsync("unregisterShortcuts");
+        if (shortcutsOn)
+        {
+            try { await Js.InvokeVoidAsync("unregisterShortcuts"); }
+            catch (JSDisconnectedException) { /* the circuit is gone */ }
+        }
         self?.Dispose();
     }
 }
