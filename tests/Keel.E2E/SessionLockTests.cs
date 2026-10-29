@@ -27,8 +27,19 @@ public sealed class SessionLockTests(E2EFixture fx)
         return $"/downloads/documents/{reader.GetString(0)}/files/{reader.GetGuid(1)}";
     }
 
-    private async Task<List<AuditRecord>> SessionEventsAsync() =>
-        [.. (await new AuditQueries(fx.AppDb).ListAsync(new AuditQuery(Limit: 1000))).Where(e => e.Action.StartsWith("session.", StringComparison.Ordinal))];
+    /// <summary>All session events, oldest first. The audit query is capped at 1000 rows per call, so it pages: other tests of the same run write plenty of audit events.</summary>
+    private async Task<List<AuditRecord>> SessionEventsAsync()
+    {
+        var result = new List<AuditRecord>();
+        long after = 0;
+        while (true)
+        {
+            var page = await new AuditQueries(fx.AppDb).ListAsync(new AuditQuery(AfterSeq: after, Limit: 1000));
+            if (page.Count == 0) return result;
+            result.AddRange(page.Where(e => e.Action.StartsWith("session.", StringComparison.Ordinal)));
+            after = page.Max(e => e.Seq);
+        }
+    }
 
     [E2EFact]
     public async Task An_idle_session_locks_hides_its_data_refuses_actions_and_unlocks_only_through_the_idp()

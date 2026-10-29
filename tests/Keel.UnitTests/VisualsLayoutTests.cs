@@ -91,7 +91,9 @@ public sealed class VisualsLayoutTests
         var sw = Stopwatch.StartNew();
         var layout = LayeredLayout.Compute(nodes, edges);
         sw.Stop();
-        TestContext.Current.SendDiagnosticMessage($"Layered layout of {layout.Nodes.Count} nodes and {layout.Edges.Count} edges: {sw.ElapsedMilliseconds} ms, {layout.Crossings} crossings left");
+        var message = $"Layered layout of {layout.Nodes.Count} nodes and {layout.Edges.Count} edges: {sw.ElapsedMilliseconds} ms, {layout.Crossings} crossings left";
+        TestContext.Current.SendDiagnosticMessage(message);
+        if (Environment.GetEnvironmentVariable("KEEL_PERF_LOG") is { Length: > 0 } path) File.AppendAllText(path, message + Environment.NewLine);
         Assert.True(sw.ElapsedMilliseconds < 300, $"layout took {sw.ElapsedMilliseconds} ms");
     }
 

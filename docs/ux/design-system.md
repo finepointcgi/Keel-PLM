@@ -37,3 +37,14 @@ A component never queries marked data itself: call the module service with `Curr
 - Live regions: toasts use `aria-live` without roles. Do not add other always-present `role=status` or `role=alert` elements.
 - Targets at least 28 px high (32 px comfortable). Works at 375 px with no sideways page scroll: wide tables scroll inside `.table-wrap` / `.dt-scroll`.
 - `prefers-reduced-motion` is respected globally in `base.css`.
+
+## Diagram kit (UX-3, [ADR-0029](../adr/0029-visual-relationships.md))
+| Need | Use |
+|---|---|
+| Pan/zoom frame | `DiagramViewport` (toolbar +, -, Fit; patterns and arrow defs; tooltip). Content gets a `DiagramContext` for ids and `url(#pattern)`; `wwwroot/js/visuals.js` attaches behaviour |
+| Node | `<g class="vis-node vis-k-KIND" id data-x data-y data-w data-h data-right/left/up/down data-href data-tip aria-label>`; one roving tab stop, Enter opens (`data-href`) or clicks |
+| Legend | `Legend` with `LegendItem` (shape path + pattern + words; never colour alone) |
+| Picture or table | `ViewSwitch` (aria-pressed buttons); table first below 600 px (`VisualsJs.IsNarrowAsync`) |
+| Layouts | `LayeredLayout`, `SquarifiedTreemap`, `LanePacking`, `TimelineAxis` (pure, unit tested) |
+| Pictures | `ImpactGraphView`, `BomTreemapView`, `StructureDiffView`, `TimelineView`, `WorkflowMapView` |
+Rules: tokens only in `visuals.css`; SVG paint by class or presentation attribute, never `style=`; restricted items render no identifier and no link; the host recomputes the page banner from what is drawn.
