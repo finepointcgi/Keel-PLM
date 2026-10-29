@@ -56,7 +56,7 @@
                         </div>
                         break;
                     case "requirements":
-                        @if (set is not null) { <RequirementOutline Detail="d" Set="set" OnChanged="Reload" OnBanner="b => { linkBanner = b; outlineBanner = set.Banner; }" /> }
+                        @if (set is not null) { <RequirementOutline Detail="d" Set="set" OnChanged="Reload" OnBanner="b => outlineBanner = b" OnLinkBanner="b => linkBanner = b" /> }
                         break;
                     case "trace":
                         <SpecTracePanel Detail="d" OnChanged="Reload" OnBanner="b => traceBanner = b" />
@@ -154,7 +154,6 @@
         if (steps.Count == 0) steps = await Lifecycles.StatesAsync("reqspec-default");
         var rows = await Requirements.GetRequirementsAsync(subject, Number, Revision, Corr());
         set = rows.IsOk ? rows.Value : null;
-        outlineBanner = tab == "requirements" ? set?.Banner : null;
     }
 
     private async Task ObsoleteAsync()

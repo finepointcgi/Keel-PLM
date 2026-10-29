@@ -37,16 +37,16 @@ public sealed class RequirementsTests(E2EFixture fx)
             await BrowserSession.ClickAsync(page, "Add requirement");
             await BrowserSession.FillAsync(page.GetByLabel("Title *"), "Housing depth rating");
             await BrowserSession.FillAsync(page.GetByLabel("Requirement text *"), "The housing shall be rated to 6000 m.");
-            await page.GetByLabel("Status", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync("approved");
+            await page.Locator("label", new PageLocatorOptions { HasText = "Status" }).Locator("select").SelectOptionAsync("approved");
             await BrowserSession.ClickAsync(page, "Save");
-            await Expect(page.GetByRole(AriaRole.Cell, new PageGetByRoleOptions { Name = "R-0001" })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Cell, new PageGetByRoleOptions { Name = "R-0001", Exact = true })).ToBeVisibleAsync();
             await Expect(page.GetByText("Housing depth rating").First).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
             await BrowserSession.ClickAsync(page, "Add child of R-0001", exact: false);
             await BrowserSession.FillAsync(page.GetByLabel("Title *"), "Seal rating");
             await BrowserSession.FillAsync(page.GetByLabel("Requirement text *"), "The seals shall hold 600 bar.");
             await BrowserSession.ClickAsync(page, "Save");
-            await Expect(page.GetByRole(AriaRole.Cell, new PageGetByRoleOptions { Name = "1.1" })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Cell, new PageGetByRoleOptions { Name = "1.1", Exact = true })).ToBeVisibleAsync();
 
             // Allocate R-0001 to a part, then reword it: the link is suspect until reviewed.
             await BrowserSession.ClickAsync(page, "Details of R-0001", exact: false);
@@ -57,7 +57,6 @@ public sealed class RequirementsTests(E2EFixture fx)
             await BrowserSession.ClickAsync(page, "Edit R-0001", exact: false);
             await BrowserSession.FillAsync(page.GetByLabel("Requirement text *"), "The housing shall be rated to 7000 m.");
             await BrowserSession.ClickAsync(page, "Save");
-            await BrowserSession.ClickAsync(page, "Details of R-0001", exact: false);
             await Expect(page.GetByText("Suspect").First).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(page, "Mark reviewed", exact: false);
             await Expect(page.GetByText("Current").First).ToBeVisibleAsync();
@@ -134,7 +133,7 @@ public sealed class RequirementsTests(E2EFixture fx)
             }
             await session.GotoAsync(alice, $"/requirements/{spec}?tab=trace");
             await BrowserSession.ClickAsync(page, "Suspect links");
-            await Expect(page.GetByText("The requirement changed after the link was reviewed")).ToBeVisibleAsync();
+            await Expect(page.GetByText("The requirement changed after the link was reviewed").First).ToBeVisibleAsync();
             await session.GotoAsync(alice, $"/requirements/{spec}?tab=coverage");
             await Expect(page.GetByText("requirements in scope")).ToBeVisibleAsync();
         });

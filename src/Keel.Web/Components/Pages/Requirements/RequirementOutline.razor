@@ -70,7 +70,7 @@
             <dt>Verification method</dt><dd>@VerificationMethods.Label(sel.Method!)</dd>
             <dt>Marking</dt><dd><MarkingChip Text="@sel.Banner" /></dd>
         </dl>
-        <RequirementLinksPanel Detail="Detail" Requirement="sel" OnChanged="OnChanged" OnBanner="b => linkBanner = b" />
+        <RequirementLinksPanel Detail="Detail" Requirement="sel" OnChanged="OnChanged" OnBanner="OnLinkBanner" />
     </section>
 }
 
@@ -124,13 +124,15 @@
     [Parameter, EditorRequired] public required RequirementSet Set { get; set; }
     /// <summary>An edit saved or a link changed: the page reloads the specification.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
-    /// <summary>The banner of the links shown for the selected requirement, so the page banner covers their other ends.</summary>
+    /// <summary>The banner of the requirements shown (reported when it changes, never on every render).</summary>
     [Parameter] public EventCallback<string?> OnBanner { get; set; }
+    /// <summary>The banner of the links shown for the selected requirement, so the page banner covers their other ends.</summary>
+    [Parameter] public EventCallback<string?> OnLinkBanner { get; set; }
 
     private Mode mode;
     private FormModel form = new();
     private string? selected, parentKey, editKey, error, filter = "";
-    private string? linkBanner;
+    private string? reportedBanner;
     private IReadOnlyList<string>? formErrors;
     private bool busy;
 
@@ -144,7 +146,12 @@
         return Set.Rows.Where(r => !r.Redacted && ((r.Key ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) || (r.Title ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) || (r.Text ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)));
     }
 
-    protected override async Task OnParametersSetAsync() => await OnBanner.InvokeAsync(linkBanner);
+    protected override async Task OnParametersSetAsync()
+    {
+        if (reportedBanner == Set.Banner) return; // the page re-renders its children after every callback: report a change once
+        reportedBanner = Set.Banner;
+        await OnBanner.InvokeAsync(Set.Banner);
+    }
 
     private void Select(string key) => selected = selected == key ? null : key;
 
