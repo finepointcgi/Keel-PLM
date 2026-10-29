@@ -119,7 +119,7 @@ public sealed partial class JargonScanTests
         }
         foreach (var file in Files("src/Keel.Web", "*.cs"))
             foreach (var f in Scan(file, Literals(File.ReadAllText(file)))) yield return f;
-        foreach (var module in new[] { "Keel.Parts", "Keel.Documents", "Keel.Change", "Keel.Bom", "Keel.Workflow", "Keel.Admin", "Keel.Integration", "Keel.Security", "Keel.Core" })
+        foreach (var module in new[] { "Keel.Parts", "Keel.Documents", "Keel.Change", "Keel.Bom", "Keel.Workflow", "Keel.Admin", "Keel.Integration", "Keel.Security", "Keel.Core", "Keel.Quality" })
             foreach (var file in Files("src/" + module, "*.cs"))
                 foreach (var f in Scan(file, Literals(File.ReadAllText(file)))) yield return f;
     }

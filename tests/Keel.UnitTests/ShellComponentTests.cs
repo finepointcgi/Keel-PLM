@@ -50,7 +50,7 @@ public sealed class ShellComponentTests : BunitContext
     {
         var viewer = Render<RailNav>(p => p.Add(x => x.Groups, NavModel.For([Roles.Viewer])));
         Assert.Equal("Main", viewer.Find("nav").GetAttribute("aria-label"));
-        Assert.Equal(["Work", "Product data", "Change", "Sourcing", "Tools"], viewer.FindAll("[role=group]").Select(g => g.GetAttribute("aria-label")));
+        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Tools"], viewer.FindAll("[role=group]").Select(g => g.GetAttribute("aria-label")));
         Assert.DoesNotContain("Administration", viewer.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Audit log", viewer.Markup, StringComparison.Ordinal);
 
