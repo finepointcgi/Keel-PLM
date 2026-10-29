@@ -192,13 +192,13 @@ public sealed class UxLogicTests
     public void The_navigation_is_grouped_and_admin_auditor_entries_follow_the_roles()
     {
         var viewer = NavModel.For([Roles.Viewer]);
-        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Tools"], viewer.Select(g => g.Title));
+        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Output", "Tools"], viewer.Select(g => g.Title));
         Assert.Equal("Home", viewer[0].Items[0].Label);
         Assert.True(viewer[0].Items[0].ExactMatch);
         Assert.DoesNotContain(viewer.SelectMany(g => g.Items), i => i.Href is "admin" or "audit" or "workflows");
 
         var all = NavModel.For([Roles.Admin, Roles.Auditor]);
-        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Records", "Configuration", "Administration", "Tools"], all.Select(g => g.Title));
+        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Output", "Records", "Configuration", "Administration", "Tools"], all.Select(g => g.Title));
         Assert.Contains(all.SelectMany(g => g.Items), i => i.Href == "audit");
         Assert.Equal(all.SelectMany(g => g.Items).Count(), all.SelectMany(g => g.Items).Select(i => i.Href).Distinct().Count()); // no link twice
     }

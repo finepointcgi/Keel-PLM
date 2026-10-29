@@ -87,7 +87,7 @@ public sealed class BomExchangeService(NpgsqlDataSource dataSource, IAuditLog au
 
     public async Task<Outcome<ImportProposal>> CreateProposalAsync(Subject subject, string fileName, byte[] content, string? correlationId, CancellationToken ct = default)
     {
-        fileName = Path.GetFileName(fileName ?? "bom.xlsx");
+        fileName = Path.GetFileName(fileName ?? "bom-changes.xlsx");
         IReadOnlyList<IReadOnlyList<string>> table;
         try
         {

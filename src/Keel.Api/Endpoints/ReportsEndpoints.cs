@@ -49,7 +49,7 @@ public static class ReportsEndpoints
                 if (ms.Length + n > MaxImportBytes) return Outcome<ImportProposal>.Invalid(["The file is larger than 5 MB."]).ToHttp();
                 ms.Write(buffer, 0, n);
             }
-            return (await svc.CreateProposalAsync(Who(c), fileName ?? "bom.xlsx", ms.ToArray(), Corr(c), ct)).ToHttp(p => Results.Created($"/api/v1/output/bom/imports/{p.Number}", p));
+            return (await svc.CreateProposalAsync(Who(c), fileName ?? "bom-changes.xlsx", ms.ToArray(), Corr(c), ct)).ToHttp(p => Results.Created($"/api/v1/output/bom/imports/{p.Number}", p));
         }).Accepts<byte[]>("application/octet-stream", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv")
           .WithSummary("Reads a workbook or CSV (the body is the file) into a reviewable proposal with row-level errors. Nothing is changed.");
         g.MapGet("/bom/imports", async (HttpContext c, BomExchangeService svc, CancellationToken ct) => Results.Ok(await svc.ListProposalsAsync(Who(c), ct))).WithSummary("Your import proposals.");

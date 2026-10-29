@@ -90,10 +90,19 @@ public static class XlsxReader
             {
                 if (r.NodeType != XmlNodeType.Element || r.LocalName != "si") continue;
                 var sb = new StringBuilder();
-                var depth = r.Depth;
-                if (!r.IsEmptyElement)
-                    while (r.Read() && !(r.NodeType == XmlNodeType.EndElement && r.Depth == depth))
-                        if (r.NodeType == XmlNodeType.Element && r.LocalName == "t" && !r.IsEmptyElement) { if (sb.Length < limits.MaxCellChars) sb.Append(r.ReadElementContentAsString()); else r.Skip(); }
+                using (var si = r.ReadSubtree())
+                {
+                    si.Read();
+                    while (!si.EOF)
+                    {
+                        if (si.NodeType == XmlNodeType.Element && si.LocalName == "t" && !si.IsEmptyElement)
+                        {
+                            var t = si.ReadElementContentAsString(); // leaves the reader after the element: do not Read again
+                            if (sb.Length < limits.MaxCellChars) sb.Append(t);
+                        }
+                        else si.Read();
+                    }
+                }
                 if (list.Count >= limits.MaxSharedStrings) throw new XlsxFormatException("The workbook has too many distinct texts.");
                 list.Add(sb.Length > limits.MaxCellChars ? sb.ToString(0, limits.MaxCellChars) : sb.ToString());
             }
@@ -113,45 +122,53 @@ public static class XlsxReader
                 if (r.NodeType != XmlNodeType.Element || r.LocalName != "row") continue;
                 if (rows.Count >= limits.MaxRows) throw new XlsxFormatException($"The sheet has more than {limits.MaxRows} rows. Split the file.");
                 var rowIndex = int.TryParse(r.GetAttribute("r"), NumberStyles.None, CultureInfo.InvariantCulture, out var ri) ? ri : rows.Count + 1;
-                while (rows.Count < rowIndex - 1)
-                {
-                    if (rows.Count >= limits.MaxRows) throw new XlsxFormatException($"The sheet has more than {limits.MaxRows} rows. Split the file.");
-                    rows.Add([]); // blank rows keep the row numbers of the sheet
-                }
+                if (rowIndex > limits.MaxRows) throw new XlsxFormatException($"The sheet has more than {limits.MaxRows} rows. Split the file.");
+                while (rows.Count < rowIndex - 1) rows.Add([]); // blank rows keep the row numbers of the sheet
                 var cells = new List<string>();
-                var depth = r.Depth;
-                if (!r.IsEmptyElement)
-                    while (r.Read() && !(r.NodeType == XmlNodeType.EndElement && r.Depth == depth))
+                using (var row = r.ReadSubtree())
+                {
+                    row.Read();
+                    row.Read();
+                    while (!row.EOF)
                     {
-                        if (r.NodeType != XmlNodeType.Element || r.LocalName != "c") continue;
-                        var col = ColumnIndex(r.GetAttribute("r"), cells.Count);
+                        if (row.NodeType != XmlNodeType.Element || row.LocalName != "c") { row.Read(); continue; }
+                        var col = ColumnIndex(row.GetAttribute("r"), cells.Count);
                         if (col >= limits.MaxColumns) throw new XlsxFormatException($"The sheet has more than {limits.MaxColumns} columns.");
-                        var type = r.GetAttribute("t");
-                        string text = "";
-                        var cd = r.Depth;
-                        if (!r.IsEmptyElement)
-                            while (r.Read() && !(r.NodeType == XmlNodeType.EndElement && r.Depth == cd))
+                        var type = row.GetAttribute("t");
+                        var text = "";
+                        using (var cell = row.ReadSubtree())
+                        {
+                            cell.Read();
+                            while (!cell.EOF)
                             {
-                                if (r.NodeType != XmlNodeType.Element) continue;
-                                if (r.LocalName == "v" && !r.IsEmptyElement)
+                                if (cell.NodeType == XmlNodeType.Element && cell.LocalName == "v" && !cell.IsEmptyElement)
                                 {
-                                    var v = r.ReadElementContentAsString();
+                                    var v = cell.ReadElementContentAsString();
                                     text = type == "s" ? (int.TryParse(v, NumberStyles.None, CultureInfo.InvariantCulture, out var si) && si < shared.Count ? shared[si] : "") : v;
                                 }
-                                else if (r.LocalName == "is" && !r.IsEmptyElement)
+                                else if (cell.NodeType == XmlNodeType.Element && cell.LocalName == "is" && !cell.IsEmptyElement)
                                 {
                                     var sb = new StringBuilder();
-                                    var id = r.Depth;
-                                    while (r.Read() && !(r.NodeType == XmlNodeType.EndElement && r.Depth == id))
-                                        if (r.NodeType == XmlNodeType.Element && r.LocalName == "t" && !r.IsEmptyElement) sb.Append(r.ReadElementContentAsString());
+                                    using (var inline = cell.ReadSubtree())
+                                    {
+                                        inline.Read();
+                                        while (!inline.EOF)
+                                        {
+                                            if (inline.NodeType == XmlNodeType.Element && inline.LocalName == "t" && !inline.IsEmptyElement) sb.Append(inline.ReadElementContentAsString());
+                                            else inline.Read();
+                                        }
+                                    }
                                     text = sb.ToString();
                                 }
-                                // <f> (formula) elements are skipped: only the cached value is read, nothing is evaluated.
+                                else cell.Read(); // <f> (formula) elements are skipped: only the cached value is read, nothing is evaluated
                             }
+                        }
                         if (text.Length > limits.MaxCellChars) throw new XlsxFormatException($"A cell holds more than {limits.MaxCellChars} characters.");
                         while (cells.Count < col) cells.Add("");
                         cells.Add(CellSafety.Restore(text));
+                        row.Read();
                     }
+                }
                 rows.Add(cells);
             }
         }
