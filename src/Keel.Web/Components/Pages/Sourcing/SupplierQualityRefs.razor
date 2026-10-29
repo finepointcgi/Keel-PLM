@@ -1,0 +1,58 @@
+@inject CurrentUser Users
+@inject SupplierService Suppliers
+
+<section class="panel stack" aria-labelledby="quality-heading">
+    <h2 id="quality-heading">Quality records</h2>
+    <p class="muted small">Nonconformances and other quality records live in quality management. Here only a reference is kept; its title shows when you may read the record there.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Detail.QualityRefs.Count == 0) { <p class="muted">No quality records are linked.</p> }
+    else
+    {
+        <ul class="plain" aria-label="Linked quality records">
+            @foreach (var r in Detail.QualityRefs)
+            {
+                <li>
+                    @if (r.Href is not null) { <a href="@r.Href">@(r.Label ?? $"{r.Kind} {r.RefId}")</a> } else { <span>@r.Kind.ToUpperInvariant() @r.RefId</span> }
+                    @if (r.StateLabel is not null) { <span class="badge">@r.StateLabel</span> }
+                    @if (Detail.Permissions.CanModify) { <button type="button" class="link" aria-label="Remove reference @r.RefId" @onclick="() => Remove(r.Id)">Remove</button> }
+                </li>
+            }
+        </ul>
+    }
+    @if (Detail.Permissions.CanModify && Detail.Summary.Status != SupplierStatuses.Obsolete)
+    {
+        <EditForm Model="this" OnSubmit="Add" FormName="add-quality-ref" class="toolbar">
+            <label>Kind <InputText @bind-Value="kind" maxlength="20" placeholder="ncr" /></label>
+            <label>Record number <InputText @bind-Value="refId" maxlength="100" placeholder="NCR-000123" /></label>
+            <button type="submit" disabled="@busy">Link record</button>
+        </EditForm>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required SupplierDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string kind = "ncr", refId = "";
+    private bool busy;
+    private string? error;
+
+    private async Task Add()
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.AddQualityRefAsync(await Users.GetAsync(), Detail.Summary.Number, kind, refId, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        refId = "";
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Remove(Guid id)
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.RemoveQualityRefAsync(await Users.GetAsync(), Detail.Summary.Number, id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await OnChanged.InvokeAsync();
+    }
+}

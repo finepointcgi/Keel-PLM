@@ -248,8 +248,11 @@ public sealed class SupplierService(
         {
             // The pairing rule is checked when entries are made; flagging a supplier foreign does not delete history. Entries for ITAR parts stop counting at once
             // (coverage re-checks the rule) and the number of open ones is reported so someone withdraws them.
+            // Counted over the parts the caller can read, so the message tells nothing about parts they cannot see.
+            var partFilter = AccessPolicy.BuildReadFilter(subject, "m");
             await using var open = new NpgsqlCommand(
-                "SELECT count(*) FROM src.source_entry e JOIN plm.part_master m ON m.id = e.part_master_id WHERE e.supplier_id = @s AND m.export_jurisdiction = 'Itar' AND e.approval_state IN ('Draft', 'UnderReview', 'Active')", conn, tx);
+                $"SELECT count(*) FROM src.source_entry e JOIN plm.part_master m ON m.id = e.part_master_id WHERE {partFilter.Sql} AND e.supplier_id = @s AND m.export_jurisdiction = 'Itar' AND e.approval_state IN ('Draft', 'UnderReview', 'Active')", conn, tx);
+            foreach (var (k, v) in partFilter.Parameters) open.Parameters.AddWithValue(k, v);
             open.Parameters.AddWithValue("s", row.Id);
             var itarEntries = Convert.ToInt32(await open.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture);
             if (itarEntries > 0)

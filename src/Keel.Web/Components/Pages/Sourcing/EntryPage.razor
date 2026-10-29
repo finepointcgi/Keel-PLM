@@ -1,0 +1,123 @@
+@page "/sourcing/entries/{Number}"
+@inject CurrentUser Users
+@inject SourcingService Sourcing
+@inject SupplierService Suppliers
+
+<PageFrame Banner="@(banner ?? UiText.Unclassified)" Title="@Title" Crumbs="@Crumbs">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Entry @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (entry is not null)
+    {
+        var e = entry;
+        <article class="stack">
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <section class="panel" aria-labelledby="entry-heading">
+                <h2 id="entry-heading">@SourceKinds.Label(e.Kind) entry for <a href="@SourcingUi.PartHref(e.PartNumber)">@e.PartNumber</a></h2>
+                <p>
+                    <span class="badge @SourcingUi.EntryClass(e.ApprovalState)">@e.ApprovalLabel</span>
+                    <span class="badge">@e.StatusLabel</span>
+                    @if (e.ApprovalState == EntryApprovalStates.Active && !e.Effective) { <span class="badge">Not in effect today</span> }
+                </p>
+                <dl class="facts">
+                    <dt>@(e.Kind == SourceKinds.Aml ? "Manufacturer" : "Vendor")</dt><dd><a href="@SourcingUi.SupplierHref(e.SupplierNumber)">@e.SupplierName</a> (@e.SupplierNumber) · @SupplierStatuses.Label(e.SupplierStatus)@(e.SupplierForeign ? " · foreign" : "")</dd>
+                    @if (e.Mpn is not null) { <dt>Manufacturer part number</dt><dd>@e.Mpn@(e.ManufacturerName is not null && e.Kind == SourceKinds.Avl ? $" ({e.ManufacturerName})" : "")</dd> }
+                    <dt>Revision</dt><dd>@(e.RevisionScope ?? "All revisions")</dd>
+                    <dt>Effective</dt><dd>@(e.EffectiveFrom is null ? "from approval" : SourcingUi.Date(e.EffectiveFrom)) until @(e.EffectiveTo is null ? "no end date" : SourcingUi.Date(e.EffectiveTo))</dd>
+                    @if (e.Kind == SourceKinds.Avl)
+                    {
+                        <dt>Vendor part number</dt><dd>@(e.VendorPartNumber ?? "none")</dd>
+                        <dt>Lead time</dt><dd>@(e.LeadTimeDays is null ? "not given" : $"{e.LeadTimeDays} days")</dd>
+                        <dt>Minimum order</dt><dd>@(e.Moq is null ? "not given" : e.Moq.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture))</dd>
+                    }
+                    @if (e.Note is not null) { <dt>Note</dt><dd>@e.Note</dd> }
+                    @if (e.Reason is not null) { <dt>Reason</dt><dd>@e.Reason</dd> }
+                    <dt>Added</dt><dd>@UiText.Utc(e.CreatedAt) by @e.CreatedBy</dd>
+                </dl>
+                @if (e.PriceBreaks.Count > 0)
+                {
+                    <div class="table-wrap">
+                        <table class="data">
+                            <caption>Price breaks (@e.Currency)</caption>
+                            <thead><tr><th scope="col">From quantity</th><th scope="col">Unit price</th></tr></thead>
+                            <tbody>@foreach (var b in e.PriceBreaks) { <tr><td>@b.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)</td><td>@b.UnitPrice.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)</td></tr> }</tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+
+            <SourcingReviewPanel ObjectType="source_entry" Key="@e.Number" Noun="list entry" OnChanged="Load"
+                                 CanSubmit="@(canModify && e.ApprovalState == EntryApprovalStates.Draft)" />
+
+            @if (canModify && e.ApprovalState is EntryApprovalStates.Draft or EntryApprovalStates.Active)
+            {
+                <section class="panel stack" aria-labelledby="entry-actions-heading">
+                    <h3 id="entry-actions-heading">@(e.ApprovalState == EntryApprovalStates.Draft ? "Withdraw the draft" : "End or withdraw the entry")</h3>
+                    <div class="toolbar">
+                        <input aria-label="Reason" placeholder="Reason (required)" class="grow" @bind="reason" />
+                        @if (e.ApprovalState == EntryApprovalStates.Active)
+                        {
+                            <label>Ends on <InputDate @bind-Value="endsOn" /></label>
+                            <button type="button" class="secondary" disabled="@busy" @onclick="End">End on this date</button>
+                        }
+                        <button type="button" class="secondary" disabled="@busy" @onclick="Withdraw">Withdraw</button>
+                    </div>
+                </section>
+            }
+        </article>
+    }
+    else
+    {
+        <Skeleton Lines="5" Label="Loading the entry" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private EntryView? entry;
+    private bool notFound, busy, canModify;
+    private string? error, banner;
+    private string reason = "";
+    private DateTime endsOn = DateTime.UtcNow.Date;
+
+    private string Title => entry is null ? "List entry" : $"{entry.Number} · {entry.PartNumber}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Parts", "parts"), new(entry?.PartNumber ?? "Part", entry is null ? null : $"parts/{Uri.EscapeDataString(entry.PartNumber)}"), new(entry?.Number ?? Number)];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var outcome = await Sourcing.GetEntryAsync(subject, Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        entry = outcome.Value;
+        if (entry is null) return;
+        // The page banner covers the part and the supplier the entry names.
+        var part = await Sourcing.GetPartSourcingAsync(subject, entry.PartNumber, CurrentUser.NewCorrelationId());
+        canModify = part.Value?.CanModify == true;
+        var supplier = await Suppliers.GetAsync(subject, entry.SupplierNumber, CurrentUser.NewCorrelationId());
+        banner = BannerMerge.Union(part.Value?.PartBanner, supplier.Value?.Summary.Banner);
+    }
+
+    private async Task Withdraw()
+    {
+        busy = true; error = null;
+        var outcome = await Sourcing.WithdrawEntryAsync(await Users.GetAsync(), Number, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        reason = "";
+        await Load();
+    }
+
+    private async Task End()
+    {
+        busy = true; error = null;
+        var outcome = await Sourcing.EndEntryAsync(await Users.GetAsync(), Number, DateOnly.FromDateTime(endsOn), reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        reason = "";
+        await Load();
+    }
+}

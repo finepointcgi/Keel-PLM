@@ -1,0 +1,87 @@
+@page "/suppliers"
+@inject CurrentUser Users
+@inject SupplierService Suppliers
+
+<PageFrame Banner="@Banner" Title="Suppliers" Crumbs="@Crumbs">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search suppliers" placeholder="Number, name or CAGE code" class="grow" @bind="text" />
+        <select aria-label="Status" @bind="status" @bind:after="() => Search(0)">
+            <option value="">Any status</option>
+            @foreach (var s in SupplierStatuses.All) { <option value="@s">@SupplierStatuses.Label(s)</option> }
+        </select>
+        <select aria-label="Role" @bind="role" @bind:after="() => Search(0)">
+            <option value="">Vendors and manufacturers</option>
+            <option value="vendor">Vendors</option>
+            <option value="manufacturer">Manufacturers</option>
+        </select>
+        <label class="inline"><input type="checkbox" @bind="foreignOnly" @bind:after="() => Search(0)" /> Foreign only</label>
+        <button type="submit">Search</button>
+        <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+            <a class="button secondary" href="suppliers/new">New supplier</a>
+        </AuthorizeView>
+        <a class="button secondary" href="sourcing/where-sourced">Where sourced</a>
+        <a class="button secondary" href="sourcing/coverage">Coverage report</a>
+    </form>
+
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total supplier@(result.Total == 1 ? "" : "s") you can access</p>
+        <DataTable TItem="SupplierSummary" TableId="suppliers" Items="result.Items" Columns="Columns" Caption="Suppliers" OnServerSort="OnSort" ServerSort="sort">
+            <Empty>
+                <EmptyState Title="@(Filtered ? "No suppliers match" : "No suppliers yet")" IconName="folder">
+                    @(Filtered ? "Try a different search or clear the filters." : "Add the vendors and manufacturers you buy from, with their certifications.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+    private string text = "", status = "", role = "";
+    private bool foreignOnly;
+    private int offset;
+    private SupplierPage? result;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Suppliers")];
+    private bool Filtered => text.Length > 0 || status != "" || role != "" || foreignOnly;
+    private string Banner => result?.Banner ?? UiText.Unclassified;
+
+    private static readonly IReadOnlyList<DataColumn<SupplierSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = s => @<a href="@SourcingUi.SupplierHref(s.Number)">@s.Number</a> },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = s => s.Name },
+        new() { Key = "cage", Title = "CAGE", ServerSortKey = "cage", Text = s => s.CageCode ?? "" },
+        new() { Key = "country", Title = "Country", ServerSortKey = "country", Text = s => s.Country },
+        new() { Key = "roles", Title = "Roles", Text = s => string.Join(", ", s.Roles) },
+        new() { Key = "status", Title = "Status", ServerSortKey = "status", Cell = s => @<span class="badge @SourcingUi.StatusClass(s.Status)">@s.StatusLabel@(s.InReview ? " (in review)" : "")</span> },
+        new() { Key = "foreign", Title = "Foreign", ServerSortKey = "foreign", Text = s => s.IsForeign ? "Foreign" : "" },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = s => @<MarkingChip Text="@s.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = SupplierService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        var outcome = await Suppliers.SearchAsync(await Users.GetAsync(), new SupplierSearch(text, status == "" ? null : status, role == "" ? null : role, null, foreignOnly, PageSize, offset, sort), CurrentUser.NewCorrelationId());
+        result = outcome.Value;
+    }
+}

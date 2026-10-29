@@ -18,7 +18,7 @@
             <button type="button" class="icon-button menu-button" aria-label="Menu" aria-expanded="@(railOpen ? "true" : "false")" aria-controls="main-nav" @onclick="ToggleRail"><Icon Name="menu" /></button>
         }
         <a class="brand" href=""><Icon Name="part" /><span class="brand-text">Keel PLM</span></a>
-        @if (!locked)
+        @if (!locked && !supplier)
         {
             <button type="button" class="search-trigger" aria-label="Search or jump to" aria-keyshortcuts="Control+K Meta+K" data-action="open-palette" @onclick="Palette.Open">
                 <Icon Name="search" />
@@ -30,7 +30,7 @@
         @if (!locked)
         {
             <SessionStatus />
-            <NotificationBell />
+            @if (!supplier) { <NotificationBell /> }
             <UserMenu DisplayName="@displayName" />
         }
         else
@@ -66,7 +66,7 @@
 </div>
 <SessionActivity />
 <ToastContainer />
-@if (!locked)
+@if (!locked && !supplier)
 {
     <CommandPalette />
 }
@@ -76,7 +76,7 @@
 </div>
 
 @code {
-    private bool locked, railOpen;
+    private bool locked, railOpen, supplier; // supplier: an external supplier user (8.2): portal navigation only, no search, no notification bell
     private string displayName = "";
     private IReadOnlyList<NavGroup> groups = [];
 
@@ -89,7 +89,8 @@
         Shell.Changed += OnShellChanged;
         var user = (await Auth.GetAuthenticationStateAsync()).User;
         displayName = user.FindFirst("name")?.Value ?? user.Identity?.Name ?? "Account";
-        groups = NavModel.For(NavModel.RolesOf(user));
+        supplier = NavModel.RolesOf(user).Contains(Roles.Supplier);
+        groups = supplier ? NavModel.ForSupplier() : NavModel.For(NavModel.RolesOf(user));
         if (!locked) await Shell.LoadAsync();
     }
 

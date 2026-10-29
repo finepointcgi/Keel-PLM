@@ -83,7 +83,7 @@ public static class NotificationKinds
         new(SupplierCertExpired, NotificationGroups.Watching, "Supplier certification expired", "A certification of a supplier you watch has expired.",
             "A certification has expired", true, null, false, true, 45),
         new(SupplierCertExpiring, NotificationGroups.Watching, "Supplier certification expiring", "A certification of a supplier you watch expires soon.",
-            "A certification expires soon", true, null, true, false, 35),
+            "A certification expires soon", true, null, false, false, 35),
         new(SupplierStatusChanged, NotificationGroups.Watching, "Supplier approval status changed", "The approval status of a supplier you watch changed.",
             "The approval status changed (by {actor})", true, null, false, true, 42),
         new(WatchedState, NotificationGroups.Watching, "Watched object changed state", "An object you watch moved to another lifecycle state.",

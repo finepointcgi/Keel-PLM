@@ -23,7 +23,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Integration (ADR-0025) reaches parts, BOM, documents and change data only through Keel.Core interfaces implemented by their owners.
         ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications"],
+        ["Keel.Web"] = ["Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing"],
         // Personal workspace data (UX-1, ADR-0028): preferences, recent items, favorites, saved searches. Pointers only; Keel.Web re-authorizes them through the module services.
         ["Keel.Workspace"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
@@ -31,6 +31,9 @@ public sealed partial class ArchitectureTests
         ["Keel.Notifications"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // SIEM forwarding (5.0) reads audit.event and audit.checkpoint; its status reaches the host and the UI through ISiemStatus in Keel.Core.
         ["Keel.Siem"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        // Suppliers and sourcing (8.2, ADR-0037): parts, the review engine, the vault and the integration clearance profiles are reached through Keel.Core interfaces or the
+        // shared tables named in the ADR; the BOM-level coverage report is composed in Keel.Web, so no module references another.
+        ["Keel.Sourcing"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
     [Fact]
@@ -75,6 +78,10 @@ public sealed partial class ArchitectureTests
             // batch (ids, numbers, markings columns) and returns only counts and source ids, never names or descriptions. This is the ONLY file of the
             // importer that selects from a marked table; every write goes through ImportWriter.
             if (file.EndsWith("Keel.Migration" + Path.DirectorySeparatorChar + "Reconcile" + Path.DirectorySeparatorChar + "Reconciler.cs", StringComparison.Ordinal)) continue;
+            // Sourcing (8.2, ADR-0037): EntryStore holds the JOIN fragment of list entries, which every caller completes with the part's and the supplier's read filters
+            // (SourcingArchitectureTests checks the module's own statements); RequestService reads the parts and recipients of ONE request, keyed by its id, after the caller
+            // was checked against the request's markings and each part again.
+            if (file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "EntryStore.cs", StringComparison.Ordinal) || file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "RequestService.cs", StringComparison.Ordinal)) continue;
             var text = File.ReadAllText(file);
             foreach (Match m in SqlFromMarkedTable().Matches(text))
             {

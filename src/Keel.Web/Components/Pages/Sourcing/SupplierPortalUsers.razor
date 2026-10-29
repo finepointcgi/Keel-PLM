@@ -1,0 +1,54 @@
+@inject CurrentUser Users
+@inject SupplierService Suppliers
+
+<section class="panel stack" aria-labelledby="portal-heading">
+    <h2 id="portal-heading">Portal access</h2>
+    <p class="muted">People at the supplier sign in with the supplier role and see only the requests addressed to this supplier. A user belongs to exactly one supplier. The user must have signed in once so the directory knows them.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Detail.PortalUsers.Count == 0) { <p class="muted">No portal users are linked.</p> }
+    else
+    {
+        <ul class="plain" aria-label="Portal users">
+            @foreach (var u in Detail.PortalUsers)
+            {
+                <li>@u.DisplayName (@u.Username) <button type="button" class="link" aria-label="Remove access of @u.Username" @onclick="() => Unlink(u.Sub)">Remove access</button></li>
+            }
+        </ul>
+    }
+    <EditForm Model="this" OnSubmit="Link" FormName="link-portal-user" class="toolbar">
+        <label>Login name of the user <InputText @bind-Value="user" maxlength="200" /></label>
+        <button type="submit" disabled="@busy">Link user</button>
+    </EditForm>
+    @if (Detail.ClearanceProfile is null)
+    {
+        <p class="notice" role="status">This supplier has no clearance profile, so nothing is released to its portal users. Choose a profile on the Overview tab.</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required SupplierDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string user = "";
+    private bool busy;
+    private string? error;
+
+    private async Task Link()
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.LinkPortalUserAsync(await Users.GetAsync(), Detail.Summary.Number, user, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        user = "";
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Unlink(string sub)
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.UnlinkPortalUserAsync(await Users.GetAsync(), Detail.Summary.Number, sub, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await OnChanged.InvokeAsync();
+    }
+}

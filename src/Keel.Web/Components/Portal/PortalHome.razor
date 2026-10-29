@@ -1,0 +1,60 @@
+@page "/portal"
+@inject CurrentUser Users
+@inject PortalService Portal
+
+<PageFrame Banner="@banner" Title="@($"Requests for {profile?.SupplierName ?? "your company"}")">
+    @if (refused)
+    {
+        <p class="error" role="alert">Your account is not linked to a supplier, or the supplier is no longer active. Ask your contact at the buyer to set up your access.</p>
+    }
+    else if (requests is null)
+    {
+        <Skeleton Lines="4" Label="Loading your requests" />
+    }
+    else if (requests.Count == 0)
+    {
+        <EmptyState Title="No requests" IconName="inbox">There is nothing addressed to you right now. New requests for information or quotation appear here.</EmptyState>
+    }
+    else
+    {
+        <p class="muted">You see only the requests addressed to your company.</p>
+        <div class="table-wrap">
+            <table class="data">
+                <caption class="visually-hidden">Requests addressed to your company</caption>
+                <thead><tr><th scope="col">Number</th><th scope="col">Kind</th><th scope="col">Title</th><th scope="col">State</th><th scope="col">Respond by</th><th scope="col">Your answer</th><th scope="col">Markings</th></tr></thead>
+                <tbody>
+                    @foreach (var r in requests)
+                    {
+                        <tr>
+                            <th scope="row"><a href="@SourcingUi.PortalRequestHref(r.Number)">@r.Number</a></th>
+                            <td>@RequestKinds.Label(r.Kind)</td>
+                            <td>@r.Title</td>
+                            <td><span class="badge @SourcingUi.RequestClass(r.State)">@(r.State == RequestStates.Issued ? "Open" : "Closed")</span></td>
+                            <td>@SourcingUi.Date(r.DueOn)</td>
+                            <td>@(r.MyState == RecipientStates.Sent ? "Not answered" : r.MyState)</td>
+                            <td><MarkingChip Text="@r.Banner" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</PageFrame>
+
+@code {
+    private IReadOnlyList<PortalRequestSummary>? requests;
+    private PortalProfile? profile;
+    private bool refused;
+    private string banner = UiText.Unclassified;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var subject = await Users.GetAsync();
+        var p = await Portal.ProfileAsync(subject, CurrentUser.NewCorrelationId());
+        if (!p.IsOk) { refused = true; return; }
+        profile = p.Value;
+        var list = await Portal.ListRequestsAsync(subject, CurrentUser.NewCorrelationId());
+        requests = list.Value ?? [];
+        banner = BannerMerge.Union([.. requests.Select(r => r.Banner)]);
+    }
+}

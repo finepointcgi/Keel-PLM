@@ -1,0 +1,279 @@
+@page "/suppliers/{Number}"
+@inject CurrentUser Users
+@inject SupplierService Suppliers
+@inject SourcingService Sourcing
+@inject NavigationManager Nav
+
+<PageFrame Banner="@BannerMerge.Union(detail?.Summary.Banner ?? UiText.Unclassified, partsBanner)" Title="@PageTitle" Crumbs="@Crumbs"
+           Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Supplier @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" />
+            <CommentCount Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (d.ExpiredCertifications > 0)
+            {
+                <p class="notice" role="status">@d.ExpiredCertifications certification@(d.ExpiredCertifications == 1 ? " has" : "s have") expired. The supplier counts only as a conditional source until a valid certification is added.</p>
+            }
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs(d), commentCount)" Active="@tab" ActiveChanged="OnTabChanged" Label="Supplier sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <section class="panel" aria-labelledby="facts-heading">
+                            <h2 id="facts-heading">Record</h2>
+                            <dl class="facts">
+                                <dt>Number</dt><dd>@d.Summary.Number</dd>
+                                <dt>Name</dt><dd>@d.Summary.Name</dd>
+                                <dt>Country</dt><dd>@d.Summary.Country@(d.Summary.IsForeign ? " (foreign)" : "")</dd>
+                                <dt>CAGE code</dt><dd>@(d.Summary.CageCode ?? "none")</dd>
+                                <dt>Company identifier</dt><dd>@(d.DunsId ?? "none")</dd>
+                                <dt>Roles</dt><dd>@string.Join(", ", d.Summary.Roles)</dd>
+                                <dt>Portal clearance profile</dt><dd>@(d.ClearanceProfile ?? "none (no data is released through the portal)")</dd>
+                                <dt>Created</dt><dd>@UiText.Utc(d.CreatedAt) by @d.CreatedBy</dd>
+                            </dl>
+                            @if (d.Summary.Status == SupplierStatuses.Disapproved || d.Summary.Status == SupplierStatuses.Obsolete)
+                            {
+                                <p class="muted">@d.Summary.StatusLabel@(d.StatusReason is null ? "" : $": {d.StatusReason}")</p>
+                            }
+                        </section>
+                        @if (d.Permissions.CanModify && !d.Summary.InReview && d.Summary.Status != SupplierStatuses.Obsolete)
+                        {
+                            <EditForm Model="this" OnSubmit="SaveEdit" FormName="edit-supplier" class="panel stack">
+                                <h3>Edit the record</h3>
+                                <div class="grid-form">
+                                    <label class="wide">Name * <InputText @bind-Value="editName" maxlength="200" required /></label>
+                                    <label>Country * <InputText @bind-Value="editCountry" maxlength="3" required /></label>
+                                    <label>CAGE code <InputText @bind-Value="editCage" maxlength="5" /></label>
+                                    <label>Company identifier <InputText @bind-Value="editDuns" maxlength="9" /></label>
+                                    <label class="inline"><input type="checkbox" @bind="editVendor" /> Vendor</label>
+                                    <label class="inline"><input type="checkbox" @bind="editManufacturer" /> Manufacturer</label>
+                                    <label class="inline wide"><input type="checkbox" @bind="editForeign" /> Foreign supplier</label>
+                                    @if (d.Permissions.CanAdminister)
+                                    {
+                                        <label class="wide">
+                                            Portal clearance profile (what the supplier may receive)
+                                            <InputSelect @bind-Value="editProfile">
+                                                <option value="">None: nothing is released through the portal</option>
+                                                @foreach (var p in profiles) { <option value="@p">@p</option> }
+                                            </InputSelect>
+                                        </label>
+                                    }
+                                </div>
+                                <div class="toolbar"><button type="submit" disabled="@busy">Save</button></div>
+                            </EditForm>
+                        }
+                        break;
+                    case "certifications":
+                        <SupplierCertifications Detail="d" OnChanged="Reload" />
+                        break;
+                    case "contacts":
+                        <SupplierContacts Detail="d" OnChanged="Reload" />
+                        break;
+                    case "parts":
+                        <section class="panel" aria-labelledby="parts-heading">
+                            <h2 id="parts-heading">Parts sourced from this supplier</h2>
+                            @if (supplied is null) { <Skeleton Lines="3" Label="Loading parts" /> }
+                            else if (supplied.Rows.Count == 0) { <p class="muted">No part you can read is listed for this supplier.</p> }
+                            else
+                            {
+                                <p class="muted">@supplied.Total part list entr@(supplied.Total == 1 ? "y" : "ies") on parts you can read</p>
+                                <div class="table-wrap">
+                                    <table class="data">
+                                        <caption class="visually-hidden">Parts sourced from this supplier</caption>
+                                        <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">List</th><th scope="col">Manufacturer part</th><th scope="col">Status</th><th scope="col">Entry</th><th scope="col">Markings</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var r in supplied.Rows)
+                                            {
+                                                <tr>
+                                                    <th scope="row"><a href="@SourcingUi.PartHref(r.PartNumber)">@r.PartNumber</a></th>
+                                                    <td>@r.PartName</td>
+                                                    <td>@SourceKinds.Label(r.Kind)</td>
+                                                    <td>@(r.Mpn ?? "")</td>
+                                                    <td>@EntryStatuses.Label(r.Status)</td>
+                                                    <td><a href="@SourcingUi.EntryHref(r.EntryNumber)">@r.EntryNumber</a> <span class="badge @SourcingUi.EntryClass(r.ApprovalState)">@EntryApprovalStates.Label(r.ApprovalState)</span></td>
+                                                    <td><MarkingChip Text="@r.Banner" /></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </section>
+                        break;
+                    case "quality":
+                        <SupplierQualityRefs Detail="d" OnChanged="Reload" />
+                        break;
+                    case "portal":
+                        <SupplierPortalUsers Detail="d" OnChanged="Reload" />
+                        break;
+                    case "review":
+                        <section class="panel stack" aria-labelledby="standing-heading">
+                            <h2 id="standing-heading">Approval status</h2>
+                            <p>The supplier is <strong>@d.Summary.StatusLabel.ToLowerInvariant()</strong>@(d.Summary.InReview ? ", and an approval review is running" : "").
+                               Approval is granted by a review with electronic signatures. A supplier needs a valid certification to be approved; a conditional supplier does not.</p>
+                            @if (d.Permissions.CanModify && !d.Summary.InReview && d.Summary.Status != SupplierStatuses.Obsolete)
+                            {
+                                <div class="toolbar">
+                                    <label>
+                                        Status the review should grant
+                                        <select @bind="proposal">
+                                            <option value="">Choose a status</option>
+                                            <option value="approved">Approved</option>
+                                            <option value="conditional">Conditional</option>
+                                        </select>
+                                    </label>
+                                    <button type="button" class="secondary" disabled="@(busy || proposal == "")" @onclick="Propose">Set proposed status</button>
+                                </div>
+                                @if (d.ProposedStatus is not null) { <p class="muted">The review will grant: <strong>@SupplierStatuses.Label(d.ProposedStatus)</strong>.</p> }
+                            }
+                        </section>
+                        <SourcingReviewPanel ObjectType="supplier" Key="@d.Summary.Number" Noun="supplier" OnChanged="Reload"
+                                             CanSubmit="@(d.Permissions.CanModify && !d.Summary.InReview && d.ProposedStatus is not null)"
+                                             SubmitHint="@(d.ProposedStatus is null ? "Set the proposed status first." : null)" />
+                        @if (d.Permissions.CanModify && !d.Summary.InReview && d.Summary.Status != SupplierStatuses.Obsolete)
+                        {
+                            <section class="panel stack" aria-labelledby="withdraw-heading">
+                                <h3 id="withdraw-heading">Withdraw standing</h3>
+                                <p class="muted small">Disapproving or retiring a supplier needs a reason but no signature. It takes effect at once: the supplier stops counting as a source.</p>
+                                <div class="toolbar">
+                                    <input aria-label="Reason" placeholder="Reason (required)" class="grow" @bind="withdrawReason" />
+                                    @if (d.Summary.Status != SupplierStatuses.Disapproved)
+                                    {
+                                        <button type="button" class="secondary" disabled="@busy" @onclick="() => Withdraw(SupplierStatuses.Disapproved)">Disapprove</button>
+                                    }
+                                    <button type="button" class="secondary" disabled="@busy" @onclick="() => Withdraw(SupplierStatuses.Obsolete)">Make obsolete</button>
+                                </div>
+                            </section>
+                        }
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading the supplier" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    private string? seenUri;
+    private static readonly string[] TabIds = ["overview", "certifications", "contacts", "parts", "quality", "portal", "review", .. AwarenessTabs.Ids];
+
+    private SupplierDetail? detail;
+    private WhereSourcedResult? supplied;
+    private IReadOnlyList<string> profiles = [];
+    private bool notFound, busy;
+    private string? error, partsBanner;
+    private string tab = "overview";
+    private int? commentCount;
+    private string editName = "", editCountry = "", editCage = "", editDuns = "", editProfile = "", proposal = "", withdrawReason = "";
+    private bool editVendor, editManufacturer, editForeign;
+
+    private string PageTitle => detail is null ? "Supplier" : $"{detail.Summary.Number} · {detail.Summary.Name}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Suppliers", "suppliers"), new(detail?.Summary.Number ?? Number)];
+
+    private IReadOnlyList<TabInfo> Tabs(SupplierDetail d)
+    {
+        var tabs = new List<TabInfo>
+        {
+            new("overview", "Overview"), new("certifications", "Certifications", d.Certifications.Count), new("contacts", "Contacts", d.Contacts.Count), new("parts", "Parts supplied"),
+            new("quality", "Quality records", d.QualityRefs.Count),
+        };
+        if (d.Permissions.CanAdminister) tabs.Add(new("portal", "Portal access", d.PortalUsers.Count));
+        tabs.Add(new("review", "Approval"));
+        return tabs;
+    }
+
+    private RenderFragment HeaderFragment(SupplierDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Summary.Banner"
+                  Subtitle="@($"{string.Join(" and ", d.Summary.Roles)} · {d.Summary.Country}{(d.Summary.CageCode is null ? "" : $" · CAGE {d.Summary.CageCode}")}")">
+        <Badges>
+            <span class="badge @SourcingUi.StatusClass(d.Summary.Status)">@d.Summary.StatusLabel</span>
+            @if (d.Summary.InReview) { <span class="badge state-underreview">In review</span> }
+            @if (d.Summary.IsForeign) { <span class="badge">Foreign supplier</span> }
+            <FavoriteButton Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" />
+            <WatchButton Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" />
+        </Badges>
+    </ObjectHeader>;
+
+    private void OnTabChanged(string id)
+    {
+        tab = id;
+        partsBanner = null;
+        if (id == "parts") _ = LoadPartsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+        await Reload();
+        if (tab == "parts") await LoadPartsAsync();
+    }
+
+    private async Task Reload()
+    {
+        var subject = await Users.GetAsync();
+        var outcome = await Suppliers.GetAsync(subject, Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is null) return;
+        (editName, editCountry, editCage, editDuns) = (detail.Summary.Name, detail.Summary.Country, detail.Summary.CageCode ?? "", detail.DunsId ?? "");
+        (editVendor, editManufacturer, editForeign, editProfile) = (detail.Summary.Roles.Contains(SupplierRoles.Vendor), detail.Summary.Roles.Contains(SupplierRoles.Manufacturer), detail.Summary.IsForeign, detail.ClearanceProfile ?? "");
+        proposal = detail.ProposedStatus ?? "";
+        if (detail.Permissions.CanAdminister && profiles.Count == 0) profiles = await Suppliers.ClearanceProfilesAsync();
+    }
+
+    private async Task LoadPartsAsync()
+    {
+        var outcome = await Sourcing.WhereSourcedAsync(await Users.GetAsync(), new WhereSourcedQuery(SupplierNumber: Number, Limit: 100), CurrentUser.NewCorrelationId());
+        supplied = outcome.Value;
+        partsBanner = outcome.Value?.Banner;
+        StateHasChanged();
+    }
+
+    private async Task SaveEdit()
+    {
+        busy = true; error = null;
+        var roles = new List<string>();
+        if (editVendor) roles.Add(SupplierRoles.Vendor);
+        if (editManufacturer) roles.Add(SupplierRoles.Manufacturer);
+        var outcome = await Suppliers.UpdateAsync(await Users.GetAsync(), Number,
+            new UpdateSupplierCommand(editName, editCountry, roles, editForeign || editCountry.Trim().ToUpperInvariant() != "USA", editCage, editDuns, detail!.Permissions.CanAdminister ? editProfile : detail.ClearanceProfile),
+            detail.Revision, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await Reload();
+    }
+
+    private async Task Propose()
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.ProposeStatusAsync(await Users.GetAsync(), Number, proposal, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await Reload();
+    }
+
+    private async Task Withdraw(string target)
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.SetStatusAsync(await Users.GetAsync(), Number, target, withdrawReason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        withdrawReason = "";
+        await Reload();
+    }
+}

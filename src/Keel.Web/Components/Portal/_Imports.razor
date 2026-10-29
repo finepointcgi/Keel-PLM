@@ -1,0 +1,4 @@
+@* The supplier portal (8.2): only users with the supplier role. These pages are deliberately NOT under Components/Pages, whose imports require an internal role. *@
+@attribute [Authorize(Policy = Policies.Supplier)]
+@using Keel.Sourcing
+@using Keel.Web.Components.Pages.Sourcing

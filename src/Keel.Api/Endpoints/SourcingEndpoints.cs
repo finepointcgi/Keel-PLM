@@ -159,6 +159,12 @@ public static class SourcingEndpoints
         });
         p.MapGet("/requests/{number}/files/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, PortalService svc, CancellationToken ct) =>
             await FileResult(await svc.OpenMyFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct)));
+
+        // The same downloads for the Blazor UI, authenticated by the session cookie, so pages use plain links and no token appears in a URL.
+        app.MapGet("/downloads/requests/{number}/files/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, RequestService svc, CancellationToken ct) =>
+            await FileResult(await svc.OpenResponseFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct))).RequireAuthorization(Policies.AnyPlmRole);
+        app.MapGet("/downloads/portal/requests/{number}/files/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, PortalService svc, CancellationToken ct) =>
+            await FileResult(await svc.OpenMyFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct))).RequireAuthorization(Policies.Supplier);
     }
 
     /// <summary>A supplier's file is delivered as an attachment of unknown type (never rendered in the application's origin).</summary>

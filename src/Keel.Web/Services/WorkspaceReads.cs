@@ -75,6 +75,7 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
                 ObjectKinds.Change => await QueryAsync(subject, ObjectKinds.Change, numbers, ct),
                 ObjectKinds.Baseline => await QueryAsync(subject, ObjectKinds.Baseline, numbers, ct),
                 ObjectKinds.Mbom => await MbomRowsAsync(subject, numbers, corr, ct),
+                ObjectKinds.Supplier => await QueryAsync(subject, ObjectKinds.Supplier, numbers, ct),
                 _ => [],
             };
             foreach (var r in rows)
@@ -114,6 +115,11 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
                 SELECT m.number, m.name, COALESCE(ls.label, m.lifecycle_state), {columns}
                 FROM cfg.baseline m
                 LEFT JOIN plm.lifecycle_state ls ON ls.lifecycle_id = m.lifecycle_id AND ls.state = m.lifecycle_state
+                WHERE {filter.Sql} AND m.number = ANY(@numbers)
+                """,
+            ObjectKinds.Supplier => $"""
+                SELECT m.number, m.name, initcap(m.status), {columns}
+                FROM src.supplier m
                 WHERE {filter.Sql} AND m.number = ANY(@numbers)
                 """,
             _ => throw new NotSupportedException($"'{kind}' pointers are not read here."),
