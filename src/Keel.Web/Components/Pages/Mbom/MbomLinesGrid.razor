@@ -18,7 +18,7 @@
         <span role="columnheader">Effectivity</span>
         <span role="columnheader">Markings</span>
     </div>
-    <div class="bom-body mbom-body" tabindex="-1">
+    <div class="bom-body mbom-body" role="rowgroup" tabindex="0" aria-label="@(AriaLabel) rows">
         <Virtualize TItem="MbomLineView" Items="items" ItemSize="32" OverscanCount="8" Context="line">
             @{ var index = IndexOf(line); }
             <div class="bom-row mbom-row @(line.Redacted ? "restricted" : null)" role="row" @key="line.Id" aria-rowindex="@(index + 2)"

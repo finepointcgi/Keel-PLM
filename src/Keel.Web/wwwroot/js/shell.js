@@ -181,3 +181,42 @@ export function watchDismiss(container, dotnet) {
 export function stopWatchDismiss(container) {
   if (container && container.__dismiss) { container.__dismiss(); container.__dismiss = null; }
 }
+
+// ---------------------------------------------------------------- scrollable regions (WCAG 2.1.1)
+// A wide table scrolls inside its wrapper (.table-wrap, .dt-scroll, .diff-scroll). A keyboard user can only scroll it when the wrapper can take focus, so
+// a wrapper that really scrolls and has nothing focusable inside becomes a labelled group in the tab order (named after the table caption). The state is
+// re-evaluated when the page changes or the window is resized; wrappers that stop scrolling go back to normal.
+const SCROLLERS = '.table-wrap, .dt-scroll, .diff-scroll';
+
+function refreshScrollRegions() {
+  for (const el of document.querySelectorAll(SCROLLERS)) {
+    const scrolls = el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1;
+    const ours = el.hasAttribute('data-scroll-focus');
+    if (scrolls && !el.querySelector(FOCUSABLE) && (ours || !el.hasAttribute('tabindex'))) {
+      if (!ours) {
+        const caption = el.querySelector('caption')?.textContent?.trim();
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('role', 'group');
+        el.setAttribute('aria-label', caption ? `${caption} (scrollable)` : 'Scrollable table');
+        el.setAttribute('data-scroll-focus', '');
+      }
+    } else if (ours) {
+      el.removeAttribute('tabindex');
+      el.removeAttribute('role');
+      el.removeAttribute('aria-label');
+      el.removeAttribute('data-scroll-focus');
+    }
+  }
+}
+
+if (!window.__keelScrollRegions) {
+  window.__keelScrollRegions = true;
+  let pending = 0;
+  const schedule = () => {
+    if (pending) return;
+    pending = window.setTimeout(() => { pending = 0; refreshScrollRegions(); }, 60);
+  };
+  new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('resize', schedule);
+  schedule();
+}

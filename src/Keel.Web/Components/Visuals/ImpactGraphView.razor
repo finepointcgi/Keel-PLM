@@ -82,7 +82,7 @@
                 }
             </DiagramViewport>
         </div>
-        <aside class="vis-side" aria-label="Item details">
+        <div class="vis-side" role="group" aria-label="Item details">
             @if (selectedNode is { } s)
             {
                 <h4>@(s.IsRestricted ? ImpactGraphBuilder.RestrictedLabel : s.Label)</h4>
@@ -100,7 +100,7 @@
                 else if (s.IsRestricted) { <p class="muted small">You are not authorized to open this item.</p> }
             }
             else { <p class="muted">Select an item, or move to it with the arrow keys and press Space, to see its details here.</p> }
-        </aside>
+        </div>
     }
 </div>
 @if (!table)

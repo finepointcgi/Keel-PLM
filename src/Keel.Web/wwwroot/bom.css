@@ -33,7 +33,7 @@ table.data tr.diff-added td:first-child { color: var(--permit); font-weight: 600
 table.data tr.diff-removed td:first-child { color: var(--deny); font-weight: 600; }
 table.data tr.diff-changed td:first-child { color: var(--accent); font-weight: 600; }
 table.bom-edit input, table.bom-edit select { max-width: 160px; }
-.bom-grid a, table.data a { color: var(--c-link); }
+.bom-grid a:not(.button), table.data a:not(.button) { color: var(--c-link); }
 
 /* Configuration management (2.1): effectivity inputs, baseline states, comparison rows. */
 .effectivity-fields { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }

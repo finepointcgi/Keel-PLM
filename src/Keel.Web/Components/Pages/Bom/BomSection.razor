@@ -84,7 +84,7 @@
             <caption class="sr-only">Purchasing summary: extended quantities per distinct part</caption>
             <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Rev</th><th scope="col">State</th><th scope="col">Total qty</th><th scope="col">Unit</th><th scope="col">Used on</th><th scope="col">Markings</th></tr></thead>
             <tbody>
-            @foreach (var l in summary.Lines)
+            @foreach (var l in summary.Lines.Skip(summaryOffset).Take(SummaryPageSize))
             {
                 <tr class="@(l.Redacted ? "restricted" : "")">
                     <td>@if (l.Redacted) { <span class="restricted-label">Restricted item</span> } else { <a href="parts/@Uri.EscapeDataString(l.Number!)">@l.Number</a> }</td>
@@ -96,6 +96,7 @@
             }
             </tbody>
         </table></div>
+        <Pager Total="summary.Lines.Count" Offset="summaryOffset" PageSize="SummaryPageSize" OnPage="@((int o) => { summaryOffset = o; })" />
     }
 </section>
 
@@ -114,6 +115,8 @@
     private bool summaryView, treemapView, leavesOnly = true;
     private BomExplosion? explosion;
     private BomSummary? summary;
+    private int summaryOffset;
+    private const int SummaryPageSize = 100; // one row per distinct part: a 50,000-line structure can have tens of thousands (GAP-D-3)
     private string? error, loadedFor;
     private int rowsShown;
     private IReadOnlyList<Markings> treeMarkings = [], editorMarkings = [];
@@ -165,6 +168,7 @@
             await PublishBanner();
             return;
         }
+        summaryOffset = 0;
         if (summaryView)
         {
             var s = await Bom.SummaryAsync(subject, Query(levels == 0 ? null : levels), leavesOnly, Corr());

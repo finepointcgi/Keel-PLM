@@ -62,7 +62,7 @@ public sealed partial class ViewerUiTests : BunitContext
         Assert.Equal(["top", "bottom"], banners.Select(b => b.GetAttribute("data-position")).ToArray());
         Assert.All(banners, b => Assert.Equal(m.BannerText(), b.TextContent));
         Assert.Equal(itar, banners[0].ClassList.Contains("tone-cui"));
-        Assert.Equal("note", banners[0].GetAttribute("role"));
+        Assert.Equal("region", banners[0].GetAttribute("role"));
 
         var statement = doc.QuerySelector("[data-viewer-distribution]")!;
         Assert.StartsWith("DISTRIBUTION STATEMENT " + m.DistributionStatement, statement.TextContent, StringComparison.Ordinal);

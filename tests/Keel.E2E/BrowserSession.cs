@@ -42,6 +42,7 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
 
     public async Task<UserPage> SignInAsync(string user, int? width = null, int? height = null, string? baseUrl = null)
     {
+        if (baseUrl != fx.LockHostUrl) await fx.StopLockHostAsync();
         var context = await fx.Browser.NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = width ?? 1280, Height = height ?? 900 },

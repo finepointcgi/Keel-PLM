@@ -83,7 +83,7 @@ public sealed class VisualsTests(E2EFixture fx)
             await page.Keyboard.PressAsync("ArrowLeft");
             Assert.StartsWith("Affected part", await ActiveLabel(page), StringComparison.Ordinal);
             await page.Keyboard.PressAsync("Space");
-            await Expect(page.Locator("aside.vis-side")).ToContainTextAsync(m.GimbalBracket);
+            await Expect(page.Locator(".vis-side")).ToContainTextAsync(m.GimbalBracket);
             // Zoom and fit with the keyboard change the transform of the content layer.
             var before = await page.Locator("[data-vis-content]").GetAttributeAsync("transform");
             await page.Keyboard.PressAsync("+");

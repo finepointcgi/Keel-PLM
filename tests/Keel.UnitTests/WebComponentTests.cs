@@ -46,7 +46,7 @@ public sealed class WebComponentTests : BunitContext
     public void Page_frame_places_marking_banner_at_top_and_bottom_of_layout()
     {
         var cut = Render<FrameHost>(p => p.Add(x => x.Banner, "CUI//EXPT · ITAR USML XI(d) · DISTRIBUTION D"));
-        var banners = cut.FindAll("[role=note]");
+        var banners = cut.FindAll("[role=region][data-position]");
         Assert.Equal(2, banners.Count);
         Assert.Equal(["top", "bottom"], banners.Select(b => b.GetAttribute("data-position")));
         Assert.All(banners, b =>

@@ -111,7 +111,7 @@ public sealed class VisualsComponentTests : BunitContext
         Assert.Contains("You may not open it", restricted.GetAttribute("aria-label"), StringComparison.Ordinal);
         Assert.NotNull(restricted.QuerySelector("path.vis-hatch")); // hatched, not just grey
         restricted.Click();
-        var side = cut.Find("aside.vis-side");
+        var side = cut.Find(".vis-side");
         Assert.Contains("not authorized", side.TextContent, StringComparison.Ordinal);
         Assert.Empty(side.QuerySelectorAll("a"));
         Assert.DoesNotContain("ORCA", cut.Markup, StringComparison.Ordinal);
@@ -123,7 +123,7 @@ public sealed class VisualsComponentTests : BunitContext
         var more = 0;
         var cut = RenderGraph(Graph(withMore: true), more: () => more++);
         cut.FindAll("g.vis-node").Single(n => n.GetAttribute("aria-label")!.StartsWith("Affected part", StringComparison.Ordinal)).Click();
-        var side = cut.Find("aside.vis-side");
+        var side = cut.Find(".vis-side");
         Assert.Contains("P-1", side.TextContent, StringComparison.Ordinal);
         Assert.Equal("parts/P-1", side.QuerySelector("a.button")!.GetAttribute("href"));
         Assert.Equal("_blank", side.QuerySelectorAll("a")[^1].GetAttribute("target"));

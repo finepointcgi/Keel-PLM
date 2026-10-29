@@ -59,6 +59,7 @@ public sealed partial class ChangeService
               AND (@state::text IS NULL OR c.lifecycle_state = @state)
               AND (@q = '' OR c.number ILIKE @like OR c.title ILIKE @like)
               AND (NOT @open OR NOT COALESCE(ls.is_final, false))
+              AND (@programs::text[] IS NULL OR c.program = ANY(@programs))
             ORDER BY {SortKeys.OrderBy(query.Sort, "c.created_at DESC, c.number DESC", "c.number")}
             LIMIT @limit OFFSET @offset
             """, conn, tx))
@@ -69,6 +70,7 @@ public sealed partial class ChangeService
             cmd.Parameters.AddWithValue("q", q);
             cmd.Parameters.AddWithValue("like", like);
             cmd.Parameters.AddWithValue("open", query.OpenOnly);
+            cmd.Parameters.Add(new NpgsqlParameter("programs", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Text) { Value = query.Programs is { Count: > 0 } ? query.Programs.ToArray() : DBNull.Value });
             cmd.Parameters.AddWithValue("limit", limit);
             cmd.Parameters.AddWithValue("offset", offset);
             await using var r = await cmd.ExecuteReaderAsync(ct);
