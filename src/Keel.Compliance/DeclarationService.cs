@@ -289,7 +289,7 @@ public sealed class DeclarationService(
         var info = _documents is null ? null : await _documents.FindAsync(doc, ct);
         if (info is null || !AccessPolicy.Evaluate(subject, info.Markings, PlmAction.Read).Permitted)
         {
-            await audit.AppendAsync(tx, PartEntry(subject, "compliance.document_link", AuditOutcome.Denied, part!.Number, correlationId, ("declaration", number), ("reasons", "document.not_readable")), ct);
+            await audit.AppendAsync(tx, PartEntry(subject, "compliance.document_link", AuditOutcome.Denied, part!.Number, correlationId, ("declaration", number), ("reasons", "not_readable")), ct);
             await tx.CommitAsync(ct);
             return Outcome<DeclarationDetail>.Invalid([$"There is no document {doc} that you may read."]);
         }
@@ -428,7 +428,7 @@ public sealed class DeclarationService(
     public async Task<Outcome<DeclarationResults>> SearchAsync(Subject subject, DeclarationSearch q, string? correlationId, CancellationToken ct = default)
     {
         var filter = AccessPolicy.BuildReadFilter(subject, "m");
-        var where = new List<string> { filter.Sql };
+        var where = new List<string>();
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         await using var cmd = new NpgsqlCommand { Connection = conn };
         foreach (var (k, v) in filter.Parameters) cmd.Parameters.AddWithValue(k, v);
@@ -437,7 +437,7 @@ public sealed class DeclarationService(
         if (q.Source is not null) { where.Add("d.source = @source"); cmd.Parameters.AddWithValue("source", q.Source); }
         if (q.SupplierRef is not null) { where.Add("d.supplier_ref = @sup"); cmd.Parameters.AddWithValue("sup", q.SupplierRef.Trim()); }
         var order = SortKeys.OrderBy(q.Sort, "d.expires_on, d.number", "d.number");
-        cmd.CommandText = $"SELECT {ComplianceStore.DeclarationSelect()}, count(*) OVER () FROM cmp.declaration d JOIN plm.part_master m ON m.id = d.part_master_id WHERE {string.Join(" AND ", where)} ORDER BY {order} LIMIT @limit OFFSET @offset";
+        cmd.CommandText = $"SELECT {ComplianceStore.DeclarationSelect()}, count(*) OVER () FROM cmp.declaration d JOIN plm.part_master m ON m.id = d.part_master_id WHERE {filter.Sql}{(where.Count == 0 ? "" : " AND " + string.Join(" AND ", where))} ORDER BY {order} LIMIT @limit OFFSET @offset";
         cmd.Parameters.AddWithValue("limit", Math.Clamp(q.Limit, 1, 200));
         cmd.Parameters.AddWithValue("offset", Math.Max(0, q.Offset));
         var rows = new List<DeclarationRow>();
