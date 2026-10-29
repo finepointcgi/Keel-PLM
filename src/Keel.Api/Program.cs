@@ -116,6 +116,8 @@ builder.Services.AddSingleton<IAuditLog, MeteredAuditLog>();
 builder.Services.AddSingleton<AuditQueries>();
 builder.Services.AddSingleton<AuditLogService>();
 builder.Services.AddSingleton<Keel.Parts.PartService>();
+builder.Services.AddSingleton<IObjectAccess, Keel.Parts.PartObjectAccess>(); // UX-4 notifications, comments, activity find parts and documents through key lookups
+builder.Services.AddSingleton<IObjectAccess, Keel.Documents.DocumentObjectAccess>();
 builder.Services.AddKeelDocuments(builder.Configuration);
 builder.Services.AddKeelViewerHost(builder.Configuration); // 6.0 file viewer
 Keel.Bom.BomModule.AddKeelBom(builder.Services); // 1.4 BOM
@@ -133,6 +135,7 @@ Keel.Integration.IntegrationModule.AddKeelIntegration(builder.Services, builder.
 builder.Services.AddKeelIntegrationOpenApi();
 Keel.Siem.SiemModule.AddKeelSiem(builder.Services, builder.Configuration, options.Security.RequireFips, secretsDirectory); // 5.0 SIEM forwarding (off unless Keel:Siem:Enabled)
 Keel.Workspace.WorkspaceModule.AddKeelWorkspace(builder.Services); // UX-1 personal workspace data (preferences, recent items, favorites, saved searches)
+Keel.Notifications.NotificationsModule.AddKeelNotifications(builder.Services, builder.Configuration); // UX-4 notifications, watch lists, comments, activity feed
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))

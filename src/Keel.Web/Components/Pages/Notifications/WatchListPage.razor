@@ -1,0 +1,94 @@
+@page "/watching"
+@inject CurrentUser Users
+@inject IWatchService Watches
+@inject ToastService Toasts
+
+<PageFrame Banner="@Banner" Title="Things I watch" Crumbs="@Crumbs">
+    <p class="muted">The objects you follow. You hear about their changes, comments and decisions according to your <a href="notifications/preferences">notification preferences</a> and the level you chose for each. An object you can no longer read is listed without its name; you can still stop watching it.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (items is null && error is null)
+    {
+        <Skeleton Lines="4" Label="Loading your watch list" />
+    }
+    else if (items is not null && items.Count == 0)
+    {
+        <EmptyState Title="You are not watching anything" IconName="eye">Use the Watch button on a part, document, change, baseline or manufacturing BOM to follow it. Objects you create, check out, sign or comment on are watched automatically.</EmptyState>
+    }
+    else if (items is not null)
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <caption class="visually-hidden">Watched objects</caption>
+                <thead><tr><th scope="col">Object</th><th scope="col">State</th><th scope="col">Markings</th><th scope="col">Tell me about</th><th scope="col">Since</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var w in items)
+                    {
+                        var item = w;
+                        <tr class="@(item.Available ? null : "restricted")">
+                            @if (item.Available)
+                            {
+                                <th scope="row"><a href="@item.Href">@item.Number · @item.Name</a> <span class="muted small">@AwarenessKinds.Label(item.Kind!)</span></th>
+                                <td>@item.StateLabel</td>
+                                <td><MarkingChip Text="@(item.Banner ?? "")" /></td>
+                            }
+                            else
+                            {
+                                <th scope="row"><span class="muted">An object that is no longer available</span></th>
+                                <td></td>
+                                <td></td>
+                            }
+                            <td>
+                                <select aria-label="@(item.Available ? $"What to tell me about {item.Number}" : "What to tell me about this object")" data-action="level" @onchange="e => SetLevelAsync(item, e)">
+                                    <option value="all" selected="@(item.Level == WatchLevel.All)">Everything</option>
+                                    <option value="decisions" selected="@(item.Level == WatchLevel.Decisions)">Decisions only</option>
+                                </select>
+                            </td>
+                            <td><TimeStamp At="item.Since" /></td>
+                            <td><button type="button" class="secondary" data-action="unwatch" aria-label="@(item.Available ? $"Stop watching {item.Number}" : "Stop watching this object")" @onclick="() => RemoveAsync(item)">Stop watching</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Notifications", "notifications"), new("Things I watch")];
+
+    private IReadOnlyList<WatchItem>? items;
+    private string? error;
+
+    private string Banner => items is null || !items.Any(i => i.Markings is not null)
+        ? UiText.Unclassified
+        : Markings.AggregateBanner(items.Where(i => i.Markings is not null).Select(i => i.Markings!).ToList());
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try { items = await Watches.ListAsync(await Users.GetAsync()); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { error = "Your watch list could not be loaded right now."; }
+    }
+
+    private async Task RemoveAsync(WatchItem item)
+    {
+        try
+        {
+            await Watches.RemoveByIdAsync(await Users.GetAsync(), item.Id);
+            Toasts.Info("You no longer watch it.");
+            await ReloadAsync();
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { Toasts.Error("Your watch list could not be changed right now."); }
+    }
+
+    private async Task SetLevelAsync(WatchItem item, ChangeEventArgs e)
+    {
+        try
+        {
+            await Watches.SetLevelByIdAsync(await Users.GetAsync(), item.Id, e.Value?.ToString() == "decisions" ? WatchLevel.Decisions : WatchLevel.All);
+            await ReloadAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Npgsql.NpgsqlException) { Toasts.Error("Your watch list could not be changed right now."); }
+    }
+}

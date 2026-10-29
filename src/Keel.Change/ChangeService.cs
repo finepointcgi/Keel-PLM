@@ -11,7 +11,7 @@ namespace Keel.Change;
 /// access policy (ADR-0004), writes its audit event in the same transaction as its change (ADR-0005), including denials, and serializes
 /// per object on <c>SELECT … FOR UPDATE</c> (the change row first, then the object masters in id order, then other change rows).
 /// </summary>
-public sealed partial class ChangeService(NpgsqlDataSource dataSource, IAuditLog audit, IEnumerable<IChangeObjectGateway> gateways, TimeProvider clock, IRevisionEffectivity? effectivity = null)
+public sealed partial class ChangeService(NpgsqlDataSource dataSource, IAuditLog audit, IEnumerable<IChangeObjectGateway> gateways, TimeProvider clock, IRevisionEffectivity? effectivity = null, INotificationSink? notifications = null)
 {
     public const int MaxSearchLimit = 200;
     public const int MaxTitleLength = 200;

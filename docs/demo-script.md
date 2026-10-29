@@ -75,11 +75,20 @@ The demo host needs `Keel:Integration:FileDropRoot` (and a TDP signing key) in i
 Say this plainly if asked; it is on the roadmap, not hidden.
 - **CAD integration** (check-in from CAD tools, viewing, attribute sync): only a CAD placeholder file exists (Phase 4).
 - **Redlines** and markup. Effectivity, baselines, alternates and the MBOM exist and are seeded (see above) but are not part of the 25-minute walkthrough.
-- **Migration** (`keel-import`) and the **ERP integrations** exist (docs/migration, docs/integration) but are not part of the walkthrough; notifications do not exist.
+- **Migration** (`keel-import`) and the **ERP integrations** exist (docs/migration, docs/integration) but are not part of the walkthrough.
 - **High availability, backup and disaster recovery, SIEM forwarding, idle-session lock, CAC/PIV login**: Phase 5 or site integration (the dev IdP is Keycloak with passwords).
 - **Containers, Helm and the offline bundle** are delivered separately in increment 1.7 packaging.
 - Workflow template editor, delegation and escalation, documents as affected objects, and a signing path for change tasks are Phase 2.
 - The only users who can approve in the dev realm are bob (approver) and ada (admin, reviewer only); there is no second approver account.
+
+## Staying informed (notifications, comments, activity)
+Two browser profiles: alice and bob (both on program ORCA); a third with lena (not a U.S. person).
+1. Sign in as bob and leave the home page open. Sign in as alice, open the gimbal bracket, choose the **Comments** tab and type `@b`: bob is offered, lena is not (she cannot read the ITAR part). Pick bob, finish the sentence, **Post comment**.
+2. Bob's bell shows a badge within a second (no reload). Open the flyout (keyboard: focus the bell, Enter), choose the notification: it opens the bracket on the comment. Reply from there.
+3. Open the **Activity** tab: who did what and when, in sentences, with **Show details**. Views and downloads of colleagues are not listed (an auditor can switch them on).
+4. Press **Watch** next to the star, pick "Decisions only", and see the Home card **Activity in things I watch** and the list under **Notifications > Things I watch**.
+5. **Notifications > Preferences**: mentions and tasks cannot be turned off, with the reason; other kinds can.
+6. Sign in as lena: her bell is empty and the bracket (and its comments) is "not found". If a notification points at something she can no longer read, it says only "A notification you can no longer view".
 
 ## Reset
 Return to a clean, seeded state (this deletes dev data; it never touches anything else):

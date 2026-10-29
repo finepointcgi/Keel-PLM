@@ -152,6 +152,7 @@ public sealed partial class WorkflowService
             $"{task.Name}: from {previous} to {target.DisplayName} ({target.Username}). Reason: {reason.Trim()}", ct);
         await audit.AppendAsync(tx, Entry(subject, "workflow.reassign", AuditOutcome.Success, inst.ObjectType, inst.ObjectKey, correlationId,
             ("instance", inst.Id.ToString("D")), ("task", taskId.ToString("D")), ("from", previous), ("to", target.Username), ("reason", reason.Trim())), ct);
+        await WorkflowAwareness.TaskAssignedAsync(notifications, conn, tx, inst, task, subject, ct); // UX-4: the new assignee hears about the task
 
         var view = await BuildInstanceViewAsync(conn, tx, subject, inst, obj, now, ct);
         await tx.CommitAsync(ct);

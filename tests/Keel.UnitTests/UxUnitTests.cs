@@ -127,7 +127,7 @@ public sealed partial class ThemeContrastTests
     public void Components_do_not_hardcode_colours_outside_the_tokens()
     {
         // components.css, layout.css and base.css take colours from var(--…); the few intentional literals are the session warning (a fixed yellow notice) and rgba overlays.
-        foreach (var file in new[] { "base.css", "layout.css", "components.css" })
+        foreach (var file in new[] { "base.css", "layout.css", "components.css", "awareness.css" })
         {
             var css = File.ReadAllText(Path.Combine(RepoRoot, "src", "Keel.Web", "wwwroot", "css", file));
             var literals = Regex.Matches(css, @"#[0-9a-fA-F]{3,8}\b").Select(m => m.Value.ToLowerInvariant()).Distinct().Except(["#fde68a", "#b45309", "#1b1f24", "#ffffff", "#000000"]).ToList();

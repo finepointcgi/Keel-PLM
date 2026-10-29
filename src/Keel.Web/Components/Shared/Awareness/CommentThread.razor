@@ -1,0 +1,337 @@
+@* The comments of one object. Access is the access to the object: the service reads the object under the viewer's attributes first and refuses (as "not found") when the
+   viewer may not read it, so the comments follow the object's markings. A comment is plain text: it is rendered ONLY as encoded text (segments of text, @mentions and
+   object numbers), never as markup. Object numbers become links only when the viewer can read that object (otherwise they stay plain text). Comments cannot be edited;
+   the author or an administrator can remove one, which leaves a tombstone. The draft is kept in memory while the user moves between tabs. *@
+@implements IAsyncDisposable
+@inject CurrentUser Users
+@inject ICommentService Comments
+@inject CommentDrafts Drafts
+@inject ShellJs Js
+@inject NavigationManager Nav
+
+<section class="comments" aria-labelledby="comments-heading">
+    <div class="comments-head">
+        <h3 id="comments-heading">Comments@(page is null ? "" : $" ({page.TotalComments})")</h3>
+        @if (page is { TotalThreads: > 1 })
+        {
+            <button type="button" class="secondary small" aria-pressed="@(newestFirst ? "true" : "false")" data-action="sort-comments" @onclick="ToggleOrderAsync">@(newestFirst ? "Newest first" : "Oldest first")</button>
+        }
+    </div>
+    <p class="visually-hidden" aria-live="polite" aria-atomic="true">@announcement</p>
+
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+    @if (notFound)
+    {
+        <p class="error" role="alert">These comments are not available: the object was not found, or you are not authorized to see it.</p>
+    }
+    else if (page is null)
+    {
+        <Skeleton Lines="3" Label="Loading the comments" />
+    }
+    else
+    {
+        @if (page.CanPost)
+        {
+            <form class="composer" @onsubmit="() => PostAsync(null)" @onsubmit:preventDefault="true">
+                <label for="comment-new">Add a comment</label>
+                <textarea id="comment-new" rows="3" maxlength="@AwarenessLimits.CommentLength" value="@draft" @oninput="OnDraftInput"
+                          aria-describedby="comment-help" placeholder="Write a comment. Type @@ to mention someone who can read this object."></textarea>
+                @if (candidates.Count > 0)
+                {
+                    <div class="mention-list" role="group" aria-label="People you can mention">
+                        @foreach (var c in candidates)
+                        {
+                            var cand = c;
+                            <button type="button" class="secondary small" data-mention="@cand.Username" @onclick="() => PickMentionAsync(cand)">@cand.DisplayName (@@@cand.Username)</button>
+                        }
+                    </div>
+                }
+                <p class="muted small" id="comment-help">Plain text, up to @AwarenessLimits.CommentLength characters. A comment cannot be edited afterwards. Mentioned people are told only if they can read this object.</p>
+                <div class="toolbar">
+                    <button type="submit" disabled="@(busy || string.IsNullOrWhiteSpace(draft))" data-action="post-comment">Post comment</button>
+                    <span class="muted small" aria-hidden="true">@draft.Length / @AwarenessLimits.CommentLength</span>
+                </div>
+            </form>
+        }
+        else
+        {
+            <p class="muted">You can read the comments of this object but not write them: commenting needs the viewer role or higher.</p>
+        }
+
+        @if (page.Threads.Count == 0)
+        {
+            <EmptyState Title="No comments yet" IconName="comment">Start the conversation: comments stay with this object and are visible to everyone who may read it.</EmptyState>
+        }
+        else
+        {
+            <ol class="comment-thread">
+                @foreach (var thread in page.Threads)
+                {
+                    <li>
+                        @Render(thread, isReply: false)
+                        @if (thread.Replies.Count > 0)
+                        {
+                            <ol class="comment-replies" aria-label="@($"Replies to {thread.AuthorName}")">
+                                @foreach (var reply in thread.Replies) { <li>@Render(reply, isReply: true)</li> }
+                            </ol>
+                        }
+                        @if (replyTo == thread.Id)
+                        {
+                            <form class="composer reply" @onsubmit="() => PostAsync(thread.Id)" @onsubmit:preventDefault="true">
+                                <label for="reply-box">@($"Reply to {thread.AuthorName}")</label>
+                                <textarea id="reply-box" rows="2" maxlength="@AwarenessLimits.CommentLength" value="@replyDraft" @oninput="OnReplyInput"></textarea>
+                                <div class="toolbar">
+                                    <button type="submit" disabled="@(busy || string.IsNullOrWhiteSpace(replyDraft))">Post reply</button>
+                                    <button type="button" class="secondary" @onclick="CancelReply">Cancel</button>
+                                </div>
+                            </form>
+                        }
+                    </li>
+                }
+            </ol>
+            @if (page.TotalThreads > page.Threads.Count)
+            {
+                <button type="button" class="secondary" data-action="more-comments" @onclick="MoreAsync">Show more comments (@(page.TotalThreads - page.Threads.Count) more threads)</button>
+            }
+        }
+    }
+</section>
+
+<ConfirmDialog @bind-Open="confirmOpen" Title="Remove this comment?" Destructive="true" ConfirmText="Remove comment" ReasonLabel="Why is it being removed?" ReasonRequired="true"
+               OnConfirm="RemoveConfirmedAsync">
+    <p>The comment is replaced by a notice that it was removed. Its text is kept for audit and cannot be recovered by other users.</p>
+</ConfirmDialog>
+
+@code {
+    private RenderFragment Render(CommentView c, bool isReply) => @<article class="comment @(c.Removed ? "removed" : null) @(highlight == c.Id ? "target" : null)" id="@("c-" + c.Id.ToString("D"))" tabindex="-1">
+        <h4 class="comment-author">@c.AuthorName <span class="muted small"><TimeStamp At="c.At" /></span></h4>
+        @if (c.Removed)
+        {
+            <p class="comment-removed">Comment removed@(c.RemovedByName is null ? "" : $" by {c.RemovedByName}")@(c.RemovedAt is { } at ? $" on {UiText.Utc(at)} UTC" : "").@(c.RemovedReason is null ? "" : $" Reason: {c.RemovedReason}")</p>
+            @if (c.Body is not null)
+            {
+                <details class="comment-audit"><summary>Removed text (auditor view)</summary><p class="comment-body">@Body(c.Body)</p></details>
+            }
+        }
+        else
+        {
+            <p class="comment-body">@Body(c.Body ?? "")</p>
+            <div class="comment-actions">
+                @if (!isReply && page!.CanPost && replyTo != c.Id)
+                {
+                    <button type="button" class="secondary small" data-action="reply" aria-label="@($"Reply to {c.AuthorName}")" @onclick="() => StartReplyAsync(c.Id)">Reply</button>
+                }
+                @if (c.CanDelete)
+                {
+                    <button type="button" class="secondary small" data-action="remove-comment" aria-label="@($"Remove the comment by {c.AuthorName}")" @onclick="() => AskRemove(c.Id)">Remove</button>
+                }
+            </div>
+        }
+    </article>;
+
+    private RenderFragment Body(string text) => @<text>@foreach (var s in CommentText.Segments(text))
+    {
+        if (s.Kind == SegmentKind.Mention) { <span class="mention">@s.Text</span> }
+        else if (s.Kind == SegmentKind.Reference && chips.TryGetValue(s.Text, out var chip)) { <a class="ref-chip" href="@chip.Href" title="@chip.Name">@chip.Number</a> }
+        else { @s.Text }
+    }</text>;
+
+    private readonly CancellationTokenSource cts = new();
+    private CommentPage? page;
+    private IReadOnlyDictionary<string, ObjectChip> chips = new Dictionary<string, ObjectChip>();
+    private IReadOnlyList<MentionCandidate> candidates = [];
+    private bool notFound, busy, confirmOpen, newestFirst = true, deepLinkHandled;
+    private string draft = "", replyDraft = "", announcement = "";
+    private string? error, loadedKey;
+    private Guid? replyTo, removing, highlight, focusAfterRender;
+    private int shown = Pagesize, mentionSeq;
+
+    private const int Pagesize = 20;
+
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>Reports the number of live comments after each load (the tab label shows it).</summary>
+    [Parameter] public EventCallback<int> OnCount { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Kind + "|" + Number;
+        if (key == loadedKey) return;
+        loadedKey = key;
+        draft = Drafts.Get(Kind, Number);
+        await LoadAsync();
+    }
+
+    private Guid? TargetFromUri() =>
+        Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query).TryGetValue("comment", out var v) && Guid.TryParse(v.ToString(), out var id) ? id : null;
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var target = deepLinkHandled ? null : TargetFromUri();
+            var outcome = await Comments.ListAsync(await Users.GetAsync(), Kind, Number, newestFirst, 0, target is null ? shown : 100, CurrentUser.NewCorrelationId(), cts.Token);
+            notFound = !outcome.IsOk;
+            page = outcome.Value;
+            if (page is not null)
+            {
+                var numbers = page.Threads.SelectMany(t => t.Replies.Prepend(t)).Where(c => c.Body is not null).SelectMany(c => CommentText.References(c.Body!)).Distinct(StringComparer.Ordinal).ToList();
+                chips = numbers.Count == 0 ? new Dictionary<string, ObjectChip>() : await Comments.ResolveReferencesAsync(await Users.GetAsync(), numbers, cts.Token);
+                await OnCount.InvokeAsync(page.TotalComments);
+                if (target is { } t) { highlight = t; focusAfterRender = t; deepLinkHandled = true; }
+            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "The comments could not be loaded right now.";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusAfterRender is { } id)
+        {
+            focusAfterRender = null;
+            await Js.InvokeVoidAsync("scrollToId", "c-" + id.ToString("D"));
+            await Js.InvokeVoidAsync("focusSelector", "#c-" + id.ToString("D"));
+        }
+    }
+
+    private async Task ToggleOrderAsync()
+    {
+        newestFirst = !newestFirst;
+        await LoadAsync();
+    }
+
+    private async Task MoreAsync()
+    {
+        shown += Pagesize;
+        await LoadAsync();
+    }
+
+    // ---- composing
+
+    private async Task OnDraftInput(ChangeEventArgs e)
+    {
+        draft = e.Value?.ToString() ?? "";
+        Drafts.Set(Kind, Number, draft);
+        await SuggestAsync(draft);
+    }
+
+    private void OnReplyInput(ChangeEventArgs e)
+    {
+        replyDraft = e.Value?.ToString() ?? "";
+        if (replyTo is { } r) Drafts.Set(Kind, Number, replyDraft, r);
+    }
+
+    /// <summary>Suggests people while the text ends in "@something". Only users who could read this object are offered (the service filters by their stored attributes).</summary>
+    private async Task SuggestAsync(string text)
+    {
+        var token = CurrentMention(text);
+        var mine = ++mentionSeq;
+        if (token is null) { candidates = []; return; }
+        try
+        {
+            var outcome = await Comments.MentionCandidatesAsync(await Users.GetAsync(), Kind, Number, token, cts.Token);
+            if (mine == mentionSeq) candidates = outcome.Value ?? [];
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Npgsql.NpgsqlException) { candidates = []; }
+    }
+
+    internal static string? CurrentMention(string text)
+    {
+        var at = text.LastIndexOf('@');
+        if (at < 0 || (at > 0 && !char.IsWhiteSpace(text[at - 1]))) return null;
+        var token = text[(at + 1)..];
+        return token.Length <= 64 && token.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-') ? token : null;
+    }
+
+    private async Task PickMentionAsync(MentionCandidate c)
+    {
+        var at = draft.LastIndexOf('@');
+        if (at < 0) return;
+        draft = draft[..at] + "@" + c.Username + " ";
+        Drafts.Set(Kind, Number, draft);
+        candidates = [];
+        await Js.InvokeVoidAsync("focusSelector", "#comment-new");
+    }
+
+    private async Task PostAsync(Guid? parent)
+    {
+        var text = parent is null ? draft : replyDraft;
+        if (string.IsNullOrWhiteSpace(text) || busy) return;
+        busy = true;
+        error = null;
+        try
+        {
+            var outcome = await Comments.PostAsync(await Users.GetAsync(), Kind, Number, text, parent, CurrentUser.NewCorrelationId(), cts.Token);
+            if (outcome.IsOk)
+            {
+                Drafts.Clear(Kind, Number, parent);
+                if (parent is null) draft = ""; else { replyDraft = ""; replyTo = null; }
+                candidates = [];
+                shown = Math.Max(shown, Pagesize);
+                await LoadAsync();
+                announcement = "Comment posted.";
+                highlight = outcome.Value!.Id;
+                focusAfterRender = outcome.Value.Id; // focus moves to the new comment, so a screen reader reads it
+            }
+            else error = UiText.Message(outcome);
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "Your comment could not be posted right now. Your text is kept.";
+        }
+        busy = false;
+    }
+
+    private async Task StartReplyAsync(Guid id)
+    {
+        replyTo = id;
+        replyDraft = Drafts.Get(Kind, Number, id);
+        await InvokeAsync(StateHasChanged);
+        await Js.InvokeVoidAsync("focusSelector", "#reply-box");
+    }
+
+    private void CancelReply()
+    {
+        if (replyTo is { } r) Drafts.Clear(Kind, Number, r);
+        replyTo = null;
+        replyDraft = "";
+    }
+
+    // ---- removing
+
+    private void AskRemove(Guid id)
+    {
+        removing = id;
+        confirmOpen = true;
+    }
+
+    private async Task RemoveConfirmedAsync(string? reason)
+    {
+        if (removing is not { } id) return;
+        try
+        {
+            var outcome = await Comments.DeleteAsync(await Users.GetAsync(), id, reason ?? "", CurrentUser.NewCorrelationId(), cts.Token);
+            if (outcome.IsOk)
+            {
+                announcement = "Comment removed.";
+                await LoadAsync();
+            }
+            else error = UiText.Message(outcome);
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "The comment could not be removed right now.";
+        }
+        removing = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await cts.CancelAsync();
+        cts.Dispose();
+    }
+}

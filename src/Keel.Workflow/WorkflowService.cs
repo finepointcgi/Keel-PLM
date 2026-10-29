@@ -15,7 +15,7 @@ namespace Keel.Workflow;
 /// cancellations and edits cannot deadlock.
 /// </summary>
 public sealed partial class WorkflowService(
-    NpgsqlDataSource dataSource, IAuditLog audit, IEnumerable<IWorkflowObjectGateway> gateways, WorkflowOptions options, TimeProvider clock)
+    NpgsqlDataSource dataSource, IAuditLog audit, IEnumerable<IWorkflowObjectGateway> gateways, WorkflowOptions options, TimeProvider clock, INotificationSink? notifications = null)
 {
     public const int MaxCommentLength = 2000;
 
@@ -181,6 +181,7 @@ public sealed partial class WorkflowService(
             await WorkflowStore.AppendEventAsync(conn, tx, instance.Id, now, actor.Id, actor.DisplayName, "Task assigned", $"{t.Name}: {who}.", ct);
             await audit.AppendAsync(tx, Entry(actor, "workflow.task_assign", AuditOutcome.Success, instance.ObjectType, instance.ObjectKey, correlationId,
                 ("instance", instance.Id.ToString("D")), ("task", t.Id.ToString("D")), ("name", t.Name), ("assignee", t.AssigneeUsername ?? ("role:" + t.RequiredRole))), ct);
+            await WorkflowAwareness.TaskAssignedAsync(notifications, conn, tx, instance, t, actor, ct); // UX-4: the assignee hears about the task
         }
     }
 

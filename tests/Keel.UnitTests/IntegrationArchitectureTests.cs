@@ -33,6 +33,9 @@ public sealed partial class IntegrationArchitectureTests
                 checkedStatements++;
                 var statement = text.Substring(Math.Max(0, m.Index - 700), Math.Min(1400, text.Length - Math.Max(0, m.Index - 700)));
                 if (file.EndsWith("DeliveryStore.cs", StringComparison.Ordinal)) continue;
+                // The notification fan-out (ADR-0030) is the other system reader: it has no end user, it reads committed events through its own cursor, and every recipient is
+                // evaluated against the event's markings in NotificationWriter (see AwarenessArchitectureTests) before anything is written.
+                if (file.EndsWith("FanOutService.cs", StringComparison.Ordinal)) continue;
                 if (statement.Contains("filter.Sql}", StringComparison.Ordinal)) continue;
                 if (file.EndsWith("IntegrationAdminService.cs", StringComparison.Ordinal) && !m.Value.Contains("payload", StringComparison.OrdinalIgnoreCase)) continue;
                 offenders.Add($"{Path.GetRelativePath(JsonSchemaLiteTests.RepoRoot(), file)}: {m.Value.Trim()}");

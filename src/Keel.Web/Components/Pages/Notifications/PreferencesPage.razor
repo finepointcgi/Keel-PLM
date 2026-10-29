@@ -1,0 +1,90 @@
+@page "/notifications/preferences"
+@inject CurrentUser Users
+@inject INotificationCenter Center
+@inject ToastService Toasts
+
+<PageFrame Banner="@UiText.Unclassified" Title="Notification preferences" Crumbs="@Crumbs">
+    <p class="muted">Choose which notifications you get in the application. Notifications that need your action (tasks, reviews, change tasks and mentions) cannot be turned off, so you do not miss work that waits for you.
+        A notification never carries the name or text of an object: it is read again from the object, with your current access, whenever you look at it.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (prefs is null && error is null)
+    {
+        <Skeleton Lines="6" Label="Loading your preferences" />
+    }
+    else if (prefs is not null)
+    {
+        <section class="panel" aria-labelledby="auto-watch-heading">
+            <h2 id="auto-watch-heading">Watching</h2>
+            <label class="inline-check"><input type="checkbox" checked="@prefs.AutoWatch" data-pref="auto-watch" @onchange="SetAutoWatchAsync" /> Watch the objects I create, check out, sign or comment on</label>
+            <p class="muted small">You can stop watching any object at any time from its page or from <a href="watching">Things I watch</a>.</p>
+        </section>
+        <section class="panel" aria-labelledby="kinds-heading">
+            <h2 id="kinds-heading">What I am told about</h2>
+            <div class="table-wrap">
+                <table class="data pref-table">
+                    <caption class="visually-hidden">Notification kinds</caption>
+                    <thead><tr><th scope="col">Notification</th><th scope="col">In the application</th><th scope="col">Also my own actions</th></tr></thead>
+                    <tbody>
+                        @foreach (var k in prefs.Kinds)
+                        {
+                            var kind = k;
+                            <tr>
+                                <th scope="row">
+                                    @kind.Kind.Label
+                                    <span class="muted small">@kind.Kind.Description</span>
+                                    @if (!kind.Kind.CanDisable) { <span class="pref-locked">@kind.Kind.LockedReason</span> }
+                                </th>
+                                <td>
+                                    <input type="checkbox" checked="@kind.InApp" disabled="@(!kind.Kind.CanDisable)" data-kind="@kind.Kind.Code" data-pref="in-app"
+                                           aria-label="@($"Tell me in the application: {kind.Kind.Label}")" @onchange="e => SetKindAsync(kind, inApp: (bool)e.Value!, kind.NotifyOwn)" />
+                                </td>
+                                <td>
+                                    <input type="checkbox" checked="@kind.NotifyOwn" data-kind="@kind.Kind.Code" data-pref="own"
+                                           aria-label="@($"Also tell me when I did it myself: {kind.Kind.Label}")" @onchange="e => SetKindAsync(kind, kind.InApp, notifyOwn: (bool)e.Value!)" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="muted small">E-mail delivery is not available yet: notifications are in the application only.</p>
+        </section>
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Notifications", "notifications"), new("Preferences")];
+
+    private NotificationPreferences? prefs;
+    private string? error;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try { prefs = await Center.GetPreferencesAsync(await Users.GetAsync()); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { error = "Your preferences could not be loaded right now."; }
+    }
+
+    private async Task SetKindAsync(KindPreference kind, bool inApp, bool notifyOwn)
+    {
+        try
+        {
+            if (await Center.SetKindPreferenceAsync(await Users.GetAsync(), kind.Kind.Code, inApp, notifyOwn)) Toasts.Success("Preference saved.");
+            else Toasts.Warning(kind.Kind.LockedReason ?? "That preference cannot be changed.");
+            await ReloadAsync();
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { Toasts.Error("Your preference could not be saved right now."); }
+    }
+
+    private async Task SetAutoWatchAsync(ChangeEventArgs e)
+    {
+        try
+        {
+            await Center.SetAutoWatchAsync(await Users.GetAsync(), e.Value is true);
+            Toasts.Success("Preference saved.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Npgsql.NpgsqlException) { Toasts.Error("Your preference could not be saved right now."); }
+    }
+}

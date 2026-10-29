@@ -16,7 +16,7 @@ namespace Keel.Documents;
 /// the master row. File bytes go to the content-addressed vault (ADR-0015) before the metadata transaction, so no row
 /// lock is held while a large file streams.
 /// </summary>
-public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, ObjectVault vault, IDomainEventSink? events = null)
+public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, ObjectVault vault, IDomainEventSink? events = null, INotificationSink? notifications = null)
 {
     public const string ObjectType = "document";
     public const string DefaultLifecycle = "document-default";
@@ -114,6 +114,7 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         await audit.AppendAsync(tx, Entry(subject, "document.create", AuditOutcome.Success, number, correlationId,
             ("revision", "A.1"), ("markings", cmd.Markings.BannerText()), ("name", name), ("type", cmd.DocumentType),
             ("file", primary?.FileName), ("sha256", stored?.Sha256), ("size", stored?.SizeBytes.ToString(CultureInfo.InvariantCulture))), ct);
+        await DocumentAwareness.AfterAsync(notifications, conn, tx, "document.create", number, cmd.Markings, subject, [], ct); // UX-4: the creator watches the document
         var detail = await LoadDetailAsync(conn, tx, subject, number, null, ct);
         await tx.CommitAsync(ct);
         return Outcome<DocumentDetail>.Ok(detail!);
@@ -507,6 +508,7 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
             return step.Kind == OutcomeKind.Invalid ? Outcome<DocumentDetail>.Invalid(step.Errors) : Outcome<DocumentDetail>.Conflict(step.Errors[0]);
         }
         await audit.AppendAsync(tx, Entry(subject, action, AuditOutcome.Success, number, correlationId, step.Details), ct);
+        await DocumentAwareness.AfterAsync(notifications, conn, tx, action, number, head.Markings, subject, step.Details, ct); // UX-4: watchers, auto-watch
         var detail = await LoadDetailAsync(conn, tx, subject, number, null, ct);
         await tx.CommitAsync(ct);
         return Outcome<DocumentDetail>.Ok(detail!);

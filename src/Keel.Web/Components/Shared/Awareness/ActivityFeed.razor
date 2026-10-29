@@ -1,0 +1,116 @@
+@* The "Activity" tab of an object: who did what and when, from the tamper-evident audit log. The service first checks that the viewer may read the object and then reads only the
+   audit rows of this object and only the actions of the activity catalog, so no raw action codes appear, views and downloads of colleagues are never listed, and
+   nothing about another object's markings is shown. Auditors can switch on views and refused attempts. *@
+@implements IAsyncDisposable
+@inject CurrentUser Users
+@inject IActivityFeed Feed
+
+<section class="activity" aria-labelledby="activity-heading">
+    <div class="comments-head">
+        <h3 id="activity-heading">Activity</h3>
+        @if (page is { IsAuditor: true })
+        {
+            <label class="inline-check"><input type="checkbox" checked="@includeViews" data-action="include-views" @onchange="ToggleViewsAsync" /> Include views and refused attempts (auditor)</label>
+        }
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (notFound)
+    {
+        <p class="error" role="alert">The activity is not available: the object was not found, or you are not authorized to see it.</p>
+    }
+    else if (page is null)
+    {
+        <Skeleton Lines="4" Label="Loading the activity" />
+    }
+    else if (entries.Count == 0)
+    {
+        <EmptyState Title="No activity yet" IconName="activity">Changes, reviews, releases and comments on this object are listed here as they happen.</EmptyState>
+    }
+    else
+    {
+        <ol class="activity-list">
+            @foreach (var e in entries)
+            {
+                var entry = e;
+                <li class="@("activity-item cat-" + entry.Category + (entry.IsView ? " view" : ""))">
+                    <span class="activity-text">
+                        @if (entry.Href is { } href) { <a href="@href">@entry.Sentence</a> } else { @entry.Sentence }
+                    </span>
+                    <span class="activity-meta"><TimeStamp At="entry.At" /></span>
+                    @if (entry.Details.Count > 0)
+                    {
+                        <details class="activity-details">
+                            <summary>Show details</summary>
+                            <dl class="facts">
+                                @foreach (var d in entry.Details)
+                                {
+                                    <dt>@d.Label</dt>
+                                    <dd>@if (d.Href is { } dh) { <a href="@dh">@d.Value</a> } else { @d.Value }</dd>
+                                }
+                            </dl>
+                        </details>
+                    }
+                </li>
+            }
+        </ol>
+        @if (page.NextBefore is not null)
+        {
+            <button type="button" class="secondary" data-action="older-activity" disabled="@busy" @onclick="OlderAsync">Show older activity</button>
+        }
+    }
+</section>
+
+@code {
+    private readonly CancellationTokenSource cts = new();
+    private readonly List<ActivityEntry> entries = [];
+    private ActivityPage? page;
+    private bool notFound, busy, includeViews;
+    private string? error, loadedKey;
+
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Kind + "|" + Number;
+        if (key == loadedKey) return;
+        loadedKey = key;
+        await LoadAsync(before: null, reset: true);
+    }
+
+    private async Task LoadAsync(long? before, bool reset)
+    {
+        busy = true;
+        try
+        {
+            var outcome = await Feed.GetAsync(await Users.GetAsync(), Kind, Number, before, 30, includeViews, CurrentUser.NewCorrelationId(), cts.Token);
+            notFound = !outcome.IsOk;
+            if (reset) entries.Clear();
+            if (outcome.Value is { } p)
+            {
+                page = p;
+                entries.AddRange(p.Entries);
+            }
+            error = null;
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "The activity could not be loaded right now.";
+        }
+        busy = false;
+    }
+
+    private Task OlderAsync() => LoadAsync(page?.NextBefore, reset: false);
+
+    private Task ToggleViewsAsync(ChangeEventArgs e)
+    {
+        includeViews = e.Value is true;
+        return LoadAsync(null, reset: true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await cts.CancelAsync();
+        cts.Dispose();
+    }
+}

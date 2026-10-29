@@ -1,0 +1,176 @@
+@page "/notifications"
+@implements IAsyncDisposable
+@inject CurrentUser Users
+@inject INotificationCenter Center
+@inject INotificationHub Hub
+@inject TimeProvider Clock
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="Notifications" Crumbs="@Crumbs">
+    <p class="muted">What changed and what needs you: tasks and reviews assigned to you, mentions, decisions and changes to the things you watch. Each notification points to the object; its text is read from the object when you open this page, so you only see what you are still allowed to see.</p>
+    <div class="toolbar">
+        <button type="button" disabled="@(unread == 0)" data-action="mark-all-read" @onclick="MarkAllAsync">Mark all as read</button>
+        <button type="button" class="secondary" disabled="@(selected.Count == 0)" data-action="mark-selected-read" @onclick="MarkSelectedAsync">Mark selected as read</button>
+        <a class="button secondary" href="notifications/preferences">Preferences</a>
+        <a class="button secondary" href="watching">Things I watch</a>
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+    <TabSet Tabs="Tabs" Active="@tab" ActiveChanged="OnTabChangedAsync" Label="Notification filters">
+        @if (loading && page is null)
+        {
+            <Skeleton Lines="5" Label="Loading your notifications" />
+        }
+        else if (page is null || page.Items.Count == 0)
+        {
+            <EmptyState Title="@EmptyTitle" IconName="bell">@EmptyText</EmptyState>
+        }
+        else
+        {
+            @foreach (var day in page.Items.GroupBy(i => DateOnly.FromDateTime(i.At.UtcDateTime)))
+            {
+                <h3 class="notif-day">@RelativeTime.DayHeading(day.First().At, Clock.GetUtcNow())</h3>
+                <NotificationList Items="day.ToList()" Label="@($"Notifications of {RelativeTime.DayHeading(day.First().At, Clock.GetUtcNow())}")" Selectable="true" ShowMarkRead="true" Selected="selected"
+                                  OnSelect="OnSelect" OnOpen="OnOpenedAsync" OnMarkRead="MarkOneAsync" />
+            }
+            <Pager Total="page.Total" Offset="offset" PageSize="PageSize" OnPage="OnPageAsync" />
+        }
+    </TabSet>
+</PageFrame>
+
+@code {
+    private const int PageSize = AwarenessLimits.PageSize;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Notifications")];
+    private static readonly string[] TabIds = ["all", "unread", "mentions", "tasks", "watching"];
+
+    private readonly CancellationTokenSource cts = new();
+    private readonly HashSet<Guid> selected = [];
+    private IDisposable? subscription;
+    private NotificationPage? page;
+    private bool loading = true;
+    private int offset, unread, signalSeq;
+    private string tab = "all";
+    private string? error;
+
+    private IReadOnlyList<TabInfo> Tabs =>
+    [
+        new("all", "All"), new("unread", "Unread", unread > 0 ? unread : null), new("mentions", "Mentions"), new("tasks", "Tasks"), new("watching", "Watching"),
+    ];
+
+    private string Banner => page is null || page.Items.All(i => i.Markings is null) ? UiText.Unclassified : Markings.AggregateBanner(page.Items.Where(i => i.Markings is not null).Select(i => i.Markings!).ToList());
+
+    private string EmptyTitle => tab switch
+    {
+        "unread" => "You are all caught up",
+        "mentions" => "No mentions",
+        "tasks" => "No tasks or reviews",
+        "watching" => "Nothing from things you watch",
+        _ => "No notifications yet",
+    };
+
+    private string EmptyText => tab switch
+    {
+        "unread" => "Nothing is waiting: every notification you can see has been read.",
+        "mentions" => "When someone writes @@your-login in a comment on something you can read, it shows up here.",
+        "tasks" => "Reviews to sign, change tasks and decisions on your submissions appear here.",
+        "watching" => "Watch a part, document or change with the Watch button on its page to hear about changes, comments and decisions.",
+        _ => "Tasks, mentions and changes to the things you watch will appear here.",
+    };
+
+    private NotificationFilter Filter => tab switch
+    {
+        "unread" => NotificationFilter.Unread,
+        "mentions" => NotificationFilter.Mentions,
+        "tasks" => NotificationFilter.Tasks,
+        "watching" => NotificationFilter.Watching,
+        _ => NotificationFilter.All,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        tab = TabSet.FromUri(Nav.Uri, TabIds, "all");
+        try { subscription = Hub.Subscribe((await Users.GetAsync()).Id, OnSignal); }
+        catch (Exception e) when (e is InvalidOperationException) { /* locked: the layout shows the lock screen instead of this page */ }
+        await LoadAsync();
+    }
+
+    private void OnSignal() => _ = DebouncedAsync();
+
+    private async Task DebouncedAsync()
+    {
+        var mine = Interlocked.Increment(ref signalSeq);
+        try { await Task.Delay(TimeSpan.FromMilliseconds(250), cts.Token); }
+        catch (OperationCanceledException) { return; }
+        if (mine == signalSeq) await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            page = await Center.ListAsync(await Users.GetAsync(), Filter, offset, PageSize, cts.Token);
+            unread = page.Unread;
+            error = null;
+            selected.IntersectWith(page.Items.Select(i => i.Id));
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "Your notifications could not be loaded right now.";
+        }
+        loading = false;
+    }
+
+    private async Task OnTabChangedAsync(string id)
+    {
+        tab = id;
+        offset = 0;
+        selected.Clear();
+        await LoadAsync();
+    }
+
+    private async Task OnPageAsync(int newOffset)
+    {
+        offset = newOffset;
+        await LoadAsync();
+    }
+
+    private void OnSelect((Guid Id, bool Selected) change)
+    {
+        if (change.Selected) selected.Add(change.Id); else selected.Remove(change.Id);
+    }
+
+    private async Task OnOpenedAsync(NotificationItem item)
+    {
+        try { await Center.MarkReadAsync(await Users.GetAsync(), item.Id); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { /* the link still works */ }
+    }
+
+    private async Task MarkOneAsync(NotificationItem item)
+    {
+        await Center.MarkReadAsync(await Users.GetAsync(), item.Id);
+        await LoadAsync();
+    }
+
+    private async Task MarkSelectedAsync()
+    {
+        await Center.MarkReadAsync(await Users.GetAsync(), selected.ToArray());
+        selected.Clear();
+        await LoadAsync();
+    }
+
+    private async Task MarkAllAsync()
+    {
+        await Center.MarkAllReadAsync(await Users.GetAsync());
+        selected.Clear();
+        await LoadAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        subscription?.Dispose();
+        await cts.CancelAsync();
+        cts.Dispose();
+    }
+}
