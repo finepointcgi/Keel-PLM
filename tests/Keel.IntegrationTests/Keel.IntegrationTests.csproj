@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Keel.Viewer\Keel.Viewer.csproj" />
     <ProjectReference Include="..\..\src\Keel.Workspace\Keel.Workspace.csproj" />
     <ProjectReference Include="..\..\src\Keel.Notifications\Keel.Notifications.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Sourcing\Keel.Sourcing.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
     <ProjectReference Include="..\..\src\Keel.Documents\Keel.Documents.csproj" />
     <ProjectReference Include="..\..\src\Keel.Bom\Keel.Bom.csproj" />

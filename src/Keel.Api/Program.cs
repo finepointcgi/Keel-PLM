@@ -137,6 +137,9 @@ builder.Services.AddKeelIntegrationOpenApi();
 Keel.Siem.SiemModule.AddKeelSiem(builder.Services, builder.Configuration, options.Security.RequireFips, secretsDirectory); // 5.0 SIEM forwarding (off unless Keel:Siem:Enabled)
 Keel.Workspace.WorkspaceModule.AddKeelWorkspace(builder.Services); // UX-1 personal workspace data (preferences, recent items, favorites, saved searches)
 Keel.Notifications.NotificationsModule.AddKeelNotifications(builder.Services, builder.Configuration); // UX-4 notifications, watch lists, comments, activity feed
+Keel.Sourcing.SourcingModule.AddKeelSourcing(builder.Services, builder.Configuration); // 8.2 suppliers, approved lists, supplier portal
+builder.Services.AddSingleton<Keel.Web.Services.SourcingCoverageService>(); // 8.2 BOM-level sourcing coverage (composes BOM, MBOM and sourcing)
+builder.Services.AddKeelSourcingOpenApi();
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -200,7 +203,8 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(Policies.AnyPlmRole, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.All))
     .AddPolicy(Policies.Auditor, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Auditor))
     .AddPolicy(Policies.Admin, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Admin))
-    .AddPolicy(Policies.Integration, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Integration)); // 4.0 integration pull API
+    .AddPolicy(Policies.Integration, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Integration)) // 4.0 integration pull API
+    .AddPolicy(Policies.Supplier, p => p.RequireAuthenticatedUser().RequireClaim("sub").RequireClaim("roles", Roles.Supplier)); // 8.2 supplier portal
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
 
 builder.Services.AddHealthChecks()
@@ -249,6 +253,7 @@ app.MapAdminEndpoints(); // 2.2 administration and classification
 app.MapMbomEndpoints(); // 2.3 EBOM / MBOM and reconciliation
 app.MapVisualEndpoints(); // UX-3 downloads of the relationship pictures
 app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration administration
+app.MapSourcingEndpoints(); // 8.2 suppliers, approved lists, requests and the supplier portal
 app.MapOpenApi("/openapi/{documentName}.json");
 app.MapKeelUi<App>();
 
