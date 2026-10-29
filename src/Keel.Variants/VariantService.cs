@@ -200,7 +200,7 @@ public sealed partial class VariantService(NpgsqlDataSource dataSource, IAuditLo
     public Task<Outcome<ModelView>> GetModelAsync(Subject subject, string number, string? correlationId, CancellationToken ct = default) =>
         ReadAsync<ModelView>(subject, number, "variant.view", correlationId, (_, _, product, model) =>
         {
-            var view = BuildView(product, model!);
+            var view = BuildView(product, model!) with { CanModify = AccessPolicy.Evaluate(subject, product.Markings, PlmAction.Modify).Permitted && product.PartType == "Assembly" };
             return Task.FromResult(Step<ModelView>.Done(view, ("families", Fmt(view.Families.Count)), ("variants", Fmt(view.Variants.Count)), ("banner", view.Banner)));
         }, ct);
 

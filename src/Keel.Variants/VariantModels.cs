@@ -40,7 +40,7 @@ public sealed record ModelView(
     string ProductNumber, string ProductName, string ProductType, int Version,
     IReadOnlyList<FamilyView> Families, IReadOnlyList<RuleView> Rules, IReadOnlyList<VariantView> Variants,
     IReadOnlyList<ModelFinding> Findings, long RawCombinations, long ValidCombinations, bool AnalysisComplete,
-    string Banner, Markings Markings);
+    string Banner, Markings Markings, bool CanModify = false);
 
 public sealed record NewFamily(string Key, string Name, string? Description = null, bool Required = true, int SortOrder = 0);
 public sealed record FamilyChange(string? Name = null, string? Description = null, bool? Required = null, bool? Retired = null, int? SortOrder = null);

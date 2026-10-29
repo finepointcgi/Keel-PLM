@@ -1,0 +1,73 @@
+@page "/options/{Number}/compare"
+@using Keel.Web.Components.Pages.Configuration
+@inject CurrentUser Users
+@inject VariantService Variants
+@inject BomService Bom
+
+@* What differs between two variants of one product (ADR-0039): both are resolved from the same revision through the reader's own access filter, then compared like two units. *@
+<PageFrame Banner="@BannerMerge.Union(model?.Banner ?? UiText.Unclassified, result?.Banner ?? UiText.Unclassified)" Title="@($"Compare variants: {Number}")" Crumbs="@Crumbs">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Number has no options, or was not found, or you are not authorized to see it.</p>
+    }
+    else if (model is not null)
+    {
+        <p><a href="options/@Uri.EscapeDataString(Number)">Back to the options of @Number</a></p>
+        <form class="toolbar" @onsubmit="Run" aria-label="Variants to compare">
+            <label>Variant A
+                <select @bind="left" required><option value="">Choose a variant</option>@foreach (var v in Choices) { <option value="@v.Name">@v.Name</option> }</select>
+            </label>
+            <label>Variant B
+                <select @bind="right" required><option value="">Choose a variant</option>@foreach (var v in Choices) { <option value="@v.Name">@v.Name</option> }</select>
+            </label>
+            <label>Children
+                <select @bind="released"><option value="false">Latest</option><option value="true">Latest released</option></select>
+            </label>
+            <button type="submit" disabled="@busy">Compare variants</button>
+        </form>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (result is not null) { <DeepDiffTable Result="result" /> }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    [SupplyParameterFromQuery(Name = "left")] public string? LeftParam { get; set; }
+    [SupplyParameterFromQuery(Name = "right")] public string? RightParam { get; set; }
+
+    private ModelView? model;
+    private DeepComparison? result;
+    private string left = "", right = "", released = "false";
+    private string? error;
+    private bool notFound, busy, applied;
+
+    private IReadOnlyList<Crumb> Crumbs => [new("Options and variants", "options"), new(Number, VariantUi.ProductHref(Number)), new("Compare variants")];
+    private IEnumerable<VariantView> Choices => model!.Variants.Where(v => v.State != VariantStates.Retired);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var outcome = await Variants.GetModelAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        model = outcome.Value;
+        if (!applied && model is not null && !string.IsNullOrEmpty(LeftParam) && !string.IsNullOrEmpty(RightParam))
+        {
+            (left, right, applied) = (LeftParam, RightParam, true);
+            await Run();
+        }
+    }
+
+    private async Task Run()
+    {
+        busy = true;
+        error = null;
+        var subject = await Users.GetAsync();
+        var corr = CurrentUser.NewCorrelationId();
+        var a = await Variants.ResolveAsync(subject, Number, left, corr);
+        var b = await Variants.ResolveAsync(subject, Number, right, corr);
+        if (!a.IsOk || !b.IsOk) { error = UiText.Message(a.IsOk ? b : a); result = null; busy = false; return; }
+        var outcome = await Bom.CompareVariantsAsync(subject, Number, a.Value!.Selection, b.Value!.Selection, released == "true" ? BomConfigSpec.LatestReleased : BomConfigSpec.Latest, null, corr);
+        busy = false;
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        result = outcome.Value;
+    }
+}

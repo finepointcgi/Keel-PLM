@@ -1,0 +1,75 @@
+@page "/parts/{Number}/variants"
+@inject CurrentUser Users
+@inject VariantWhereUsedService WhereUsed
+
+@* Which variants use this part (ADR-0039): where-used extended to options. Only products the reader can read are listed, and a part the reader cannot read is not found. *@
+<PageFrame Banner="@(usage?.Banner ?? UiText.Unclassified)" Title="Which variants use this part" Crumbs="@Crumbs">
+    <p><a href="parts/@Uri.EscapeDataString(Number)">Back to @Number</a></p>
+    <form class="toolbar" aria-label="Structure to read">
+        <label>Children
+            <select @bind="mode" @bind:after="Load"><option value="Latest">Latest</option><option value="LatestReleased">Latest released</option></select>
+        </label>
+    </form>
+    @if (error is not null)
+    {
+        <p class="error" role="alert">@error</p>
+    }
+    else if (usage is not null)
+    {
+        <h2 class="subhead">@Number</h2>
+        @if (usage.Products.Count == 0)
+        {
+            <p class="muted" aria-live="polite">No product with options contains this part.</p>
+        }
+        else
+        {
+            @foreach (var p in usage.Products)
+            {
+                <section class="panel stack" aria-labelledby="@("prod-" + p.Product)">
+                    <h3 id="@("prod-" + p.Product)"><a href="@VariantUi.ProductHref(p.Product)">@p.Product</a> · @p.ProductName <MarkingChip Text="@p.Banner" /></h3>
+                    <p class="muted" aria-live="polite">
+                        Used on @p.Occurrences line@(p.Occurrences == 1 ? "" : "s");
+                        @(p.Variants.Count == 0 ? "no variant uses it" : $"{p.Variants.Count} of {p.VariantsTotal} variant{(p.VariantsTotal == 1 ? "" : "s")} use it").
+                    </p>
+                    @if (p.Variants.Count > 0)
+                    {
+                        <div class="table-wrap"><table class="data">
+                            <caption class="sr-only">Variants of @p.Product that use @Number</caption>
+                            <thead><tr><th scope="col">Variant</th><th scope="col">State</th><th scope="col">Lines</th><th scope="col">Total quantity</th><th scope="col">Structure</th></tr></thead>
+                            <tbody>
+                            @foreach (var v in p.Variants)
+                            {
+                                <tr>
+                                    <td>@v.Variant</td>
+                                    <td><span class="badge @VariantUi.StateClass(v.State)">@v.State</span></td>
+                                    <td>@v.Occurrences</td>
+                                    <td>@v.ExtendedQuantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)</td>
+                                    <td><a href="@VariantUi.StructureHref(p.Product, v.Variant)" aria-label="@($"Structure of {p.Product} for variant {v.Variant}")">Structure</a></td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table></div>
+                    }
+                </section>
+            }
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    private PartVariantUsage? usage;
+    private string? error;
+    private string mode = "Latest";
+
+    private IReadOnlyList<Crumb> Crumbs => [new("Parts", "parts"), new(Number, $"parts/{Uri.EscapeDataString(Number)}"), new("Variants")];
+
+    protected override Task OnParametersSetAsync() => Load();
+
+    private async Task Load()
+    {
+        var outcome = await WhereUsed.ForPartAsync(await Users.GetAsync(), Number, mode == "LatestReleased" ? BomConfigSpec.LatestReleased : BomConfigSpec.Latest, CurrentUser.NewCorrelationId());
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+        usage = outcome.Value;
+    }
+}

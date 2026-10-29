@@ -9,7 +9,7 @@ namespace Keel.Variants;
 public sealed partial class VariantService
 {
     private static async Task<ModelView> ViewAsync(NpgsqlConnection conn, NpgsqlTransaction tx, ProductRef product, CancellationToken ct) =>
-        BuildView(product, (await VariantStore.LoadModelAsync(conn, tx, product.Id, ct))!);
+        BuildView(product, (await VariantStore.LoadModelAsync(conn, tx, product.Id, ct))!) with { CanModify = true };
 
     private static string? CleanText(string? s, int max, out string? error)
     {
@@ -210,7 +210,7 @@ public sealed partial class VariantService
             // A rule is refused when it adds an error, or when it makes an option unusable (no valid configuration can contain it): both are nearly always a mistake.
             var introduced = RuleEngine.ValidateModel(after.ToDef()).Where(f => (f.Severity == FindingSeverity.Error || f.Code == "option.unusable") && !errorsBefore.Contains(f.Code + "|" + f.Message)).Select(f => f.Message).ToList();
             if (introduced.Count > 0) return Step<ModelView>.Conflict("This rule would make the model inconsistent: " + string.Join(" ", introduced));
-            return Step<ModelView>.Done(BuildView(product, after), ("rule", id.ToString("D")), ("kind", VariantStore.KindText(cmd.Kind)),
+            return Step<ModelView>.Done(BuildView(product, after) with { CanModify = true }, ("rule", id.ToString("D")), ("kind", VariantStore.KindText(cmd.Kind)),
                 ("subject", cmd.Subject?.ToString()), ("members", string.Join("; ", members.Select(x => x.ToString()))));
         }, ct);
 

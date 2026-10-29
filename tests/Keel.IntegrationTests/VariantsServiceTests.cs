@@ -96,6 +96,9 @@ public sealed class VariantsServiceTests(PostgresFixture pg)
         Assert.Equal("Fixed", ev.Payload["variant"]!["name"]!.GetValue<string>());
         Assert.Equal(["Engine", "Payload"], ev.Payload["choices"]!.AsArray().Select(c => c!["family"]!.GetValue<string>()));
         Assert.Equal("Electric", ev.Payload["choices"]![0]!["valueName"]!.GetValue<string>());
+        var schemaFile = Path.Combine(AppContext.BaseDirectory, "../../../../../docs/integration/schemas/variant.released.v1.json");
+        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(schemaFile))!.AsObject();
+        Assert.Empty(Keel.TestSupport.JsonSchemaLite.Validate(System.Text.Json.Nodes.JsonNode.Parse(ev.Payload.ToJsonString())!, schema));
 
         // released means frozen: no edit, no delete, no rename, and the database agrees
         Assert.Equal(OutcomeKind.Conflict, (await env.Var.UpdateVariantAsync(Alice, top, "Fixed", new VariantChange(Description: "x"), null)).Kind);

@@ -1,7 +1,12 @@
 @* BOM section of the part page (increment 1.4). Shows the checked-in structure of the displayed version, and the editor while the
    signed-in user holds the check-out. The page banner is the aggregate of the part and every displayed row. *@
 @using Keel.Web.Components.Pages.Configuration
+@using Keel.Web.Components.Pages.Variants
+@using Keel.Variants
+@using Keel.Core.Variants
 @inject CurrentUser Users
+@inject VariantService Variants
+@inject NavigationManager Nav
 @inject BomService Bom
 @inject BaselineService Baselines
 @inject EffectivityService Effectivity
@@ -13,6 +18,7 @@
             <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/where-used")">Where used</a>
             <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/compare")">Compare versions</a>
             <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/compare-units")">Compare units</a>
+            <a href="@($"parts/{Uri.EscapeDataString(Part.Number)}/variants")">Which variants use this part</a>
             <a href="@($"baselines/new?part={Uri.EscapeDataString(Part.Number)}")">Create baseline</a>
         </nav>
     </div>
@@ -49,6 +55,8 @@
                 <option value="0">All</option>
             </select>
         </label>
+        <VariantPicker ProductNumber="@Part.Number" Value="@variantName" ValueChanged="SetVariant" Disabled="@(spec == BomConfigSpec.Baseline)"
+                       DisabledReason="A baseline is a frozen list and cannot be resolved for a variant." />
         <button type="button" class="secondary" @onclick="() => SetLevels(1)">Collapse all</button>
         <button type="button" class="secondary" @onclick="() => SetLevels(0)">Expand all</button>
         <label class="inline-check"><input type="radio" name="bom-view" checked="@(!summaryView && !treemapView)" @onchange="() => SetView(false)" /> Tree</label>
@@ -117,7 +125,8 @@
     private BomSummary? summary;
     private int summaryOffset;
     private const int SummaryPageSize = 100; // one row per distinct part: a 50,000-line structure can have tens of thousands (GAP-D-3)
-    private string? error, loadedFor;
+    private string? error, loadedFor, variantName;
+    private VariantSelection? variantSel;
     private int rowsShown;
     private IReadOnlyList<Markings> treeMarkings = [], editorMarkings = [];
 
@@ -131,21 +140,44 @@
     {
         var key = $"{Part.Id}:{Part.Revision.Revision}:{Part.Iteration.Iteration}";
         if (key == loadedFor) return;
+        var first = loadedFor is null;
         loadedFor = key;
+        // a link from the options page (?variant=Name) opens the structure resolved for that variant
+        if (first && Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query).TryGetValue("variant", out var requested) && requested.ToString() is { Length: > 0 } wanted)
+        {
+            await SetVariant(wanted);
+            return;
+        }
         await Reload();
     }
 
-    private string ExportUrl() =>
-        $"ui/parts/{Uri.EscapeDataString(Part.Number)}/bom.csv?revision={Uri.EscapeDataString(Part.Revision.Revision)}&iteration={Part.Iteration.Iteration}&spec={spec}{(levels > 0 ? $"&depth={levels}" : "")}"
+    /// <summary>Resolves the chosen variant (null: the full structure) and shows the structure for it. An unknown or unreadable variant leaves the full structure.</summary>
+    private async Task SetVariant(string? name)
+    {
+        variantName = null;
+        variantSel = null;
+        if (name is not null)
+        {
+            var picked = await Variants.ResolveAsync(await Users.GetAsync(), Part.Number, name, Corr());
+            if (picked.IsOk) (variantName, variantSel) = (picked.Value!.Name, picked.Value.Selection);
+            else error = UiText.Message(picked);
+        }
+        await Reload();
+    }
+
+    private string ExportUrl() => variantSel is not null && spec != BomConfigSpec.Baseline
+        ? $"ui/variants/{Uri.EscapeDataString(Part.Number)}/{Uri.EscapeDataString(variantName!)}/bom.csv?spec={(spec == BomConfigSpec.LatestReleased ? "LatestReleased" : "Latest")}{(levels > 0 ? $"&depth={levels}" : "")}"
+            + (spec == BomConfigSpec.Effectivity ? "&" + unitForm.Query() : "")
+        : $"ui/parts/{Uri.EscapeDataString(Part.Number)}/bom.csv?revision={Uri.EscapeDataString(Part.Revision.Revision)}&iteration={Part.Iteration.Iteration}&spec={spec}{(levels > 0 ? $"&depth={levels}" : "")}"
         + (spec == BomConfigSpec.Baseline ? $"&baseline={Uri.EscapeDataString(baselineNumber)}" : spec == BomConfigSpec.Effectivity ? "&" + unitForm.Query() : "");
 
     // Latest and LatestReleased start from the displayed revision; an as-of-unit view starts from the revision the unit resolves to, and a baseline from its own root.
-    private BomQuery Query(int? depth, string? parentLine = null) => spec switch
+    private BomQuery Query(int? depth, string? parentLine = null) => (spec switch
     {
         BomConfigSpec.Effectivity => new(Part.Number, null, null, spec, depth, parentLine, null, unitForm.ToRequest().Request),
         BomConfigSpec.Baseline => new(Part.Number, null, null, spec, depth, parentLine, baselineNumber),
-        _ => new(Part.Number, Part.Revision.Revision, Part.Iteration.Iteration, spec, depth, parentLine),
-    };
+        _ => new BomQuery(Part.Number, Part.Revision.Revision, Part.Iteration.Iteration, spec, depth, parentLine),
+    }) with { Variant = spec == BomConfigSpec.Baseline ? null : variantSel };
 
     /// <summary>The reason a unit or baseline view cannot be shown yet, or null.</summary>
     private string? SelectionProblem() => spec switch

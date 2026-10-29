@@ -186,9 +186,18 @@ public static class MbomEndpoints
 
         // The Blazor UI authenticates with its session cookie; a plain link to this route downloads the export within the CSP (like the EBOM export).
         app.MapGet("/ui/mboms/{number}/explosion.csv", async (string number, string? revision, int? iteration, bool? latestChildren, int? depth, [AsParameters] UnitQuery unit,
-            HttpContext ctx, MbomService svc, CancellationToken ct) =>
-            (await svc.ExportCsvAsync(SubjectFactory.Require(ctx), new MbomQuery(number, revision, iteration, latestChildren == true, depth, null, unit.ToRequest()), CorrelationId.Get(ctx), ct)).ToHttp(Csv))
-            .RequireAuthorization(Policies.AnyPlmRole);
+            string? variant, string? product, HttpContext ctx, MbomService svc, Keel.Core.Variants.IVariantSelectionSource variants, CancellationToken ct) =>
+        {
+            // 8.4: with a variant (of the product part named by "product"), the export holds only the lines that variant uses.
+            Keel.Core.Variants.VariantSelection? selection = null;
+            if (!string.IsNullOrWhiteSpace(variant))
+            {
+                var picked = await variants.ResolveAsync(SubjectFactory.Require(ctx), product ?? "", variant.Trim(), CorrelationId.Get(ctx), ct);
+                if (!picked.IsOk) return picked.ToHttp();
+                selection = picked.Value;
+            }
+            return (await svc.ExportCsvAsync(SubjectFactory.Require(ctx), new MbomQuery(number, revision, iteration, latestChildren == true, depth, null, unit.ToRequest(), selection), CorrelationId.Get(ctx), ct)).ToHttp(Csv);
+        }).RequireAuthorization(Policies.AnyPlmRole);
     }
 
     private static IResult Csv(MbomExport export) => Results.File(Encoding.UTF8.GetBytes(export.Csv), "text/csv; charset=utf-8", export.FileName);

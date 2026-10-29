@@ -1,4 +1,5 @@
 @using Keel.Web.Components.Pages.Configuration
+@using Keel.Web.Components.Pages.Variants
 @inject CurrentUser Users
 @inject BomService Bom
 @inject IReferenceData Refs
@@ -39,7 +40,7 @@
         {
             <div class="table-wrap"><table class="data bom-edit">
                 <caption class="sr-only">Working copy lines</caption>
-                <thead><tr><th scope="col">Find</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Designators</th><th scope="col">Notes</th><th scope="col">Effectivity</th><th scope="col">Actions</th></tr></thead>
+                <thead><tr><th scope="col">Find</th><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Qty</th><th scope="col">Unit</th><th scope="col">Designators</th><th scope="col">Notes</th><th scope="col">Effectivity</th><th scope="col">Options</th><th scope="col">Actions</th></tr></thead>
                 <tbody>
                 @foreach (var l in working.Lines)
                 {
@@ -53,6 +54,7 @@
                             <td><input aria-label="Reference designators" @bind="editRefs" /></td>
                             <td><input aria-label="Notes" @bind="editNotes" maxlength="1000" /></td>
                             <td><EffectivityFields Value="editEff" Label="Edit line: " /></td>
+                            <td>@l.Condition</td>
                             <td>
                                 <button type="button" disabled="@busy" @onclick="() => SaveEdit(l)">Save</button>
                                 <button type="button" class="secondary" @onclick="() => editingId = null">Cancel</button>
@@ -70,11 +72,18 @@
                             <td>@string.Join(' ', l.ReferenceDesignators)</td>
                             <td>@l.Notes</td>
                             <td>@l.EffectivityText</td>
+                            <td>@if (l.Condition is not null) { <code>@l.Condition</code> }</td>
                             <td>
                                 <button type="button" class="secondary" disabled="@(busy || l.Redacted)" @onclick="() => StartEdit(l)">Edit</button>
+                                <button type="button" class="secondary" disabled="@(busy || l.Redacted)" aria-expanded="@(conditionId == l.Id ? "true" : "false")"
+                                        aria-label="@($"Option condition of line {l.FindNumber}")" @onclick="() => conditionId = conditionId == l.Id ? null : l.Id">Condition</button>
                                 <button type="button" class="secondary" disabled="@busy" @onclick="() => Remove(l)">Remove</button>
                             </td>
                         </tr>
+                    }
+                    @if (conditionId == l.Id && !l.Redacted)
+                    {
+                        <tr class="editing"><td colspan="10"><ConditionEditor PartNumber="@Part.Number" Line="l" OnSaved="OnConditionSaved" /></td></tr>
                     }
                 }
                 </tbody>
@@ -104,7 +113,7 @@
     private string addChild = "", addQty = "1", addUnit = "", addFind = "", addRefs = "", addNotes = "", copySource = "";
     private bool copyReplace;
     private readonly Keel.Web.Services.EffectivityForm addEff = new(), editEff = new();
-    private Guid? editingId;
+    private Guid? editingId, conditionId;
     private string editQty = "", editUnit = "EA", editFind = "", editRefs = "", editNotes = "";
     private string? loadedFor;
 
@@ -193,6 +202,13 @@
         busy = false;
         if (outcome.IsOk) { errors.Clear(); editingId = null; await Reload(); }
         else Fail(outcome);
+    }
+
+    private async Task OnConditionSaved()
+    {
+        conditionId = null;
+        errors.Clear();
+        await Reload();
     }
 
     private async Task Remove(WorkingBomLine l)
