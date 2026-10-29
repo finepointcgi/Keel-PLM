@@ -13,9 +13,11 @@ public static class TimelineKinds
     public const string Link = "link";
     public const string Markings = "markings";
     public const string Restricted = "restricted";
+    /// <summary>Nonconformance reports, corrective actions, deviations and waivers that name the object (8.1).</summary>
+    public const string Quality = "quality";
 
     public static readonly IReadOnlyList<string> All =
-        [Revision, Iteration, Lifecycle, Signature, Change, Baseline, Mbom, Link, Markings, Restricted];
+        [Revision, Iteration, Lifecycle, Signature, Change, Baseline, Mbom, Link, Markings, Quality, Restricted];
 
     public static string Label(string kind) => kind switch
     {
@@ -28,6 +30,7 @@ public static class TimelineKinds
         Mbom => "Manufacturing BOMs",
         Link => "Document links",
         Markings => "Markings",
+        Quality => "Quality records",
         Restricted => "Restricted items",
         _ => kind,
     };

@@ -10,8 +10,11 @@ public static class ObjectKinds
     public const string Change = "change";
     public const string Baseline = "baseline";
     public const string Mbom = "mbom";
+    public const string Ncr = "ncr";
+    public const string Capa = "capa";
+    public const string Deviation = "deviation";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Ncr, Capa, Deviation];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -23,6 +26,9 @@ public static class ObjectKinds
         Change => "changes/" + Uri.EscapeDataString(number),
         Baseline => "baselines/" + Uri.EscapeDataString(number),
         Mbom => "mboms/" + Uri.EscapeDataString(number),
+        Ncr => "quality/ncrs/" + Uri.EscapeDataString(number),
+        Capa => "quality/capas/" + Uri.EscapeDataString(number),
+        Deviation => "quality/deviations/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -33,6 +39,9 @@ public static class ObjectKinds
         Change => "Change",
         Baseline => "Baseline",
         Mbom => "Manufacturing BOM",
+        Ncr => "NCR",
+        Capa => "CAPA",
+        Deviation => "Deviation",
         _ => kind,
     };
 }
