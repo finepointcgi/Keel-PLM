@@ -163,3 +163,22 @@
   .wm { flex-direction: column; gap: var(--sp-5); }
   .wm-stage { max-width: none; }
 }
+
+/* Program timeline (8.8, ADR-0043): shapes carry the meaning, colour only helps. */
+.gantt-grid { stroke: var(--c-border); stroke-width: 1; }
+.gantt-today { stroke: var(--c-accent); stroke-width: 2; stroke-dasharray: 4 3; }
+.gantt-arrow { stroke: var(--c-muted); stroke-width: 1.5; }
+.gantt-label { font-size: 12px; }
+.gantt-node .gantt-bar { fill: var(--c-surface-2); stroke: var(--c-muted); stroke-width: 1.5; }
+.gantt-node .gantt-done { fill: var(--c-accent); opacity: .55; pointer-events: none; }
+.gantt-node .gantt-diamond { fill: var(--c-info-bg); stroke: var(--c-accent); stroke-width: 2; }
+.gantt-node .gantt-gate-ring { stroke: var(--c-accent); stroke-width: 1.5; }
+.gantt-node.gantt-critical .vis-shape { stroke: var(--c-danger); stroke-width: 3.5; }
+.gantt-node .gantt-baseline { stroke: var(--c-text); stroke-width: 2; }
+.vis-k-gantt-phase .vis-shape { fill: var(--c-surface-2); stroke: var(--c-muted); stroke-width: 2; }
+.vis-k-gantt-task .vis-shape { fill: var(--c-surface-2); stroke: var(--c-muted); stroke-width: 2; }
+.vis-k-gantt-milestone .vis-shape { fill: var(--c-info-bg); stroke: var(--c-accent); stroke-width: 2; }
+.vis-k-gantt-critical .vis-shape { fill: var(--c-surface-2); stroke: var(--c-danger); stroke-width: 3.5; }
+.prg-grid { display: grid; gap: var(--space-3, 12px); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.prg-meter { display: block; width: 100%; height: 10px; }
+.table-wrap td.num, .table-wrap th.num { text-align: right; }

@@ -1,0 +1,102 @@
+@inject CurrentUser Users
+@inject ProgramService Programs
+
+@* The program dashboard (ADR-0043). Every number counts only what the signed-in user may read: a restricted item or deliverable is in no count, no percentage and no date. *@
+@if (error is not null)
+{
+    <p class="error" role="alert">@error</p>
+}
+else if (data is null)
+{
+    <Skeleton Lines="6" Label="Loading the dashboard" />
+}
+else
+{
+    <div class="stack" data-panel="program-dashboard">
+        <section class="panel" aria-labelledby="progress-heading">
+            <h3 id="progress-heading">Progress</h3>
+            @if (data.Percent is { } pct)
+            {
+                <p><progress class="prg-meter" max="100" value="@pct" aria-label="Percent complete">@pct%</progress></p>
+                <p><strong data-count="percent">@ProgramUi.Percent(pct)</strong> complete across @data.ItemCount item@(data.ItemCount == 1 ? "" : "s") you can see.</p>
+            }
+            else { <p class="muted">No tasks or milestones to measure yet.</p> }
+            <dl class="facts">
+                <dt>Forecast finish</dt><dd>@ProgramUi.Date(data.Finish)</dd>
+                <dt>Items on the critical path</dt><dd data-count="critical">@(data.CriticalCount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "Not available (the schedule is circular)")</dd>
+                <dt>Items forecast late</dt><dd data-count="slipped">@data.SlippedCount@(data.SlippedCount > 0 ? $" (up to {data.MaxSlipDays} days)" : "")</dd>
+                <dt>Compared with baseline</dt><dd>@(data.Baseline is { } b ? $"Baseline {b.Seq}: {b.Name}" : "No baseline yet")</dd>
+                <dt>Status date</dt><dd>@ProgramUi.Date(data.AsOf)</dd>
+            </dl>
+        </section>
+
+        <section class="panel" aria-labelledby="status-heading">
+            <h3 id="status-heading">Items by status</h3>
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Items by status</caption>
+                <thead><tr><th scope="col">Status</th><th scope="col" class="num">Items</th></tr></thead>
+                <tbody>@foreach (var c in data.ByStatus) { <tr><td>@ItemStatuses.Label(c.Key)</td><td class="num" data-count="status-@c.Key">@c.Count</td></tr> }</tbody>
+            </table></div>
+        </section>
+
+        <section class="panel" aria-labelledby="upcoming-heading">
+            <h3 id="upcoming-heading">Upcoming milestones (next @ProgramService.UpcomingDays days)</h3>
+            @if (data.Upcoming.Count == 0) { <p class="muted">No open milestone is due in this period.</p> }
+            else { <ItemTable Items="data.Upcoming" Code="@Code" Caption="Upcoming milestones" /> }
+        </section>
+
+        <section class="panel" aria-labelledby="overdue-heading">
+            <h3 id="overdue-heading">Overdue items</h3>
+            @if (data.Overdue.Count == 0) { <p class="muted" data-count="overdue">Nothing is overdue.</p> }
+            else { <ItemTable Items="data.Overdue" Code="@Code" Caption="Overdue items" /> }
+        </section>
+
+        <section class="panel" aria-labelledby="gates-heading">
+            <h3 id="gates-heading">Gate reviews</h3>
+            @if (data.Gates.Count == 0) { <p class="muted">No gate review is planned.</p> }
+            else
+            {
+                <div class="table-wrap"><table class="data">
+                    <caption class="sr-only">Gate reviews</caption>
+                    <thead><tr><th scope="col">Gate</th><th scope="col">Type</th><th scope="col">Planned</th><th scope="col">State</th></tr></thead>
+                    <tbody>
+                        @foreach (var g in data.Gates)
+                        {
+                            <tr><td><a href="@ProgramUi.GateHref(g.GateNumber!)">@g.GateNumber</a> <span class="muted">@g.Title</span></td><td>@g.GateType</td><td>@ProgramUi.Date(g.PlannedEnd)</td><td>@GateStates.Label(g.GateState ?? "")</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+        </section>
+
+        <section class="panel" aria-labelledby="deliv-heading">
+            <h3 id="deliv-heading">Deliverable readiness</h3>
+            <p>@data.DeliverablesTotal deliverable@(data.DeliverablesTotal == 1 ? "" : "s"), <span data-count="deliverables-overdue">@data.DeliverablesOverdue</span> overdue. The state comes from the lifecycle of each linked object.</p>
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Deliverable readiness</caption>
+                <thead><tr><th scope="col">Readiness</th><th scope="col" class="num">Deliverables</th></tr></thead>
+                <tbody>@foreach (var c in data.DeliverableReadiness) { <tr><td>@Readiness.Label(c.Key)</td><td class="num" data-count="deliverable-@c.Key">@c.Count</td></tr> }</tbody>
+            </table></div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public required string Code { get; set; }
+    [Parameter] public string? Version { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    private ProgramDashboard? data;
+    private string? error, loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Code}:{Version}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        var o = await Programs.GetDashboardAsync(await Users.GetAsync(), Code, null, CurrentUser.NewCorrelationId());
+        data = o.Value;
+        error = o.IsOk ? null : ProgramUi.Message(o);
+        await OnShown.InvokeAsync(data is null ? [] : [.. data.Upcoming.Select(i => i.Markings), .. data.Overdue.Select(i => i.Markings), .. data.Gates.Select(i => i.Markings)]);
+    }
+}

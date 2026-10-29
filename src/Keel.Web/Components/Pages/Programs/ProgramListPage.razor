@@ -1,0 +1,77 @@
+@page "/programs"
+@inject CurrentUser Users
+@inject ProgramService Programs
+
+<PageFrame Banner="@Banner" Title="Programs" Crumbs="@Crumbs">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search programs" placeholder="Code or name" class="grow" @bind="text" />
+        <select aria-label="Status" @bind="status" @bind:after="() => Search(0)">
+            <option value="">Any status</option>
+            @foreach (var s in ProgramStatuses.All) { <option value="@s">@ProgramStatuses.Label(s)</option> }
+        </select>
+        <button type="submit">Search</button>
+        <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+            <a class="button secondary" href="programs/new">New program</a>
+        </AuthorizeView>
+    </form>
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total @(result.Total == 1 ? "program" : "programs") you can access</p>
+        <DataTable TItem="ProgramSummary" TableId="programs" Items="result.Items" Columns="Columns" Caption="Programs" OnServerSort="OnSort" ServerSort="sort">
+            <Empty>
+                <EmptyState Title="@(Filtered ? "Nothing matches" : "No programs yet")" IconName="program">
+                    @(Filtered ? "Try a different search or clear the filters." : "Programs you belong to are listed here. Membership comes from your identity provider.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+
+    private SortSpec? sort;
+    private string text = "", status = "";
+    private int offset;
+    private bool loaded;
+    private ProgramSearchResult? result;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Programs")];
+    private bool Filtered => text.Length > 0 || status != "";
+    private string Banner => result?.PageBanner ?? UiText.Unclassified;
+
+    private static readonly IReadOnlyList<DataColumn<ProgramSummary>> Columns =
+    [
+        new() { Key = "code", Title = "Code", Required = true, ServerSortKey = "code", Cell = c => @<a href="@ProgramUi.Href(c.Code)">@c.Code</a> },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = c => c.Name },
+        new() { Key = "status", Title = "Status", ServerSortKey = "status", Cell = c => @<span class="badge @ProgramUi.StateClass(c.Status)">@c.StatusLabel</span> },
+        new() { Key = "manager", Title = "Program manager", ServerSortKey = "manager", Text = c => c.ManagerName },
+        new() { Key = "start", Title = "Start", ServerSortKey = "start", Text = c => ProgramUi.Date(c.Start), DefaultHidden = true },
+        new() { Key = "end", Title = "End", ServerSortKey = "end", Text = c => ProgramUi.Date(c.End) },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = c => @<MarkingChip Text="@c.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var requested = ProgramService.SortKeys.TryResolve(SortParam, DirParam, out var spec, out _) ? spec : null;
+        if (loaded && requested == sort) return;
+        loaded = true;
+        sort = requested;
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        result = await Programs.SearchAsync(await Users.GetAsync(), new ProgramSearchQuery(text, status == "" ? null : status, PageSize, offset, sort), CurrentUser.NewCorrelationId());
+    }
+}

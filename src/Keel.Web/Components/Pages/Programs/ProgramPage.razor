@@ -1,0 +1,169 @@
+@page "/programs/{Code}"
+@inject CurrentUser Users
+@inject ProgramService Programs
+@inject NavigationManager Nav
+@inject ToastService Toasts
+
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Code was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is { } d)
+    {
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.Program" Number="@d.Code" />
+            <CommentCount Kind="@ObjectKinds.Program" Number="@d.Code" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (!d.Permissions.CanModify) { <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p> }
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs, commentCount)" Active="@tab" ActiveChanged="id => tab = id" Label="Program sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            <section class="panel" aria-labelledby="summary-heading">
+                                <h3 id="summary-heading">Summary</h3>
+                                @if (editing)
+                                {
+                                    <div class="grid-form">
+                                        <label class="wide">Name * <input maxlength="200" @bind="f.Name" /></label>
+                                        <label>Status <select @bind="f.Status">@foreach (var s in ProgramStatuses.All) { <option value="@s">@ProgramStatuses.Label(s)</option> }</select></label>
+                                        <label>Program manager (login name) <input @bind="f.Manager" /></label>
+                                        <label>Customer reference <input maxlength="200" @bind="f.Customer" /></label>
+                                        <label>Contract reference <input maxlength="200" @bind="f.Contract" /></label>
+                                        <label>Start date <input type="date" @bind="f.Start" /></label>
+                                        <label>End date <input type="date" @bind="f.End" /></label>
+                                        <label>Actual end date <input type="date" @bind="f.ActualEnd" /></label>
+                                        <label class="wide">Description <textarea rows="4" maxlength="8000" @bind="f.Description"></textarea></label>
+                                    </div>
+                                    <p class="muted small">Program membership comes from the identity provider. Changing the manager here never gives anyone access.</p>
+                                    <div class="toolbar"><button type="button" disabled="@busy" @onclick="Save">Save</button> <button type="button" class="secondary" @onclick="() => editing = false">Cancel</button></div>
+                                }
+                                else
+                                {
+                                    <p>@(string.IsNullOrEmpty(d.Description) ? "No description" : d.Description)</p>
+                                    <dl class="facts">
+                                        <dt>Status</dt><dd>@d.StatusLabel</dd>
+                                        <dt>Program manager</dt><dd>@d.ManagerName (@d.ManagerLogin)</dd>
+                                        <dt>Customer reference</dt><dd>@(d.CustomerRef.Length == 0 ? "None" : d.CustomerRef)</dd>
+                                        <dt>Contract reference</dt><dd>@(d.ContractRef.Length == 0 ? "None" : d.ContractRef)</dd>
+                                        <dt>Planned</dt><dd>@ProgramUi.Date(d.Start) to @ProgramUi.Date(d.End)</dd>
+                                        <dt>Actual end</dt><dd>@ProgramUi.Date(d.ActualEnd)</dd>
+                                    </dl>
+                                    @if (d.Permissions.CanModify) { <button type="button" class="secondary" @onclick="BeginEdit">Edit</button> }
+                                }
+                            </section>
+                            <ProgramDashboardPanel Code="@d.Code" Version="@version" OnShown='m => Shown("dashboard", m)' />
+                        </div>
+                        break;
+                    case "schedule":
+                        <ProgramSchedulePanel Code="@d.Code" CanModify="d.Permissions.CanModify" Version="@version" Item="@item" OnChanged="Bump" OnShown='m => Shown("schedule", m)' />
+                        break;
+                    case "timeline":
+                        <ProgramTimelinePanel Code="@d.Code" Version="@version" OnShown='m => Shown("timeline", m)' />
+                        break;
+                    case "deliverables":
+                        <ProgramDeliverablesPanel Code="@d.Code" CanModify="d.Permissions.CanModify" Version="@version" OnChanged="Bump" OnShown='m => Shown("deliverables", m)' />
+                        break;
+                    case "history":
+                        <TimelinePanel ObjectType="@ObjectKinds.Program" Key="@d.Code" Version="@version" OnShown='m => Shown("history", m)' />
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.Program" Number="@d.Code" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.Program" Number="@d.Code" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the program" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Code { get; set; }
+    [SupplyParameterFromQuery(Name = "item")] public string? item { get; set; }
+
+    private sealed class EditForm
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Status { get; set; } = "Planning";
+        public string Manager { get; set; } = "";
+        public string Customer { get; set; } = "";
+        public string Contract { get; set; } = "";
+        public DateOnly? Start { get; set; }
+        public DateOnly? End { get; set; }
+        public DateOnly? ActualEnd { get; set; }
+    }
+
+    private static readonly string[] TabIds = ["overview", "schedule", "timeline", "deliverables", "history", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("schedule", "Schedule"), new("timeline", "Timeline"), new("deliverables", "Deliverables"), new("history", "History")];
+
+    private ProgramDetail? detail;
+    private string tab = "overview", version = "0";
+    private string? error, seenUri;
+    private bool notFound, busy, editing;
+    private int? commentCount;
+    private readonly EditForm f = new();
+    private readonly Dictionary<string, IReadOnlyList<Markings>> shown = [];
+
+    private string PageTitle => detail is null ? "Program" : $"{detail.Code} · {detail.Name}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Programs", "programs"), new(detail?.Code ?? Code)];
+    private string Banner => detail is null ? UiText.Unclassified : Markings.AggregateBanner(shown.Values.SelectMany(x => x).Append(detail.Markings));
+
+    private RenderFragment HeaderFragment(ProgramDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@Banner" Subtitle="@($"Program manager {d.ManagerName} · {ProgramUi.Date(d.Start)} to {ProgramUi.Date(d.End)}")">
+        <Badges>
+            <span class="badge @ProgramUi.StateClass(d.Status)">@d.StatusLabel</span>
+            <FavoriteButton Kind="@ObjectKinds.Program" Number="@d.Code" />
+            <WatchButton Kind="@ObjectKinds.Program" Number="@d.Code" />
+        </Badges>
+    </ObjectHeader>;
+
+    protected override Task OnParametersSetAsync() => Reload();
+
+    private void Shown(string id, IReadOnlyList<Markings> m)
+    {
+        shown[id] = m;
+        StateHasChanged();
+    }
+
+    private async Task Bump()
+    {
+        version = (int.Parse(version, System.Globalization.CultureInfo.InvariantCulture) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        var o = await Programs.GetAsync(await Users.GetAsync(), Code, CurrentUser.NewCorrelationId());
+        notFound = !o.IsOk;
+        detail = o.Value;
+        var requested = item is not null ? "schedule" : tab;
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, requested);
+    }
+
+    private void BeginEdit()
+    {
+        var d = detail!;
+        (f.Name, f.Description, f.Status, f.Manager, f.Customer, f.Contract, f.Start, f.End, f.ActualEnd) = (d.Name, d.Description, d.Status, d.ManagerLogin, d.CustomerRef, d.ContractRef, d.Start, d.End, d.ActualEnd);
+        editing = true;
+    }
+
+    private async Task Save()
+    {
+        busy = true;
+        error = null;
+        var o = await Programs.UpdateAsync(await Users.GetAsync(), Code, new UpdateProgramCommand(f.Name, f.Description, f.Customer, f.Contract, f.Status, f.Manager, f.Start, f.End, f.ActualEnd), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = ProgramUi.Message(o); return; }
+        detail = o.Value;
+        editing = false;
+        Toasts.Success("Changes saved.");
+        await Bump();
+    }
+}

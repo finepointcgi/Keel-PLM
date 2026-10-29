@@ -30,6 +30,7 @@ public static class PaletteActions
             new("go:mboms", "Go to Manufacturing BOMs", "Go to", "mbom", "mboms", "mbom plant"),
             new("go:baselines", "Go to Baselines", "Go to", "baseline", "baselines", "configuration"),
             new("go:changes", "Go to Changes", "Go to", "change", "changes", "ecn ecr problem report"),
+            new("go:programs", "Go to Programs", "Go to", "program", "programs", "program schedule milestones deliverables gate review pdr cdr"),
             new("go:ncrs", "Go to Nonconformance reports", "Go to", "ncr", "quality/ncrs", "ncr quality defect mrb disposition"),
             new("go:capas", "Go to Corrective actions", "Go to", "capa", "quality/capas", "capa corrective preventive root cause"),
             new("go:deviations", "Go to Deviations and waivers", "Go to", "deviation", "quality/deviations", "deviation waiver concession"),

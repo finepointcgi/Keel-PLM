@@ -24,11 +24,13 @@ public static class EventTypes
     public const string MbomReleased = "mbom.released";
     /// <summary>A named variant of a product (a valid combination of options) was released (additive, ADR-0039).</summary>
     public const string VariantReleased = "variant.released";
+    /// <summary>A program milestone was reached: a gate review was approved or a milestone was completed (additive, ADR-0043).</summary>
+    public const string ProgramMilestoneReached = "program.milestone_reached";
 
     public static readonly IReadOnlyList<string> All =
     [
         PartReleased, PartObsoleted, DocumentReleased, DocumentObsoleted, ChangeApproved, ChangeReleased,
-        BaselineEstablished, BomPublished, BomStructurePublished, MbomReleased, VariantReleased,
+        BaselineEstablished, BomPublished, BomStructurePublished, MbomReleased, VariantReleased, ProgramMilestoneReached,
     ];
 
     /// <summary>Types a sink with an empty subscription list receives.</summary>

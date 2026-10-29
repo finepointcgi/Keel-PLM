@@ -56,6 +56,8 @@ public static class NotificationKinds
     public const string ComplianceDeclarationExpiring = NotificationKindCodes.ComplianceDeclarationExpiring;
     public const string ComplianceDeclarationExpired = NotificationKindCodes.ComplianceDeclarationExpired;
     public const string ComplianceSupplierDeclaration = NotificationKindCodes.ComplianceSupplierDeclaration;
+    public const string MilestoneDue = NotificationKindCodes.MilestoneDue;
+    public const string MilestoneOverdue = NotificationKindCodes.MilestoneOverdue;
 
     private const string TasksLocked = "A task or review that waits for you cannot be turned off: it would be missed.";
     private const string MentionLocked = "Someone asked for you by name: this cannot be turned off.";
@@ -74,6 +76,10 @@ public static class NotificationKinds
             "{actor} assigned you an action item", false, TasksLocked, false, false, 90),
         new(QualityActionOverdue, NotificationGroups.Tasks, "Quality action overdue", "An action item you own is past its due date.",
             "An action item you own is overdue", false, TasksLocked, false, false, 85),
+        new(MilestoneDue, NotificationGroups.Tasks, "Milestone due soon", "A milestone you own is due within a few days.",
+            "A milestone you own is due soon", false, TasksLocked, false, false, 86),
+        new(MilestoneOverdue, NotificationGroups.Tasks, "Milestone overdue", "A milestone you own is past its planned date.",
+            "A milestone you own is overdue", false, TasksLocked, false, false, 85),
         new(ReviewApproved, NotificationGroups.Tasks, "Review of your submission approved", "Your submission passed review and was released.",
             "Approved after review (last signature by {actor})", true, null, false, true, 80),
         new(ReviewRejected, NotificationGroups.Tasks, "Review of your submission rejected", "Your submission was rejected and returned to you.",
@@ -138,6 +144,7 @@ public static class NotificationKinds
             TaskAssigned or ReviewRequested => refId is { } t ? $"tasks/{t:D}" : $"{path}#{AwarenessKinds.ReviewTab(objectType)}",
             ChangeTaskAssigned => $"{path}#tasks",
             QualityActionAssigned or QualityActionOverdue => $"{path}?tab=actions",
+            MilestoneDue or MilestoneOverdue => $"{path}?tab=schedule",
             ReviewApproved or ReviewRejected => $"{path}#{AwarenessKinds.ReviewTab(objectType)}",
             WatchedChanged or WatchedState => $"{path}#activity",
             ComplianceNonCompliant or ComplianceDeclarationExpiring or ComplianceDeclarationExpired or ComplianceSupplierDeclaration => $"{path}?tab=compliance",

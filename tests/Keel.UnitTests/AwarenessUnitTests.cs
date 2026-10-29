@@ -32,7 +32,7 @@ public sealed partial class AwarenessUnitTests
             Assert.False(string.IsNullOrWhiteSpace(k.Label));
             Assert.False(string.IsNullOrWhiteSpace(k.Description));
             // Every sentence names who did it, except the certification notices of the supplier master (8.2) and the overdue and expiry notices of quality records (8.1), which the system raises on its own.
-            if (k.Code is not (NotificationKindCodes.SupplierCertExpiring or NotificationKindCodes.SupplierCertExpired or NotificationKindCodes.QualityActionOverdue or NotificationKindCodes.DeviationExpiring or NotificationKindCodes.DeviationExpired or NotificationKindCodes.ComplianceNonCompliant or NotificationKindCodes.ComplianceDeclarationExpiring or NotificationKindCodes.ComplianceDeclarationExpired)) Assert.Contains("{actor}", k.Sentence, StringComparison.Ordinal);
+            if (k.Code is not (NotificationKindCodes.SupplierCertExpiring or NotificationKindCodes.MilestoneDue or NotificationKindCodes.MilestoneOverdue or NotificationKindCodes.SupplierCertExpired or NotificationKindCodes.QualityActionOverdue or NotificationKindCodes.DeviationExpiring or NotificationKindCodes.DeviationExpired or NotificationKindCodes.ComplianceNonCompliant or NotificationKindCodes.ComplianceDeclarationExpiring or NotificationKindCodes.ComplianceDeclarationExpired)) Assert.Contains("{actor}", k.Sentence, StringComparison.Ordinal);
             Assert.Equal(!k.CanDisable, !string.IsNullOrWhiteSpace(k.LockedReason)); // a reason exactly when it is locked
         }
         // Every code the modules use is a registered kind (no module can raise an unknown kind).

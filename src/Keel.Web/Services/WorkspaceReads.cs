@@ -79,6 +79,7 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
                 ObjectKinds.Supplier => await QueryAsync(subject, ObjectKinds.Supplier, numbers, ct),
                 ObjectKinds.Ncr or ObjectKinds.Capa or ObjectKinds.Deviation => await QueryAsync(subject, group.Key, numbers, ct),
                 ObjectKinds.ReqSpec => await SpecRowsAsync(subject, numbers, corr, ct),
+                ObjectKinds.Program => await QueryAsync(subject, ObjectKinds.Program, numbers, ct),
                 _ => [],
             };
             foreach (var r in rows)
@@ -136,6 +137,11 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
                 FROM qual.capa m
                 LEFT JOIN plm.lifecycle_state ls ON ls.lifecycle_id = m.lifecycle_id AND ls.state = m.lifecycle_state
                 WHERE {filter.Sql} AND m.number = ANY(@numbers)
+                """,
+            ObjectKinds.Program => $"""
+                SELECT m.code, m.name, CASE m.status WHEN 'OnHold' THEN 'On hold' ELSE m.status END, {columns}
+                FROM prg.program m
+                WHERE {filter.Sql} AND m.code = ANY(@numbers)
                 """,
             ObjectKinds.Deviation => $"""
                 SELECT m.number, m.title, COALESCE(ls.label, m.lifecycle_state), {columns}

@@ -20,8 +20,11 @@ public static class AwarenessKinds
     public const string Deviation = "deviation";
     public const string Supplier = "supplier";
     public const string ReqSpec = "reqspec";
+    /// <summary>8.8 programs: a program (its code is the number) and a gate review (a milestone with a checklist, reviewed with signatures).</summary>
+    public const string Program = "program";
+    public const string Gate = "gate";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, ReqSpec];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, ReqSpec, Program, Gate];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -38,6 +41,8 @@ public static class AwarenessKinds
         Deviation => "quality/deviations/" + Uri.EscapeDataString(number),
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
         ReqSpec => "requirements/" + Uri.EscapeDataString(number),
+        Program => "programs/" + Uri.EscapeDataString(number),
+        Gate => "programs/gates/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -53,6 +58,8 @@ public static class AwarenessKinds
         Deviation => "Deviation",
         Supplier => "Supplier",
         ReqSpec => "Requirement specification",
+        Program => "Program",
+        Gate => "Gate review",
         _ => kind,
     };
 
@@ -81,6 +88,8 @@ public static class AwarenessKinds
         "deviation" => Deviation,
         "supplier" => Supplier,
         "reqspec" => ReqSpec,
+        "program" => Program,
+        "gate" => Gate,
         _ => null,
     };
 
@@ -172,4 +181,7 @@ public static class NotificationKindCodes
     public const string ComplianceDeclarationExpiring = "compliance_declaration_expiring";
     public const string ComplianceDeclarationExpired = "compliance_declaration_expired";
     public const string ComplianceSupplierDeclaration = "compliance_supplier_declaration";
+    /// <summary>8.8 programs: a milestone you own is due soon / is overdue (raised by the system, pointer only).</summary>
+    public const string MilestoneDue = "milestone_due";
+    public const string MilestoneOverdue = "milestone_overdue";
 }

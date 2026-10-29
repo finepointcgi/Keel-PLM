@@ -1,0 +1,163 @@
+@page "/programs/gates/{Number}"
+@inject CurrentUser Users
+@inject ProgramService Programs
+@inject NavigationManager Nav
+@inject ToastService Toasts
+@using Keel.Web.Components.Pages.Quality
+
+@* A gate review (for example a preliminary or critical design review) is a milestone with a checklist. It is approved through the workflow engine: every reviewer signs with a fresh
+   sign-in, the signatures cover the checklist and the readiness of the deliverables as submitted, and the approval completes the milestone. *@
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is { } d)
+    {
+        <article class="stack">
+            <CommentCount Kind="gate" Number="@d.Number" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs, commentCount)" Active="@tab" ActiveChanged="id => tab = id" Label="Gate review sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            <section class="panel" aria-labelledby="gate-summary">
+                                <h3 id="gate-summary">Gate</h3>
+                                <p>@(d.Description.Length == 0 ? "No description" : d.Description)</p>
+                                <dl class="facts">
+                                    <dt>Program</dt><dd><a href="@ProgramUi.Href(d.ProgramCode)">@d.ProgramCode</a> @d.ProgramName</dd>
+                                    <dt>Schedule item</dt><dd><a href="@($"{ProgramUi.Href(d.ProgramCode)}?tab=schedule&item={Uri.EscapeDataString(d.ItemKey)}")">@d.ItemKey</a></dd>
+                                    <dt>Type</dt><dd>@d.GateType, @d.TypeLabel</dd>
+                                    <dt>Planned date</dt><dd>@ProgramUi.Date(d.PlannedDate)</dd>
+                                    <dt>Reached on</dt><dd>@(d.ActualDate is { } a && d.State == GateStates.Approved ? ProgramUi.Date(a) : "Not yet")</dd>
+                                    <dt>Owner</dt><dd>@(d.OwnerName ?? "Nobody")</dd>
+                                </dl>
+                            </section>
+                            <section class="panel" aria-labelledby="gate-checklist">
+                                <h3 id="gate-checklist">Checklist</h3>
+                                @if (d.Checklist.Count == 0) { <p class="muted">No criteria yet. Add what the review board must see met.</p> }
+                                else
+                                {
+                                    <div class="table-wrap"><table class="data" data-table="checklist">
+                                        <caption class="sr-only">Gate review checklist</caption>
+                                        <thead><tr><th scope="col" class="num">No.</th><th scope="col">Criterion</th><th scope="col">Required</th><th scope="col">Status</th><th scope="col">Note</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                                        <tbody>
+                                            @foreach (var c in d.Checklist)
+                                            {
+                                                <tr>
+                                                    <td class="num">@c.Seq</td><td>@c.Text</td><td>@(c.Required ? "Yes" : "No")</td>
+                                                    <td>
+                                                        @if (d.Editable)
+                                                        {
+                                                            <select aria-label="@($"Status of criterion {c.Seq}")" value="@c.Status" @onchange="e => Check(c, e.Value?.ToString() ?? c.Status)">
+                                                                <option value="Open">Open</option><option value="Met">Met</option><option value="NotApplicable">Not applicable</option>
+                                                            </select>
+                                                        }
+                                                        else { <text>@(c.Status == "NotApplicable" ? "Not applicable" : c.Status)</text> }
+                                                    </td>
+                                                    <td>@c.Note</td>
+                                                    <td>@if (d.Editable) { <button type="button" class="secondary" aria-label="@($"Remove criterion {c.Seq}")" @onclick="() => RemoveCriterion(c)">Remove</button> }</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table></div>
+                                }
+                                @if (d.Editable)
+                                {
+                                    <div class="toolbar">
+                                        <input aria-label="New criterion" placeholder="New criterion" class="grow" maxlength="500" @bind="newText" />
+                                        <label class="inline"><input type="checkbox" @bind="newRequired" /> Required</label>
+                                        <button type="button" disabled="@(busy || newText.Trim().Length == 0)" @onclick="AddCriterion">Add criterion</button>
+                                    </div>
+                                }
+                                else if (d.State != GateStates.Draft) { <p class="muted small">The checklist is frozen while the gate is under review and after approval.</p> }
+                            </section>
+                            <section class="panel" aria-labelledby="gate-deliv">
+                                <h3 id="gate-deliv">Deliverables of this gate</h3>
+                                @if (d.Deliverables.Count == 0) { <p class="muted">No deliverable is linked to this gate on the program's Deliverables tab.</p> }
+                                else
+                                {
+                                    <div class="table-wrap"><table class="data"><caption class="sr-only">Deliverables of this gate</caption>
+                                        <thead><tr><th scope="col">Deliverable</th><th scope="col">Object</th><th scope="col">Readiness</th><th scope="col">Due</th></tr></thead>
+                                        <tbody>@foreach (var x in d.Deliverables) { <tr><td>@x.Number @x.Title</td><td>@if (x.Href is { } h) { <a href="@h">@x.ObjectKey</a> } else { <span class="muted">Not visible to you</span> }</td><td><span class="badge @ProgramUi.ReadinessClass(x.Readiness)">@x.ReadinessLabel</span></td><td>@ProgramUi.Date(x.Due)</td></tr> }</tbody>
+                                    </table></div>
+                                }
+                            </section>
+                        </div>
+                        break;
+                    case "review":
+                        <QualityReviewPanel Kind="gate" Number="@d.Number" Heading="Review board" StartText="Submit to the review board" Version="@($"{d.State}:{d.Submission}")"
+                                            Intro="The review board signs that the gate criteria are met. Each signature covers the gate, its checklist and the readiness of its deliverables as they are when it is submitted. Approval completes the milestone."
+                                            CanStart="@(d.State == GateStates.Draft && d.CanModify && d.ChecklistComplete)"
+                                            WhyNot="@(d.State != GateStates.Draft ? null : !d.CanModify ? "You may not submit this gate review." : "Mark every required criterion met or not applicable first.")" OnChanged="Reload" />
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="gate" Number="@d.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="gate" Number="@d.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the gate review" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private static readonly string[] TabIds = ["overview", "review", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("review", "Review")];
+
+    private GateDetail? detail;
+    private string tab = "overview", newText = "";
+    private string? error, seenUri;
+    private bool notFound, busy, newRequired = true;
+    private int? commentCount;
+
+    private string PageTitle => detail is null ? "Gate review" : $"{detail.Number} · {detail.Title}";
+    private string Banner => detail?.Banner ?? UiText.Unclassified;
+    private IReadOnlyList<Crumb> Crumbs => [new("Programs", "programs"), new(detail?.ProgramCode ?? "Program", detail is null ? null : ProgramUi.Href(detail.ProgramCode)), new(detail?.Number ?? Number)];
+
+    private RenderFragment HeaderFragment(GateDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Banner" Subtitle="@($"{d.TypeLabel} · planned {ProgramUi.Date(d.PlannedDate)} · program {d.ProgramCode}")">
+        <Badges>
+            <span class="badge @(d.State == GateStates.Approved ? "state-released" : d.State == GateStates.UnderReview ? "state-underreview" : null)">@d.StateLabel</span>
+            <WatchButton Kind="gate" Number="@d.Number" />
+        </Badges>
+    </ObjectHeader>;
+
+    protected override Task OnParametersSetAsync() => Reload();
+
+    private async Task Reload()
+    {
+        var o = await Programs.GetGateAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !o.IsOk;
+        detail = o.Value;
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+    }
+
+    private async Task<bool> Run(Func<Subject, Task<Outcome<GateDetail>>> op)
+    {
+        busy = true;
+        error = null;
+        var o = await op(await Users.GetAsync());
+        busy = false;
+        if (o.IsOk) { detail = o.Value; return true; }
+        error = ProgramUi.Message(o);
+        return false;
+    }
+
+    private async Task AddCriterion()
+    {
+        if (await Run(s => Programs.AddChecklistItemAsync(s, Number, newText, newRequired, CurrentUser.NewCorrelationId()))) { newText = ""; Toasts.Success("Criterion added."); }
+    }
+
+    private Task Check(ChecklistRow c, string status) => Run(s => Programs.SetChecklistStatusAsync(s, Number, c.Id, status, c.Note, CurrentUser.NewCorrelationId()));
+
+    private Task RemoveCriterion(ChecklistRow c) => Run(s => Programs.RemoveChecklistItemAsync(s, Number, c.Id, CurrentUser.NewCorrelationId()));
+}

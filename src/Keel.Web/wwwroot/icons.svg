@@ -56,4 +56,5 @@
   <symbol id="i-ncr" viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></symbol>
   <symbol id="i-capa" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></symbol>
   <symbol id="i-deviation" viewBox="0 0 24 24"><path d="M4 12h6l4-6 2 12 2-6h2"/></symbol>
+  <symbol id="i-program" viewBox="0 0 24 24"><path d="M4 6h10M4 12h14M4 18h8"/><path d="M16 4v4M20 10v4M14 16v4"/></symbol>
 </svg>

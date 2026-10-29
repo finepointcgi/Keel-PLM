@@ -23,7 +23,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Integration (ADR-0025) reaches parts, BOM, documents and change data only through Keel.Core interfaces implemented by their owners.
         ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality", "Keel.Compliance", "Keel.Requirements"],
+        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality", "Keel.Programs", "Keel.Compliance", "Keel.Requirements"],
         // Personal workspace data (UX-1, ADR-0028): preferences, recent items, favorites, saved searches. Pointers only; Keel.Web re-authorizes them through the module services.
         ["Keel.Workspace"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
@@ -47,6 +47,8 @@ public sealed partial class ArchitectureTests
         ["Keel.Compliance"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Requirements and traceability (8.3, ADR-0038): reaches parts, documents, changes and baselines only through key lookups, read filters and Keel.Core interfaces.
         ["Keel.Requirements"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        // Programs (8.8, ADR-0043): deliverable targets are read through the IObjectAccess lookups of Keel.Core; the review engine reaches gates through IWorkflowObjectGateway.
+        ["Keel.Programs"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
     [Fact]

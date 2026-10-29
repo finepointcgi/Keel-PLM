@@ -140,7 +140,7 @@ public sealed partial class ThemeContrastTests
 public sealed class UxLogicTests
 {
     [Theory]
-    [InlineData("bracket", "bracket", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec", null)]
+    [InlineData("bracket", "bracket", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec,program", null)]
     [InlineData("p: bracket", "bracket", "part", null)]
     [InlineData("P:bracket", "bracket", "part", null)]
     [InlineData("d: spec 12", "spec 12", "document", null)]
@@ -151,11 +151,12 @@ public sealed class UxLogicTests
     [InlineData("b: orca", "orca", "baseline", null)]
     [InlineData("mb: plant", "plant", "mbom", null)]
     [InlineData("rs: pod", "pod", "reqspec", null)]
+    [InlineData("pg: orca", "orca", "program", null)]
     [InlineData("ncr: burr", "burr", "ncr", null)]
     [InlineData("capa: torque", "torque", "capa", null)]
     [InlineData("dev: finish", "finish", "deviation", null)]
-    [InlineData("zz: nothing", "zz: nothing", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec", null)] // not a prefix: searched as typed
-    [InlineData("  P-000123  ", "P-000123", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec", null)]
+    [InlineData("zz: nothing", "zz: nothing", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec,program", null)] // not a prefix: searched as typed
+    [InlineData("  P-000123  ", "P-000123", "part,document,change,baseline,mbom,supplier,ncr,capa,deviation,substance,reqspec,program", null)]
     public void Typed_prefixes_narrow_the_search(string raw, string text, string kinds, string? changeType)
     {
         var q = ParsedQuery.Parse(raw);
@@ -192,13 +193,13 @@ public sealed class UxLogicTests
     public void The_navigation_is_grouped_and_admin_auditor_entries_follow_the_roles()
     {
         var viewer = NavModel.For([Roles.Viewer]);
-        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Tools"], viewer.Select(g => g.Title));
+        Assert.Equal(["Work", "Product data", "Change", "Programs", "Quality", "Sourcing", "Tools"], viewer.Select(g => g.Title));
         Assert.Equal("Home", viewer[0].Items[0].Label);
         Assert.True(viewer[0].Items[0].ExactMatch);
         Assert.DoesNotContain(viewer.SelectMany(g => g.Items), i => i.Href is "admin" or "audit" or "workflows");
 
         var all = NavModel.For([Roles.Admin, Roles.Auditor]);
-        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Records", "Configuration", "Administration", "Tools"], all.Select(g => g.Title));
+        Assert.Equal(["Work", "Product data", "Change", "Programs", "Quality", "Sourcing", "Records", "Configuration", "Administration", "Tools"], all.Select(g => g.Title));
         Assert.Contains(all.SelectMany(g => g.Items), i => i.Href == "audit");
         Assert.Equal(all.SelectMany(g => g.Items).Count(), all.SelectMany(g => g.Items).Select(i => i.Href).Distinct().Count()); // no link twice
     }

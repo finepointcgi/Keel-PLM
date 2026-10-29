@@ -1,0 +1,111 @@
+@inject CurrentUser Users
+@inject ProgramService Programs
+@inject ToastService Toasts
+
+@* Deliverables are typed pointers to Keel objects with a due date. The readiness is read live from each object's lifecycle state under YOUR access: an object you may not read shows as
+   "Not visible to you" and nothing else, and no data of the object is copied into the program. *@
+@if (list is null)
+{
+    <Skeleton Lines="4" Label="Loading the deliverables" />
+}
+else
+{
+    <div class="stack" data-panel="program-deliverables">
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        <section class="panel" aria-labelledby="deliv-list-heading">
+            <h3 id="deliv-list-heading">Deliverables</h3>
+            @if (list.Items.Count == 0) { <EmptyState Title="No deliverables yet" IconName="program">Link parts, documents, changes, baselines, requirement specifications, quality records and manufacturing BOMs that this program must deliver.</EmptyState> }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="deliverables">
+                    <caption class="sr-only">Deliverables</caption>
+                    <thead><tr><th scope="col">Deliverable</th><th scope="col">Object</th><th scope="col">State</th><th scope="col">Readiness</th><th scope="col">Due</th><th scope="col">Item</th><th scope="col">Owner</th><th scope="col">Markings</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var d in list.Items)
+                        {
+                            <tr>
+                                <td><strong>@d.Number</strong> @d.Title</td>
+                                <td>@if (d.Href is { } href) { <a href="@href">@d.ObjectKey</a><span class="muted"> @AwarenessKinds.Label(d.ObjectKind)</span> } else { <span class="muted">Not visible to you</span> }</td>
+                                <td>@(d.StateLabel ?? "")</td>
+                                <td><span class="badge @ProgramUi.ReadinessClass(d.Readiness)">@d.ReadinessLabel</span></td>
+                                <td class="@(d.Overdue ? "error" : null)">@ProgramUi.Date(d.Due)@(d.Overdue ? " (overdue)" : "")</td>
+                                <td>@(d.ItemKey ?? "")</td>
+                                <td>@(d.OwnerName ?? "Nobody")</td>
+                                <td><MarkingChip Text="@d.Markings.BannerText()" /></td>
+                                <td>@if (d.CanModify && CanModify) { <button type="button" class="secondary" aria-label="@($"Remove {d.Number}")" @onclick="() => Remove(d)">Remove</button> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+        </section>
+        @if (CanModify)
+        {
+            <section class="panel" aria-labelledby="deliv-add-heading">
+                <h3 id="deliv-add-heading">Add a deliverable</h3>
+                <div class="grid-form">
+                    <label class="wide">Title * <input maxlength="200" @bind="title" /></label>
+                    <label>Kind of object <select @bind="kind">@foreach (var k in ProgramService.DeliverableKinds) { <option value="@k">@AwarenessKinds.Label(k)</option> }</select></label>
+                    <label>Number of the object * <input maxlength="64" @bind="key" /></label>
+                    <label>Due date * <input type="date" @bind="due" /></label>
+                    <label>Schedule item (for example MS-002) <input maxlength="20" @bind="itemKey" /></label>
+                    <label>Owner (login name) <input @bind="owner" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="Add">Add deliverable</button></div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public required string Code { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    [Parameter] public string? Version { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    private DeliverableList? list;
+    private string? error, loadedFor;
+    private bool busy;
+    private string title = "", kind = "document", key = "", itemKey = "", owner = "";
+    private DateOnly? due;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var k = $"{Code}:{Version}";
+        if (k == loadedFor) return;
+        loadedFor = k;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var o = await Programs.ListDeliverablesAsync(await Users.GetAsync(), Code, CurrentUser.NewCorrelationId());
+        list = o.Value;
+        error = o.IsOk ? null : ProgramUi.Message(o);
+        await OnShown.InvokeAsync(list is null ? [] : [.. list.Items.Select(d => d.Markings), .. list.Items.Where(d => d.Target is not null).Select(d => d.Target!)]);
+    }
+
+    private async Task Add()
+    {
+        if (due is null) { error = "Choose the due date."; return; }
+        busy = true;
+        error = null;
+        var o = await Programs.AddDeliverableAsync(await Users.GetAsync(), Code, new AddDeliverableCommand(title, kind, key, due.Value, itemKey.Trim().Length == 0 ? null : itemKey, owner, null), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!o.IsOk) { error = ProgramUi.Message(o); return; }
+        (title, key, itemKey, owner, due) = ("", "", "", "", null);
+        Toasts.Success("Deliverable added.");
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Remove(DeliverableRow d)
+    {
+        var o = await Programs.RemoveDeliverableAsync(await Users.GetAsync(), Code, d.Number, CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = ProgramUi.Message(o); return; }
+        Toasts.Success("Deliverable removed.");
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+}

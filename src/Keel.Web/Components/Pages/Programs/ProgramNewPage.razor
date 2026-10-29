@@ -1,0 +1,54 @@
+@page "/programs/new"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = $"{Roles.Author},{Roles.Admin}")]
+@inject CurrentUser Users
+@inject ProgramService Programs
+@inject NavigationManager Nav
+
+@* A blank form shows no controlled data. A program is marked with its own code: only members of the program can read it, and creating the record never changes who is a member. *@
+<PageFrame Banner="@UiText.Unclassified" Title="New program" Crumbs="@Crumbs">
+    <EditForm Model="this" OnSubmit="Create" FormName="new-program" class="stack">
+        <fieldset class="grid-form">
+            <legend>Program</legend>
+            <label>Program code * <InputText @bind-Value="code" maxlength="64" required /></label>
+            <label class="wide">Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+            <label>Program manager (login name, blank for yourself) <InputText @bind-Value="manager" maxlength="100" /></label>
+            <label>Customer reference <InputText @bind-Value="customer" maxlength="200" /></label>
+            <label>Contract reference <InputText @bind-Value="contract" maxlength="200" /></label>
+            <label>Start date <input type="date" @bind="start" /></label>
+            <label>End date <input type="date" @bind="end" /></label>
+            <label class="wide">Description <InputTextArea @bind-Value="description" rows="4" maxlength="8000" /></label>
+        </fieldset>
+        <fieldset class="grid-form">
+            <legend>Security markings</legend>
+            <p class="muted wide small">The program code you enter is used as the program in the markings. You must belong to that program yourself; this page does not grant membership to anyone.</p>
+            <MarkingsFields Value="markings" />
+        </fieldset>
+        @if (errors is not null) { <ValidationList Errors="errors" /> }
+        <div class="toolbar"><button type="submit" disabled="@busy">Create program</button> <a class="button secondary" href="programs">Cancel</a></div>
+    </EditForm>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Programs", "programs"), new("New")];
+    private readonly MarkingsInput markings = new();
+    private string code = "", name = "", manager = "", customer = "", contract = "", description = "";
+    private DateOnly? start, end;
+    private IReadOnlyList<string>? errors;
+    private bool busy;
+
+    private async Task Create()
+    {
+        errors = null;
+        var effective = markings.Effective();
+        effective.Program = code.Trim();
+        var m = effective.ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        busy = true;
+        var subject = await Users.GetAsync();
+        var login = manager.Trim().Length == 0 ? (subject.Username ?? subject.Id) : manager.Trim();
+        var o = await Programs.CreateAsync(subject, new CreateProgramCommand(code, name, description, customer, contract, login, start, end, m.Value), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) Nav.NavigateTo(ProgramUi.Href(o.Value!.Code));
+        else errors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+    }
+}
