@@ -33,3 +33,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0026](0026-session-lock-scanning-gc-siem.md) | Session lock, upload scanning, vault GC, SIEM forwarding | Accepted |
 | [0027](0027-file-viewer.md) | In-browser file viewer (3D, PDF, images) | Accepted |
 | [0028](0028-ui-shell-and-workspace.md) | UI shell, design system and personal workspace | Accepted |
+| [0030](0030-awareness.md) | Notifications, watch, activity feed and comments (pointer-only, re-authorized on render) | Accepted |
