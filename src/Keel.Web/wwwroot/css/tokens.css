@@ -111,6 +111,8 @@
 /* Marking banner tones carry meaning (green = unclassified, purple = CUI): they are identical in every theme and are not themeable. */
 :root {
   --banner-unclassified: #007a33;
+  --demo-banner-bg: #f2c744;
+  --demo-banner-text: #1b1b1b;
   --banner-cui: #502b85;
   --banner-text: #ffffff;
   --banner-h: 26px;
@@ -167,5 +169,3 @@
   --sp-4: 12px;
 }
 
-/* The demo notice (ADR-0045): the same amber in every theme, so it is never mistaken for a marking banner. Black on amber is 11:1. */
-:root { --c-demo-bg: #f2c744; --c-demo-fg: #1b1b1b; }
