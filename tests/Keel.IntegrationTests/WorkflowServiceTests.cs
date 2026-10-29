@@ -346,7 +346,7 @@ public sealed class WorkflowServiceTests(PostgresFixture pg)
         var env = await CreateAsync(pg);
         // 1.6 seeds the ECR CCB and ECN release templates next to the part template.
         var seededTemplates = await env.Flow.ListTemplatesAsync(Alice, true, null);
-        Assert.Equal(["baseline", "document", "ecn", "ecr", "mbom", "part"], seededTemplates.Select(t => t.ObjectType).Order());
+        Assert.Equal(["baseline", "capa", "deviation", "document", "ecn", "ecr", "mbom", "ncr", "part", "source_entry", "supplier"], seededTemplates.Select(t => t.ObjectType).Order()); // 8.1 adds capa, deviation and ncr; 8.2 supplier and list entries
         var seeded = Assert.Single(seededTemplates, t => t.ObjectType == "part");
         Assert.Equal(("part-release-review", 1, true), (seeded.Id, seeded.Version, seeded.IsActive));
         Assert.Equal(["reviewer", "approvers"], seeded.Slots.Select(s => s.Name));
