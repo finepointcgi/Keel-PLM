@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/cad/structure-v1.json",
+  "title": "keel.cad.structure/v1",
+  "description": "A neutral CAD product structure: the parts of an assembly and how many of each part every assembly contains. A CAD connector or script produces it; Keel turns it into a proposed EBOM that people review (docs/integration/cad-connector.md).",
+  "type": "object",
+  "required": ["schema", "root", "parts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "keel.cad.structure/v1" },
+    "source": {
+      "type": "object",
+      "description": "Where the structure came from. Informational; shown on the proposal.",
+      "additionalProperties": false,
+      "properties": {
+        "system": { "type": "string", "maxLength": 60, "description": "The CAD system, for example NX, Creo, SolidWorks, CATIA or a script name." },
+        "tool": { "type": "string", "maxLength": 120 }
+      }
+    },
+    "root": { "type": "string", "maxLength": 200, "description": "The ref of the top part. It must not be used by any other part." },
+    "parts": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": {
+        "type": "object",
+        "required": ["ref", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "ref": { "type": "string", "minLength": 1, "maxLength": 200, "description": "The CAD system's own key for the part. Unique in the file." },
+          "number": { "type": "string", "maxLength": 100, "description": "A Keel part number when the CAD part already has one; the part is then matched by number." },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "partType": { "type": "string", "description": "A part type of your administrator's list. Default: Assembly for a part with children, Component otherwise." },
+          "unit": { "type": "string", "description": "A unit of your administrator's list. Default: EA." },
+          "source": { "type": "string", "description": "A source of your administrator's list. Default: Make for an assembly, Buy otherwise." },
+          "attributes": {
+            "type": "object",
+            "description": "Part attributes your administrator defined. Used when a missing part is created. Values are text, numbers or true/false.",
+            "additionalProperties": { "type": ["string", "number", "boolean"] }
+          },
+          "matchOn": {
+            "type": "array",
+            "maxItems": 5,
+            "description": "When there is no number match: attribute values that identify an existing part, tried in order. One match is used; several matches need a decision in the review.",
+            "items": {
+              "type": "object",
+              "required": ["attribute", "value"],
+              "additionalProperties": false,
+              "properties": { "attribute": { "type": "string" }, "value": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    "lines": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "required": ["parent", "child", "quantity"],
+        "additionalProperties": false,
+        "properties": {
+          "parent": { "type": "string", "description": "The ref of the containing part." },
+          "child": { "type": "string", "description": "The ref of the contained part." },
+          "quantity": { "type": "number", "minimum": 0.000001, "maximum": 1000000 },
+          "unit": { "type": "string" },
+          "findNumber": { "type": "integer", "minimum": 1, "maximum": 999999 },
+          "referenceDesignators": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9\\-_./]{0,39}$" }
+          },
+          "notes": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    }
+  }
+}

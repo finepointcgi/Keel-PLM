@@ -154,13 +154,13 @@ public static class DocumentEndpoints
         return sb.ToString();
     }
 
-    private static IResult Invalid(string message) => Outcome<DocumentDetail>.Invalid([message]).ToHttp();
+    internal static IResult Invalid(string message) => Outcome<DocumentDetail>.Invalid([message]).ToHttp();
 
     /// <summary>
     /// Reads text fields until the <c>file</c> field, then hands its body (a forward-only stream) to <paramref name="handle"/>.
     /// Sections after the file are not read.
     /// </summary>
-    private static async Task<IResult> ReadMultipartAsync(HttpContext ctx, VaultOptions vault,
+    internal static async Task<IResult> ReadMultipartAsync(HttpContext ctx, VaultOptions vault,
         Func<IReadOnlyDictionary<string, string>, FileUpload?, Task<IResult>> handle, CancellationToken ct)
     {
         // Raise the server's request size limit for this request only (Kestrel's default is 30 MB).

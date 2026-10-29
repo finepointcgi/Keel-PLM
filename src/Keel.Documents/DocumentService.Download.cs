@@ -18,8 +18,19 @@ public sealed partial class DocumentService
     /// </summary>
     /// <param name="fileId">A file id of any iteration of this document, or null to select by <paramref name="sha256"/>.</param>
     /// <param name="sha256">With no <paramref name="fileId"/>: a file of the latest iteration of <paramref name="revision"/> (default: latest revision).</param>
-    public async Task<Outcome<MarkedDownload>> DownloadAsync(Subject subject, string number, Guid? fileId, string? sha256, string? revision,
-        string? correlationId, CancellationToken ct = default)
+    public Task<Outcome<MarkedDownload>> DownloadAsync(Subject subject, string number, Guid? fileId, string? sha256, string? revision,
+        string? correlationId, CancellationToken ct = default) =>
+        DownloadCoreAsync(subject, number, fileId, sha256, revision, asPackage: false, correlationId, ct);
+
+    /// <summary>
+    /// Same checks, audit and verification as <see cref="DownloadAsync"/>, but the delivery is always the ZIP (cover sheet and the stored
+    /// file unchanged): a CAD connector must get its bytes back, so a PDF is not stamped in place (ADR-0035).
+    /// </summary>
+    internal Task<Outcome<MarkedDownload>> DownloadPackageMemberAsync(Subject subject, string number, string sha256, string? correlationId, CancellationToken ct = default) =>
+        DownloadCoreAsync(subject, number, null, sha256, null, asPackage: true, correlationId, ct);
+
+    private async Task<Outcome<MarkedDownload>> DownloadCoreAsync(Subject subject, string number, Guid? fileId, string? sha256, string? revision, bool asPackage,
+        string? correlationId, CancellationToken ct)
     {
         const string action = "document.download";
         if (fileId is null && string.IsNullOrEmpty(sha256)) return Outcome<MarkedDownload>.Invalid(["A file id or SHA-256 is required."]);
@@ -82,14 +93,14 @@ public sealed partial class DocumentService
         string? stampError = null;
         try
         {
-            var pdfCandidate = file.SizeBytes <= options.MaxPdfStampBytes &&
+            var pdfCandidate = !asPackage && file.SizeBytes <= options.MaxPdfStampBytes &&
                 (file.MediaType == "application/pdf" || file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase));
             if (pdfCandidate || file.SizeBytes <= options.PartSizeBytes)
             {
                 // Bounded size: one verified read into memory serves both the check and the output.
                 var bytes = await vault.ReadAllAsync(file.Sha256, file.SizeBytes, ct);
                 byte[]? stamped = null;
-                if (PdfMarker.LooksLikePdf(bytes))
+                if (!asPackage && PdfMarker.LooksLikePdf(bytes))
                 {
                     try { stamped = PdfMarker.Stamp(bytes, ctx); }
                     catch (PdfStampException e) { stampError = e.Message; }

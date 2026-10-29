@@ -1,0 +1,214 @@
+@page "/cad/bom-proposals/{Number}"
+@inject CurrentUser Users
+@inject CadBomProposalService Proposals
+@inject ToastService Toasts
+
+@* The review of a CAD structure proposal: which Keel parts the CAD parts match, what would change in the current engineering BOMs, and the apply step.
+   The page banner is the aggregate of the proposal and every part shown. Parts the viewer may not read are named nowhere (ADR-0035). *@
+<PageFrame Banner="@(detail?.Banner ?? UiText.Unclassified)" Title="@PageTitle" Crumbs="@Crumbs">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Proposal @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        <p>
+            <span class="badge" data-testid="proposal-status">@CadProposalsPage.Label(d.Status)</span>
+            <span>Source: @(d.SourceSystem ?? d.SourceFormat.ToUpperInvariant()) · created by @d.CreatedBy on @d.CreatedAt.ToString("yyyy-MM-dd HH:mm")</span>
+        </p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (d.Status == "draft" && d.Undecided > 0)
+        {
+            <p class="callout" role="status">@d.Undecided part@(d.Undecided == 1 ? " needs" : "s need") a decision: several Keel parts match. Choose one below, create a new part, or skip it.</p>
+        }
+        @foreach (var blocker in d.ApplyBlockers)
+        {
+            <p class="error" role="alert">Cannot be applied yet: @blocker</p>
+        }
+
+        <section class="panel stack" aria-labelledby="parts-heading">
+            <h2 id="parts-heading">Parts of the structure</h2>
+            <div class="table-wrap"><table class="data" data-testid="proposal-parts">
+                <caption class="sr-only">Parts of the CAD structure and the Keel part each one stands for</caption>
+                <thead><tr><th scope="col">CAD part</th><th scope="col">Match</th><th scope="col">Decision</th></tr></thead>
+                <tbody>
+                @foreach (var p in d.Parts)
+                {
+                    <tr>
+                        <td>@p.Name<br /><span class="muted small">@(p.CadNumber ?? p.Ref) · @p.PartType@(p.IsParent ? " · has children" : "")</span></td>
+                        <td>
+                            @switch (p.MatchKind)
+                            {
+                                case "number":
+                                case "attribute":
+                                    @if (p.MatchHidden) { <span class="muted">A part you are not authorized to see</span> }
+                                    else { <span>Matches <a href="parts/@Uri.EscapeDataString(p.MatchedNumber!)">@p.MatchedNumber</a> @p.MatchedName</span> }
+                                    <span class="muted small"> (by @(p.MatchKind == "number" ? "number" : "attribute"))</span>
+                                    break;
+                                case "ambiguous":
+                                    <span>Several parts match: @(p.CandidateNumbers.Count == 0 ? "none you may see" : string.Join(", ", p.CandidateNumbers))</span>
+                                    break;
+                                default:
+                                    <span>No existing part</span>
+                                    break;
+                            }
+                            @if (p.CreatedNumber is not null) { <span> · created as <a href="parts/@Uri.EscapeDataString(p.CreatedNumber)">@p.CreatedNumber</a></span> }
+                        </td>
+                        <td>
+                            @if (d.CanDecide)
+                            {
+                                <select aria-label="@($"Decision for {p.Name}")" value="@Current(p)" @onchange="e => Set(p, e.Value?.ToString())">
+                                    @if (p.Decision == "undecided") { <option value="undecided">Choose…</option> }
+                                    <option value="create">Create a new part</option>
+                                    <option value="match">Use an existing part</option>
+                                    <option value="skip">Skip</option>
+                                </select>
+                                @if (Current(p) == "match" && (p.MatchedNumber is null || p.MatchKind == "ambiguous"))
+                                {
+                                    <label class="sr-only" for="@($"use-{p.Ref}")">@($"Part number to use for {p.Name}")</label>
+                                    <input id="@($"use-{p.Ref}")" placeholder="Part number" maxlength="40" value="@(numbers.GetValueOrDefault(p.Ref) ?? "")" @onchange="e => numbers[p.Ref] = e.Value?.ToString() ?? string.Empty" />
+                                }
+                            }
+                            else { <span>@DecisionLabel(p.Decision)</span> }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+            @if (d.CanDecide)
+            {
+                <div class="toolbar">
+                    <label class="inline-check"><input type="checkbox" checked="@removals" @onchange="e => removals = (bool)(e.Value ?? false)" /> Remove lines that the file does not contain</label>
+                    <button type="button" class="secondary" disabled="@busy" @onclick="SaveDecisions">Save decisions</button>
+                </div>
+            }
+        </section>
+
+        <section class="panel stack" aria-labelledby="diff-heading">
+            <h2 id="diff-heading">Differences from the current engineering BOM</h2>
+            @if (d.Parents.Count == 0) { <EmptyState Title="No assemblies" IconName="part">The structure has no usage lines.</EmptyState> }
+            @if (d.DiffTruncated) { <p class="muted" role="status">Only the first assemblies are compared on this page; applying compares all of them.</p> }
+            @foreach (var parent in d.Parents)
+            {
+                <h3 id="@($"parent-{parent.ParentRef}")">@parent.Label <span class="muted small">(@parent.State)</span></h3>
+                <p class="muted small">@parent.Added added · @parent.Changed changed · @parent.Removed removed · @parent.Unchanged unchanged@(parent.RedactedCurrentLines > 0 ? $" · {parent.RedactedCurrentLines} current line(s) you cannot see" : "")</p>
+                @if (parent.Blocker is not null) { <p class="error" role="alert">Cannot change this part now: @parent.Blocker.</p> }
+                <div class="table-wrap"><table class="data">
+                    <caption class="sr-only">Changes to @parent.Label</caption>
+                    <thead><tr><th scope="col">Change</th><th scope="col">Child</th><th scope="col">Current</th><th scope="col">Proposed</th><th scope="col">Note</th></tr></thead>
+                    <tbody>
+                    @foreach (var row in d.Diff.Where(r => r.ParentRef == parent.ParentRef))
+                    {
+                        <tr>
+                            <td><span class="badge">@Kind(row.Kind)</span></td>
+                            <td>@row.ChildLabel</td>
+                            <td>@Side(row.Before)</td>
+                            <td>@Side(row.After)</td>
+                            <td>@(row.Note ?? (row.Applies ? "Will be applied" : ""))</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table></div>
+            }
+        </section>
+
+        @if (d.LastResult is { } last)
+        {
+            <section class="panel stack" aria-labelledby="result-heading">
+                <h2 id="result-heading">Result of the last apply</h2>
+                <p>@(last.Complete ? "Every change was applied." : "Some changes were not applied; fix the cause and apply again.") @(last.CreatedParts.Count > 0 ? $"Created parts: {string.Join(", ", last.CreatedParts)}." : "")</p>
+                <ul>
+                    @foreach (var r in last.Parents)
+                    {
+                        <li>@r.Parent: @(r.Ok ? $"changed ({r.Edits} edits), now version {r.Iteration}" : $"not changed: {r.Error}")</li>
+                    }
+                </ul>
+            </section>
+        }
+
+        @if (d.CanDecide)
+        {
+            <div class="toolbar">
+                <button type="button" disabled="@(busy || !d.CanApply)" @onclick="() => confirmApply = true">Apply to the engineering BOMs</button>
+                <button type="button" class="secondary" disabled="@busy" @onclick="() => confirmDiscard = true">Discard proposal</button>
+            </div>
+            @if (!d.CanApply && d.ApplyBlockers.Count == 0 && d.Undecided == 0)
+            {
+                <p class="muted small">There is nothing to apply: the structure already matches the current BOMs, or every part is skipped.</p>
+            }
+        }
+
+        <ConfirmDialog @bind-Open="confirmApply" Title="Apply this structure?" ConfirmText="Apply" OnConfirm="_ => Apply()">
+            <p>Parts without a match are created, and each changed assembly gets a new working version through the normal check-out and check-in. Nothing is released; released assemblies are never touched.</p>
+        </ConfirmDialog>
+        <ConfirmDialog @bind-Open="confirmDiscard" Title="Discard this proposal?" Destructive="true" ConfirmText="Discard" OnConfirm="_ => Discard()">
+            <p>The proposal stays in the list as discarded and can no longer be applied.</p>
+        </ConfirmDialog>
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading the proposal" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private ProposalDetail? detail;
+    private bool notFound, busy, confirmApply, confirmDiscard, removals;
+    private string? error;
+    private readonly Dictionary<string, string> choices = [];
+    private readonly Dictionary<string, string> numbers = [];
+
+    private string PageTitle => detail is null ? "CAD structure" : $"{detail.Number} · {detail.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("CAD structures", "cad/bom-proposals"), new(detail?.Number ?? Number)];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Proposals.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is not null) removals = detail.ApplyRemovals;
+    }
+
+    private string Current(ProposalPartView p) => choices.GetValueOrDefault(p.Ref) ?? p.Decision;
+    private void Set(ProposalPartView p, string? value) { if (value is not null) choices[p.Ref] = value; }
+
+    private async Task SaveDecisions()
+    {
+        busy = true;
+        error = null;
+        var decisions = choices.Where(c => c.Value != "undecided").Select(c => new ProposalPartDecision(c.Key, c.Value, numbers.GetValueOrDefault(c.Key))).ToList();
+        var outcome = await Proposals.DecideAsync(await Users.GetAsync(), Number, decisions, removals, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { detail = outcome.Value; choices.Clear(); Toasts.Success("Decisions saved."); }
+        else error = UiText.Message(outcome);
+    }
+
+    private async Task Apply()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Proposals.ApplyAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) Toasts.Success("Applied.");
+        else error = UiText.Message(outcome);
+        await Load();
+    }
+
+    private async Task Discard()
+    {
+        busy = true;
+        var outcome = await Proposals.DiscardAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { detail = outcome.Value; Toasts.Success("Proposal discarded."); }
+        else error = UiText.Message(outcome);
+    }
+
+    private static string DecisionLabel(string d) => d switch { "create" => "Create a new part", "match" => "Use an existing part", "skip" => "Skip", _ => "Needs a decision" };
+    private static string Kind(DiffKind k) => k switch { DiffKind.Added => "Added", DiffKind.Removed => "Removed", DiffKind.Changed => "Changed", _ => "Unchanged" };
+    private static string Side(DiffSide? s) => s is null ? "none" : $"{s.Quantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)} {s.Unit}{(s.FindNumber is { } f ? $" · find {f}" : "")}{(s.ReferenceDesignators.Count > 0 ? " · " + string.Join(" ", s.ReferenceDesignators) : "")}";
+}

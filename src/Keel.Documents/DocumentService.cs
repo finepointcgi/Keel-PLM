@@ -203,34 +203,36 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
     // ---------------------------------------------------------------- check-out / working copy / check-in
 
     public Task<Outcome<DocumentDetail>> CheckOutAsync(Subject subject, string number, string? correlationId, CancellationToken ct = default) =>
-        MutateAsync(subject, number, "document.checkout", correlationId, PlmAction.Modify, async (ctx, conn, tx) =>
+        MutateAsync(subject, number, "document.checkout", correlationId, PlmAction.Modify, (ctx, conn, tx) => CheckOutBodyAsync(subject, ctx, conn, tx, ct), ct);
+
+    private async Task<Step> CheckOutBodyAsync(Subject subject, MutationContext ctx, NpgsqlConnection conn, NpgsqlTransaction tx, CancellationToken ct)
+    {
+        if (ctx.Lifecycle.IsLocked(ctx.State)) return Fail($"Revision {ctx.Revision} is {ctx.StateLabel} and locked; it cannot be checked out.");
+        if (ctx.CheckoutUser is not null) return Fail($"Already checked out by {ctx.CheckoutUserName ?? ctx.CheckoutUser}.");
+        var now = clock.GetUtcNow();
+        await using (var cmd = new NpgsqlCommand(
+            """
+            INSERT INTO plm.document_checkout (revision_id, user_id, user_name, checked_out_at, description)
+            SELECT r.id, @user, @name, @at, i.description
+            FROM plm.document_revision r JOIN plm.document_iteration i ON i.revision_id = r.id AND i.iteration = r.latest_iteration
+            WHERE r.id = @rid
+            """, conn, tx))
         {
-            if (ctx.Lifecycle.IsLocked(ctx.State)) return Fail($"Revision {ctx.Revision} is {ctx.StateLabel} and locked; it cannot be checked out.");
-            if (ctx.CheckoutUser is not null) return Fail($"Already checked out by {ctx.CheckoutUserName ?? ctx.CheckoutUser}.");
-            var now = clock.GetUtcNow();
-            await using (var cmd = new NpgsqlCommand(
-                """
-                INSERT INTO plm.document_checkout (revision_id, user_id, user_name, checked_out_at, description)
-                SELECT r.id, @user, @name, @at, i.description
-                FROM plm.document_revision r JOIN plm.document_iteration i ON i.revision_id = r.id AND i.iteration = r.latest_iteration
-                WHERE r.id = @rid
-                """, conn, tx))
-            {
-                cmd.Parameters.AddWithValue("user", subject.Id);
-                cmd.Parameters.AddWithValue("name", DisplayId(subject));
-                cmd.Parameters.AddWithValue("at", now);
-                cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
-            // The working copy starts with the latest iteration's files (metadata only; bytes are content-addressed).
-            var files = await ReadFilesAsync(conn, tx,
-                "SELECT f.id, f.role, f.file_name, f.media_type, f.size_bytes, f.sha256, f.added_at, f.added_by FROM plm.document_file f WHERE f.iteration_id = @owner",
-                ctx.LatestIterationId, ct);
-            foreach (var f in files)
-                await InsertFileAsync(conn, tx, "plm.document_checkout_file", "revision_id", ctx.RevisionId, f.Role, f.FileName, f.MediaType,
-                    new StoredContent(f.Sha256, f.SizeBytes), f.AddedAt, f.AddedBy, ct);
-            return Done(("revision", $"{ctx.Revision}.{ctx.LatestIteration}"));
-        }, ct);
+            cmd.Parameters.AddWithValue("user", subject.Id);
+            cmd.Parameters.AddWithValue("name", DisplayId(subject));
+            cmd.Parameters.AddWithValue("at", now);
+            cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        // The working copy starts with the latest iteration's files (metadata only; bytes are content-addressed).
+        var files = await ReadFilesAsync(conn, tx,
+            "SELECT f.id, f.role, f.file_name, f.media_type, f.size_bytes, f.sha256, f.added_at, f.added_by FROM plm.document_file f WHERE f.iteration_id = @owner",
+            ctx.LatestIterationId, ct);
+        foreach (var f in files)
+            await InsertFileAsync(conn, tx, "plm.document_checkout_file", "revision_id", ctx.RevisionId, f.Role, f.FileName, f.MediaType,
+                new StoredContent(f.Sha256, f.SizeBytes), f.AddedAt, f.AddedBy, ct);
+        return Done(("revision", $"{ctx.Revision}.{ctx.LatestIteration}"));
+    }
 
     public Task<Outcome<DocumentDetail>> UpdateWorkingCopyAsync(Subject subject, string number, string? description, string? correlationId, CancellationToken ct = default) =>
         MutateAsync(subject, number, "document.edit", correlationId, PlmAction.Modify, async (ctx, conn, tx) =>
@@ -303,53 +305,55 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         }, ct);
 
     public Task<Outcome<DocumentDetail>> CheckInAsync(Subject subject, string number, string? comment, string? correlationId, CancellationToken ct = default) =>
-        MutateAsync(subject, number, "document.checkin", correlationId, PlmAction.Modify, async (ctx, conn, tx) =>
-        {
-            if (ctx.CheckoutUser != subject.Id) return Fail("Only the user who checked the document out can check it in.");
-            if ((comment?.Length ?? 0) > 1000) return Invalid(["Check-in comment must be at most 1000 characters."]);
-            var files = await ReadFilesAsync(conn, tx,
-                "SELECT f.id, f.role, f.file_name, f.media_type, f.size_bytes, f.sha256, f.added_at, f.added_by FROM plm.document_checkout_file f WHERE f.revision_id = @owner",
-                ctx.RevisionId, ct);
-            if (await QuarantinedAmongAsync(conn, tx, ctx.MasterId, files.Select(f => f.Sha256).ToArray(), ct) is { } quarantinedFile)
-                return Fail($"The working copy contains a quarantined file ({quarantinedFile}); remove it before checking in.");
-            // ASSUMPTION(A24): once an iteration has a primary file, every later iteration keeps one (it can be replaced, not dropped).
-            if (ctx.LatestHasPrimary && files.All(f => f.Role != FileRoles.Primary))
-                return Fail("The previous iteration has a primary file; add a primary file before checking in.");
+        MutateAsync(subject, number, "document.checkin", correlationId, PlmAction.Modify, (ctx, conn, tx) => CheckInBodyAsync(subject, ctx, comment, conn, tx, ct), ct);
 
-            var next = ctx.LatestIteration + 1;
-            var iterationId = Guid.CreateVersion7();
-            var now = clock.GetUtcNow();
-            await using (var cmd = new NpgsqlCommand(
-                """
-                INSERT INTO plm.document_iteration (id, revision_id, iteration, description, comment, created_at, created_by)
-                SELECT @iid, revision_id, @next, description, @comment, @at, @by FROM plm.document_checkout WHERE revision_id = @rid
-                """, conn, tx))
-            {
-                cmd.Parameters.AddWithValue("iid", iterationId);
-                cmd.Parameters.AddWithValue("next", next);
-                cmd.Parameters.AddWithValue("comment", string.IsNullOrWhiteSpace(comment) ? DBNull.Value : comment.Trim());
-                cmd.Parameters.AddWithValue("at", now);
-                cmd.Parameters.AddWithValue("by", DisplayId(subject));
-                cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
-            foreach (var f in files)
-                await InsertFileAsync(conn, tx, "plm.document_file", "iteration_id", iterationId, f.Role, f.FileName, f.MediaType,
-                    new StoredContent(f.Sha256, f.SizeBytes), f.AddedAt, f.AddedBy, ct);
-            // Deleting the check-out cascades to its working files.
-            await using (var cmd = new NpgsqlCommand(
-                """
-                UPDATE plm.document_revision SET latest_iteration = @next WHERE id = @rid;
-                DELETE FROM plm.document_checkout WHERE revision_id = @rid;
-                """, conn, tx))
-            {
-                cmd.Parameters.AddWithValue("next", next);
-                cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
-            return Done(("revision", $"{ctx.Revision}.{next}"), ("comment", comment),
-                ("files", string.Join(",", files.Select(f => $"{f.Role}:{f.FileName}:{f.Sha256}"))));
-        }, ct);
+    private async Task<Step> CheckInBodyAsync(Subject subject, MutationContext ctx, string? comment, NpgsqlConnection conn, NpgsqlTransaction tx, CancellationToken ct)
+    {
+        if (ctx.CheckoutUser != subject.Id) return Fail("Only the user who checked the document out can check it in.");
+        if ((comment?.Length ?? 0) > 1000) return Invalid(["Check-in comment must be at most 1000 characters."]);
+        var files = await ReadFilesAsync(conn, tx,
+            "SELECT f.id, f.role, f.file_name, f.media_type, f.size_bytes, f.sha256, f.added_at, f.added_by FROM plm.document_checkout_file f WHERE f.revision_id = @owner",
+            ctx.RevisionId, ct);
+        if (await QuarantinedAmongAsync(conn, tx, ctx.MasterId, files.Select(f => f.Sha256).ToArray(), ct) is { } quarantinedFile)
+            return Fail($"The working copy contains a quarantined file ({quarantinedFile}); remove it before checking in.");
+        // ASSUMPTION(A24): once an iteration has a primary file, every later iteration keeps one (it can be replaced, not dropped).
+        if (ctx.LatestHasPrimary && files.All(f => f.Role != FileRoles.Primary))
+            return Fail("The previous iteration has a primary file; add a primary file before checking in.");
+
+        var next = ctx.LatestIteration + 1;
+        var iterationId = Guid.CreateVersion7();
+        var now = clock.GetUtcNow();
+        await using (var cmd = new NpgsqlCommand(
+            """
+            INSERT INTO plm.document_iteration (id, revision_id, iteration, description, comment, created_at, created_by)
+            SELECT @iid, revision_id, @next, description, @comment, @at, @by FROM plm.document_checkout WHERE revision_id = @rid
+            """, conn, tx))
+        {
+            cmd.Parameters.AddWithValue("iid", iterationId);
+            cmd.Parameters.AddWithValue("next", next);
+            cmd.Parameters.AddWithValue("comment", string.IsNullOrWhiteSpace(comment) ? DBNull.Value : comment.Trim());
+            cmd.Parameters.AddWithValue("at", now);
+            cmd.Parameters.AddWithValue("by", DisplayId(subject));
+            cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        foreach (var f in files)
+            await InsertFileAsync(conn, tx, "plm.document_file", "iteration_id", iterationId, f.Role, f.FileName, f.MediaType,
+                new StoredContent(f.Sha256, f.SizeBytes), f.AddedAt, f.AddedBy, ct);
+        // Deleting the check-out cascades to its working files.
+        await using (var cmd = new NpgsqlCommand(
+            """
+            UPDATE plm.document_revision SET latest_iteration = @next WHERE id = @rid;
+            DELETE FROM plm.document_checkout WHERE revision_id = @rid;
+            """, conn, tx))
+        {
+            cmd.Parameters.AddWithValue("next", next);
+            cmd.Parameters.AddWithValue("rid", ctx.RevisionId);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        return Done(("revision", $"{ctx.Revision}.{next}"), ("comment", comment),
+            ("files", string.Join(",", files.Select(f => $"{f.Role}:{f.FileName}:{f.Sha256}"))));
+    }
 
     public Task<Outcome<DocumentDetail>> UndoCheckOutAsync(Subject subject, string number, string? correlationId, CancellationToken ct = default) =>
         MutateAsync(subject, number, "document.undo_checkout", correlationId, PlmAction.Modify, async (ctx, conn, tx) =>
@@ -485,24 +489,7 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         if (denied is not null) return denied;
 
         var lifecycle = await Lifecycle.LoadAsync(conn, tx, head!.LifecycleId, ct) ?? throw new InvalidOperationException($"Lifecycle {head.LifecycleId} missing.");
-        MutationContext ctx;
-        await using (var cmd = new NpgsqlCommand(
-            """
-            SELECT r.id, r.revision, r.lifecycle_state, r.latest_iteration, c.user_id, c.user_name, i.id,
-                   EXISTS (SELECT 1 FROM plm.document_file f WHERE f.iteration_id = i.id AND f.role = 'primary')
-            FROM plm.document_revision r
-            JOIN plm.document_iteration i ON i.revision_id = r.id AND i.iteration = r.latest_iteration
-            LEFT JOIN plm.document_checkout c ON c.revision_id = r.id
-            WHERE r.master_id = @m AND r.is_latest
-            """, conn, tx))
-        {
-            cmd.Parameters.AddWithValue("m", head.MasterId);
-            await using var r = await cmd.ExecuteReaderAsync(ct);
-            await r.ReadAsync(ct);
-            var state = r.GetString(2);
-            ctx = new MutationContext(head.MasterId, r.GetGuid(0), r.GetString(1), state, lifecycle.State(state)?.Label ?? state, r.GetInt32(3),
-                r.GetGuid(6), r.GetBoolean(7), head.Markings, lifecycle, r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5));
-        }
+        var ctx = await LoadMutationContextAsync(conn, tx, head, lifecycle, ct);
 
         var step = await body(ctx, conn, tx);
         if (step.Kind != OutcomeKind.Ok)
@@ -520,6 +507,28 @@ public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditL
         var detail = await LoadDetailAsync(conn, tx, subject, number, null, ct);
         await tx.CommitAsync(ct);
         return Outcome<DocumentDetail>.Ok(detail!);
+    }
+
+    private static async Task<MutationContext> LoadMutationContextAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Head head, Lifecycle lifecycle, CancellationToken ct)
+    {
+        await using (var cmd = new NpgsqlCommand(
+            """
+            SELECT r.id, r.revision, r.lifecycle_state, r.latest_iteration, c.user_id, c.user_name, i.id,
+                   EXISTS (SELECT 1 FROM plm.document_file f WHERE f.iteration_id = i.id AND f.role = 'primary')
+            FROM plm.document_revision r
+            JOIN plm.document_iteration i ON i.revision_id = r.id AND i.iteration = r.latest_iteration
+            LEFT JOIN plm.document_checkout c ON c.revision_id = r.id
+            WHERE r.master_id = @m AND r.is_latest
+            """, conn, tx))
+        {
+            cmd.Parameters.AddWithValue("m", head.MasterId);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            await r.ReadAsync(ct);
+            var state = r.GetString(2);
+            return new MutationContext(head.MasterId, r.GetGuid(0), r.GetString(1), state, lifecycle.State(state)?.Label ?? state, r.GetInt32(3),
+                r.GetGuid(6), r.GetBoolean(7), head.Markings, lifecycle, r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5));
+        }
+
     }
 
     private static async Task<Head?> LoadHeadAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string number, bool forUpdate, CancellationToken ct)

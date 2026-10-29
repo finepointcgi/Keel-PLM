@@ -134,6 +134,7 @@ builder.Services.AddSingleton<ITdpPartSource, Keel.Parts.PartTdpSource>(); // 4.
 builder.Services.AddSingleton<ITdpDocumentSource, Keel.Documents.TdpDocumentSource>();
 Keel.Integration.IntegrationModule.AddKeelIntegration(builder.Services, builder.Configuration); // 4.0 outbox, ERP sinks, TDP
 builder.Services.AddKeelIntegrationOpenApi();
+builder.Services.AddKeelCadHost(); // 8.0 CAD integration
 Keel.Siem.SiemModule.AddKeelSiem(builder.Services, builder.Configuration, options.Security.RequireFips, secretsDirectory); // 5.0 SIEM forwarding (off unless Keel:Siem:Enabled)
 Keel.Workspace.WorkspaceModule.AddKeelWorkspace(builder.Services); // UX-1 personal workspace data (preferences, recent items, favorites, saved searches)
 Keel.Notifications.NotificationsModule.AddKeelNotifications(builder.Services, builder.Configuration); // UX-4 notifications, watch lists, comments, activity feed
@@ -249,6 +250,7 @@ app.MapAdminEndpoints(); // 2.2 administration and classification
 app.MapMbomEndpoints(); // 2.3 EBOM / MBOM and reconciliation
 app.MapVisualEndpoints(); // UX-3 downloads of the relationship pictures
 app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration administration
+app.MapCadEndpoints(); // 8.0 CAD connector protocol
 app.MapOpenApi("/openapi/{documentName}.json");
 app.MapKeelUi<App>();
 

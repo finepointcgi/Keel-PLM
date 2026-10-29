@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
+    <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\docs\integration\cad\structure-v1.schema.json" LogicalName="Keel.Cad.structure-v1.schema.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Keel.UnitTests" />
+    <InternalsVisibleTo Include="Keel.IntegrationTests" />
+  </ItemGroup>
+</Project>
