@@ -43,4 +43,5 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0037](0037-suppliers-and-sourcing.md) | Suppliers, approved lists and supplier portal | Accepted |
 | [0036](0036-quality-processes.md) | Quality processes: NCR, CAPA, deviations and waivers | Accepted |
 | [0039](0039-configuration-and-variants.md) | Configuration and variants: options, rules, 150% BOM conditions | Accepted |
+| [0040](0040-product-compliance.md) | Product compliance: substances, regulatory lists, declarations and roll-up | Accepted |
 | [0041](0041-records-management.md) | Records management: retention, legal hold, disposition, WORM-style archive | Accepted |
