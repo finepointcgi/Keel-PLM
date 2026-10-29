@@ -33,18 +33,18 @@ public sealed class SourcingTests(E2EFixture fx)
             await BrowserSession.FillAsync(page.GetByLabel("Certificate number"), "AS-2026-7");
             await BrowserSession.FillAsync(page.GetByLabel("Issuer"), "Example Registrar");
             await BrowserSession.ClickAsync(page, "Add certification");
-            await Expect(page.GetByRole(AriaRole.Cell, new PageGetByRoleOptions { Name = "AS-2026-7" })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Cell, new PageGetByRoleOptions { Name = "AS-2026-7" }).First).ToBeVisibleAsync();
             await Expect(page.GetByText("Valid", new PageGetByTextOptions { Exact = true }).First).ToBeVisibleAsync();
 
             await BrowserSession.OpenTabAsync(page, "Contacts");
             await BrowserSession.FillAsync(page.GetByLabel("Name *"), "Quincy Quality");
             await BrowserSession.FillAsync(page.GetByLabel("E-mail"), "quincy@granite.example");
             await BrowserSession.ClickAsync(page, "Add contact");
-            await Expect(page.GetByRole(AriaRole.Rowheader, new PageGetByRoleOptions { Name = "Quincy Quality" })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Rowheader, new PageGetByRoleOptions { Name = "Quincy Quality" }).First).ToBeVisibleAsync();
 
             // Approval needs a review: the page offers the proposal and the review panel, not a button that approves.
             await BrowserSession.OpenTabAsync(page, "Approval");
-            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Approve" })).ToHaveCountAsync(0);
+            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Approve", Exact = true })).ToHaveCountAsync(0);
             await page.GetByLabel("Status the review should grant").SelectOptionAsync("approved");
             await BrowserSession.ClickAsync(page, "Set proposed status");
             await Expect(page.GetByText("The review will grant: Approved.")).ToBeVisibleAsync();
@@ -94,7 +94,7 @@ public sealed class SourcingTests(E2EFixture fx)
 
             // Respond with a quote and a file.
             await session.GotoAsync(alpha, $"/portal/requests/{SourcingSeed.Request}");
-            await Expect(page.GetByRole(AriaRole.Rowheader, new PageGetByRoleOptions { Name = fx.Manifest.OpenFastener })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Rowheader, new PageGetByRoleOptions { Name = fx.Manifest.OpenFastener }).First).ToBeVisibleAsync();
             await BrowserSession.FillAsync(page.GetByLabel("Message"), "We can supply from stock.");
             await BrowserSession.FillAsync(page.GetByLabel($"Unit price for {fx.Manifest.OpenFastener}"), "0.42");
             await page.GetByLabel("Response files", new PageGetByLabelOptions { Exact = false }).SetInputFilesAsync(new FilePayload { Name = "quote.txt", MimeType = "text/plain", Buffer = System.Text.Encoding.UTF8.GetBytes("synthetic quote") });
