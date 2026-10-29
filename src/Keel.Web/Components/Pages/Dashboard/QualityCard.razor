@@ -1,0 +1,51 @@
+@* "Quality": counts of open nonconformance reports and corrective actions, what is overdue, the caller's own open actions and the deviations and waivers in force. Every number
+   counts only records the user may read, so a count never says that a restricted record exists. *@
+@inject CurrentUser Users
+@inject Keel.Quality.QualityQueries Queries
+
+<section class="card" aria-labelledby="card-quality">
+    <h2 id="card-quality"><Icon Name="quality" /> Quality</h2>
+    @if (loading)
+    {
+        <Skeleton Lines="4" Label="Loading quality counts" />
+    }
+    else if (error is not null)
+    {
+        <p class="error" role="alert">@error</p>
+    }
+    else if (data is null || data.OpenNcrs + data.OpenCapas + data.ActiveDeviations + data.MyOpenActions == 0)
+    {
+        <EmptyState Title="No open quality records" IconName="check">Open nonconformance reports, corrective actions and active deviations that you can read are counted here.</EmptyState>
+        <p class="small"><a href="quality/ncrs">Nonconformance reports</a> · <a href="quality/capas">Corrective actions</a> · <a href="quality/deviations">Deviations and waivers</a></p>
+    }
+    else
+    {
+        <ul class="items">
+            <li><span class="main"><a href="quality/ncrs">Open nonconformance reports</a><span class="sub">@(data.OldestOpenNcrDays > 0 ? $"Oldest open for {data.OldestOpenNcrDays} days" : "None older than a day")</span></span><span class="badge" data-count="open-ncrs">@data.OpenNcrs</span></li>
+            <li><span class="main"><a href="quality/capas">Open corrective actions</a></span><span class="badge" data-count="open-capas">@data.OpenCapas</span></li>
+            <li><span class="main"><a href="quality/capas">Corrective actions past their target date</a></span><span class="badge @(data.OverdueCapas > 0 ? "state-obsolete error" : null)" data-count="overdue-capas">@data.OverdueCapas</span></li>
+            <li><span class="main"><a href="quality/capas">Action items past their due date</a></span><span class="badge @(data.OverdueActions > 0 ? "state-obsolete error" : null)" data-count="overdue-actions">@data.OverdueActions</span></li>
+            <li><span class="main"><a href="quality/capas">My open action items</a></span><span class="badge" data-count="my-actions">@data.MyOpenActions</span></li>
+            <li><span class="main"><a href="quality/deviations">Deviations and waivers in force</a><span class="sub">@data.ExpiringDeviations end within @Keel.Quality.QualityQueries.ExpiringWithinDays days</span></span><span class="badge" data-count="active-deviations">@data.ActiveDeviations</span></li>
+        </ul>
+    }
+</section>
+
+@code {
+    private bool loading = true;
+    private string? error;
+    private Keel.Quality.QualityDashboardData? data;
+
+    [Parameter] public EventCallback<(string Id, string? Banner)> OnBanner { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { data = await Queries.DashboardAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId()); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "The quality counts could not be loaded. The rest of the page is not affected.";
+        }
+        loading = false;
+        await OnBanner.InvokeAsync(("quality", null)); // counts name nothing: they add no marking to the page banner
+    }
+}

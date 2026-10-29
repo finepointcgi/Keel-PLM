@@ -1,6 +1,6 @@
 <section class="panel start-review" aria-labelledby="start-review-heading">
     <h3 id="start-review-heading">Submit for review</h3>
-    @{ var noun = Template.ObjectType switch { "part" => "part", "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "supplier" => "supplier", "source_entry" => "list entry", "ecn" or "ecr" => "change", _ => "object" }; }
+    @{ var noun = Template.ObjectType switch { "part" => "part", "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "supplier" => "supplier", "ncr" => "report", "capa" => "corrective action", "deviation" => "deviation or waiver", "source_entry" => "list entry", "ecn" or "ecr" => "change", _ => "object" }; }
     <p class="muted">@Template.Name. The @noun is locked while the review runs. You choose the people; each must hold the needed role and be allowed to see this @noun, and you cannot review your own submission.</p>
     <div class="stack">
         @foreach (var slot in Template.Slots)

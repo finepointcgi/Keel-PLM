@@ -138,6 +138,8 @@ builder.Services.AddKeelCadHost(); // 8.0 CAD integration
 Keel.Siem.SiemModule.AddKeelSiem(builder.Services, builder.Configuration, options.Security.RequireFips, secretsDirectory); // 5.0 SIEM forwarding (off unless Keel:Siem:Enabled)
 Keel.Workspace.WorkspaceModule.AddKeelWorkspace(builder.Services); // UX-1 personal workspace data (preferences, recent items, favorites, saved searches)
 Keel.Notifications.NotificationsModule.AddKeelNotifications(builder.Services, builder.Configuration); // UX-4 notifications, watch lists, comments, activity feed
+Keel.Quality.QualityModule.AddKeelQuality(builder.Services, builder.Configuration); // 8.1 nonconformance reports, corrective actions, deviations and waivers
+builder.Services.AddKeelQualityOpenApi();
 Keel.Sourcing.SourcingModule.AddKeelSourcing(builder.Services, builder.Configuration); // 8.2 suppliers, approved lists, supplier portal
 builder.Services.AddSingleton<Keel.Web.Services.SourcingCoverageService>(); // 8.2 BOM-level sourcing coverage (composes BOM, MBOM and sourcing)
 builder.Services.AddKeelSourcingOpenApi();
@@ -256,6 +258,7 @@ app.MapVisualEndpoints(); // UX-3 downloads of the relationship pictures
 app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration administration
 app.MapCadEndpoints(); // 8.0 CAD connector protocol
 app.MapSourcingEndpoints(); // 8.2 suppliers, approved lists, requests and the supplier portal
+app.MapQualityEndpoints(); // 8.1 quality records
 app.MapOpenApi("/openapi/{documentName}.json");
 app.MapKeelUi<App>();
 

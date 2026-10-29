@@ -45,6 +45,10 @@ public static class NotificationKinds
     public const string WatchedEstablished = NotificationKindCodes.WatchedEstablished;
     public const string CommentAdded = NotificationKindCodes.CommentAdded;
     public const string CommentMention = NotificationKindCodes.CommentMention;
+    public const string QualityActionAssigned = NotificationKindCodes.QualityActionAssigned;
+    public const string QualityActionOverdue = NotificationKindCodes.QualityActionOverdue;
+    public const string DeviationExpiring = NotificationKindCodes.DeviationExpiring;
+    public const string DeviationExpired = NotificationKindCodes.DeviationExpired;
     public const string SupplierCertExpiring = NotificationKindCodes.SupplierCertExpiring;
     public const string SupplierCertExpired = NotificationKindCodes.SupplierCertExpired;
     public const string SupplierStatusChanged = NotificationKindCodes.SupplierStatusChanged;
@@ -62,6 +66,10 @@ public static class NotificationKinds
             "{actor} asked you to review", false, TasksLocked, false, false, 90),
         new(ChangeTaskAssigned, NotificationGroups.Tasks, "Change task assigned to you", "A task on a change notice was assigned to you.",
             "{actor} assigned you a change task", false, TasksLocked, false, false, 90),
+        new(QualityActionAssigned, NotificationGroups.Tasks, "Quality action assigned to you", "An action item on a nonconformance report or corrective action was assigned to you.",
+            "{actor} assigned you an action item", false, TasksLocked, false, false, 90),
+        new(QualityActionOverdue, NotificationGroups.Tasks, "Quality action overdue", "An action item you own is past its due date.",
+            "An action item you own is overdue", false, TasksLocked, false, false, 85),
         new(ReviewApproved, NotificationGroups.Tasks, "Review of your submission approved", "Your submission passed review and was released.",
             "Approved after review (last signature by {actor})", true, null, false, true, 80),
         new(ReviewRejected, NotificationGroups.Tasks, "Review of your submission rejected", "Your submission was rejected and returned to you.",
@@ -86,6 +94,10 @@ public static class NotificationKinds
             "A certification expires soon", true, null, false, false, 35),
         new(SupplierStatusChanged, NotificationGroups.Watching, "Supplier approval status changed", "The approval status of a supplier you watch changed.",
             "The approval status changed (by {actor})", true, null, false, true, 42),
+        new(DeviationExpiring, NotificationGroups.Watching, "Deviation or waiver ends soon", "A deviation or waiver you follow ends within a few weeks.",
+            "Ends soon", true, null, false, true, 40),
+        new(DeviationExpired, NotificationGroups.Watching, "Deviation or waiver expired", "A deviation or waiver you follow reached the end of its window.",
+            "Expired", true, null, false, true, 40),
         new(WatchedState, NotificationGroups.Watching, "Watched object changed state", "An object you watch moved to another lifecycle state.",
             "Changed state (by {actor})", true, null, true, false, 30),
         new(WatchedChanged, NotificationGroups.Watching, "Watched object changed", "A new version of an object you watch was checked in.",
@@ -113,6 +125,7 @@ public static class NotificationKinds
             CommentMention or CommentAdded => refId is { } c ? $"{path}?comment={c:D}#comments" : $"{path}#comments",
             TaskAssigned or ReviewRequested => refId is { } t ? $"tasks/{t:D}" : $"{path}#{AwarenessKinds.ReviewTab(objectType)}",
             ChangeTaskAssigned => $"{path}#tasks",
+            QualityActionAssigned or QualityActionOverdue => $"{path}?tab=actions",
             ReviewApproved or ReviewRejected => $"{path}#{AwarenessKinds.ReviewTab(objectType)}",
             WatchedChanged or WatchedState => $"{path}#activity",
             _ => path,

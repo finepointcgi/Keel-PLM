@@ -76,6 +76,7 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
                 ObjectKinds.Baseline => await QueryAsync(subject, ObjectKinds.Baseline, numbers, ct),
                 ObjectKinds.Mbom => await MbomRowsAsync(subject, numbers, corr, ct),
                 ObjectKinds.Supplier => await QueryAsync(subject, ObjectKinds.Supplier, numbers, ct),
+                ObjectKinds.Ncr or ObjectKinds.Capa or ObjectKinds.Deviation => await QueryAsync(subject, group.Key, numbers, ct),
                 _ => [],
             };
             foreach (var r in rows)
@@ -120,6 +121,24 @@ public sealed class WorkspaceReads(CurrentUser users, WorkspaceService workspace
             ObjectKinds.Supplier => $"""
                 SELECT m.number, m.name, initcap(m.status), {columns}
                 FROM src.supplier m
+                WHERE {filter.Sql} AND m.number = ANY(@numbers)
+                """,
+            ObjectKinds.Ncr => $"""
+                SELECT m.number, m.title, COALESCE(ls.label, m.lifecycle_state), {columns}
+                FROM qual.ncr m
+                LEFT JOIN plm.lifecycle_state ls ON ls.lifecycle_id = m.lifecycle_id AND ls.state = m.lifecycle_state
+                WHERE {filter.Sql} AND m.number = ANY(@numbers)
+                """,
+            ObjectKinds.Capa => $"""
+                SELECT m.number, m.title, COALESCE(ls.label, m.lifecycle_state), {columns}
+                FROM qual.capa m
+                LEFT JOIN plm.lifecycle_state ls ON ls.lifecycle_id = m.lifecycle_id AND ls.state = m.lifecycle_state
+                WHERE {filter.Sql} AND m.number = ANY(@numbers)
+                """,
+            ObjectKinds.Deviation => $"""
+                SELECT m.number, m.title, COALESCE(ls.label, m.lifecycle_state), {columns}
+                FROM qual.deviation m
+                LEFT JOIN plm.lifecycle_state ls ON ls.lifecycle_id = m.lifecycle_id AND ls.state = m.lifecycle_state
                 WHERE {filter.Sql} AND m.number = ANY(@numbers)
                 """,
             _ => throw new NotSupportedException($"'{kind}' pointers are not read here."),

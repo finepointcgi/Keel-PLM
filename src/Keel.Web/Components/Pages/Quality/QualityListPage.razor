@@ -1,0 +1,149 @@
+@page "/quality/{Segment}"
+@inject CurrentUser Users
+@inject QualityQueries Queries
+@inject QualityActions Actions
+@inject LifecycleSteps Lifecycles
+
+<PageFrame Banner="@Banner" Title="@Title" Crumbs="@Crumbs">
+    @if (kind is null)
+    {
+        <p class="error" role="alert">There is no quality list called '@Segment'. Choose nonconformance reports, corrective actions or deviations and waivers from the navigation.</p>
+    }
+    else
+    {
+        <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+            <input aria-label="Search @QualityUi.PluralLabel(kind).ToLowerInvariant()" placeholder="Number or title" class="grow" @bind="text" />
+            <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
+                <option value="">Any state</option>
+                @foreach (var s in states) { <option value="@s.State">@s.Label</option> }
+            </select>
+            <label class="inline"><input type="checkbox" @bind="openOnly" @bind:after="() => Search(0)" /> Open only</label>
+            <button type="submit">Search</button>
+            <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+                <a class="button secondary" href="@QualityUi.NewHref(kind)">New @QualityUi.SingularLower(kind)</a>
+            </AuthorizeView>
+        </form>
+
+        @if (kind != QualityKinds.Deviation && mine is { Count: > 0 })
+        {
+            <section class="panel" aria-labelledby="my-actions-heading">
+                <h2 id="my-actions-heading">My action items</h2>
+                <div class="table-wrap"><table class="data">
+                    <thead><tr><th scope="col">Action</th><th scope="col">What</th><th scope="col">Record</th><th scope="col">Status</th><th scope="col">Due</th></tr></thead>
+                    <tbody>
+                        @foreach (var a in mine)
+                        {
+                            <tr>
+                                <td>@a.Number</td>
+                                <td>@a.Description</td>
+                                <td><a href="@QualityUi.Href(a.Kind, a.RecordNumber)?tab=actions">@a.RecordNumber</a> <span class="muted">@a.RecordTitle</span></td>
+                                <td>@QualityUi.StatusLabel(a.Status)</td>
+                                <td class="@(a.Overdue ? "error" : null)">@QualityUi.DueText(a.Due, a.Overdue)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            </section>
+        }
+
+        @if (result is not null)
+        {
+            <p class="muted">@result.Total @(result.Total == 1 ? QualityUi.SingularLower(kind) : QualityUi.PluralLabel(kind).ToLowerInvariant()) you can access</p>
+            <DataTable TItem="QualitySummary" TableId="@("quality-" + Segment)" Items="result.Items" Columns="Columns" Caption="@QualityUi.PluralLabel(kind)" OnServerSort="OnSort" ServerSort="sort">
+                <Empty>
+                    <EmptyState Title="@(Filtered ? "Nothing matches" : "Nothing here yet")" IconName="@QualityUi.IconOf(kind)">
+                        @(Filtered ? "Try a different search or clear the filters." : "Records you can access will be listed here.")
+                    </EmptyState>
+                </Empty>
+            </DataTable>
+            <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+        }
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [Parameter] public required string Segment { get; set; }
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+
+    private string? kind, loadedSegment;
+    private SortSpec? sort;
+    private string text = "", state = "";
+    private bool openOnly;
+    private int offset;
+    private QualitySearchResult? result;
+    private IReadOnlyList<MyAction> mine = [];
+    private IReadOnlyList<LifecycleState> states = [];
+
+    private string Title => kind is null ? "Quality" : QualityUi.PluralLabel(kind);
+    private IReadOnlyList<Crumb> Crumbs => [new("Quality"), new(Title)];
+    private bool Filtered => text.Length > 0 || state != "" || openOnly;
+    private string Banner => Markings.AggregateBanner((result?.Items.Select(i => i.Markings) ?? []).Concat(mine.Select(a => a.Markings)));
+
+    private IReadOnlyList<DataColumn<QualitySummary>> Columns => kind switch
+    {
+        QualityKinds.Ncr => NcrColumns,
+        QualityKinds.Capa => CapaColumns,
+        _ => DeviationColumns,
+    };
+
+    private static DataColumn<QualitySummary> NumberColumn => new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = c => @<a href="@QualityUi.Href(c.Kind, c.Number)">@c.Number</a> };
+    private static DataColumn<QualitySummary> TitleColumn => new() { Key = "title", Title = "Title", ServerSortKey = "title", Text = c => c.Title };
+    private static DataColumn<QualitySummary> StateColumn => new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = c => @<span class="badge @QualityUi.StateClass(c.State)">@c.StateLabel</span> };
+    private static DataColumn<QualitySummary> RaisedColumn => new() { Key = "raisedBy", Title = "Raised by", ServerSortKey = "raisedBy", Text = c => c.RaisedBy, DefaultHidden = true };
+    private static DataColumn<QualitySummary> MarkingsColumn => new() { Key = "markings", Title = "Markings", Required = true, Cell = c => @<MarkingChip Text="@c.Banner" /> };
+
+    private static readonly IReadOnlyList<DataColumn<QualitySummary>> NcrColumns =
+    [
+        NumberColumn, TitleColumn,
+        new() { Key = "severity", Title = "Severity", ServerSortKey = "severity", Text = c => c.Detail1 },
+        new() { Key = "part", Title = "Part", ServerSortKey = "part", Text = c => c.Detail2 },
+        StateColumn, RaisedColumn, MarkingsColumn,
+    ];
+
+    private static readonly IReadOnlyList<DataColumn<QualitySummary>> CapaColumns =
+    [
+        NumberColumn, TitleColumn,
+        new() { Key = "priority", Title = "Priority", ServerSortKey = "priority", Text = c => c.Detail1 },
+        new() { Key = "owner", Title = "Owner", ServerSortKey = "owner", Text = c => c.Detail2 },
+        new() { Key = "due", Title = "Target date", ServerSortKey = "due", Cell = c => @<span class="@(c.Overdue ? "error" : null)">@(c.Due is { } d ? QualityUi.Date(d) + (c.Overdue ? " (overdue)" : "") : "None")</span> },
+        StateColumn, RaisedColumn, MarkingsColumn,
+    ];
+
+    private static readonly IReadOnlyList<DataColumn<QualitySummary>> DeviationColumns =
+    [
+        NumberColumn, TitleColumn,
+        new() { Key = "kind", Title = "Kind", ServerSortKey = "kind", Text = c => c.Detail1 },
+        new() { Key = "window", Title = "Window", ServerSortKey = "window", Text = c => c.Detail2 },
+        StateColumn, RaisedColumn, MarkingsColumn,
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        kind = QualityUi.KindOfSegment(Segment);
+        if (kind is null) return;
+        var requested = QualityQueries.SortKeysFor(kind).TryResolve(SortParam, DirParam, out var spec, out _) ? spec : null;
+        if (loadedSegment == Segment && requested == sort) return;
+        if (loadedSegment != Segment)
+        {
+            (text, state, openOnly, offset, result) = ("", "", false, 0, null);
+            states = await Lifecycles.StatesAsync(QualityKinds.Family(kind));
+            mine = kind == QualityKinds.Deviation ? [] : await Actions.MyActionsAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        }
+        (loadedSegment, sort) = (Segment, requested);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        result = await Queries.SearchAsync(await Users.GetAsync(), kind!, new QualitySearchQuery(text, state == "" ? null : state, openOnly, PageSize, offset, sort), CurrentUser.NewCorrelationId());
+    }
+}

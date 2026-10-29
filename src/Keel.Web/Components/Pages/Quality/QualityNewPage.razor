@@ -1,0 +1,159 @@
+@page "/quality/new/{Kind}"
+@inject CurrentUser Users
+@inject NcrService Ncrs
+@inject CapaService Capas
+@inject DeviationService Deviations
+@inject QualityActions Actions
+@inject PartService Parts
+@inject NavigationManager Nav
+
+@* A blank form shows no controlled data; the markings being entered appear on the created record. A report starts with the markings of its part. *@
+<PageFrame Banner="@UiText.Unclassified" Title="@Title" Crumbs="@Crumbs">
+    @if (!QualityKinds.IsKnown(Kind))
+    {
+        <p class="error" role="alert">Unknown kind '@Kind'. Choose a nonconformance report, a corrective action or a deviation or waiver from the Quality lists.</p>
+    }
+    else
+    {
+        <EditForm Model="this" OnSubmit="Create" FormName="new-quality" class="stack">
+            @if (Kind == QualityKinds.Ncr)
+            {
+                <fieldset class="grid-form">
+                    <legend>Nonconformance report</legend>
+                    <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
+                    <label>Part number * <InputText @bind-Value="partNumber" maxlength="64" required @onblur="InheritMarkings" /></label>
+                    <label>Revision (blank for the latest) <InputText @bind-Value="revision" maxlength="10" /></label>
+                    <label>Severity <InputSelect @bind-Value="severity">@foreach (var s in NcrSeverities.All) { <option value="@s">@s</option> }</InputSelect></label>
+                    <label>Found at <InputSelect @bind-Value="stage">@foreach (var s in NcrSeverities.Stages) { <option value="@s">@NcrSeverities.StageLabel(s)</option> }</InputSelect></label>
+                    <label>Quantity affected * <InputNumber @bind-Value="quantity" /></label>
+                    <label>Unit <InputText @bind-Value="unit" maxlength="10" /></label>
+                    <label>Lot number <InputText @bind-Value="lot" maxlength="100" /></label>
+                    <label>Serial number <InputText @bind-Value="serial" maxlength="100" /></label>
+                    <label class="wide">Supplier reference <InputText @bind-Value="supplier" maxlength="200" /></label>
+                    <label class="wide">Defect description <InputTextArea @bind-Value="description" rows="4" maxlength="8000" /></label>
+                </fieldset>
+            }
+            else if (Kind == QualityKinds.Capa)
+            {
+                <fieldset class="grid-form">
+                    <legend>Corrective or preventive action</legend>
+                    <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
+                    <label>Type <InputSelect @bind-Value="capaType">@foreach (var s in CapaOptions.Types) { <option value="@s">@s</option> }</InputSelect></label>
+                    <label>Source <InputSelect @bind-Value="source">@foreach (var s in CapaOptions.Sources) { <option value="@s">@CapaOptions.SourceLabel(s)</option> }</InputSelect></label>
+                    <label>Priority <InputSelect @bind-Value="priority">@foreach (var s in CapaOptions.Priorities) { <option value="@s">@s</option> }</InputSelect></label>
+                    <label>Owner (blank for yourself)
+                        <input list="owner-options" @bind="owner" @bind:event="oninput" @bind:after="FindOwners" />
+                        <datalist id="owner-options">@foreach (var u in candidates) { <option value="@u.Username">@u.DisplayName</option> }</datalist>
+                    </label>
+                    <label>Target date <InputDate @bind-Value="target" /></label>
+                    <label class="wide">Problem statement <InputTextArea @bind-Value="description" rows="4" maxlength="8000" /></label>
+                </fieldset>
+            }
+            else
+            {
+                <fieldset class="grid-form">
+                    <legend>Deviation or waiver</legend>
+                    <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
+                    <label>Kind <InputSelect @bind-Value="devKind">@foreach (var s in DeviationKinds.All) { <option value="@s">@s</option> }</InputSelect></label>
+                    <label>Valid from * <InputDate @bind-Value="validFrom" /></label>
+                    <label>Valid to * <InputDate @bind-Value="validTo" /></label>
+                    <label class="inline"><InputCheckbox @bind-Value="customer" /> The customer must approve</label>
+                    <label class="wide">Requirement departed from <InputText @bind-Value="requirement" maxlength="500" /></label>
+                    <label class="wide">Justification <InputTextArea @bind-Value="description" rows="4" maxlength="8000" /></label>
+                    <p class="muted small wide">Name the parts the permission covers on the Scope tab after creating it.</p>
+                </fieldset>
+            }
+            <fieldset class="grid-form">
+                <legend>Security markings</legend>
+                <p class="muted wide small">The markings must cover everything the record names. Choose them to match the most restrictive part.</p>
+                <MarkingsFields Value="markings" />
+            </fieldset>
+            @if (errors is not null)
+            {
+                <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+            }
+            <div class="toolbar">
+                <button type="submit" disabled="@busy">Create</button>
+                <a class="button secondary" href="@QualityKinds.ListHref(Kind)">Cancel</a>
+            </div>
+        </EditForm>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Kind { get; set; }
+    /// <summary>A part to start a report with (the "Report a nonconformance" button of the part page).</summary>
+    [SupplyParameterFromQuery(Name = "part")] public string? Part { get; set; }
+
+    private string title = "", description = "", partNumber = "", revision = "", severity = "Minor", stage = "Other", unit = "EA", lot = "", serial = "", supplier = "";
+    private string capaType = "Corrective", source = "Other", priority = "Medium", owner = "", devKind = "Deviation", requirement = "";
+    private decimal quantity = 1;
+    private DateTime? target;
+    private DateTime? validFrom = DateTime.UtcNow.Date, validTo = DateTime.UtcNow.Date.AddMonths(3);
+    private bool customer, busy, partApplied;
+    private IReadOnlyList<UserChoice> candidates = [];
+    private IReadOnlyList<string>? errors;
+    private readonly MarkingsInput markings = new();
+
+    private string Title => Kind switch { QualityKinds.Ncr => "New nonconformance report", QualityKinds.Capa => "New corrective action", QualityKinds.Deviation => "New deviation or waiver", _ => "New quality record" };
+    private IReadOnlyList<Crumb> Crumbs => [new("Quality"), new("New")];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (partApplied || Part is null || Kind != QualityKinds.Ncr) return;
+        partApplied = true;
+        partNumber = Part;
+        await InheritMarkings();
+    }
+
+    private async Task InheritMarkings()
+    {
+        if (partNumber.Trim().Length == 0) return;
+        var part = await Parts.GetAsync(await Users.GetAsync(), partNumber.Trim(), null, CurrentUser.NewCorrelationId());
+        if (!part.IsOk) return;
+        var m = MarkingsInput.From(part.Value!.Markings);
+        (markings.ExportJurisdiction, markings.Eccn, markings.UsmlCategory, markings.CuiCategories, markings.DistributionStatement, markings.ControllingOffice, markings.DistributionReason, markings.Program, markings.OwningOrg, markings.ExportAuthorizations) =
+            (m.ExportJurisdiction, m.Eccn, m.UsmlCategory, m.CuiCategories, m.DistributionStatement, m.ControllingOffice, m.DistributionReason, m.Program, m.OwningOrg, m.ExportAuthorizations);
+    }
+
+    private async Task FindOwners() => candidates = owner.Trim().Length < 2 ? [] : await Actions.SearchUsersAsync(owner);
+
+    private async Task Create()
+    {
+        errors = null;
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        busy = true;
+        var subject = await Users.GetAsync();
+        var corr = CurrentUser.NewCorrelationId();
+        string? number = null;
+        IReadOnlyList<string>? failure = null;
+        switch (Kind)
+        {
+            case QualityKinds.Ncr:
+            {
+                var o = await Ncrs.CreateAsync(subject, new CreateNcrCommand(title, description, severity, stage, partNumber, revision, lot, serial, supplier, quantity, unit, m.Value), corr);
+                if (o.IsOk) number = o.Value!.Number; else failure = Fail(o.Kind, o.Errors, UiText.Message(o));
+                break;
+            }
+            case QualityKinds.Capa:
+            {
+                var o = await Capas.CreateAsync(subject, new CreateCapaCommand(title, description, capaType, source, priority, owner, QualityUi.ParseDate(target), m.Value), corr);
+                if (o.IsOk) number = o.Value!.Number; else failure = Fail(o.Kind, o.Errors, UiText.Message(o));
+                break;
+            }
+            default:
+            {
+                if (validFrom is null || validTo is null) { failure = ["Enter both dates of the window."]; break; }
+                var o = await Deviations.CreateAsync(subject, new CreateDeviationCommand(devKind, title, description, requirement, customer, DateOnly.FromDateTime(validFrom.Value), DateOnly.FromDateTime(validTo.Value), m.Value), corr);
+                if (o.IsOk) number = o.Value!.Number; else failure = Fail(o.Kind, o.Errors, UiText.Message(o));
+                break;
+            }
+        }
+        busy = false;
+        if (number is not null) Nav.NavigateTo(QualityUi.Href(Kind, number));
+        else errors = failure;
+    }
+
+    private static IReadOnlyList<string> Fail(OutcomeKind kind, IReadOnlyList<string> list, string message) => kind == OutcomeKind.Invalid ? list : [message];
+}
