@@ -5,7 +5,7 @@
 .skip-link:focus { top: calc(var(--banner-h) + var(--sp-2)); }
 
 /* The demo notice (ADR-0045): amber on every page of a demo build, above the marking banner; fixed colours so it reads in every theme. */
-.demo-banner { background: #f2c744; color: #1b1b1b; text-align: center; font-weight: 700; padding: 6px 16px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.demo-banner { background: var(--c-demo-bg); color: var(--c-demo-fg); text-align: center; font-weight: 700; padding: 6px 16px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
 
 /* Marking banners are never hidden, demoted or themed. */
 .marking-banner {

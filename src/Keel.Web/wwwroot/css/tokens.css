@@ -166,3 +166,6 @@
   --fs-md: 0.875rem;
   --sp-4: 12px;
 }
+
+/* The demo notice (ADR-0045): the same amber in every theme, so it is never mistaken for a marking banner. Black on amber is 11:1. */
+:root { --c-demo-bg: #f2c744; --c-demo-fg: #1b1b1b; }
