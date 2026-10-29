@@ -84,6 +84,9 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
         foreach (var tab in new[] { "overview", "usedby", "history", "timeline", "security", "activity", "comments" })
             Add("alice", $"/documents/{m.SystemSpecification}?tab={tab}");
+        // CAD integration (ADR-0035): the CAD tab of a document, the proposals list and the review page.
+        var cadProposal = CadE2ESeed.EnsureAsync(fx).GetAwaiter().GetResult();
+        Add("alice", $"/documents/{m.SystemSpecification}?tab=cad", "/cad/bom-proposals", $"/cad/bom-proposals/{cadProposal}");
 
         foreach (var tab in new[] { "overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", "activity", "comments" })
             Add("alice", $"/changes/{m.EcnDraftInWork}?tab={tab}");
