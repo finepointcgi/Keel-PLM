@@ -1,0 +1,234 @@
+@inject CurrentUser Users
+@inject ProgramService Programs
+@inject ToastService Toasts
+
+@* The work breakdown and schedule of a program: phases, tasks and milestones with planned, forecast and actual dates, dependencies, baselines and the critical path. The table is
+   the accessible form of the timeline. Restricted items keep their row and dates and show no name. *@
+@if (view is null)
+{
+    <Skeleton Lines="6" Label="Loading the schedule" />
+}
+else
+{
+    <div class="stack" data-panel="program-schedule">
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (view.Cyclic) { <p class="error" role="alert">The dependencies you can see form a loop, so no critical path is shown.</p> }
+        <section class="panel" aria-labelledby="sched-heading">
+            <h3 id="sched-heading">Schedule</h3>
+            <div class="toolbar">
+                <label class="inline">Compare with baseline
+                    <select aria-label="Compare with baseline" @bind="baselineText" @bind:after="Load">
+                        <option value="">Latest baseline</option>
+                        @foreach (var b in view.Baselines) { <option value="@b.Seq">@b.Seq: @b.Name</option> }
+                    </select>
+                </label>
+                <span class="muted small">Overall @(view.OverallPercent is { } p ? ProgramUi.Percent(p) : "none"), forecast finish @ProgramUi.Date(view.Finish), status date @ProgramUi.Date(view.AsOf).</span>
+            </div>
+            @if (view.CriticalPath.Count > 0) { <p>Critical path: @string.Join(" then ", view.CriticalPath)</p> }
+            <div class="table-wrap"><table class="data" data-table="schedule">
+                <caption class="sr-only">Schedule items</caption>
+                <thead><tr>
+                    <th scope="col">Item</th><th scope="col">Kind</th><th scope="col">Owner</th><th scope="col">Planned</th><th scope="col">Forecast end</th><th scope="col" class="num">Float</th>
+                    <th scope="col">Status</th><th scope="col" class="num">Done</th><th scope="col">Against baseline</th><th scope="col"><span class="sr-only">Actions</span></th>
+                </tr></thead>
+                <tbody>
+                    @foreach (var r in Rows())
+                    {
+                        if (r.Item is { } i)
+                        {
+                            <tr class="@(i.Key == selectedKey ? "selected" : null)" data-item="@i.Key">
+                                <td>@(new string(' ', Depth(i) * 3))<strong>@i.Key</strong> @i.Title <MarkingChip Text="@i.Banner" />@if (i.GateNumber is not null) { <text> (<a href="@ProgramUi.GateHref(i.GateNumber)">@i.GateType gate</a>)</text> }</td>
+                                <td>@i.Kind</td>
+                                <td>@(i.OwnerName ?? "Nobody")</td>
+                                <td class="@(i.Overdue ? "error" : null)">@(i.Kind == ProgramKinds.Milestone ? ProgramUi.Date(i.PlannedEnd) : $"{ProgramUi.Date(i.PlannedStart)} to {ProgramUi.Date(i.PlannedEnd)}")@(i.Overdue ? " (overdue)" : "")</td>
+                                <td>@(i.ForecastEnd is { } fe ? ProgramUi.Date(fe) : "")@(i.SlipDays > 0 && ItemStatuses.Open(i.Status) ? $" ({ProgramUi.Slip(i.SlipDays)})" : "")</td>
+                                <td class="num">@(i.FloatDays?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")@(i.Critical ? " critical" : "")</td>
+                                <td>@i.StatusLabel</td>
+                                <td class="num">@ProgramUi.Percent(i.Percent)</td>
+                                <td>@(i.BaselineSlipDays is { } bs ? ProgramUi.Slip(bs) : "No baseline")</td>
+                                <td>@if (i.CanModify) { <button type="button" class="secondary" aria-label="@($"Edit {i.Key}")" @onclick="() => Select(i)">Edit</button> }</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            <tr class="restricted"><td><em>Restricted item</em></td><td></td><td></td><td>@ProgramUi.Date(r.Hidden!.PlannedStart) to @ProgramUi.Date(r.Hidden.PlannedEnd)</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                        }
+                    }
+                </tbody>
+            </table></div>
+            @if (view.Items.Count == 0 && view.Restricted.Count == 0) { <EmptyState Title="No schedule yet" IconName="program">Add a phase, task or milestone below.</EmptyState> }
+        </section>
+
+        @if (selected is { } s)
+        {
+            <section class="panel" aria-labelledby="edit-heading">
+                <h3 id="edit-heading">@s.Key @s.Title</h3>
+                <div class="grid-form">
+                    <label class="wide">Title * <input maxlength="200" @bind="eTitle" /></label>
+                    <label>Owner (login name) <input @bind="eOwner" /></label>
+                    <label>Start <input type="date" @bind="eStart" /></label>
+                    <label>End <input type="date" @bind="eEnd" disabled="@(s.Kind == ProgramKinds.Milestone)" /></label>
+                    <label class="wide">Reason, needed when the end moves later <input maxlength="1000" @bind="eReason" /></label>
+                    <label class="wide">Description <textarea rows="2" maxlength="4000" @bind="eDescription"></textarea></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="SaveItem">Save changes</button></div>
+                @if (s.GateNumber is null || s.Status != ItemStatuses.Complete)
+                {
+                    <h4>Progress</h4>
+                    <div class="grid-form">
+                        <label>Status
+                            <select @bind="pStatus">
+                                @foreach (var st in ItemStatuses.All.Where(x => s.GateNumber is null || x != ItemStatuses.Complete)) { <option value="@st">@ItemStatuses.Label(st)</option> }
+                            </select>
+                        </label>
+                        <label>Percent complete <input type="number" min="0" max="100" @bind="pPercent" disabled="@(s.Kind != ProgramKinds.Task)" /></label>
+                        <label>Actual start <input type="date" @bind="pStart" /></label>
+                        <label>Actual end <input type="date" @bind="pEnd" /></label>
+                    </div>
+                    <div class="toolbar"><button type="button" disabled="@busy" @onclick="SaveProgress">Save progress</button> <button type="button" class="secondary" @onclick="() => selectedKey = null">Close</button></div>
+                    @if (s.GateNumber is not null) { <p class="muted small">A gate review is completed by its signed approval on its own page.</p> }
+                }
+            </section>
+        }
+
+        @if (CanModify)
+        {
+            <section class="panel" aria-labelledby="add-heading">
+                <h3 id="add-heading">Add an item</h3>
+                <div class="grid-form">
+                    <label>Kind <select @bind="aKind">@foreach (var k in ProgramKinds.Items) { <option value="@k">@k</option> }</select></label>
+                    <label>Inside phase <select @bind="aParent"><option value="">No phase</option>@foreach (var ph in view.Items.Where(x => x.Kind == ProgramKinds.Phase)) { <option value="@ph.Key">@ph.Key @ph.Title</option> }</select></label>
+                    <label class="wide">Title * <input maxlength="200" @bind="aTitle" /></label>
+                    <label>Owner (login name) <input @bind="aOwner" /></label>
+                    <label>Start * <input type="date" @bind="aStart" /></label>
+                    <label>End <input type="date" @bind="aEnd" disabled="@(aKind == ProgramKinds.Milestone)" /></label>
+                    <label>Gate review type <select @bind="aGate" disabled="@(aKind != ProgramKinds.Milestone)"><option value="">Not a gate review</option>@foreach (var g in GateTypes.All) { <option value="@g">@g, @GateTypes.Label(g)</option> }</select></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="AddItem">Add item</button></div>
+            </section>
+
+            <section class="panel" aria-labelledby="dep-heading">
+                <h3 id="dep-heading">Dependencies (finish to start)</h3>
+                @if (view.Dependencies.Count == 0) { <p class="muted">No dependencies yet.</p> }
+                else
+                {
+                    <div class="table-wrap"><table class="data"><caption class="sr-only">Dependencies</caption>
+                        <thead><tr><th scope="col">Predecessor</th><th scope="col">Successor</th><th scope="col" class="num">Lag in days</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                        <tbody>@foreach (var d in view.Dependencies) { <tr><td>@d.PredecessorKey</td><td>@d.SuccessorKey</td><td class="num">@d.LagDays</td><td><button type="button" class="secondary" aria-label="@($"Remove dependency {d.PredecessorKey} to {d.SuccessorKey}")" @onclick="() => RemoveDependency(d)">Remove</button></td></tr> }</tbody>
+                    </table></div>
+                }
+                <div class="grid-form">
+                    <label>Predecessor <select @bind="dPred"><option value="">Choose</option>@foreach (var x in view.Items.Where(x => x.Kind != ProgramKinds.Phase)) { <option value="@x.Key">@x.Key @x.Title</option> }</select></label>
+                    <label>Successor <select @bind="dSucc"><option value="">Choose</option>@foreach (var x in view.Items.Where(x => x.Kind != ProgramKinds.Phase)) { <option value="@x.Key">@x.Key @x.Title</option> }</select></label>
+                    <label>Lag in days <input type="number" min="-365" max="365" @bind="dLag" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@(busy || dPred == "" || dSucc == "")" @onclick="AddDependency">Add dependency</button></div>
+            </section>
+
+            <section class="panel" aria-labelledby="base-heading">
+                <h3 id="base-heading">Schedule baselines</h3>
+                <p class="muted small">A baseline freezes the planned dates of every item. It can never be changed or deleted; later moves show as slip against it.</p>
+                @if (view.Baselines.Count > 0)
+                {
+                    <ul class="plain">@foreach (var b in view.Baselines) { <li>Baseline @b.Seq: @b.Name, @b.ItemCount items, taken @UiText.Utc(b.CreatedAt) UTC by @b.CreatedBy</li> }</ul>
+                }
+                <div class="toolbar"><input aria-label="Baseline name" placeholder="Baseline name" class="grow" maxlength="200" @bind="bName" /><button type="button" disabled="@(busy || bName.Trim().Length == 0)" @onclick="TakeBaseline">Take baseline</button></div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public required string Code { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    [Parameter] public string? Version { get; set; }
+    [Parameter] public string? Item { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    private ScheduleView? view;
+    private string? error, loadedFor, selectedKey;
+    private string baselineText = "";
+    private bool busy;
+    private ItemRow? selected => view?.Items.FirstOrDefault(i => i.Key == selectedKey);
+    private string eTitle = "", eOwner = "", eReason = "", eDescription = "", pStatus = "NotStarted", aKind = "Task", aParent = "", aTitle = "", aOwner = "", aGate = "", dPred = "", dSucc = "", bName = "";
+    private DateOnly? eStart, eEnd, pStart, pEnd, aStart, aEnd;
+    private int pPercent, dLag;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Code}:{Version}:{Item}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        await Load();
+        if (Item is not null && view?.Items.FirstOrDefault(i => i.Key == Item && i.CanModify) is { } it) Select(it);
+    }
+
+    private async Task Load()
+    {
+        var o = await Programs.GetScheduleAsync(await Users.GetAsync(), Code, int.TryParse(baselineText, out var b) ? b : null, null, CurrentUser.NewCorrelationId());
+        view = o.Value;
+        error = o.IsOk ? null : ProgramUi.Message(o);
+        await OnShown.InvokeAsync(view is null ? [] : [.. view.Items.Select(i => i.Markings)]);
+    }
+
+    private IEnumerable<(ItemRow? Item, RestrictedItemRow? Hidden)> Rows() =>
+        view!.Items.Select(i => (SortOrder: i.SortOrder, Start: i.PlannedStart, Item: (ItemRow?)i, Hidden: (RestrictedItemRow?)null))
+            .Concat(view.Restricted.Select(r => (r.SortOrder, Start: r.PlannedStart, Item: (ItemRow?)null, Hidden: (RestrictedItemRow?)r)))
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Start).Select(x => (x.Item, x.Hidden));
+
+    private int Depth(ItemRow i)
+    {
+        var d = 0;
+        var cur = i;
+        while (cur.ParentKey is { } p && view!.Items.FirstOrDefault(x => x.Key == p) is { } parent && d < 8) { d++; cur = parent; }
+        return d;
+    }
+
+    private void Select(ItemRow i)
+    {
+        selectedKey = i.Key;
+        (eTitle, eOwner, eReason, eDescription, eStart, eEnd) = (i.Title, i.OwnerLogin ?? "", "", i.Description, i.PlannedStart, i.PlannedEnd);
+        (pStatus, pPercent, pStart, pEnd) = (i.Status, i.Percent, i.ActualStart, i.ActualEnd);
+    }
+
+    private async Task<bool> Run<T>(Func<Subject, Task<Outcome<T>>> op, string success)
+    {
+        busy = true;
+        error = null;
+        var o = await op(await Users.GetAsync());
+        busy = false;
+        if (!o.IsOk) { error = ProgramUi.Message(o); return false; }
+        Toasts.Success(success);
+        await Load();
+        await OnChanged.InvokeAsync();
+        return true;
+    }
+
+    private Task SaveItem() => Run(s => Programs.UpdateItemAsync(s, Code, selectedKey!, new UpdateItemCommand(eTitle, eDescription, eOwner, eStart ?? DateOnly.FromDateTime(DateTime.UtcNow), eEnd ?? eStart ?? DateOnly.FromDateTime(DateTime.UtcNow), eReason), CurrentUser.NewCorrelationId()), "Item saved.");
+
+    private Task SaveProgress() => Run(s => Programs.SetProgressAsync(s, Code, selectedKey!, new SetProgressCommand(pStatus, pPercent, pStart, pEnd), CurrentUser.NewCorrelationId()), "Progress saved.");
+
+    private async Task AddItem()
+    {
+        if (aStart is null) { error = "Choose the start date."; return; }
+        var saved = (aTitle, aOwner, aGate, aStart, aEnd);
+        var command = new AddItemCommand(aKind, aParent == "" ? null : aParent, aTitle, null, aOwner, aStart.Value, aEnd ?? aStart.Value, aGate == "" ? null : aGate, null);
+        (aTitle, aOwner, aGate, aStart, aEnd) = ("", "", "", null, null); // cleared first: the form is ready for the next item as soon as this one is saved
+        if (!await Run(s => Programs.AddItemAsync(s, Code, command, CurrentUser.NewCorrelationId()), "Item added.")) (aTitle, aOwner, aGate, aStart, aEnd) = saved;
+    }
+
+    private async Task AddDependency()
+    {
+        var (p, q, lag) = (dPred, dSucc, dLag);
+        (dPred, dSucc, dLag) = ("", "", 0);
+        if (!await Run(s => Programs.AddDependencyAsync(s, Code, p, q, lag, CurrentUser.NewCorrelationId()), "Dependency added.")) (dPred, dSucc, dLag) = (p, q, lag);
+    }
+
+    private Task RemoveDependency(DependencyRow d) => Run(s => Programs.RemoveDependencyAsync(s, Code, d.PredecessorKey, d.SuccessorKey, CurrentUser.NewCorrelationId()), "Dependency removed.");
+
+    private async Task TakeBaseline()
+    {
+        if (await Run(s => Programs.CreateBaselineAsync(s, Code, bName, CurrentUser.NewCorrelationId()), "Baseline taken.")) bName = "";
+    }
+}

@@ -19,6 +19,7 @@
     <Project Path="src/Keel.Parts/Keel.Parts.csproj" />
     <Project Path="src/Keel.Records/Keel.Records.csproj" />
     <Project Path="src/Keel.Quality/Keel.Quality.csproj" />
+    <Project Path="src/Keel.Programs/Keel.Programs.csproj" />
     <Project Path="src/Keel.Security/Keel.Security.csproj" />
     <Project Path="src/Keel.SbomTool/Keel.SbomTool.csproj" />
     <Project Path="src/Keel.VaultTool/Keel.VaultTool.csproj" />

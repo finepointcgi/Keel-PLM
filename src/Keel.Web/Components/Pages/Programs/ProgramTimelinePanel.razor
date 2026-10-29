@@ -1,0 +1,67 @@
+@inject CurrentUser Users
+@inject ProgramService Programs
+
+@* The Gantt-style timeline (visuals kit) with a table that holds the same facts. The table is the default on a phone. *@
+@if (view is null)
+{
+    <Skeleton Lines="6" Label="Loading the timeline" />
+}
+else
+{
+    <section class="panel stack" aria-labelledby="gantt-heading" data-panel="program-timeline">
+        <h3 id="gantt-heading">Timeline</h3>
+        <ViewSwitch Label="Timeline view" Options="views" Value="@mode" ValueChanged="v => mode = v" />
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (mode == "chart")
+        {
+            <GanttView Schedule="view" Label="@($"Timeline of program {Code}")" Key="@($"{Code}:{Version}")" />
+        }
+        else
+        {
+            <div class="table-wrap"><table class="data" data-table="timeline">
+                <caption class="sr-only">Timeline as a table</caption>
+                <thead><tr><th scope="col">Item</th><th scope="col">Kind</th><th scope="col">Start</th><th scope="col">End</th><th scope="col">Forecast end</th><th scope="col">Critical path</th><th scope="col">Status</th><th scope="col" class="num">Done</th><th scope="col">Against baseline</th></tr></thead>
+                <tbody>
+                    @foreach (var r in Rows())
+                    {
+                        if (r.Item is { } i)
+                        {
+                            <tr><td><strong>@i.Key</strong> @i.Title</td><td>@i.Kind</td><td>@ProgramUi.Date(i.PlannedStart)</td><td>@ProgramUi.Date(i.PlannedEnd)</td><td>@ProgramUi.Date(i.ForecastEnd)</td><td>@(i.Critical ? "Yes" : "No")</td><td>@i.StatusLabel</td><td class="num">@ProgramUi.Percent(i.Percent)</td><td>@(i.BaselineSlipDays is { } s ? ProgramUi.Slip(s) : "No baseline")</td></tr>
+                        }
+                        else
+                        {
+                            <tr class="restricted"><td><em>Restricted item</em></td><td></td><td>@ProgramUi.Date(r.Hidden!.PlannedStart)</td><td>@ProgramUi.Date(r.Hidden.PlannedEnd)</td><td></td><td></td><td></td><td></td><td></td></tr>
+                        }
+                    }
+                </tbody>
+            </table></div>
+        }
+    </section>
+}
+
+@code {
+    private static readonly IReadOnlyList<ViewOption> views = [new("chart", "Chart"), new("table", "Table")];
+    [Parameter, EditorRequired] public required string Code { get; set; }
+    [Parameter] public string? Version { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    private ScheduleView? view;
+    private string mode = "chart", loadedFor = "";
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Code}:{Version}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        var o = await Programs.GetScheduleAsync(await Users.GetAsync(), Code, null, null, CurrentUser.NewCorrelationId());
+        view = o.Value;
+        error = o.IsOk ? null : ProgramUi.Message(o);
+        await OnShown.InvokeAsync(view is null ? [] : [.. view.Items.Select(i => i.Markings)]);
+    }
+
+    private IEnumerable<(ItemRow? Item, RestrictedItemRow? Hidden)> Rows() =>
+        view!.Items.Select(i => (SortOrder: i.SortOrder, Start: i.PlannedStart, Item: (ItemRow?)i, Hidden: (RestrictedItemRow?)null))
+            .Concat(view.Restricted.Select(r => (r.SortOrder, Start: r.PlannedStart, Item: (ItemRow?)null, Hidden: (RestrictedItemRow?)r)))
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Start).Select(x => (x.Item, x.Hidden));
+}

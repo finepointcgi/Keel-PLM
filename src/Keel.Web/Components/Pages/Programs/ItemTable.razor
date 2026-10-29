@@ -1,0 +1,24 @@
+@* A read-only list of schedule items. Each row names its marking so a banner can cover it. *@
+<div class="table-wrap"><table class="data">
+    <caption class="sr-only">@Caption</caption>
+    <thead><tr><th scope="col">Item</th><th scope="col">Owner</th><th scope="col">Planned</th><th scope="col">Status</th><th scope="col" class="num">Done</th><th scope="col">Markings</th></tr></thead>
+    <tbody>
+        @foreach (var i in Items)
+        {
+            <tr>
+                <td>@if (i.GateNumber is not null) { <a href="@ProgramUi.GateHref(i.GateNumber)">@i.Key</a> } else { <a href="@($"{ProgramUi.Href(Code)}?tab=schedule&item={Uri.EscapeDataString(i.Key)}")">@i.Key</a> } @i.Title</td>
+                <td>@(i.OwnerName ?? "Nobody")</td>
+                <td class="@(i.Overdue ? "error" : null)">@ProgramUi.Date(i.PlannedEnd)@(i.Overdue ? " (overdue)" : "")</td>
+                <td>@i.StatusLabel</td>
+                <td class="num">@ProgramUi.Percent(i.Percent)</td>
+                <td><MarkingChip Text="@i.Banner" /></td>
+            </tr>
+        }
+    </tbody>
+</table></div>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<ItemRow> Items { get; set; }
+    [Parameter, EditorRequired] public required string Code { get; set; }
+    [Parameter] public string Caption { get; set; } = "Schedule items";
+}

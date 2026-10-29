@@ -1,0 +1,61 @@
+@* "My work in programs": the schedule items and deliverables the user owns across every program they can read. Only rows the user may read are listed, so the card never says
+   that a restricted item exists. Overdue items come first. *@
+@inject CurrentUser Users
+@inject Keel.Programs.ProgramService Programs
+
+<section class="card" aria-labelledby="card-program-work">
+    <h2 id="card-program-work"><Icon Name="program" /> My work in programs</h2>
+    @if (loading)
+    {
+        <Skeleton Lines="4" Label="Loading program work" />
+    }
+    else if (error is not null)
+    {
+        <p class="error" role="alert">@error</p>
+    }
+    else if (data is null || data.Items.Count + data.Deliverables.Count == 0)
+    {
+        <EmptyState Title="No program work assigned to you" IconName="check">Milestones, tasks and deliverables you own in programs you belong to are listed here.</EmptyState>
+        <p class="small"><a href="programs">Programs</a></p>
+    }
+    else
+    {
+        <ul class="items" data-card="program-work">
+            @foreach (var i in data.Items)
+            {
+                <li>
+                    <span class="main"><a href="@(i.GateNumber is null ? $"programs/{Uri.EscapeDataString(i.ProgramCode)}?tab=schedule" : $"programs/gates/{Uri.EscapeDataString(i.GateNumber)}")">@i.Key @i.Title</a>
+                        <span class="sub">@i.ProgramCode · @i.Kind.ToLowerInvariant() · due @i.Due.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)</span></span>
+                    <span class="badge @(i.Overdue ? "state-obsolete error" : null)">@(i.Overdue ? "Overdue" : Keel.Programs.ItemStatuses.Label(i.Status))</span>
+                </li>
+            }
+            @foreach (var d in data.Deliverables)
+            {
+                <li>
+                    <span class="main"><a href="@($"programs/{Uri.EscapeDataString(d.ProgramCode)}?tab=deliverables")">@d.Number @d.Title</a>
+                        <span class="sub">@d.ProgramCode · deliverable · due @d.Due.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)</span></span>
+                    <span class="badge @(d.Overdue ? "state-obsolete error" : null)">@(d.Overdue ? "Overdue" : Keel.Programs.Readiness.Label(d.Readiness))</span>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    private bool loading = true;
+    private string? error;
+    private Keel.Programs.MyProgramWork? data;
+
+    [Parameter] public EventCallback<(string Id, string? Banner)> OnBanner { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { data = await Programs.MyWorkAsync(await Users.GetAsync(), 8, CurrentUser.NewCorrelationId()); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "Your program work could not be loaded. The rest of the page is not affected.";
+        }
+        loading = false;
+        await OnBanner.InvokeAsync(("programwork", data?.Banner));
+    }
+}

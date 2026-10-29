@@ -1,0 +1,81 @@
+@* The Gantt-style timeline of a program (ADR-0043, UX-3 visuals kit): server-computed SVG in the shared pan-and-zoom frame. Keyboard: focus the frame, then the arrow keys move between
+   rows (up and down) and along dependencies (left and right), Enter opens the item, + - 0 zoom. A table with the same facts sits next to it (the ScheduleTable of the page), and a
+   legend names every shape and pattern. Restricted items are hatched bars named "Restricted item". *@
+@using System.Globalization
+@using Keel.Programs
+
+<div class="stack gantt">
+    @if (geo.Bars.Count == 0)
+    {
+        <EmptyState Title="Nothing to draw yet" IconName="program">Add phases, tasks and milestones on the Schedule tab and they appear here.</EmptyState>
+    }
+    else
+    {
+        <DiagramViewport Width="@geo.Width" Height="@geo.Height" Label="@Label" FirstId="r0" LastId="@("r" + (geo.Bars.Count - 1).ToString(CultureInfo.InvariantCulture))" ContentKey="@Key">
+            @{
+                var ctx = context;
+                @foreach (var t in geo.Ticks)
+                {
+                    <line class="gantt-grid" x1="@Num(t.X)" y1="@Num(GanttLayout.Header - 6)" x2="@Num(t.X)" y2="@Num(geo.Height - 8)" />
+                    <g><text class="vis-sub" x="@Num(t.X + 3)" y="@Num(GanttLayout.Header - 12)">@t.Label</text></g>
+                }
+                @if (geo.TodayX is { } tx)
+                {
+                    <line class="gantt-today" x1="@Num(tx)" y1="@Num(GanttLayout.Header - 6)" x2="@Num(tx)" y2="@Num(geo.Height - 8)" />
+                    <g><text class="vis-sub" x="@Num(tx + 3)" y="@Num(GanttLayout.Header + 2)">Today</text></g>
+                }
+                @foreach (var a in geo.Arrows)
+                {
+                    <path class="gantt-arrow" d="M @Num(a.X1) @Num(a.Y1) H @Num(a.X1 + 6) V @Num(a.Y2) H @Num(Math.Max(a.X1 + 6, a.X2 - 2))" marker-end="url(#@(ctx.Uid)-arrow)" fill="none" />
+                }
+                @foreach (var b in geo.Bars)
+                {
+                    <g id="@ctx.NodeId(b.Id)" class="vis-node gantt-node gantt-@b.Kind.ToLowerInvariant() @(b.Critical ? "gantt-critical" : null) @(b.Redacted ? "vis-k-restricted" : null)" role="@(b.Href is null ? "img" : "link")"
+                       tabindex="@(b.Row == 0 ? 0 : -1)" aria-label="@b.Aria" data-tip="@b.Tip" data-href="@b.Href"
+                       data-x="@Num(b.X)" data-y="@Num(b.Y)" data-w="@Num(Math.Max(b.Width, 14))" data-h="@Num(GanttLayout.Row - 4)"
+                       data-up="@(b.Up is null ? null : ctx.NodeId(b.Up))" data-down="@(b.Down is null ? null : ctx.NodeId(b.Down))"
+                       data-left="@(b.Left is null ? null : ctx.NodeId(b.Left))" data-right="@(b.Right is null ? null : ctx.NodeId(b.Right))">
+                        <g><text class="vis-label gantt-label" x="6" y="@Num(b.Y + 17)">@(b.Redacted ? "Restricted item" : GraphGeometry.Shorten(b.Key + " " + b.Label, 34))</text></g>
+                        @if (b.Kind == ProgramKinds.Milestone)
+                        {
+                            <path class="vis-shape gantt-diamond" d="@Diamond(b)" />
+                            @if (b.Gate) { <circle class="gantt-gate-ring" cx="@Num(b.X + 7)" cy="@Num(b.Y + 12)" r="10" fill="none" /> }
+                        }
+                        else if (b.Redacted)
+                        {
+                            <rect class="vis-shape" x="@Num(b.X)" y="@Num(b.Y + 6)" width="@Num(b.Width)" height="14" rx="3" />
+                            <rect x="@Num(b.X)" y="@Num(b.Y + 6)" width="@Num(b.Width)" height="14" rx="3" fill="url(#@(ctx.Uid)-hatch)" stroke="none" />
+                        }
+                        else
+                        {
+                            <rect class="vis-shape gantt-bar" x="@Num(b.X)" y="@Num(b.Y + ((b.Kind == ProgramKinds.Phase) ? 9 : 6))" width="@Num(b.Width)" height="@((b.Kind == ProgramKinds.Phase) ? 8 : 14)" rx="3" />
+                            <rect class="gantt-done" x="@Num(b.X)" y="@Num(b.Y + ((b.Kind == ProgramKinds.Phase) ? 9 : 6))" width="@Num(b.Width * b.Percent / 100.0)" height="@((b.Kind == ProgramKinds.Phase) ? 8 : 14)" rx="3" />
+                        }
+                        @if (b.BaselineX is { } bx) { <line class="gantt-baseline" x1="@Num(bx)" y1="@Num(b.Y + 22)" x2="@Num(bx)" y2="@Num(b.Y + 27)" /> }
+                    </g>
+                }
+            }
+        </DiagramViewport>
+        <Legend Label="Timeline key" Items="legend" />
+        <p class="muted small">The same facts are in the table under the Schedule tab. Phases show the roll-up of their tasks. A thick outline is the critical path. The small tick under a bar is its date in the baseline.</p>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<LegendItem> legend =
+    [
+        new("Phase", "gantt-phase", LegendItem.Rect), new("Task", "gantt-task", LegendItem.Rounded), new("Milestone", "gantt-milestone", "M17 1 L32 11 L17 21 L2 11 Z"),
+        new("Critical path (thick outline)", "gantt-critical", LegendItem.Rounded), new("Restricted item", "restricted", LegendItem.Rounded, "hatch"),
+    ];
+    private GanttLayout geo = GanttLayout.Empty;
+
+    [Parameter, EditorRequired] public required ScheduleView Schedule { get; set; }
+    [Parameter] public string Label { get; set; } = "Program timeline";
+    [Parameter] public string? Key { get; set; }
+
+    protected override void OnParametersSet() => geo = GanttLayout.Build(Schedule);
+
+    private static string Num(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string Diamond(GanttBar b) => FormattableString.Invariant($"M {b.X + 7:0.##} {b.Y + 4:0.##} L {b.X + 14:0.##} {b.Y + 12:0.##} L {b.X + 7:0.##} {b.Y + 20:0.##} L {b.X:0.##} {b.Y + 12:0.##} Z");
+}

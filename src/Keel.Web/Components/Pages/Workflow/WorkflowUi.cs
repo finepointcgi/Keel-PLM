@@ -59,6 +59,7 @@ public static class WorkflowText
         "ecr" or "ecn" => $"changes/{Uri.EscapeDataString(key)}", // 1.6: change requests and change notices
         "baseline" => $"baselines/{Uri.EscapeDataString(key)}", // 2.1: baselines established by signatures
         "ncr" or "capa" or "deviation" => AwarenessKinds.Path(objectType, key), // 8.1: quality records reviewed through the same engine
+        "gate" => AwarenessKinds.Path("gate", key), // 8.8: gate reviews approved by signatures
         "reqspec" => $"requirements/{Uri.EscapeDataString(key)}", // 8.3: requirement specifications released by signatures
         "supplier" => $"suppliers/{Uri.EscapeDataString(key)}", // 8.2: supplier approval
         "process_plan" => $"process/plans/{Uri.EscapeDataString(key)}", // 8.7: process plan release

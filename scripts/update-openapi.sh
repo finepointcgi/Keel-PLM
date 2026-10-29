@@ -30,6 +30,10 @@ git --no-pager diff --stat -- docs/compliance/openapi.json || true
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.RequirementsApiTests.The_published_requirements_openapi_document_equals_the_committed_one"
 git --no-pager diff --stat -- docs/requirements/openapi.json || true
+# The programs API has its own document (docs/programs/openapi.json).
+KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
+  --filter-method "Keel.IntegrationTests.ProgramApiTests.The_published_programs_openapi_document_equals_the_committed_one_and_lists_nothing_else"
+git --no-pager diff --stat -- docs/programs/openapi.json || true
 # Manufacturing process data (plans, work instructions, shop floor view, tools) has its own document (docs/process/openapi.json).
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.ProcessApiTests.The_published_process_openapi_document_equals_the_committed_one_and_lists_nothing_else"

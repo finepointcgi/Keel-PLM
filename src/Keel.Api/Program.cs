@@ -144,6 +144,8 @@ Keel.Workspace.WorkspaceModule.AddKeelWorkspace(builder.Services); // UX-1 perso
 Keel.Notifications.NotificationsModule.AddKeelNotifications(builder.Services, builder.Configuration); // UX-4 notifications, watch lists, comments, activity feed
 Keel.Quality.QualityModule.AddKeelQuality(builder.Services, builder.Configuration); // 8.1 nonconformance reports, corrective actions, deviations and waivers
 builder.Services.AddKeelQualityOpenApi();
+Keel.Programs.ProgramModule.AddKeelPrograms(builder.Services, builder.Configuration); // 8.8 programs, schedules, deliverables and gate reviews
+builder.Services.AddKeelProgramsOpenApi();
 Keel.Sourcing.SourcingModule.AddKeelSourcing(builder.Services, builder.Configuration); // 8.2 suppliers, approved lists, supplier portal
 builder.Services.AddSingleton<Keel.Web.Services.SourcingCoverageService>(); // 8.2 BOM-level sourcing coverage (composes BOM, MBOM and sourcing)
 builder.Services.AddKeelSourcingOpenApi();
@@ -281,6 +283,7 @@ app.MapVariantEndpoints(); // 8.4 options, variants, usage conditions and resolv
 app.MapProcessEndpoints(); // 8.7 process plans, work instructions, shop floor view, tools
 app.MapRecordsEndpoints(); // 8.6 records management
 app.MapQualityEndpoints(); // 8.1 quality records
+app.MapProgramEndpoints(); // 8.8 programs
 app.MapProductComplianceEndpoints(); // 8.5 substances, regulatory lists, declarations, roll-up and exports
 app.MapRequirementEndpoints(); // 8.3 requirements and traceability
 app.MapReportsEndpoints(); // 8.9 output and bulk work

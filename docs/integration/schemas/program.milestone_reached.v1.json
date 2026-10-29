@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/program.milestone_reached.v1.json",
+  "title": "program.milestone_reached v1",
+  "description": "A program milestone was reached: a gate review (for example a preliminary or critical design review) was approved through the workflow with signatures, or a milestone was completed. The event's markings are those of the milestone.",
+  "type": "object",
+  "properties": {
+    "program": { "type": "string" },
+    "milestone": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "name": { "type": "string" },
+        "gateType": { "type": ["string", "null"] },
+        "gateNumber": { "type": ["string", "null"] },
+        "plannedDate": { "type": "string" },
+        "actualDate": { "type": "string" }
+      },
+      "required": ["key", "name", "plannedDate", "actualDate"],
+      "additionalProperties": false
+    },
+    "reachedAt": { "type": "string" }
+  },
+  "required": ["program", "milestone", "reachedAt"],
+  "additionalProperties": false
+}
