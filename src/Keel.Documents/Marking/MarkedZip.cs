@@ -31,6 +31,32 @@ public static class MarkedZip
         await output.FlushAsync(ct);
     }
 
+    /// <summary>One file of a multi-version archive: its path in the archive and the verified vault object it comes from.</summary>
+    public sealed record Member(string Path, long SizeBytes, string Sha256);
+
+    /// <summary>
+    /// Archive of several versions: MARKINGS.pdf (cover sheet of <paramref name="ctx"/>), MARKINGS.txt, VERSIONS.txt (<paramref name="manifest"/>), then every member stored
+    /// unchanged under its path. Members are streamed from <paramref name="open"/>, which verifies each object while it is read.
+    /// </summary>
+    public static async Task WriteVersionsAsync(Stream destination, MarkingContext ctx, string manifest, IReadOnlyList<Member> members,
+        Func<Member, CancellationToken, Task<Stream>> open, CancellationToken ct)
+    {
+        var cover = PdfMarker.CoverSheet(ctx);
+        var output = new SyncWriteBuffer(destination);
+        await using (var zip = await ZipArchive.CreateAsync(output, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: Encoding.UTF8, ct))
+        {
+            await AddAsync(zip, CoverSheetName, new MemoryStream(cover), ctx.RetrievedAt, ct);
+            await AddAsync(zip, ManifestName, new MemoryStream(Encoding.UTF8.GetBytes(PdfMarker.Manifest(ctx))), ctx.RetrievedAt, ct);
+            await AddAsync(zip, "VERSIONS.txt", new MemoryStream(Encoding.UTF8.GetBytes(manifest)), ctx.RetrievedAt, ct);
+            foreach (var m in members)
+            {
+                await using var content = await open(m, ct);
+                await AddAsync(zip, m.Path, content, ctx.RetrievedAt, ct);
+            }
+        }
+        await output.FlushAsync(ct);
+    }
+
     private static async Task AddAsync(ZipArchive zip, string name, Stream content, DateTimeOffset at, CancellationToken ct)
     {
         var entry = zip.CreateEntry(name, CompressionLevel.NoCompression);

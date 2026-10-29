@@ -1,0 +1,34 @@
+@* The numbers Keel measured in one version of a model, or the plain reason it measured nothing. Never shows a number that was not computed. *@
+@using Keel.Core.Geometry
+
+@if (M.Status == "analysed")
+{
+    var unit = M.Unit == "mm" ? "mm" : "units";
+    <dl class="facts">
+        <dt>Format</dt><dd>@ModelFormats.Label(M.Format)</dd>
+        <dt>Triangles</dt><dd>@M.Triangles?.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)@(M.DegenerateTriangles is > 0 ? $" ({M.DegenerateTriangles} without area)" : "")</dd>
+        <dt>Vertices (distinct)</dt><dd>@M.Vertices?.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)</dd>
+        <dt>Size X × Y × Z</dt><dd>@N(M.SizeX) × @N(M.SizeY) × @N(M.SizeZ) @unit</dd>
+        <dt>Bounding box</dt><dd>@N(M.MinX), @N(M.MinY), @N(M.MinZ) to @N(M.MaxX), @N(M.MaxY), @N(M.MaxZ) @unit</dd>
+        <dt>Surface area</dt><dd>@N(M.SurfaceArea) @unit²</dd>
+        <dt>Volume</dt><dd>@(M.Volume is { } v ? $"{N(v)} {unit}³" : "Not available: the mesh is not closed")</dd>
+        <dt>Watertight</dt><dd>@(M.Watertight == true ? "Yes" : "No")</dd>
+        <dt>Geometry fingerprint</dt><dd><code title="@M.GeometryFingerprint">@(M.GeometryFingerprint is { Length: >= 16 } fp ? fp[..16] + "…" : "")</code></dd>
+        @if (M.Unit != "mm") { <dt>Units</dt><dd>The file does not state its units.</dd> }
+    </dl>
+}
+else if (M.Status == "facts_only")
+{
+    <p class="muted">Not analysed. @M.Reason</p>
+    @if (M.StepProducts is { } n) { <p>STEP structure: @n product@(n == 1 ? "" : "s").</p> }
+}
+else
+{
+    <p class="muted">Could not be read: @M.Reason</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public required ModelMetrics M { get; set; }
+
+    private static string N(double? v) => (v ?? 0).ToString(Math.Abs(v ?? 0) >= 100 ? "N1" : "0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

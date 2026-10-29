@@ -51,6 +51,8 @@ public sealed record DemoManifest
     public IReadOnlyList<string> AuditFailures { get; set; } = [];
     /// <summary>Classification, baselines, effectivity, MBOMs, TDP export and integration administration data (FUP-4).</summary>
     public DemoExtras? Extras { get; set; }
+    /// <summary>Two STL models with two versions each (9.1); null for seeds made before it.</summary>
+    public DemoModels? Models { get; set; }
 }
 
 /// <summary>
@@ -80,6 +82,7 @@ public sealed partial class DemoSeeder(SeedHost host, IReadOnlyDictionary<string
 
         await CreatePartsAsync();
         await CreateDocumentsAsync();
+        var models = await CreateModelVersionsAsync(); // 9.1
         await CreateClassificationTreeAsync();
         await BuildAndReleaseAsync();
         var changes = await CreateChangesAsync();
@@ -96,7 +99,7 @@ public sealed partial class DemoSeeder(SeedHost host, IReadOnlyDictionary<string
             CadPlaceholder = _doc["cad-bracket"], TorqueStandard = _doc["std-torque"],
             ProblemReportEvaluating = changes.Pr1, ProblemReportOpen = changes.Pr2, EcrAwaitingCcb = changes.Ecr1, EcrClassIIDraft = changes.Ecr2,
             EcnDraftInWork = changes.Ecn1, EcnUnderReview = changes.Ecn2, EcnRejected = changes.Ecn3, ChangeTasks = changes.Tasks,
-            Parts = _part.Count, Released = _released, Documents = _doc.Count, BomLines = _lines, Changes = _changes, Signatures = _signatures, AuditEvents = audit, Extras = extras,
+            Parts = _part.Count, Released = _released, Documents = _doc.Count, BomLines = _lines, Changes = _changes, Signatures = _signatures, AuditEvents = audit, Extras = extras, Models = models,
         };
     }
 

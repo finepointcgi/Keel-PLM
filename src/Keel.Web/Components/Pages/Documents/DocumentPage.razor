@@ -64,7 +64,7 @@
                 <p class="muted small">@t.Label: @t.Reason</p>
             }
 
-            <TabSet Tabs="@AwarenessTabs.Append(Tabs, commentCount)" Active="@tab" ActiveChanged="id => { tab = id; timelineBanner = null; cadBanner = null; }" Label="Document sections">
+            <TabSet Tabs="@AwarenessTabs.Append(VisibleTabs(d), commentCount)" Active="@tab" ActiveChanged="id => { tab = id; timelineBanner = null; cadBanner = null; }" Label="Document sections">
                 @switch (tab)
                 {
                     case "overview":
@@ -107,6 +107,10 @@
                                 </details>
                             }
                         </div>
+                        break;
+                    case "versions":
+                        @* 9.1: model versions - history with measured geometry, upload new version, compare, restore, ZIP, where used. *@
+                        <ModelVersionsPanel Number="@d.Number" Parts="@parts" OnChanged="Reload" />
                         break;
                     case "cad":
                         <CadPackagePanel Number="@d.Number" OnBanner="b => cadBanner = b" />
@@ -253,9 +257,12 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "usedby", "cad", "history", "review", "timeline", "security", "trace", .. AwarenessTabs.Ids];
-    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("usedby", "Used by"), new("cad", "CAD"), new("history", "History"), new("review", "Review & release"), new("timeline", "Timeline"), new("security", "Security markings"), new("trace", "Trace")];
+    private static readonly string[] TabIds = ["overview", "versions", "usedby", "cad", "history", "review", "timeline", "security", "trace", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("versions", "Versions"), new("usedby", "Used by"), new("cad", "CAD"), new("history", "History"), new("review", "Review & release"), new("timeline", "Timeline"), new("security", "Security markings"), new("trace", "Trace")];
     private string PageBanner => BannerMerge.Union(doc?.Banner ?? UiText.Unclassified, timelineBanner, tab == "cad" ? cadBanner : null, tab == "trace" ? traceBanner : null);
+    /// <summary>The Versions tab belongs to model documents: CAD documents, and any document whose files include a model (STL, OBJ, 3MF, STEP, glTF, IGES).</summary>
+    private static IReadOnlyList<TabInfo> VisibleTabs(DocumentDetail d) =>
+        d.DocumentType == "CAD" || d.History.Any(h => h.Files.Any(f => f.Role == FileRoles.Primary && Keel.Core.Geometry.ModelFormats.IsModel(f.FileName))) ? Tabs : [.. Tabs.Where(t => t.Id != "versions")];
     private string? cadBanner; // banner of the CAD documents the CAD tab names (ADR-0035)
     private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
     private string? traceBanner; // banner of the requirements the Trace tab names (8.3)

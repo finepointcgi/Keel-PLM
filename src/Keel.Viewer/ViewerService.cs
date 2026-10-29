@@ -1,4 +1,5 @@
 using Keel.Core;
+using Keel.Core.Geometry;
 using Keel.Core.Viewing;
 
 namespace Keel.Viewing;
@@ -46,6 +47,14 @@ public enum ViewerContentStatus
 public sealed record ViewerContent(ViewableFile File, byte[] Bytes, FileFormat Format, bool Marked);
 
 public sealed record ViewerContentResult(ViewerContentStatus Status, string? Message, ViewerContent? Content, IReadOnlyList<string>? Reasons = null)
+{
+    public bool IsOk => Status == ViewerContentStatus.Ok;
+}
+
+/// <summary>The triangles of a model for the visual comparison (increment 9.1, ADR-0046): positions as nine floats per triangle, in the file's own coordinates.</summary>
+public sealed record ViewerMesh(ViewableFile File, MeshData Mesh);
+
+public sealed record ViewerMeshResult(ViewerContentStatus Status, string? Message, ViewerMesh? Mesh, IReadOnlyList<string>? Reasons = null)
 {
     public bool IsOk => Status == ViewerContentStatus.Ok;
 }
@@ -125,6 +134,59 @@ public sealed class ViewerService(IViewableFileSource source, ViewerOptions opti
         {
             _slots.Release();
         }
+    }
+
+    /// <summary>
+    /// Reads a model for the visual comparison. Same path as <see cref="OpenAsync"/>: authorization (Read and Download) and the integrity-verified read belong to the
+    /// file source, the size limit, the gates and the concurrency bound are applied here, a refusal after authorization is audited, and a delivery is audited as
+    /// <c>document.view</c> before the first byte is sent. The bytes are parsed by Keel's own STL, OBJ and 3MF readers with hard limits; the browser receives plain triangles.
+    /// </summary>
+    public async Task<ViewerMeshResult> OpenMeshAsync(Subject subject, string number, Guid fileId, string? correlationId, CancellationToken ct = default)
+    {
+        var described = await source.DescribeAsync(subject, number, fileId, correlationId, ct);
+        if (!described.IsOk) return new ViewerMeshResult(described.Kind == OutcomeKind.Forbidden ? ViewerContentStatus.Forbidden : ViewerContentStatus.NotFound, null, null, described.Errors);
+        var file = described.Value!;
+        var format = ModelFormats.FromFileName(file.FileName);
+        if (!ModelFormats.IsMesh(format))
+            return await RefuseMeshAsync(subject, file, format ?? "unknown", ViewerContentStatus.NoPreview, "no_preview", "The visual comparison supports STL, OBJ and 3MF models.", correlationId, ct);
+        if (file.SizeBytes > options.MaxModelBytes)
+            return await RefuseMeshAsync(subject, file, format!, ViewerContentStatus.TooLarge, "too_large", $"This file is too large to compare visually ({Size(file.SizeBytes)}; the limit is {Size(options.MaxModelBytes)}).", correlationId, ct);
+        foreach (var gate in gates)
+        {
+            var decision = await gate.CheckAsync(file, ct);
+            if (!decision.Allowed) return await RefuseMeshAsync(subject, file, format!, ViewerContentStatus.Blocked, "blocked", decision.Reason ?? "This file cannot be viewed right now.", correlationId, ct);
+        }
+        if (!await _slots.WaitAsync(TimeSpan.FromSeconds(options.ReadWaitSeconds), ct))
+            return new ViewerMeshResult(ViewerContentStatus.Busy, "The viewer is busy with other files. Try again in a moment.", null);
+        try
+        {
+            var read = await source.ReadAsync(subject, number, fileId, correlationId, ct);
+            if (!read.IsOk) return new ViewerMeshResult(read.Kind == OutcomeKind.Forbidden ? ViewerContentStatus.Forbidden : ViewerContentStatus.NotFound, null, null, read.Errors);
+            MeshData mesh;
+            try
+            {
+                mesh = ModelAnalysis.ReadMesh(file.FileName, read.Value!.Bytes, new MeshLimits { MaxBytes = options.MaxModelBytes, MaxTriangles = Math.Min(options.MaxTriangles, MaxCompareTriangles) });
+            }
+            catch (MeshFormatException e)
+            {
+                return await RefuseMeshAsync(subject, file, format!, ViewerContentStatus.Unprocessable, "unreadable", e.Message, correlationId, ct);
+            }
+            await source.RecordAsync(subject, file, new ViewRecord(ViewerTypes.Model3D, format!, "mesh", ViewOutcome.Delivered, "compare"), correlationId, ct);
+            return new ViewerMeshResult(ViewerContentStatus.Ok, null, new ViewerMesh(file, mesh));
+        }
+        finally
+        {
+            _slots.Release();
+        }
+    }
+
+    /// <summary>The most triangles one side of a visual comparison may have (two meshes are held by the browser at once).</summary>
+    public const int MaxCompareTriangles = 1_000_000;
+
+    private async Task<ViewerMeshResult> RefuseMeshAsync(Subject subject, ViewableFile file, string format, ViewerContentStatus status, string reason, string message, string? correlationId, CancellationToken ct)
+    {
+        await source.RecordAsync(subject, file, new ViewRecord(ViewerTypes.Model3D, format, "refused", ViewOutcome.Refused, reason + ": " + message), correlationId, ct);
+        return new ViewerMeshResult(status, message, null);
     }
 
     // The single place a view can be refused (ADR-0027, VWR-8): content support, size limit, gates.

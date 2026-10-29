@@ -18,7 +18,7 @@ internal static class DocumentAwareness
             case "document.create" or "document.checkout":
                 await sink.AutoWatchAsync(conn, tx, actor.Id, AwarenessKinds.Document, number, ct);
                 break;
-            case "document.checkin":
+            case "document.checkin" or "document.version_upload" or "document.version_restore":
                 await sink.AppendAsync(conn, tx, new NotificationRequest(NotificationKindCodes.WatchedChanged, AwarenessKinds.Document, number, markings, actor.Id), ct);
                 break;
             case "document.transition" or "document.set_state":

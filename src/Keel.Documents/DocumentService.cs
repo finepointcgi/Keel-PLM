@@ -16,7 +16,8 @@ namespace Keel.Documents;
 /// the master row. File bytes go to the content-addressed vault (ADR-0015) before the metadata transaction, so no row
 /// lock is held while a large file streams.
 /// </summary>
-public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, ObjectVault vault, IDomainEventSink? events = null, INotificationSink? notifications = null)
+public sealed partial class DocumentService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, ObjectVault vault, IDomainEventSink? events = null, INotificationSink? notifications = null,
+    Keel.Core.Geometry.IStepProductCounter? stepCounter = null, Keel.Core.Geometry.MeshLimits? meshLimits = null)
 {
     public const string ObjectType = "document";
     public const string DefaultLifecycle = "document-default";

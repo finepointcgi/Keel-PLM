@@ -1,0 +1,313 @@
+@* The Versions tab of a model document: every version with who, when, size, checksum, change note and the geometry the server measured; an
+   "Upload new version" dialog; a comparison of any two versions (numbers, plain-language summary, visual comparison in the viewer); restore; download of
+   selected versions; and the parts that use the model. Versions are real document iterations; everything is read through the document's own access checks. *@
+@using Keel.Core.Geometry
+@using Keel.Documents
+@inject CurrentUser Users
+@inject DocumentService Docs
+@inject ToastService Toasts
+
+<section class="panel stack" aria-labelledby="mv-heading" data-testid="model-versions">
+    <h3 id="mv-heading">Model versions</h3>
+    @if (notFound)
+    {
+        <p class="muted">The version history is not available for this document.</p>
+    }
+    else if (problem is not null)
+    {
+        <p class="error" role="alert">@problem</p>
+    }
+    else if (history is null)
+    {
+        <Skeleton Lines="4" Label="Loading the version history" />
+    }
+    else
+    {
+        var h = history;
+        <p class="muted">@h.Versions.Count version@(h.Versions.Count == 1 ? "" : "s"). Current: <strong>@h.CurrentLabel</strong>. Each version is a saved iteration of this document with its own checksum, and the geometry numbers below were measured by Keel from the stored file.</p>
+        <div class="action-bar" role="toolbar" aria-label="Version actions">
+            @if (h.CanModify)
+            {
+                <button type="button" data-testid="upload-new-version" disabled="@busy" @onclick="() => uploadOpen = true">Upload new version</button>
+                @if (h.LatestRevisionState == "Released" && !h.CheckedOut)
+                {
+                    <button type="button" class="secondary" disabled="@busy" @onclick="() => reviseOpen = true">Revise @h.LatestRevision to @NextRevision</button>
+                }
+            }
+            @if (h.CanDownload && selected.Count > 0)
+            {
+                <a class="button secondary" href="@DocumentUi.VersionsZipUrl(Number, selected)" download data-testid="download-zip">Download @selected.Count selected (ZIP)</a>
+            }
+            else
+            {
+                <button type="button" class="secondary" disabled title="@(h.CanDownload ? "Tick one or more versions first." : "You may not download the files of this document.")">Download selected (ZIP)</button>
+            }
+        </div>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (h.Versions.Count == 0)
+        {
+            <EmptyState Title="No versions yet" IconName="part">Upload a model file to create the first version.</EmptyState>
+        }
+        else
+        {
+            <div class="table-wrap"><table class="data" data-testid="version-table">
+                <caption class="sr-only">Versions of @Number, newest last</caption>
+                <thead><tr>
+                    <th scope="col"><span class="sr-only">Select</span></th><th scope="col">Version</th><th scope="col">State</th><th scope="col">By</th><th scope="col">When (UTC)</th>
+                    <th scope="col">Size</th><th scope="col">SHA-256</th><th scope="col">Change note</th><th scope="col">Geometry</th><th scope="col">Actions</th>
+                </tr></thead>
+                <tbody>
+                @foreach (var v in h.Versions)
+                {
+                    <tr data-version="@v.Label">
+                        <td>
+                            @if (v.FileId is not null)
+                            {
+                                <input type="checkbox" aria-label="Select version @v.Label" checked="@selected.Contains(v.IterationId)" disabled="@(!h.CanDownload)" @onchange="e => Toggle(v.IterationId, (bool)e.Value!)" />
+                            }
+                        </td>
+                        <td><strong>@v.Label</strong>@if (v.IsCurrent) { <span class="badge">Current</span> }</td>
+                        <td>@v.StateLabel</td>
+                        <td>@v.CreatedBy</td>
+                        <td>@UiText.Utc(v.CreatedAt)</td>
+                        <td>@(v.SizeBytes is { } sz ? DocumentUi.Size(sz) : "No file")</td>
+                        <td>@if (v.Sha256 is { } sha) { <code title="@sha">@sha[..12]…</code> }</td>
+                        <td>@v.ChangeNote</td>
+                        <td>@GeometryCell(v)</td>
+                        <td>
+                            <div class="toolbar">
+                                @if (v.FileId is { } fid && h.CanDownload)
+                                {
+                                    <a href="@DocumentUi.DownloadUrl(Number, fid)" download aria-label="Download version @v.Label">Download</a>
+                                    <a href="@ViewerUi.PageUrl(Number, fid)" target="_top" data-enhance-nav="false" aria-label="View version @v.Label">View</a>
+                                }
+                                @if (h.CanModify && !v.IsCurrent && v.FileId is not null)
+                                {
+                                    <button type="button" class="secondary" disabled="@(busy || !CanRestore)" title="@RestoreHint" aria-label="Restore version @v.Label" data-testid="restore-@v.Label"
+                                            @onclick="() => { restoreTarget = v; restoreOpen = true; }">Restore</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+            @if (!CanRestore && h.CanModify) { <p class="muted small">@RestoreHint</p> }
+            <details>
+                <summary>Geometry details of each version</summary>
+                <div class="stack">
+                @foreach (var v in h.Versions.Where(v => v.Metrics is not null))
+                {
+                    <section aria-label="Geometry of version @v.Label">
+                        <h4>@v.Label</h4>
+                        <GeometryFacts M="v.Metrics!" />
+                    </section>
+                }
+                </div>
+            </details>
+
+            <section class="stack" aria-labelledby="mv-compare-heading">
+                <h3 id="mv-compare-heading">Compare two versions</h3>
+                @if (h.Versions.Count(v => v.FileId is not null) < 2)
+                {
+                    <p class="muted">A comparison needs two versions with a file.</p>
+                }
+                else
+                {
+                    <div class="toolbar">
+                        <label>Version A <select data-testid="compare-a" @bind="compareA">@foreach (var v in h.Versions.Where(v => v.FileId is not null)) { <option value="@v.IterationId">@v.Label</option> }</select></label>
+                        <label>Version B <select data-testid="compare-b" @bind="compareB">@foreach (var v in h.Versions.Where(v => v.FileId is not null)) { <option value="@v.IterationId">@v.Label</option> }</select></label>
+                        <button type="button" data-testid="compare-go" disabled="@busy" @onclick="CompareAsync">Compare</button>
+                    </div>
+                    @if (comparison is { } c)
+                    {
+                        <div class="stack" data-testid="compare-result" aria-live="polite">
+                            <p class="compare-summary-text" data-testid="compare-summary"><strong>@c.Delta.Summary</strong></p>
+                            @if (c.Delta.Comparable)
+                            {
+                                <div class="table-wrap" tabindex="0" role="group" aria-label="Numeric comparison of @c.A.Label and @c.B.Label (scrollable)"><table class="data">
+                                    <caption class="sr-only">Numeric comparison of @c.A.Label and @c.B.Label</caption>
+                                    <thead><tr><th scope="col">Measure</th><th scope="col">A (@c.A.Label)</th><th scope="col">B (@c.B.Label)</th><th scope="col">Change</th><th scope="col">Change in %</th></tr></thead>
+                                    <tbody>
+                                    @foreach (var row in c.Delta.Rows)
+                                    {
+                                        <tr>
+                                            <th scope="row">@row.Label</th>
+                                            <td>@Cell(row, row.A)</td><td>@Cell(row, row.B)</td>
+                                            <td>@Cell(row, row.Change, signed: true)</td>
+                                            <td>@(row.Percent is { } p ? p.ToString("+0.0;-0.0;0.0", System.Globalization.CultureInfo.InvariantCulture) + " %" : "–")</td>
+                                        </tr>
+                                    }
+                                    </tbody>
+                                </table></div>
+                                @foreach (var row in c.Delta.Rows.Where(r => r.Note is not null)) { <p class="muted small">@row.Label: @row.Note</p> }
+                            }
+                            @if (c.SameBytes) { <p class="muted">These two versions are the same file.</p> }
+                            else if (c.Delta.SameGeometry) { <p class="callout" role="status">Same geometry: the shape is identical although the file bytes differ.</p> }
+                            @if (c.VisualAvailable)
+                            {
+                                <p><a class="button" href="@ViewerCompareUi.PageUrl(Number, c.A.IterationId, c.B.IterationId)" target="_top" data-enhance-nav="false" data-testid="open-visual-compare">Open visual comparison</a>
+                                   <span class="muted small">Overlay, side by side or swipe. Both models are shown where their files place them; Keel does not align them.</span></p>
+                            }
+                            else
+                            {
+                                <p class="muted small" data-testid="visual-unavailable">Visual comparison: @c.VisualUnavailableReason</p>
+                            }
+                        </div>
+                    }
+                }
+            </section>
+
+            <section class="stack" aria-labelledby="mv-usedby-heading">
+                <h3 id="mv-usedby-heading">Parts that use this model</h3>
+                @if (Parts is null || Parts.Parts.Count == 0)
+                {
+                    <p class="muted">No part's latest version links to this document.</p>
+                }
+                else
+                {
+                    <ul data-testid="where-used">
+                    @foreach (var p in Parts.Parts)
+                    {
+                        <li>
+                            @if (p.Redacted) { <span class="muted">A part you are not authorized to see</span> }
+                            else { <a href="parts/@Uri.EscapeDataString(p.PartNumber!)">@p.PartNumber</a><span> @p.PartName (@DocumentUi.LinkTypeLabel(p.LinkType).ToLowerInvariant())</span> }
+                        </li>
+                    }
+                    </ul>
+                }
+            </section>
+        }
+
+        <UploadVersionDialog @bind-Open="uploadOpen" Number="@Number" History="h" OnDone="ChangedAsync" />
+        <ConfirmDialog Open="@restoreOpen" OpenChanged="_ => restoreOpen = false" Title="@($"Restore version {restoreTarget?.Label}?")" ConfirmText="Restore"
+                       OnConfirm="_ => RestoreAsync()">
+            <p>Keel creates a new version with the same files as @restoreTarget?.Label and the change note "Restored from @restoreTarget?.Label". The history is kept: nothing is overwritten or removed.</p>
+        </ConfirmDialog>
+        <ConfirmDialog @bind-Open="reviseOpen" Title="@($"Revise {h.LatestRevision} to {NextRevision}?")" ConfirmText="Revise" ReasonLabel="Reason for the revision" ReasonRequired="true"
+                       OnConfirm="ReviseAsync">
+            <p>Revision @h.LatestRevision stays released and unchanged. Revision @NextRevision starts in work with the same files, ready for a new version.</p>
+        </ConfirmDialog>
+    }
+</section>
+
+@code {
+    private ModelVersionHistory? history;
+    private ModelComparison? comparison;
+    private readonly HashSet<Guid> selected = [];
+    private bool notFound, busy, uploadOpen, reviseOpen, restoreOpen;
+    private string? problem, error;
+    private ModelVersionRow? restoreTarget;
+    private Guid compareA, compareB;
+
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>The parts that use this document (from the page), shown under the table.</summary>
+    [Parameter] public DocumentPartLinks? Parts { get; set; }
+    /// <summary>A version was created, restored or revised: the page reloads its own data.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string NextRevision => history is null ? "" : Keel.Core.RevisionScheme.Next(history.LatestRevision);
+
+    private bool CanRestore => history is { CanModify: true, LatestRevisionLocked: false, CheckedOut: false };
+
+    private string RestoreHint => history is null ? "" :
+        history.LatestRevisionLocked ? $"Revision {history.LatestRevision} is {history.LatestRevisionState} and locked. Revise it first, then restore."
+        : history.CheckedOut ? "The document is checked out. Check it in first."
+        : "Creates a new version with the same files.";
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var outcome = await Docs.GetModelVersionsAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = outcome.Kind is Keel.Core.OutcomeKind.NotFound;
+        problem = outcome.Kind is Keel.Core.OutcomeKind.Conflict or Keel.Core.OutcomeKind.Invalid ? UiText.Message(outcome) : null;
+        history = outcome.Value;
+        selected.RemoveWhere(id => history?.Versions.All(v => v.IterationId != id) != false);
+        if (history is { Versions.Count: > 0 })
+        {
+            var withFile = history.Versions.Where(v => v.FileId is not null).ToList();
+            if (withFile.Count >= 2 && (compareA == Guid.Empty || compareB == Guid.Empty || withFile.All(v => v.IterationId != compareA) || withFile.All(v => v.IterationId != compareB)))
+            {
+                compareB = withFile[^1].IterationId;
+                compareA = withFile[^2].IterationId;
+            }
+        }
+    }
+
+    private void Toggle(Guid id, bool on)
+    {
+        if (on && selected.Count < DocumentService.MaxVersionsInZip) selected.Add(id);
+        else selected.Remove(id);
+    }
+
+    private async Task ChangedAsync()
+    {
+        comparison = null;
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task CompareAsync()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Docs.CompareModelVersionsAsync(await Users.GetAsync(), Number, compareA, compareB, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) comparison = outcome.Value;
+        else { comparison = null; error = UiText.Message(outcome); }
+    }
+
+    private async Task RestoreAsync()
+    {
+        var target = restoreTarget;
+        restoreTarget = null;
+        restoreOpen = false;
+        if (target is null || history is null) return;
+        busy = true;
+        error = null;
+        var outcome = await Docs.RestoreModelVersionAsync(await Users.GetAsync(), Number, target.IterationId, history.LatestIteration, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { Toasts.Success($"Restored {target.Label} as version {outcome.Value!.Iteration.Label}."); await ChangedAsync(); }
+        else error = UiText.Message(outcome);
+    }
+
+    private async Task ReviseAsync(string? reason)
+    {
+        busy = true;
+        error = null;
+        var outcome = await Docs.ReviseAsync(await Users.GetAsync(), Number, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) { Toasts.Success($"Revision {outcome.Value!.Revision.Revision} created."); await ChangedAsync(); }
+        else error = UiText.Message(outcome);
+    }
+
+    private static string UnitOf(ModelMetrics m) => m.Unit == "mm" ? "mm" : "units";
+
+    private static string GeometryCell(ModelVersionRow v)
+    {
+        if (v.FileId is null) return "No file";
+        if (!Keel.Core.Geometry.ModelFormats.IsModel(v.FileName)) return "Not a model file";
+        var m = v.Metrics;
+        if (m is null) return "Measuring… reload to see the numbers";
+        var text = m.Status switch
+        {
+            "analysed" => $"{m.Triangles:N0} triangles, {Num(m.SizeX)} × {Num(m.SizeY)} × {Num(m.SizeZ)} {UnitOf(m)}{(m.Watertight == true ? ", closed" : ", open mesh")}",
+            "facts_only" => m.StepProducts is { } n ? $"Not analysed ({n} product{(n == 1 ? "" : "s")} in the STEP structure)" : "Not analysed",
+            _ => "Could not be read: " + m.Reason,
+        };
+        return v.SameGeometryAsPrevious ? text + ". Same geometry as the version before" : text;
+    }
+
+    private static string Num(double? v) => (v ?? 0).ToString(Math.Abs(v ?? 0) >= 100 ? "N1" : "0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Cell(DeltaRow row, double? value, bool signed = false)
+    {
+        if (value is not { } v) return "–";
+        var count = row.Key is "triangles" or "vertices";
+        var body = count ? "#,##0" : Math.Abs(v) >= 100 ? "#,##0.0" : "0.###";
+        var format = signed ? $"+{body};-{body};0" : body;
+        var text = v.ToString(format, System.Globalization.CultureInfo.InvariantCulture);
+        return row.Unit.Length > 0 ? $"{text} {row.Unit}" : text;
+    }
+}

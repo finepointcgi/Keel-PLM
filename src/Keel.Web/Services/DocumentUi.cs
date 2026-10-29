@@ -14,6 +14,12 @@ public static class DocumentUi
 
     public static string DownloadUrl(string number, Guid fileId) => $"downloads/documents/{Uri.EscapeDataString(number)}/files/{fileId:D}";
 
+    /// <summary>Cookie-authenticated ZIP of selected versions of a model document (increment 9.1); the ids are iteration ids.</summary>
+    public const string VersionsZipRoute = "/downloads/documents/{number}/versions.zip";
+
+    public static string VersionsZipUrl(string number, IEnumerable<Guid> iterationIds) =>
+        $"downloads/documents/{Uri.EscapeDataString(number)}/versions.zip?ids={string.Join(',', iterationIds.Select(i => i.ToString("D")))}";
+
     public static string Size(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",

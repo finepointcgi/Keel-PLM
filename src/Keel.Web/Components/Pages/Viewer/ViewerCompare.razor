@@ -1,0 +1,76 @@
+@* STANDALONE compare document (increment 9.1, ADR-0046). Like ViewerDocument it is NOT a routable Blazor page: the compare endpoint renders it to a string
+   (full navigation, no circuit) and serves it under the viewer's own Content-Security-Policy. It draws the marking banner of the compared document at the top
+   and the bottom itself, plus the distribution statement, from Model.Banner and Model.Notices (an architecture test requires all three). *@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>@Model.Title · Keel PLM viewer</title>
+    <link rel="stylesheet" href="@(ViewerUi.AssetBase)viewer.css" />
+</head>
+<body class="viewer-page" data-viewer="compare" data-status="@Model.Status" data-asset-base="@ViewerUi.AssetBase"
+      data-mesh-a="@Model.A?.MeshUrl" data-mesh-b="@Model.B?.MeshUrl" data-label-a="@Model.A?.Label" data-label-b="@Model.B?.Label" data-max-triangles="@Model.MaxTriangles">
+    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="region" aria-label="Marking banner (top)" data-position="top" data-viewer-banner>@Model.Banner</div>
+    <header class="viewer-bar">
+        <a class="viewer-back" href="@Model.BackUrl">Back to document</a>
+        <h1 class="viewer-title" tabindex="-1">@Model.Title</h1>
+        @if (Model.Status == "ready" && Model.A is { } a && Model.B is { } b)
+        {
+            <dl class="viewer-facts" aria-label="Compared versions">
+                <dt>Document</dt><dd>@Model.DocumentNumber</dd>
+                <dt>Version A</dt><dd>@a.Label</dd>
+                <dt>Version B</dt><dd>@b.Label</dd>
+            </dl>
+        }
+    </header>
+    <main id="viewer-root" class="viewer-main" tabindex="-1">
+        <div id="viewer-toolbar" class="viewer-toolbar" role="toolbar" aria-label="Compare tools" hidden></div>
+        @if (Model.Status != "ready")
+        {
+            <p class="viewer-error" role="alert">@Model.Message</p>
+        }
+        else
+        {
+            <section class="compare-legend" aria-label="Legend and summary">
+                <p class="compare-summary" data-compare-summary>@Model.Summary</p>
+                <ul class="compare-key">
+                    <li><span class="compare-swatch compare-swatch-a" aria-hidden="true"></span> <strong>A</strong> · version @Model.A!.Label · @Model.A.FileName · <span class="viewer-readout">@Model.A.Summary</span></li>
+                    <li><span class="compare-swatch compare-swatch-b" aria-hidden="true"></span> <strong>B</strong> · version @Model.B!.Label · @Model.B.FileName · <span class="viewer-readout">@Model.B.Summary</span></li>
+                </ul>
+                <p class="viewer-readout" data-compare-frame-note>Both models are shown exactly where their files place them, in one shared coordinate frame. Keel does not move, rotate or scale either model to line them up (no automatic registration), so a model that was exported at another position or in other units will look offset.</p>
+            </section>
+            <p id="viewer-status" class="viewer-status" role="status" aria-live="polite">Loading both versions…</p>
+            <progress id="viewer-progress" class="viewer-progress" max="100" hidden></progress>
+            <div id="viewer-stage" class="viewer-stage" data-viewer-stage></div>
+            <noscript><p class="viewer-error">The comparison needs JavaScript.</p></noscript>
+        }
+    </main>
+    @if (Model.Status != "not-found")
+    {
+        <section class="viewer-notices" aria-label="Distribution statement and handling notices" data-viewer-notices>
+            @if (Model.DistributionStatement is { } statement)
+            {
+                <p class="viewer-distribution" data-viewer-distribution>@statement</p>
+            }
+            @if (Model.Notices.Any(n => n != Model.DistributionStatement))
+            {
+                <details>
+                    <summary>Other handling notices</summary>
+                    @foreach (var n in Model.Notices.Where(n => n != Model.DistributionStatement)) { <p>@n</p> }
+                </details>
+            }
+        </section>
+    }
+    <div class="marking-banner @MarkingBanner.Tone(Model.Banner)" role="region" aria-label="Marking banner (bottom)" data-position="bottom" data-viewer-banner>@Model.Banner</div>
+    @if (Model.Status == "ready")
+    {
+        <script type="module" src="@(ViewerUi.AssetBase)compare.js"></script>
+    }
+</body>
+</html>
+
+@code {
+    [Parameter, EditorRequired] public required ViewerCompareModel Model { get; set; }
+}
