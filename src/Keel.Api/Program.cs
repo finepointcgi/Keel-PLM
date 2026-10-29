@@ -141,6 +141,8 @@ Keel.Notifications.NotificationsModule.AddKeelNotifications(builder.Services, bu
 Keel.Sourcing.SourcingModule.AddKeelSourcing(builder.Services, builder.Configuration); // 8.2 suppliers, approved lists, supplier portal
 builder.Services.AddSingleton<Keel.Web.Services.SourcingCoverageService>(); // 8.2 BOM-level sourcing coverage (composes BOM, MBOM and sourcing)
 builder.Services.AddKeelSourcingOpenApi();
+Keel.Requirements.RequirementsModule.AddKeelRequirements(builder.Services, builder.Configuration); // 8.3 requirements and traceability
+builder.Services.AddKeelRequirementsOpenApi();
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -256,6 +258,7 @@ app.MapVisualEndpoints(); // UX-3 downloads of the relationship pictures
 app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration administration
 app.MapCadEndpoints(); // 8.0 CAD connector protocol
 app.MapSourcingEndpoints(); // 8.2 suppliers, approved lists, requests and the supplier portal
+app.MapRequirementEndpoints(); // 8.3 requirements and traceability
 app.MapOpenApi("/openapi/{documentName}.json");
 app.MapKeelUi<App>();
 
