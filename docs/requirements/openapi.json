@@ -485,7 +485,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AddLinkRequest"
+                "$ref": "#/components/schemas/AddRequirementLinkRequest"
               }
             }
           },
@@ -841,7 +841,7 @@
   },
   "components": {
     "schemas": {
-      "AddLinkRequest": {
+      "AddRequirementLinkRequest": {
         "required": [
           "linkType"
         ],
