@@ -35,3 +35,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0028](0028-ui-shell-and-workspace.md) | UI shell, design system and personal workspace | Accepted |
 | [0029](0029-visual-relationships.md) | Relationship pictures: impact map, treemap, structure diff, timeline, workflow map (server-computed SVG, table equivalents) | Accepted |
 | [0030](0030-awareness.md) | Notifications, watch, activity feed and comments (pointer-only, re-authorized on render) | Accepted |
+| [0031](0031-list-sorting-and-admin-completeness.md) | Server-side list sorting (whitelisted keys) and admin completeness | Accepted |
