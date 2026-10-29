@@ -3,6 +3,7 @@ using Keel.Bom;
 using Keel.Change;
 using Keel.Documents;
 using Keel.Parts;
+using Keel.Sourcing;
 using Keel.Workspace;
 
 namespace Keel.Web.Services;
@@ -26,7 +27,7 @@ public interface IGlobalSearch
     Task<IReadOnlyList<SearchHit>> RecentAsync(int take, CancellationToken ct);
 }
 
-/// <summary>A search string with its optional typed prefix: <c>p:</c> parts, <c>d:</c> documents, <c>c:</c>/<c>ecn:</c>/<c>ecr:</c>/<c>pr:</c> changes, <c>b:</c> baselines, <c>mb:</c> manufacturing BOMs.</summary>
+/// <summary>A search string with its optional typed prefix: <c>p:</c> parts, <c>d:</c> documents, <c>c:</c>/<c>ecn:</c>/<c>ecr:</c>/<c>pr:</c> changes, <c>b:</c> baselines, <c>mb:</c> manufacturing BOMs, <c>s:</c> suppliers.</summary>
 public sealed record ParsedQuery(string Text, IReadOnlyList<string> Kinds, string? ChangeType)
 {
     public const int MinLength = 2;
@@ -49,6 +50,7 @@ public sealed record ParsedQuery(string Text, IReadOnlyList<string> Kinds, strin
                 case "pr": return new(rest, [ObjectKinds.Change], "PR");
                 case "b": return new(rest, [ObjectKinds.Baseline], null);
                 case "mb": return new(rest, [ObjectKinds.Mbom], null);
+                case "s": return new(rest, [ObjectKinds.Supplier], null);
             }
         }
         return new(text, ObjectKinds.All, null);
@@ -90,7 +92,7 @@ public static class StateText
 /// Global search through the modules' own search methods (ADR-0028): each one applies <c>AccessPolicy.BuildReadFilter</c> in its SQL and audits the search, so
 /// nothing the user may not read can appear, and a total is a count of what they may read. No result is cached or stored. Results are merged and ranked here.
 /// </summary>
-public sealed class GlobalSearchService(CurrentUser users, PartService parts, DocumentService documents, ChangeService changes, BaselineService baselines, MbomService mboms, WorkspaceReads reads) : IGlobalSearch
+public sealed class GlobalSearchService(CurrentUser users, PartService parts, DocumentService documents, ChangeService changes, BaselineService baselines, MbomService mboms, WorkspaceReads reads, SupplierService? suppliers = null) : IGlobalSearch
 {
     public async Task<IReadOnlyList<SearchHit>> RecentAsync(int take, CancellationToken ct) =>
         (await reads.RecentAsync(take, ct)).Items.Select(i => new SearchHit(i.Kind, i.Number, i.Name, i.StateLabel, i.Banner, i.Href, 0)).ToList();
@@ -145,6 +147,13 @@ public sealed class GlobalSearchService(CurrentUser users, PartService parts, Do
                 var o = await mboms.SearchAsync(subject, new MbomSearch(Query: text, Limit: limit, Offset: offset), corr, ct);
                 if (o.Value is not { } page) return new(kind, [], 0, UiText.Unclassified);
                 return new(kind, page.Items.Select(m => Hit(m.Number, $"{m.PartName} ({m.Plant})", m.StateLabel, m.Banner)).ToList(), page.Total, page.PageBanner);
+            }
+            case ObjectKinds.Supplier:
+            {
+                if (suppliers is null) return new(kind, [], 0, UiText.Unclassified);
+                var o = await suppliers.SearchAsync(subject, new SupplierSearch(Text: text, Limit: limit, Offset: offset), corr, ct);
+                if (o.Value is not { } page) return new(kind, [], 0, UiText.Unclassified);
+                return new(kind, page.Items.Select(sp => Hit(sp.Number, sp.Name, sp.StatusLabel, sp.Banner)).ToList(), page.Total, page.Banner);
             }
             default:
                 throw new NotSupportedException($"Search of '{kind}' is not available.");

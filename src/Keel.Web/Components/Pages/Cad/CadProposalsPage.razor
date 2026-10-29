@@ -1,0 +1,108 @@
+@page "/cad/bom-proposals"
+@inject CurrentUser Users
+@inject CadBomProposalService Proposals
+@inject NavigationManager Nav
+
+@* CAD structure proposals the signed-in user may read, and a form to send a structure file. The page banner is the aggregate of the rows shown (ADR-0035). *@
+<PageFrame Banner="@(list?.PageBanner ?? UiText.Unclassified)" Title="CAD structures" Crumbs="@Crumbs">
+    <p class="muted">A CAD structure becomes a proposed engineering BOM that people review against the current one. Nothing is released and nothing changes until a proposal is applied.</p>
+
+    <section class="panel stack" aria-labelledby="new-proposal-heading">
+        <h2 id="new-proposal-heading">Send a structure</h2>
+        <EditForm Model="this" OnSubmit="Create" FormName="new-cad-proposal" class="stack">
+            <fieldset class="grid-form">
+                <legend>Structure file</legend>
+                <label>Title * <InputText @bind-Value="title" maxlength="200" required /></label>
+                <label>
+                    Format
+                    <InputSelect @bind-Value="format">
+                        <option value="step">STEP (AP242, AP214)</option>
+                        <option value="json">Neutral JSON</option>
+                        <option value="csv">CSV</option>
+                        <option value="xml">XML</option>
+                    </InputSelect>
+                </label>
+                <label>Top part number (for a flat CSV or a STEP file with several top products) <InputText @bind-Value="root" maxlength="100" /></label>
+                <label class="wide">File * (up to 64 MiB) <InputFile OnChange="Pick" /></label>
+                <label class="inline-check"><InputCheckbox @bind-Value="applyRemovals" /> Apply removals: lines missing from the file are removed from the BOM</label>
+            </fieldset>
+            <fieldset class="grid-form">
+                <legend>Security markings of the proposal</legend>
+                <MarkingsFields Value="markings" />
+            </fieldset>
+            @if (errors is not null)
+            {
+                <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+            }
+            <div class="toolbar"><button type="submit" disabled="@busy">@(busy ? "Reading…" : "Create proposal")</button></div>
+        </EditForm>
+    </section>
+
+    @if (list is not null)
+    {
+        <h2>Proposals</h2>
+        <p class="muted" aria-live="polite">@(list.Total == 0 ? "No proposals yet." : $"{list.Total} proposal{(list.Total == 1 ? "" : "s")}")</p>
+        <DataTable TItem="ProposalSummary" TableId="cad-proposals" Items="list.Items" Columns="Columns" Caption="CAD structure proposals">
+            <Empty>
+                <EmptyState Title="No proposals yet" IconName="part">Send a structure file above, or push one with the keel-cad command-line tool.</EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="list.Total" Offset="offset" PageSize="PageSize" OnPage="Load" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private int offset;
+    private ProposalList? list;
+    private string title = "", format = "step", root = "";
+    private bool applyRemovals, busy;
+    private readonly MarkingsInput markings = new();
+    private IBrowserFile? file;
+    private IReadOnlyList<string>? errors;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("CAD structures")];
+
+    private static readonly IReadOnlyList<DataColumn<ProposalSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Proposal", Required = true, SortValue = p => p.Number, Cell = p => @<a href="cad/bom-proposals/@p.Number">@p.Number</a> },
+        new() { Key = "title", Title = "Title", SortValue = p => p.Title, Text = p => p.Title },
+        new() { Key = "status", Title = "Status", SortValue = p => p.Status, Cell = p => @<span class="badge">@Label(p.Status)</span> },
+        new() { Key = "source", Title = "Source", Text = p => $"{p.SourceSystem ?? p.SourceFormat.ToUpperInvariant()}" },
+        new() { Key = "size", Title = "Parts and lines", Text = p => $"{p.Parts} parts, {p.Lines} lines" },
+        new() { Key = "created", Title = "Created", SortValue = p => p.CreatedAt, Text = p => $"{p.CreatedAt:yyyy-MM-dd HH:mm} by {p.CreatedBy}" },
+        new() { Key = "marking", Title = "Markings", Cell = p => @<MarkingChip Text="@p.Banner" /> },
+    ];
+
+    internal static string Label(string status) => status switch { "draft" => "Draft", "applied" => "Applied", "discarded" => "Discarded", _ => status };
+
+    protected override async Task OnInitializedAsync() => await Load(0);
+
+    private async Task Load(int newOffset)
+    {
+        offset = newOffset;
+        list = await Proposals.ListAsync(await Users.GetAsync(), null, PageSize, offset, CurrentUser.NewCorrelationId());
+    }
+
+    private void Pick(InputFileChangeEventArgs e) => file = e.File;
+
+    private async Task Create()
+    {
+        errors = null;
+        if (file is null) { errors = ["Choose a structure file."]; return; }
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        busy = true;
+        try
+        {
+            using var buffer = new MemoryStream();
+            await using (var s = file.OpenReadStream(StructureLimits.MaxBytes)) await s.CopyToAsync(buffer);
+            var outcome = await Proposals.CreateAsync(await Users.GetAsync(), new CreateProposalRequest(title, format, m.Value, string.IsNullOrWhiteSpace(root) ? null : root.Trim(), applyRemovals),
+                buffer.ToArray(), CurrentUser.NewCorrelationId());
+            if (outcome.IsOk) Nav.NavigateTo($"cad/bom-proposals/{outcome.Value!.Number}");
+            else errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+        }
+        catch (IOException e) { errors = [e.Message]; }
+        finally { busy = false; }
+    }
+}

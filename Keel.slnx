@@ -5,6 +5,8 @@
     <Project Path="src/Keel.Audit/Keel.Audit.csproj" />
     <Project Path="src/Keel.Bom/Keel.Bom.csproj" />
     <Project Path="src/Keel.AuditCli/Keel.AuditCli.csproj" />
+    <Project Path="src/Keel.Cad/Keel.Cad.csproj" />
+    <Project Path="src/Keel.CadAgent/Keel.CadAgent.csproj" />
     <Project Path="src/Keel.Change/Keel.Change.csproj" />
     <Project Path="src/Keel.Core/Keel.Core.csproj" />
     <Project Path="src/Keel.Documents/Keel.Documents.csproj" />
@@ -18,6 +20,7 @@
     <Project Path="src/Keel.VaultTool/Keel.VaultTool.csproj" />
     <Project Path="src/Keel.Seed/Keel.Seed.csproj" />
     <Project Path="src/Keel.Siem/Keel.Siem.csproj" />
+    <Project Path="src/Keel.Sourcing/Keel.Sourcing.csproj" />
     <Project Path="src/Keel.Viewer/Keel.Viewer.csproj" />
     <Project Path="src/Keel.Web/Keel.Web.csproj" />
     <Project Path="src/Keel.Workflow/Keel.Workflow.csproj" />

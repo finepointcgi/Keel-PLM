@@ -25,7 +25,10 @@
     <ProjectReference Include="..\..\src\Keel.Viewer\Keel.Viewer.csproj" />
     <ProjectReference Include="..\..\src\Keel.Workspace\Keel.Workspace.csproj" />
     <ProjectReference Include="..\..\src\Keel.Notifications\Keel.Notifications.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Sourcing\Keel.Sourcing.csproj" />
     <ProjectReference Include="..\..\src\Keel.Web\Keel.Web.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Cad\Keel.Cad.csproj" />
+    <ProjectReference Include="..\..\src\Keel.CadAgent\Keel.CadAgent.csproj" />
     <ProjectReference Include="..\..\src\Keel.Migration\Keel.Migration.csproj" />
     <ProjectReference Include="..\Keel.Migration.Fixtures\Keel.Migration.Fixtures.csproj" />
     <ProjectReference Include="..\Keel.TestSupport\Keel.TestSupport.csproj" />

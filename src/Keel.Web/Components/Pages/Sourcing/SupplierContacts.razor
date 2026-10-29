@@ -1,0 +1,72 @@
+@inject CurrentUser Users
+@inject SupplierService Suppliers
+
+<section class="panel stack" aria-labelledby="contacts-heading">
+    <h2 id="contacts-heading">Contacts</h2>
+    <p class="muted small">Contacts are personal data. They are shown here to people who may read the supplier and are never written to the audit log or to notifications.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Detail.Contacts.Count == 0) { <p class="muted">No contacts yet.</p> }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <caption class="visually-hidden">Contacts of the supplier</caption>
+                <thead><tr><th scope="col">Name</th><th scope="col">Title</th><th scope="col">E-mail</th><th scope="col">Phone</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var c in Detail.Contacts)
+                    {
+                        <tr>
+                            <th scope="row">@c.Name@(c.IsPrimary ? " (primary)" : "")</th>
+                            <td>@c.Title</td>
+                            <td>@c.Email</td>
+                            <td>@c.Phone</td>
+                            <td>@if (Detail.Permissions.CanModify) { <button type="button" class="link" aria-label="Remove contact @c.Name" @onclick="() => Remove(c.Id)">Remove</button> }</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    @if (Detail.Permissions.CanModify && Detail.Summary.Status != SupplierStatuses.Obsolete)
+    {
+        <EditForm Model="this" OnSubmit="Add" FormName="add-contact" class="stack">
+            <h3>Add a contact</h3>
+            <div class="grid-form">
+                <label>Name * <InputText @bind-Value="name" maxlength="120" required /></label>
+                <label>Title <InputText @bind-Value="title" maxlength="120" /></label>
+                <label>E-mail <InputText @bind-Value="email" maxlength="200" type="email" /></label>
+                <label>Phone <InputText @bind-Value="phone" maxlength="40" /></label>
+                <label class="inline"><input type="checkbox" @bind="primary" /> Primary contact</label>
+            </div>
+            <div class="toolbar"><button type="submit" disabled="@busy">Add contact</button></div>
+        </EditForm>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required SupplierDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string name = "", title = "", email = "", phone = "";
+    private bool primary, busy;
+    private string? error;
+
+    private async Task Add()
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.AddContactAsync(await Users.GetAsync(), Detail.Summary.Number, new ContactInput(name, email, phone, title, primary), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        (name, title, email, phone, primary) = ("", "", "", "", false);
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Remove(Guid id)
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.RemoveContactAsync(await Users.GetAsync(), Detail.Summary.Number, id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await OnChanged.InvokeAsync();
+    }
+}

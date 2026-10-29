@@ -30,6 +30,7 @@ public static class PaletteActions
             new("go:mboms", "Go to Manufacturing BOMs", "Go to", "mbom", "mboms", "mbom plant"),
             new("go:baselines", "Go to Baselines", "Go to", "baseline", "baselines", "configuration"),
             new("go:changes", "Go to Changes", "Go to", "change", "changes", "ecn ecr problem report"),
+            new("go:suppliers", "Go to Suppliers", "Go to", "folder", "suppliers", "vendors manufacturers sources certifications approved"),
             new("go:access", "Go to Access check", "Go to", "access", "access", "permission can i see"),
             new("go:profile", "Go to My access", "Go to", "user", "profile", "profile roles clearance"),
         };

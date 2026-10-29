@@ -26,6 +26,7 @@ public static class VaultReferences
     [
         new("plm", "document_file", "sha256", "files of document iterations (immutable rows; also the files of migrated documents)"),
         new("plm", "document_checkout_file", "sha256", "files of working copies not yet checked in"),
+        new("src", "response_file", "sha256", "files a supplier uploaded with a response in the supplier portal (immutable rows)"),
     ];
 
     /// <summary>Hash columns that do not name vault objects, or name content without keeping it alive.</summary>

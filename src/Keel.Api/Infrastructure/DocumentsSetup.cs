@@ -31,6 +31,7 @@ public static class DocumentsSetup
         // The vault validates its configuration when first resolved; readiness reports it before traffic arrives.
         services.AddSingleton(sp => new ObjectVault(sp.GetRequiredService<VaultOptions>(), sp.GetRequiredService<UploadScanning>(), sp.GetRequiredService<IVaultPendingGuard>()));
         services.AddSingleton<IContentStore, VaultContentStore>();
+        services.AddSingleton<IContentReader>(sp => (VaultContentStore)sp.GetRequiredService<IContentStore>()); // 8.2: response files of the supplier portal are read back through it
         services.AddSingleton<DocumentService>();
         services.AddSingleton<MeterBridge>();
         services.AddHostedService(sp => sp.GetRequiredService<MeterBridge>()); // module meters (Keel.*) -> /metrics

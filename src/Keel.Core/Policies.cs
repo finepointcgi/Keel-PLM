@@ -8,4 +8,6 @@ public static class Policies
     public const string Admin = "plm.admin";
     /// <summary>The integration pull API (service accounts with the plm-integration role).</summary>
     public const string Integration = "plm.integration";
+    /// <summary>The supplier portal (users with the plm-supplier role).</summary>
+    public const string Supplier = "plm.supplier";
 }

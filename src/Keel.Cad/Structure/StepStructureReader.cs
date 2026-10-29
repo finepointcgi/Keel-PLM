@@ -1,0 +1,315 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace Keel.Cad.Structure;
+
+/// <summary>
+/// A small reader of the product structure in an ISO 10303-21 (STEP physical file) exchange file, written for Keel (no third-party parser,
+/// no geometry kernel, no vendor SDK). It understands what AP242 and AP214 (and AP203) files share for assemblies:
+/// <c>PRODUCT</c>, <c>PRODUCT_DEFINITION_FORMATION</c> (also with specified source), <c>PRODUCT_DEFINITION</c> and
+/// <c>NEXT_ASSEMBLY_USAGE_OCCURRENCE</c> / <c>ASSEMBLY_COMPONENT_USAGE</c>. Geometry, PMI, colours, placements and every other entity are skipped
+/// unread. Each usage occurrence counts as one piece, so the quantity of a child is the number of occurrences under its parent; the occurrence
+/// id becomes the find number when it is a unique whole number under that parent; the reference designator is kept when it looks like one.
+/// Explicit quantity entities (<c>QUANTIFIED_ASSEMBLY_COMPONENT_USAGE</c>) are not read (documented limit, FEAT-CAD-7).
+/// </summary>
+public static partial class StepStructureReader
+{
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9\-_./]{0,39}$")]
+    private static partial Regex DesignatorPattern();
+
+    private sealed record Ref(int Id);
+    private sealed record Enumeration(string Name);
+
+    private sealed record Product(string Id, string Name);
+    private sealed record Formation(int ProductId, string? MakeOrBuy);
+    private sealed record Occurrence(string Id, int ParentDefinition, int ChildDefinition, string? Designator);
+
+    private const int MaxEntities = 5_000_000;
+    private const int MaxNesting = 32;
+
+    public static StructureModel Read(string text, StructureReadOptions options)
+    {
+        var start = 0;
+        while (start < text.Length && char.IsWhiteSpace(text[start])) start++;
+        if (!text.AsSpan(start).StartsWith("ISO-10303-21", StringComparison.Ordinal)) throw new StructureFormatException("The file is not an ISO 10303-21 (STEP) exchange file.");
+        var dataAt = IndexOfKeyword(text, "DATA", start);
+        if (dataAt < 0) throw new StructureFormatException("The STEP file has no DATA section.");
+        var header = text.Substring(start, Math.Min(dataAt - start, 20_000));
+        var protocol = header.Contains("AP242", StringComparison.OrdinalIgnoreCase) || header.Contains("442", StringComparison.Ordinal) ? "STEP AP242"
+            : header.Contains("AP214", StringComparison.OrdinalIgnoreCase) || header.Contains("AUTOMOTIVE_DESIGN", StringComparison.OrdinalIgnoreCase) ? "STEP AP214"
+            : header.Contains("CONFIG_CONTROL_DESIGN", StringComparison.OrdinalIgnoreCase) ? "STEP AP203" : "STEP";
+
+        var products = new Dictionary<int, Product>();
+        var formations = new Dictionary<int, Formation>();
+        var definitions = new Dictionary<int, int>(); // product definition -> formation
+        var occurrences = new List<Occurrence>();
+
+        var pos = text.IndexOf(';', dataAt) + 1;
+        var entities = 0;
+        while (true)
+        {
+            pos = SkipBlank(text, pos);
+            if (pos >= text.Length) throw new StructureFormatException("The STEP DATA section is not closed (ENDSEC missing).");
+            if (text[pos] != '#')
+            {
+                if (string.CompareOrdinal(text, pos, "ENDSEC", 0, 6) == 0) break;
+                throw new StructureFormatException($"Unexpected text in the STEP DATA section near entity {entities + 1}.");
+            }
+            if (++entities > MaxEntities) throw new StructureFormatException("The STEP file has too many entities.");
+            pos++;
+            var idStart = pos;
+            while (pos < text.Length && char.IsAsciiDigit(text[pos])) pos++;
+            if (pos == idStart || !int.TryParse(text.AsSpan(idStart, pos - idStart), NumberStyles.None, CultureInfo.InvariantCulture, out var id))
+                throw new StructureFormatException($"Bad entity number near entity {entities}.");
+            pos = SkipBlank(text, pos);
+            if (pos >= text.Length || text[pos] != '=') throw new StructureFormatException($"Entity #{id} has no '='.");
+            pos = SkipBlank(text, pos + 1);
+            if (pos < text.Length && text[pos] == '(') { pos = SkipStatement(text, pos); continue; } // complex entity instance: not used for structure here
+            var kwStart = pos;
+            while (pos < text.Length && (char.IsAsciiLetterOrDigit(text[pos]) || text[pos] == '_')) pos++;
+            var keyword = text.AsSpan(kwStart, pos - kwStart);
+            var wanted = Wanted(keyword);
+            if (!wanted) { pos = SkipStatement(text, pos); continue; }
+            pos = SkipBlank(text, pos);
+            var args = ParseList(text, ref pos, 0, id);
+            pos = SkipBlank(text, pos);
+            if (pos >= text.Length || text[pos] != ';') throw new StructureFormatException($"Entity #{id} is not terminated by ';'.");
+            pos++;
+            var name = keyword.ToString().ToUpperInvariant();
+            switch (name)
+            {
+                case "PRODUCT":
+                    products[id] = new Product(Text(args, 0) ?? "", Text(args, 1) ?? "");
+                    break;
+                case "PRODUCT_DEFINITION_FORMATION" or "PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE":
+                    if (Reference(args, 2) is { } p) formations[id] = new Formation(p, args.Count > 3 && args[3] is Enumeration e ? e.Name : null);
+                    break;
+                case "PRODUCT_DEFINITION":
+                    if (Reference(args, 2) is { } f) definitions[id] = f;
+                    break;
+                default: // NEXT_ASSEMBLY_USAGE_OCCURRENCE, SPECIFIED_HIGHER_USAGE_OCCURRENCE, ASSEMBLY_COMPONENT_USAGE
+                    if (Reference(args, 3) is { } parent && Reference(args, 4) is { } child)
+                        occurrences.Add(new Occurrence(Text(args, 0) ?? "", parent, child, Text(args, 5)));
+                    break;
+            }
+        }
+        if (products.Count == 0) throw new StructureFormatException("The STEP file has no PRODUCT entities.");
+
+        int? ProductOf(int definition) =>
+            definitions.TryGetValue(definition, out var fm) && formations.TryGetValue(fm, out var fo) && products.ContainsKey(fo.ProductId) ? fo.ProductId : null;
+
+        // Aggregate occurrences: one line per (parent product, child product).
+        var lineMap = new Dictionary<(int, int), (int Count, List<string> Refs, List<string> Notes, string? Find, List<string> Ids)>();
+        var order = new List<(int, int)>();
+        foreach (var o in occurrences)
+        {
+            if (ProductOf(o.ParentDefinition) is not { } pp || ProductOf(o.ChildDefinition) is not { } cp) continue;
+            if (!lineMap.TryGetValue((pp, cp), out var agg)) { agg = (0, [], [], null, []); order.Add((pp, cp)); }
+            var refs = agg.Refs; var notes = agg.Notes; var ids = agg.Ids;
+            if (!string.IsNullOrWhiteSpace(o.Designator))
+            {
+                var d = o.Designator.Trim();
+                if (DesignatorPattern().IsMatch(d)) refs.Add(d); else notes.Add(d.Length > 80 ? d[..80] : d);
+            }
+            ids.Add(o.Id);
+            lineMap[(pp, cp)] = (agg.Count + 1, refs, notes, agg.Find, ids);
+        }
+        var parents = order.Select(k => k.Item1).ToHashSet();
+        var childrenSet = order.Select(k => k.Item2).ToHashSet();
+
+        int rootId;
+        var roots = products.Keys.Where(k => (parents.Contains(k) || order.Count == 0) && !childrenSet.Contains(k)).OrderBy(k => k).ToList();
+        if (!string.IsNullOrWhiteSpace(options.RootNumber))
+        {
+            var wantedRoot = options.RootNumber.Trim();
+            var hit = products.Where(kv => kv.Value.Id == wantedRoot && (parents.Contains(kv.Key) || order.Count == 0 || childrenSet.Contains(kv.Key))).Select(kv => kv.Key).ToList();
+            rootId = hit.Count == 1 ? hit[0] : throw new StructureFormatException($"The STEP file has no single product with the number '{Trunc(wantedRoot)}'.");
+        }
+        else if (roots.Count == 1) rootId = roots[0];
+        else
+            throw new StructureFormatException(roots.Count == 0 ? "The STEP file has no top-level product."
+                : $"The STEP file has {roots.Count} top-level products ({string.Join(", ", roots.Take(5).Select(r => Trunc(products[r].Id)))}); give the number of the one to import as the root.");
+
+        // Keep what is reachable from the chosen root.
+        var reachable = new HashSet<int> { rootId };
+        var stack = new Stack<int>([rootId]);
+        var byParent = order.GroupBy(k => k.Item1).ToDictionary(g => g.Key, g => g.Select(k => k.Item2).ToList());
+        while (stack.Count > 0)
+            foreach (var c in byParent.GetValueOrDefault(stack.Pop()) ?? [])
+                if (reachable.Add(c)) stack.Push(c);
+
+        var makeOrBuy = new Dictionary<int, string?>();
+        foreach (var fo in formations.Values) makeOrBuy.TryAdd(fo.ProductId, fo.MakeOrBuy);
+        var parts = reachable.OrderBy(k => k).Select(k =>
+        {
+            var pr = products[k];
+            var number = string.IsNullOrWhiteSpace(pr.Id) ? null : pr.Id.Trim();
+            var name = string.IsNullOrWhiteSpace(pr.Name) ? number ?? $"Product #{k}" : pr.Name.Trim();
+            var source = makeOrBuy.GetValueOrDefault(k) switch { { } s when s.Contains("BOUGHT", StringComparison.Ordinal) => "Buy", { } s when s.Contains("MADE", StringComparison.Ordinal) => "Make", _ => null };
+            return new StructurePart("#" + k.ToString(CultureInfo.InvariantCulture), number, name.Length > 200 ? name[..200] : name, byParent.ContainsKey(k) ? "Assembly" : null, null, source,
+                new Dictionary<string, string>(), []);
+        }).ToList();
+
+        var lines = new List<StructureLine>();
+        foreach (var group in order.Where(k => reachable.Contains(k.Item1)).GroupBy(k => k.Item1))
+        {
+            var usedFinds = new HashSet<int>();
+            foreach (var key in group)
+            {
+                var agg = lineMap[key];
+                int? find = null;
+                if (agg.Ids.Count == 1 && int.TryParse(agg.Ids[0], NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n is >= 1 and <= 999_999 && usedFinds.Add(n)) find = n;
+                lines.Add(new StructureLine("#" + key.Item1.ToString(CultureInfo.InvariantCulture), "#" + key.Item2.ToString(CultureInfo.InvariantCulture), agg.Count, null, find,
+                    [.. agg.Refs.Distinct(StringComparer.Ordinal)], agg.Notes.Count == 0 ? null : string.Join("; ", agg.Notes.Distinct(StringComparer.Ordinal))));
+            }
+        }
+        return new StructureModel(protocol, "#" + rootId.ToString(CultureInfo.InvariantCulture), parts, lines);
+    }
+
+    private static bool Wanted(ReadOnlySpan<char> keyword) =>
+        keyword.Equals("PRODUCT", StringComparison.OrdinalIgnoreCase) || keyword.Equals("PRODUCT_DEFINITION", StringComparison.OrdinalIgnoreCase)
+        || keyword.Equals("PRODUCT_DEFINITION_FORMATION", StringComparison.OrdinalIgnoreCase)
+        || keyword.Equals("PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE", StringComparison.OrdinalIgnoreCase)
+        || keyword.Equals("NEXT_ASSEMBLY_USAGE_OCCURRENCE", StringComparison.OrdinalIgnoreCase)
+        || keyword.Equals("SPECIFIED_HIGHER_USAGE_OCCURRENCE", StringComparison.OrdinalIgnoreCase)
+        || keyword.Equals("ASSEMBLY_COMPONENT_USAGE", StringComparison.OrdinalIgnoreCase);
+
+    private static string Trunc(string s) => s.Length <= 40 ? s : s[..40] + "...";
+
+    private static string? Text(List<object?> args, int i) => i < args.Count ? args[i] as string : null;
+    private static int? Reference(List<object?> args, int i) => i < args.Count && args[i] is Ref r ? r.Id : null;
+
+    private static int IndexOfKeyword(string text, string keyword, int from)
+    {
+        var at = from;
+        while ((at = text.IndexOf(keyword, at, StringComparison.Ordinal)) >= 0)
+        {
+            var end = at + keyword.Length;
+            var before = at == 0 || !(char.IsAsciiLetterOrDigit(text[at - 1]) || text[at - 1] == '_');
+            var after = end < text.Length && SkipBlank(text, end) is var q && q < text.Length && text[q] == ';';
+            if (before && after) return at;
+            at = end;
+        }
+        return -1;
+    }
+
+    /// <summary>Skips whitespace and <c>/* comments */</c>.</summary>
+    private static int SkipBlank(string text, int pos)
+    {
+        while (pos < text.Length)
+        {
+            if (char.IsWhiteSpace(text[pos])) pos++;
+            else if (text[pos] == '/' && pos + 1 < text.Length && text[pos + 1] == '*')
+            {
+                var end = text.IndexOf("*/", pos + 2, StringComparison.Ordinal);
+                if (end < 0) throw new StructureFormatException("A comment in the STEP file is not closed.");
+                pos = end + 2;
+            }
+            else break;
+        }
+        return pos;
+    }
+
+    /// <summary>Skips to just after the ';' that ends the current statement, honouring string literals and comments.</summary>
+    private static int SkipStatement(string text, int pos)
+    {
+        while (pos < text.Length)
+        {
+            var c = text[pos];
+            if (c == '\'')
+            {
+                pos++;
+                while (pos < text.Length)
+                {
+                    if (text[pos] == '\'') { if (pos + 1 < text.Length && text[pos + 1] == '\'') { pos += 2; continue; } break; }
+                    pos++;
+                }
+                pos++;
+            }
+            else if (c == '/' && pos + 1 < text.Length && text[pos + 1] == '*') pos = SkipBlank(text, pos);
+            else if (c == ';') return pos + 1;
+            else pos++;
+        }
+        throw new StructureFormatException("The STEP file ends inside an entity.");
+    }
+
+    private static List<object?> ParseList(string text, ref int pos, int depth, int entity)
+    {
+        if (depth > MaxNesting) throw new StructureFormatException($"Entity #{entity} is nested too deeply.");
+        if (pos >= text.Length || text[pos] != '(') throw new StructureFormatException($"Entity #{entity} has no argument list.");
+        pos++;
+        var items = new List<object?>();
+        pos = SkipBlank(text, pos);
+        if (pos < text.Length && text[pos] == ')') { pos++; return items; }
+        while (true)
+        {
+            pos = SkipBlank(text, pos);
+            if (pos >= text.Length) throw new StructureFormatException($"Entity #{entity} ends inside its arguments.");
+            var c = text[pos];
+            object? value;
+            if (c == '\'') value = ParseString(text, ref pos, entity);
+            else if (c == '#')
+            {
+                var s = ++pos;
+                while (pos < text.Length && char.IsAsciiDigit(text[pos])) pos++;
+                value = int.TryParse(text.AsSpan(s, pos - s), NumberStyles.None, CultureInfo.InvariantCulture, out var r) ? new Ref(r) : throw new StructureFormatException($"Entity #{entity} has a bad reference.");
+            }
+            else if (c is '$' or '*') { pos++; value = null; }
+            else if (c == '.')
+            {
+                var end = text.IndexOf('.', pos + 1);
+                if (end < 0) throw new StructureFormatException($"Entity #{entity} has an unclosed enumeration.");
+                value = new Enumeration(text.Substring(pos + 1, end - pos - 1).ToUpperInvariant());
+                pos = end + 1;
+            }
+            else if (c == '(') value = ParseList(text, ref pos, depth + 1, entity);
+            else
+            {
+                var s = pos;
+                while (pos < text.Length && text[pos] is not (',' or ')' or '(')) pos++;
+                var token = text.AsSpan(s, pos - s).Trim().ToString();
+                if (pos < text.Length && text[pos] == '(') { _ = ParseList(text, ref pos, depth + 1, entity); value = null; } // typed value such as LABEL('x'): not needed
+                else value = token;
+            }
+            items.Add(value);
+            pos = SkipBlank(text, pos);
+            if (pos >= text.Length) throw new StructureFormatException($"Entity #{entity} ends inside its arguments.");
+            if (text[pos] == ',') { pos++; continue; }
+            if (text[pos] == ')') { pos++; return items; }
+            throw new StructureFormatException($"Entity #{entity} has an unexpected character in its arguments.");
+        }
+    }
+
+    private static string ParseString(string text, ref int pos, int entity)
+    {
+        var sb = new StringBuilder();
+        pos++;
+        while (true)
+        {
+            if (pos >= text.Length) throw new StructureFormatException($"Entity #{entity} has an unterminated string.");
+            var c = text[pos];
+            if (c == '\'')
+            {
+                if (pos + 1 < text.Length && text[pos + 1] == '\'') { sb.Append('\''); pos += 2; continue; }
+                pos++;
+                break;
+            }
+            if (c == '\\' && pos + 3 < text.Length && text[pos + 1] == 'X' && text[pos + 2] == '2' && text[pos + 3] == '\\')
+            {
+                var end = text.IndexOf("\\X0\\", pos + 4, StringComparison.Ordinal);
+                if (end > 0 && (end - pos - 4) % 4 == 0)
+                {
+                    for (var h = pos + 4; h < end; h += 4)
+                        if (int.TryParse(text.AsSpan(h, 4), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var code)) sb.Append((char)code);
+                    pos = end + 4;
+                    continue;
+                }
+            }
+            if (c == '\\' && pos + 1 < text.Length && text[pos + 1] == '\\') { sb.Append('\\'); pos += 2; continue; }
+            sb.Append(c);
+            pos++;
+        }
+        return sb.ToString();
+    }
+}

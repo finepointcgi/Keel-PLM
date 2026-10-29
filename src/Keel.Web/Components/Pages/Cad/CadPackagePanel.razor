@@ -1,0 +1,84 @@
+@inject CurrentUser Users
+@inject CadGraphService Graph
+
+@* The CAD view of a document: what it was built against (with stale flags), what uses it, and the parts it is the model or drawing of.
+   Everything is read through the viewer's access; the aggregate banner of what is shown goes to the page (ADR-0035). *@
+<section class="panel stack" aria-labelledby="cad-heading">
+    <h3 id="cad-heading">CAD package</h3>
+    @if (notFound)
+    {
+        <p class="muted">No CAD information is available for this document.</p>
+    }
+    else if (view is null)
+    {
+        <Skeleton Lines="3" Label="Loading the CAD package" />
+    }
+    else
+    {
+        <p>
+            CAD role:
+            @if (view.Registered) { <strong>@RoleLabel(view.CadRole)</strong> }
+            else { <span class="muted">not registered (a connector registers it at the first check-in)</span> }
+        </p>
+        @if (view.StaleCount > 0)
+        {
+            <p class="callout" role="status" data-testid="stale-summary">This document was built against an older version of @view.StaleCount document@(view.StaleCount == 1 ? "" : "s"). Check it out with its model through a CAD connector and check it in again to refresh it.</p>
+        }
+        @if (view.RedactedCount > 0)
+        {
+            <p class="muted small">@view.RedactedCount related document@(view.RedactedCount == 1 ? " is" : "s are") not shown because you are not authorized to see @(view.RedactedCount == 1 ? "it" : "them").</p>
+        }
+
+        <h4>Built against</h4>
+        @if (view.Uses.Count == 0) { <p class="muted">This version references no other CAD document.</p> }
+        else { <DependencyTree Nodes="view.Uses" /> }
+
+        <h4>Used by</h4>
+        @if (view.UsedBy.Count == 0) { <p class="muted">No CAD document references this one.</p> }
+        else { <DependencyTree Nodes="view.UsedBy" /> }
+
+        <h4>Parts</h4>
+        @if (view.Parts.Count == 0) { <p class="muted">Not associated with a part.</p> }
+        else
+        {
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Parts this document is the model or drawing of</caption>
+                <thead><tr><th scope="col">Relation</th><th scope="col">Part</th></tr></thead>
+                <tbody>
+                @foreach (var a in view.Parts)
+                {
+                    <tr>
+                        <td>@(a.Kind == "model-of" ? "Model of" : "Drawing of")</td>
+                        <td>
+                            @if (a.Redacted) { <span class="muted">A part you are not authorized to see</span> }
+                            else { <a href="parts/@Uri.EscapeDataString(a.PartNumber!)">@a.PartNumber</a><span> @a.PartName</span> }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>The aggregate banner of the document and everything shown, so the page banner covers the whole tab.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    private CadPackageView? view;
+    private bool notFound;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var outcome = await Graph.GetPackageAsync(await Users.GetAsync(), Number, 5, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        view = outcome.Value;
+        if (view is not null) await OnBanner.InvokeAsync(view.Banner);
+    }
+
+    private static string RoleLabel(string? role) => role switch
+    {
+        "model" => "Model", "drawing" => "Drawing", "derived-pdf" => "Derived PDF", "step" => "STEP file", _ => role ?? "",
+    };
+}

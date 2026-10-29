@@ -1,0 +1,37 @@
+@* One level of the CAD dependency tree; nodes render their children with the same component. A node the viewer may not read shows only that it exists (A4).
+   Staleness is stated in words as well as by the badge, so it does not rely on colour. *@
+<ul class="cad-tree">
+    @foreach (var n in Nodes)
+    {
+        <li>
+            @if (n.Redacted)
+            {
+                <span class="muted">A document you are not authorized to see</span>
+                @if (n.Stale) { <span class="badge">Stale</span> }
+            }
+            else
+            {
+                <a href="documents/@Uri.EscapeDataString(n.Number!)">@n.Number</a>
+                <span> @n.Name</span>
+                <span class="badge">@Role(n.CadRole)</span>
+                <span class="badge">Version @n.Revision.@n.Iteration</span>
+                @if (n.Stale)
+                {
+                    <span class="badge" data-testid="stale-badge">Stale</span>
+                    <span class="small">built against @n.SeenRevision.@n.SeenIteration, now @n.Revision.@n.Iteration</span>
+                }
+                @if (n.Cycle) { <span class="badge">Loop</span> }
+            }
+            @if (n.Children.Count > 0) { <DependencyTree Nodes="n.Children" /> }
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<DependencyNode> Nodes { get; set; }
+
+    private static string Role(string? role) => role switch
+    {
+        "model" => "Model", "drawing" => "Drawing", "derived-pdf" => "PDF", "step" => "STEP", _ => role ?? "",
+    };
+}

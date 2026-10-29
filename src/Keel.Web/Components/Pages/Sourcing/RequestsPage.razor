@@ -1,0 +1,76 @@
+@page "/requests"
+@inject CurrentUser Users
+@inject RequestService Requests
+
+<PageFrame Banner="@(result?.Banner ?? UiText.Unclassified)" Title="Supplier requests" Crumbs="@Crumbs">
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search requests" placeholder="Number or title" class="grow" @bind="text" />
+        <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
+            <option value="">Any state</option>
+            <option value="Draft">Draft</option>
+            <option value="Issued">Issued</option>
+            <option value="Closed">Closed</option>
+            <option value="Cancelled">Cancelled</option>
+        </select>
+        <button type="submit">Search</button>
+        <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+            <a class="button secondary" href="requests/new">New request</a>
+        </AuthorizeView>
+    </form>
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total request@(result.Total == 1 ? "" : "s") you can access</p>
+        <DataTable TItem="RequestSummary" TableId="requests" Items="result.Items" Columns="Columns" Caption="Requests to suppliers" OnServerSort="OnSort" ServerSort="sort">
+            <Empty>
+                <EmptyState Title="@(text.Length > 0 || state != "" ? "No requests match" : "No requests yet")" IconName="inbox">
+                    Ask suppliers for information or a quotation on selected parts. They answer through the supplier portal.
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+    private string text = "", state = "";
+    private int offset;
+    private RequestPage? result;
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Supplier requests")];
+
+    private static readonly IReadOnlyList<DataColumn<RequestSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = r => @<a href="@SourcingUi.RequestHref(r.Number)">@r.Number</a> },
+        new() { Key = "kind", Title = "Kind", ServerSortKey = "kind", Text = r => RequestKinds.Label(r.Kind) },
+        new() { Key = "title", Title = "Title", ServerSortKey = "title", Text = r => r.Title },
+        new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = r => @<span class="badge @SourcingUi.RequestClass(r.State)">@r.State</span> },
+        new() { Key = "due", Title = "Due", ServerSortKey = "due", Text = r => SourcingUi.Date(r.DueOn) },
+        new() { Key = "recipients", Title = "Answered", Text = r => $"{r.Responded} of {r.Recipients}" },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = r => @<MarkingChip Text="@r.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = RequestService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        var outcome = await Requests.SearchAsync(await Users.GetAsync(), new RequestSearch(text, state == "" ? null : state, PageSize, offset, sort), CurrentUser.NewCorrelationId());
+        result = outcome.Value;
+    }
+}

@@ -1,0 +1,208 @@
+@inject CurrentUser Users
+@inject SourcingService Sourcing
+
+@* The Sourcing tab of a part: its approved manufacturer list (AML) and approved vendor list (AVL), alternates and replacements. Entries need a review before they count. *@
+@if (notFound)
+{
+    <p class="error" role="alert">Sourcing for this part is not available to you.</p>
+}
+else if (data is not null)
+{
+    <section class="panel stack" aria-labelledby="sourcing-heading">
+        <h2 id="sourcing-heading">Sourcing</h2>
+        <p>
+            <span class="badge @SourcingUi.BucketClass(data.Coverage)">@CoverageBuckets.Label(data.Coverage)</span>
+            <span class="muted small">Only active entries inside their dates, of approved suppliers in good standing, count as a source.</span>
+        </p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @foreach (var kind in new[] { SourceKinds.Aml, SourceKinds.Avl })
+        {
+            var rows = data.Entries.Where(e => e.Kind == kind).ToList();
+            <h3>@(kind == SourceKinds.Aml ? "Approved manufacturers" : "Approved vendors")</h3>
+            @if (rows.Count == 0)
+            {
+                <p class="muted">@(kind == SourceKinds.Aml ? "No manufacturer part numbers are listed for this part." : "No vendors are listed for this part.")</p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <caption class="visually-hidden">@(kind == SourceKinds.Aml ? "Approved manufacturers" : "Approved vendors") of the part</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Entry</th><th scope="col">@(kind == SourceKinds.Aml ? "Manufacturer" : "Vendor")</th><th scope="col">Manufacturer part</th><th scope="col">Status</th>
+                                <th scope="col">Approval</th><th scope="col">Dates</th>@if (kind == SourceKinds.Avl) { <th scope="col">Vendor data</th> }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in rows)
+                            {
+                                <tr>
+                                    <th scope="row"><a href="@SourcingUi.EntryHref(e.Number)">@e.Number</a></th>
+                                    <td><a href="@SourcingUi.SupplierHref(e.SupplierNumber)">@e.SupplierName</a> <span class="badge @SourcingUi.StatusClass(e.SupplierStatus)">@SupplierStatuses.Label(e.SupplierStatus)</span></td>
+                                    <td>@(e.Mpn ?? "")@(e.ManufacturerName is not null && kind == SourceKinds.Avl ? $" ({e.ManufacturerName})" : "")</td>
+                                    <td>@e.StatusLabel@(e.RevisionScope is null ? "" : $" (revision {e.RevisionScope})")</td>
+                                    <td><span class="badge @SourcingUi.EntryClass(e.ApprovalState)">@e.ApprovalLabel</span>@(e.Effective ? "" : e.ApprovalState == EntryApprovalStates.Active ? " (not in effect)" : "")</td>
+                                    <td>@(e.EffectiveFrom is null && e.EffectiveTo is null ? "No limit" : $"{SourcingUi.Date(e.EffectiveFrom)} to {(e.EffectiveTo is null ? "open" : SourcingUi.Date(e.EffectiveTo))}")</td>
+                                    @if (kind == SourceKinds.Avl)
+                                    {
+                                        <td>@(e.VendorPartNumber ?? "")@(e.LeadTimeDays is null ? "" : $" · {e.LeadTimeDays} days")@(e.Moq is null ? "" : $" · minimum {e.Moq:0.####}")@(e.PriceBreaks.Count == 0 ? "" : $" · {e.PriceBreaks.Count} price break{(e.PriceBreaks.Count == 1 ? "" : "s")}")</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+
+        <h3>Alternates and replacements</h3>
+        @if (data.Relations.Count == 0) { <p class="muted">No alternate or replacement parts are recorded.</p> }
+        else
+        {
+            <ul class="plain" aria-label="Alternates and replacements">
+                @foreach (var r in data.Relations)
+                {
+                    <li>
+                        @r.Direction <a href="@($"parts/{Uri.EscapeDataString(r.PartNumber)}")">@r.PartNumber</a> @r.PartName
+                        @if (r.Note is not null) { <span class="muted">· @r.Note</span> }
+                        <MarkingChip Text="@r.Banner" />
+                        @if (data.CanModify) { <button type="button" class="link" aria-label="Remove relation with @r.PartNumber" @onclick="() => RemoveRelation(r.Id)">Remove</button> }
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+
+    @if (data.CanModify)
+    {
+        <EditForm Model="this" OnSubmit="AddEntry" FormName="add-source-entry" class="panel stack">
+            <h3>Add a list entry</h3>
+            <p class="muted small">A new entry is a draft. Submit it for review from its page; it counts only after the approvers sign. A foreign supplier cannot be listed for an ITAR-marked part.</p>
+            <div class="grid-form">
+                <label>
+                    List
+                    <InputSelect @bind-Value="kind">
+                        <option value="aml">Approved manufacturers (AML)</option>
+                        <option value="avl">Approved vendors (AVL)</option>
+                    </InputSelect>
+                </label>
+                <label>@(kind == "aml" ? "Manufacturer number *" : "Vendor number *") <InputText @bind-Value="supplier" placeholder="SUP-000001" required /></label>
+                <label>Manufacturer part number @(kind == "aml" ? "*" : "") <InputText @bind-Value="mpn" maxlength="60" /></label>
+                @if (kind == "avl") { <label>Manufacturer of that part (when given) <InputText @bind-Value="manufacturer" placeholder="SUP-000002" /></label> }
+                <label>
+                    Status
+                    <InputSelect @bind-Value="status">@foreach (var s in EntryStatuses.All) { <option value="@s">@EntryStatuses.Label(s)</option> }</InputSelect>
+                </label>
+                <label>Only for revision <InputText @bind-Value="scope" maxlength="3" placeholder="all revisions" /></label>
+                <label>Effective from <InputDate @bind-Value="from" /></label>
+                <label>Effective until <InputDate @bind-Value="to" /></label>
+                @if (kind == "avl")
+                {
+                    <label>Vendor part number <InputText @bind-Value="vendorPart" maxlength="60" /></label>
+                    <label>Lead time (days) <InputNumber @bind-Value="leadTime" /></label>
+                    <label>Minimum order quantity <InputNumber @bind-Value="moq" /></label>
+                    <label>Currency <InputText @bind-Value="currency" maxlength="3" placeholder="USD" /></label>
+                    <label class="wide">Price breaks (quantity:price, comma-separated, for example 100:2.50, 1000:2.10) <InputText @bind-Value="breaks" /></label>
+                }
+                <label class="wide">Note <InputText @bind-Value="note" maxlength="500" /></label>
+            </div>
+            <div class="toolbar"><button type="submit" disabled="@busy">Add draft entry</button></div>
+        </EditForm>
+        <EditForm Model="this" OnSubmit="AddRelation" FormName="add-part-relation" class="panel stack">
+            <h3>Relate another part</h3>
+            <div class="grid-form">
+                <label>Part number * <InputText @bind-Value="relatedPart" placeholder="P-000002" required /></label>
+                <label>
+                    Relation
+                    <InputSelect @bind-Value="relation">
+                        <option value="alternate">Is an alternate of this part</option>
+                        <option value="replaces">Is replaced by this part (this part replaces it)</option>
+                    </InputSelect>
+                </label>
+                <label class="wide">Note <InputText @bind-Value="relationNote" maxlength="500" /></label>
+            </div>
+            <div class="toolbar"><button type="submit" disabled="@busy">Add relation</button></div>
+        </EditForm>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public required string PartNumber { get; set; }
+    /// <summary>The banner of everything this tab shows (the part, the suppliers and the related parts).</summary>
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private PartSourcing? data;
+    private bool notFound, busy;
+    private string? error;
+    private string kind = "avl", supplier = "", mpn = "", manufacturer = "", status = "approved", scope = "", vendorPart = "", currency = "", breaks = "", note = "";
+    private string relatedPart = "", relation = "alternate", relationNote = "";
+    private DateTime? from, to;
+    private int? leadTime;
+    private decimal? moq;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Sourcing.GetPartSourcingAsync(await Users.GetAsync(), PartNumber, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        data = outcome.Value;
+        await OnBanner.InvokeAsync(data?.Banner);
+    }
+
+    private static IReadOnlyList<PriceBreak>? ParseBreaks(string text, out string? problem)
+    {
+        problem = null;
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var list = new List<PriceBreak>();
+        foreach (var part in text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var bits = part.Split(':', StringSplitOptions.TrimEntries);
+            if (bits.Length != 2 || !decimal.TryParse(bits[0], System.Globalization.CultureInfo.InvariantCulture, out var q) || !decimal.TryParse(bits[1], System.Globalization.CultureInfo.InvariantCulture, out var p))
+            {
+                problem = $"'{part}' is not a price break. Write quantity:price, for example 100:2.50.";
+                return null;
+            }
+            list.Add(new PriceBreak(q, p));
+        }
+        return list;
+    }
+
+    private async Task AddEntry()
+    {
+        error = null;
+        string? problem = null;
+        var parsed = kind == "avl" ? ParseBreaks(breaks, out problem) : null;
+        if (problem is not null) { error = problem; return; }
+        busy = true;
+        var outcome = await Sourcing.CreateEntryAsync(await Users.GetAsync(),
+            new CreateEntryCommand(kind, PartNumber, scope, supplier, string.IsNullOrWhiteSpace(mpn) ? null : mpn, string.IsNullOrWhiteSpace(manufacturer) ? null : manufacturer, status,
+                from is null ? null : DateOnly.FromDateTime(from.Value), to is null ? null : DateOnly.FromDateTime(to.Value), vendorPart, kind == "avl" ? leadTime : null, kind == "avl" ? moq : null,
+                currency, parsed, note), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        (supplier, mpn, manufacturer, scope, vendorPart, currency, breaks, note) = ("", "", "", "", "", "", "", "");
+        from = to = null;
+        await Load();
+    }
+
+    private async Task AddRelation()
+    {
+        busy = true; error = null;
+        var outcome = await Sourcing.AddRelationAsync(await Users.GetAsync(), PartNumber, relatedPart, relation, relationNote, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        (relatedPart, relationNote) = ("", "");
+        await Load();
+    }
+
+    private async Task RemoveRelation(Guid id)
+    {
+        busy = true; error = null;
+        var outcome = await Sourcing.RemoveRelationAsync(await Users.GetAsync(), PartNumber, id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await Load();
+    }
+}

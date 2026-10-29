@@ -1,0 +1,68 @@
+@page "/requests/new"
+@inject CurrentUser Users
+@inject RequestService Requests
+@inject NavigationManager Nav
+
+@* A blank form shows no controlled data; the markings being entered appear on the created request. *@
+<PageFrame Banner="@UiText.Unclassified" Title="New supplier request" Crumbs="@Crumbs">
+    <EditForm Model="this" OnSubmit="Create" FormName="new-request" class="stack">
+        <fieldset class="grid-form">
+            <legend>Request</legend>
+            <label>
+                Kind
+                <InputSelect @bind-Value="kind">
+                    <option value="rfq">Request for quotation</option>
+                    <option value="rfi">Request for information</option>
+                </InputSelect>
+            </label>
+            <label>Respond by <InputDate @bind-Value="due" /></label>
+            <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
+            <label class="wide">Description for the suppliers <InputTextArea @bind-Value="description" rows="4" maxlength="4000" /></label>
+            <label class="wide">Parts * (one per line: part number, then quantity; for example P-000001 100) <InputTextArea @bind-Value="partsText" rows="4" required /></label>
+            <label class="wide">Suppliers * (supplier numbers, separated by commas or blanks) <InputText @bind-Value="suppliersText" placeholder="SUP-000001, SUP-000002" required /></label>
+        </fieldset>
+        <fieldset class="grid-form">
+            <legend>Security markings</legend>
+            <p class="muted wide small">The markings of the request must cover every part it lists. A supplier receives the request only when its clearance profile allows these markings and each part; a foreign supplier never receives ITAR-marked parts.</p>
+            <MarkingsFields Value="markings" />
+        </fieldset>
+        @if (errors is not null)
+        {
+            <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+        }
+        <div class="toolbar"><button type="submit" disabled="@busy">Create draft request</button> <a class="button secondary" href="requests">Cancel</a></div>
+    </EditForm>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Supplier requests", "requests"), new("New request")];
+    private string kind = "rfq", title = "", description = "", partsText = "", suppliersText = "";
+    private DateTime? due;
+    private bool busy;
+    private IReadOnlyList<string>? errors;
+    private readonly MarkingsInput markings = new()
+    {
+        ExportJurisdiction = ExportJurisdiction.None, Eccn = "", UsmlCategory = "", CuiCategories = "", DistributionStatement = DistributionStatement.A,
+        ControllingOffice = "", DistributionReason = "", Program = "", OwningOrg = "ENG", ExportAuthorizations = "",
+    };
+
+    private async Task Create()
+    {
+        errors = null;
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        var parts = new List<RequestPartInput>();
+        foreach (var line in partsText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var bits = line.Split([' ', ',', '\t', ';'], StringSplitOptions.RemoveEmptyEntries);
+            if (bits.Length != 2 || !decimal.TryParse(bits[1], System.Globalization.CultureInfo.InvariantCulture, out var qty)) { errors = [$"'{line}' is not a part line. Write the part number, then the quantity."]; return; }
+            parts.Add(new RequestPartInput(bits[0], qty));
+        }
+        var suppliers = suppliersText.Split([',', ' ', '\n', ';', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToList();
+        busy = true;
+        var outcome = await Requests.CreateAsync(await Users.GetAsync(), new CreateRequestCommand(kind, title, description, due is null ? null : DateOnly.FromDateTime(due.Value), m.Value, parts, suppliers), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { errors = outcome.Kind == OutcomeKind.Forbidden ? outcome.Errors.Select(UiText.Reason).ToList() : outcome.Errors; return; }
+        Nav.NavigateTo(SourcingUi.RequestHref(outcome.Value!.Summary.Number));
+    }
+}

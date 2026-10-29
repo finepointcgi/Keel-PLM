@@ -1,0 +1,95 @@
+@inject CurrentUser Users
+@inject SupplierService Suppliers
+
+<section class="panel stack" aria-labelledby="certs-heading">
+    <h2 id="certs-heading">Certifications</h2>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (Detail.Certifications.Count == 0)
+    {
+        <p class="muted">No certifications are recorded. Add the supplier's quality approvals (AS9100, ISO 9001, NADCAP) with their expiry dates; the system warns 60, 30 and 7 days before one expires.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <caption class="visually-hidden">Certifications of the supplier</caption>
+                <thead><tr><th scope="col">Type</th><th scope="col">Certificate</th><th scope="col">Issuer</th><th scope="col">Issued</th><th scope="col">Expires</th><th scope="col">Standing</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                    @foreach (var c in Detail.Certifications)
+                    {
+                        <tr>
+                            <th scope="row">@c.Type</th>
+                            <td>@c.Number@(c.Scope is null ? "" : $" · {c.Scope}")</td>
+                            <td>@c.Issuer</td>
+                            <td>@SourcingUi.Date(c.IssuedOn)</td>
+                            <td>@SourcingUi.Date(c.ExpiresOn)</td>
+                            <td><span class="badge @SourcingUi.StandingClass(c.Standing)">@CertStandings.Label(c.Standing)</span> <span class="muted small">@SourcingUi.Countdown(c)</span></td>
+                            <td>
+                                @if (Detail.Permissions.CanModify && !c.Revoked)
+                                {
+                                    <button type="button" class="link" aria-label="Revoke @c.Type certificate @c.Number" @onclick="() => revoking = c">Revoke</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    @if (revoking is not null)
+    {
+        <div class="toolbar">
+            <input aria-label="Reason for revoking" placeholder="Reason for revoking (required)" class="grow" @bind="reason" />
+            <button type="button" disabled="@busy" @onclick="Revoke">Revoke @revoking.Type</button>
+            <button type="button" class="secondary" @onclick="() => revoking = null">Cancel</button>
+        </div>
+    }
+    @if (Detail.Permissions.CanModify && Detail.Summary.Status != SupplierStatuses.Obsolete)
+    {
+        <EditForm Model="this" OnSubmit="Add" FormName="add-certification" class="stack">
+            <h3>Add a certification</h3>
+            <div class="grid-form">
+                <label>Type * <InputText @bind-Value="type" list="cert-types" maxlength="30" required /></label>
+                <datalist id="cert-types"><option value="AS9100"></option><option value="ISO9001"></option><option value="NADCAP"></option><option value="ISO14001"></option><option value="ISO13485"></option></datalist>
+                <label>Certificate number * <InputText @bind-Value="number" maxlength="80" required /></label>
+                <label>Issuer * <InputText @bind-Value="issuer" maxlength="120" required /></label>
+                <label>Issued on * <InputDate @bind-Value="issued" /></label>
+                <label>Expires on * <InputDate @bind-Value="expires" /></label>
+                <label class="wide">Scope <InputText @bind-Value="scope" maxlength="500" /></label>
+            </div>
+            <div class="toolbar"><button type="submit" disabled="@busy">Add certification</button></div>
+        </EditForm>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required SupplierDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string type = "AS9100", number = "", issuer = "", scope = "", reason = "";
+    private DateTime issued = DateTime.UtcNow.Date, expires = DateTime.UtcNow.Date.AddYears(3);
+    private CertificationView? revoking;
+    private bool busy;
+    private string? error;
+
+    private async Task Add()
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.AddCertificationAsync(await Users.GetAsync(), Detail.Summary.Number,
+            new AddCertificationCommand(type, number, issuer, scope, DateOnly.FromDateTime(issued), DateOnly.FromDateTime(expires)), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        (number, issuer, scope) = ("", "", "");
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Revoke()
+    {
+        busy = true; error = null;
+        var outcome = await Suppliers.RevokeCertificationAsync(await Users.GetAsync(), Detail.Summary.Number, revoking!.Id, reason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        revoking = null; reason = "";
+        await OnChanged.InvokeAsync();
+    }
+}
