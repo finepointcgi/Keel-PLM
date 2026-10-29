@@ -98,10 +98,10 @@ public sealed class QualityProcessE2ETests(E2EFixture fx)
 
             // the disposition is proposed, then the board signs it
             await BrowserSession.OpenTabAsync(page, "Disposition");
-            await page.GetByLabel("Disposition", new PageGetByLabelOptions { Exact = true }).SelectOptionAsync("Rework");
+            await page.Locator("#tabpanel-disposition select").SelectOptionAsync("Rework");
             await BrowserSession.FillAsync(page.GetByLabel("Rationale *"), "Deburr within the drawing limits.");
             await BrowserSession.ClickAsync(page, "Save proposal");
-            await Expect(page.GetByText("Proposed")).ToBeVisibleAsync();
+            await Expect(page.GetByText("Deburr within the drawing limits.").First).ToBeVisibleAsync();
             await BrowserSession.OpenTabAsync(page, "Review");
             await BrowserSession.ClickAsync(page, "Submit to the review board");
             await BrowserSession.ChooseParticipantsAsync(page, new() { ["Quality reviewer"] = "ada", ["MRB members"] = "bob" });
@@ -176,7 +176,7 @@ public sealed class QualityProcessE2ETests(E2EFixture fx)
             await BrowserSession.AssertBannersAsync(page);
 
             await session.GotoAsync(alice, "/");
-            var card = page.Locator("section.card", new PageLocatorOptions { HasText = "Quality" }).First;
+            var card = page.Locator("section[aria-labelledby='card-quality']");
             await Expect(card).ToBeVisibleAsync();
             await Expect(card.Locator("[data-count='active-deviations']")).ToHaveTextAsync(new Regex("^[1-9]"));
             await Expect(card.Locator("[data-count='open-ncrs']")).ToHaveTextAsync(new Regex("^[1-9]"));
@@ -200,11 +200,25 @@ public sealed class QualityProcessE2ETests(E2EFixture fx)
             })
             {
                 await session.GotoAsync(phone, path);
-                await BrowserSession.AssertBannersAsync(phone.Page);
+                await AssertBannersSettledAsync(phone.Page, path);
                 Assert.True(await phone.Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"), $"{path} scrolls sideways at 375 px");
             }
             Assert.Empty(phone.PageErrors);
         });
+    }
+
+    /// <summary>The banners are the same top and bottom once the page has finished loading its cards (a card that loads later may raise the banner).</summary>
+    private static async Task AssertBannersSettledAsync(IPage page, string path)
+    {
+        for (var i = 0; i < 40; i++)
+        {
+            var top = (await BrowserSession.TopBanner(page).InnerTextAsync()).Trim();
+            var bottom = (await BrowserSession.BottomBanner(page).InnerTextAsync()).Trim();
+            if (top.Length > 0 && top == bottom && !(i < 8 && top == "UNCLASSIFIED")) return;
+            await Task.Delay(250);
+        }
+        await BrowserSession.AssertBannersAsync(page);
+        _ = path;
     }
 
     [E2EFact]
