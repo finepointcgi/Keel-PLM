@@ -65,7 +65,7 @@ public sealed class TdpService(
             var p = await parts.GetAsync(subject, request.Number.Trim(), request.Revision, correlationId, ct);
             if (!p.IsOk) return Pass<TdpPart, TdpPlan>(p);
             root = p.Value!;
-            var s = await structures.GetPartStructureAsync(subject, root.Number, root.Revision, correlationId, ct);
+            var s = await structures.GetPartStructureAsync(subject, root.Number, root.Revision, correlationId, ct, request.Variant);
             if (!s.IsOk) return Pass<TdpStructure, TdpPlan>(s);
             structure = s.Value!;
             (rootMarkings, rootNumber, rootRevision) = (root.Markings, root.Number, root.Revision);
@@ -214,7 +214,7 @@ public sealed class TdpService(
         var overall = plan.OverallMarkings!;
         var root = await parts.GetAsync(subject, plan.RootNumber, plan.RootRevision, correlationId, ct);
         var structure = plan.Request.ObjectType == TdpObjectTypes.Part
-            ? await structures.GetPartStructureAsync(subject, plan.RootNumber, plan.RootRevision, correlationId, ct)
+            ? await structures.GetPartStructureAsync(subject, plan.RootNumber, plan.RootRevision, correlationId, ct, plan.Request.Variant)
             : await structures.GetBaselineStructureAsync(subject, plan.Request.Number, correlationId, ct);
         if (!root.IsOk || !structure.IsOk || structure.Value!.RedactedCount > 0 || structure.Value.Lines.Count != plan.StructureLines)
             throw new InvalidOperationException("The source data changed while the package was being prepared; export again.");

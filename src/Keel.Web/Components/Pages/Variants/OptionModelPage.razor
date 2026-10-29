@@ -1,0 +1,416 @@
+@page "/options/{Number}"
+@inject CurrentUser Users
+@inject VariantService Variants
+@inject NavigationManager Nav
+
+@* The option model of one product (ADR-0039): options and their values, rules between them, named variants and a combination check. The model is read and changed
+   exactly as the product part is: someone who cannot read the part is told the product was not found. *@
+<PageFrame Banner="@(model?.Banner ?? UiText.Unclassified)" Title="@($"Options and variants: {Number}")" Crumbs="@Crumbs">
+    @if (notFound)
+    {
+        <p class="error" role="alert">@Number has no options, or was not found, or you are not authorized to see it.</p>
+    }
+    else if (model is not null)
+    {
+        <p><a href="parts/@Uri.EscapeDataString(Number)">Back to @Number · @model.ProductName</a></p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (status is not null) { <p class="notice" role="status">@status</p> }
+        <TabSet Tabs="Tabs()" Active="@tab" ActiveChanged="t => { tab = t; return Task.CompletedTask; }" Label="Option sections">
+            @switch (tab)
+            {
+                case "options":
+                    <section class="panel stack" aria-labelledby="summary-heading">
+                        <h3 id="summary-heading">What can be built</h3>
+                        <p>
+                            @RuleEngine.Format(model.ValidCombinations)@(model.AnalysisComplete ? "" : " or more") valid combination@(model.ValidCombinations == 1 ? "" : "s")
+                            of @RuleEngine.Format(model.RawCombinations) possible. Rules take away the combinations that cannot be built.
+                        </p>
+                        @if (model.Findings.Count > 0)
+                        {
+                            <ul class="plain" aria-label="Findings about the options and rules">
+                                @foreach (var f in model.Findings)
+                                {
+                                    <li><span class="badge @VariantUi.SeverityClass(f.Severity)">@VariantUi.SeverityLabel(f.Severity)</span> @f.Message</li>
+                                }
+                            </ul>
+                        }
+                        else { <p class="muted">The options and rules are consistent, and every option can appear in some valid combination.</p> }
+                    </section>
+
+                    @foreach (var f in model.Families)
+                    {
+                        <section class="panel stack" aria-labelledby="@FamId(f)">
+                            <h3 id="@FamId(f)">@f.Name <span class="muted small">(@f.Key)</span>
+                                <span class="badge @(f.Required ? "state-inwork" : "state-underreview")">@(f.Required ? "Required" : "Optional")</span>
+                                @if (f.Retired) { <span class="badge state-obsolete">Retired</span> }</h3>
+                            @if (!string.IsNullOrEmpty(f.Description)) { <p class="muted">@f.Description</p> }
+                            <div class="table-wrap"><table class="data">
+                                <caption class="sr-only">Values of @f.Name</caption>
+                                <thead><tr><th scope="col">Key</th><th scope="col">Name</th><th scope="col">Status</th>@if (model.CanModify) { <th scope="col">Actions</th> }</tr></thead>
+                                <tbody>
+                                @foreach (var v in f.Values)
+                                {
+                                    <tr>
+                                        <td>@v.Key</td><td>@v.Name</td><td>@(v.Retired ? "Retired" : "In use")</td>
+                                        @if (model.CanModify)
+                                        {
+                                            <td>
+                                                <button type="button" class="secondary" disabled="@busy" aria-label="@((v.Retired ? "Restore " : "Retire ") + $"{f.Name} {v.Name}")"
+                                                        @onclick="() => ToggleValue(f, v)">@(v.Retired ? "Restore" : "Retire")</button>
+                                                <button type="button" class="secondary" disabled="@busy" aria-label="@($"Delete {f.Name} {v.Name}")"
+                                                        @onclick="() => AskDeleteValue(f, v)">Delete</button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                                </tbody>
+                            </table></div>
+                            @if (model.CanModify)
+                            {
+                                <form class="toolbar" @onsubmit="() => AddValue(f)" aria-label="@($"Add a value to {f.Name}")">
+                                    <label>Value key * <input @bind="newValueKey[f.Key]" maxlength="40" required autocomplete="off" /></label>
+                                    <label>Name * <input @bind="newValueName[f.Key]" maxlength="120" required /></label>
+                                    <button type="submit" disabled="@busy">Add value</button>
+                                </form>
+                                <div class="toolbar">
+                                    <button type="button" class="secondary" disabled="@busy" aria-label="@((f.Retired ? "Restore " : "Retire ") + $"the option {f.Name}")"
+                                            @onclick="() => ToggleFamilyRetired(f)">@(f.Retired ? "Restore option" : "Retire option")</button>
+                                    <button type="button" class="secondary" disabled="@busy" aria-label="@($"Make {f.Name} {(f.Required ? "optional" : "required")}")"
+                                            @onclick="() => ToggleRequired(f)">Make @(f.Required ? "optional" : "required")</button>
+                                    <button type="button" class="secondary" disabled="@busy" aria-label="@($"Delete the option {f.Name}")"
+                                            @onclick="() => AskDeleteFamily(f)">Delete option</button>
+                                </div>
+                            }
+                        </section>
+                    }
+                    @if (model.Families.Count == 0) { <p class="muted">No options yet.</p> }
+                    @if (model.CanModify)
+                    {
+                        <form class="panel stack" @onsubmit="AddFamily" aria-label="Add an option">
+                            <h3>Add an option</h3>
+                            <p class="muted small">An option is a choice the product comes in, such as Engine, with values such as Turbo and Electric. @OptionExpressions.KeyRule</p>
+                            <div class="grid-form">
+                                <label>Key * <input @bind="newFamilyKey" maxlength="40" required autocomplete="off" /></label>
+                                <label>Name * <input @bind="newFamilyName" maxlength="120" required /></label>
+                                <label class="inline"><input type="checkbox" @bind="newFamilyRequired" /> Every variant must choose a value</label>
+                            </div>
+                            <div class="toolbar"><button type="submit" disabled="@busy">Add option</button></div>
+                        </form>
+                    }
+                    break;
+
+                case "rules":
+                    <section class="panel stack" aria-labelledby="rules-heading">
+                        <h3 id="rules-heading">Rules between options</h3>
+                        @if (model.Rules.Count == 0) { <p class="muted">No rules: every combination of values can be built.</p> }
+                        else
+                        {
+                            <div class="table-wrap"><table class="data">
+                                <caption class="sr-only">Option rules</caption>
+                                <thead><tr><th scope="col">Rule</th><th scope="col">Reason</th>@if (model.CanModify) { <th scope="col">Actions</th> }</tr></thead>
+                                <tbody>
+                                @foreach (var r in model.Rules)
+                                {
+                                    <tr><td>@r.Text</td><td>@r.Reason</td>
+                                        @if (model.CanModify)
+                                        {
+                                            <td><button type="button" class="secondary" disabled="@busy" aria-label="@($"Remove the rule: {r.Text}")"
+                                                        @onclick="() => Run(Variants.DeleteRuleAsync(Subject, Number, r.Id, Corr()), RuleRemoved)">Remove</button></td>
+                                        }
+                                    </tr>
+                                }
+                                </tbody>
+                            </table></div>
+                        }
+                    </section>
+                    @if (model.CanModify && model.Families.Count > 0)
+                    {
+                        <form class="panel stack" @onsubmit="AddRule" aria-label="Add a rule">
+                            <h3>Add a rule</h3>
+                            <p class="muted small">A rule that makes the options inconsistent, or that leaves an option no valid combination can use, is refused with the reason. A released variant is never changed by a new rule.</p>
+                            <div class="grid-form">
+                                <label>Kind *
+                                    <select @bind="ruleKind">
+                                        <option value="Requires">Choosing this option needs the others</option>
+                                        <option value="Excludes">Choosing this option rules out the others</option>
+                                        <option value="Mutex">These options cannot be combined</option>
+                                    </select>
+                                </label>
+                                @if (ruleKind != "Mutex")
+                                {
+                                    <label>Option *
+                                        <select @bind="ruleSubject" required>
+                                            <option value="">Choose an option</option>
+                                            @foreach (var o in Pairs()) { <option value="@o.Value">@o.Label</option> }
+                                        </select>
+                                    </label>
+                                }
+                                <fieldset class="wide inline-fieldset">
+                                    <legend>@(ruleKind == "Requires" ? "Needs all of" : ruleKind == "Excludes" ? "Rules out any of" : "At most one of (choose two or more)")</legend>
+                                    @foreach (var o in Pairs())
+                                    {
+                                        <label class="inline-check"><input type="checkbox" checked="@ruleMembers.Contains(o.Value)" @onchange="e => ToggleMember(o.Value, e.Value is true)" /> @o.Label</label>
+                                    }
+                                </fieldset>
+                                <label class="wide">Reason <input @bind="ruleReason" maxlength="500" /></label>
+                            </div>
+                            <div class="toolbar"><button type="submit" disabled="@busy">Add rule</button></div>
+                        </form>
+                    }
+                    break;
+
+                case "variants":
+                    <section class="panel stack" aria-labelledby="variants-heading">
+                        <h3 id="variants-heading">Variants</h3>
+                        @if (model.Variants.Count == 0) { <p class="muted">No variants yet. A variant is a named, valid combination of values.</p> }
+                        else
+                        {
+                            <div class="table-wrap"><table class="data">
+                                <caption class="sr-only">Variants of @Number</caption>
+                                <thead><tr><th scope="col">Name</th><th scope="col">State</th><th scope="col">Choices</th><th scope="col">Valid</th><th scope="col">Structure</th>@if (model.CanModify) { <th scope="col">Actions</th> }</tr></thead>
+                                <tbody>
+                                @foreach (var v in model.Variants)
+                                {
+                                    <tr>
+                                        <td>@v.Name@if (!string.IsNullOrEmpty(v.Description)) { <br /><span class="muted small">@v.Description</span> }</td>
+                                        <td><span class="badge @VariantUi.StateClass(v.State)">@v.State</span></td>
+                                        <td>@VariantUi.Choices(model, v)</td>
+                                        <td>@if (v.State == VariantStates.Retired) { <text>Retired</text> }
+                                            else if (v.Valid) { <text>Valid</text> }
+                                            else { <span class="error">Not valid: @string.Join(" ", v.Problems)</span> }</td>
+                                        <td><a href="@VariantUi.StructureHref(Number, v.Name)" aria-label="@($"Structure for variant {v.Name}")">Structure</a></td>
+                                        @if (model.CanModify)
+                                        {
+                                            <td>
+                                                @if (v.State == VariantStates.Draft)
+                                                {
+                                                    <button type="button" class="secondary" disabled="@(busy || !v.Valid)" aria-label="@($"Release variant {v.Name}")"
+                                                            @onclick="() => AskRelease(v)">Release</button>
+                                                    <button type="button" class="secondary" disabled="@busy" aria-label="@($"Edit variant {v.Name}")" @onclick="() => StartEdit(v)">Edit</button>
+                                                    <button type="button" class="secondary" disabled="@busy" aria-label="@($"Delete variant {v.Name}")"
+                                                            @onclick="() => AskDeleteVariant(v)">Delete</button>
+                                                }
+                                                else if (v.State == VariantStates.Released)
+                                                {
+                                                    <button type="button" class="secondary" disabled="@busy" aria-label="@($"Retire variant {v.Name}")"
+                                                            @onclick="() => AskRetire(v)">Retire</button>
+                                                }
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                                </tbody>
+                            </table></div>
+                            @if (model.Variants.Count(x => x.State != VariantStates.Retired) >= 2)
+                            {
+                                <p><a href="@VariantUi.CompareHref(Number)">Compare two variants</a></p>
+                            }
+                        }
+                    </section>
+                    @if (model.CanModify && model.Families.Count > 0)
+                    {
+                        <form class="panel stack" @onsubmit="SaveVariant" aria-label="@(editing is null ? "Define a variant" : $"Edit variant {editing}")">
+                            <h3>@(editing is null ? "Define a variant" : $"Edit the draft variant {editing}")</h3>
+                            <div class="grid-form">
+                                <label>Name * <input @bind="variantName" maxlength="80" required /></label>
+                                <label>Description <input @bind="variantDescription" maxlength="500" /></label>
+                                @foreach (var f in model.Families.Where(f => !f.Retired))
+                                {
+                                    <label>@f.Name@(f.Required ? " *" : "")
+                                        <select aria-label="@($"Choice for {f.Name}")" @bind="variantChoice[f.Key]">
+                                            <option value="">@(f.Required ? "Choose a value" : "Not chosen")</option>
+                                            @foreach (var v in f.Values.Where(v => !v.Retired)) { <option value="@v.Key">@v.Name</option> }
+                                        </select>
+                                    </label>
+                                }
+                            </div>
+                            @if (draftCheck is not null && !draftCheck.Valid)
+                            {
+                                <ul class="error form-errors" role="alert" aria-label="Why this combination is not valid">@foreach (var p in draftCheck.Problems) { <li>@p</li> }</ul>
+                            }
+                            else if (draftCheck is not null) { <p class="notice" role="status">This combination is valid.</p> }
+                            <div class="toolbar">
+                                <button type="button" class="secondary" disabled="@busy" @onclick="CheckDraft">Check the combination</button>
+                                <button type="submit" disabled="@busy">@(editing is null ? "Save as draft" : "Save changes")</button>
+                                @if (editing is not null) { <button type="button" class="secondary" @onclick="CancelEdit">Cancel</button> }
+                            </div>
+                        </form>
+                    }
+                    break;
+            }
+        </TabSet>
+
+        <ConfirmDialog @bind-Open="confirmOpen" Title="@(pending?.Title ?? "Confirm")" Destructive="true" ConfirmText="Confirm" OnConfirm="_ => ConfirmAsync()" OnCancel="() => { pending = null; return Task.CompletedTask; }">
+            <p>@pending?.Body</p>
+        </ConfirmDialog>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+
+    private sealed record Pending(string Title, string Body, Func<Task<Outcome<ModelView>>> Call, string Done);
+
+    private ModelView? model;
+    private bool notFound, busy, confirmOpen;
+    private string tab = "options";
+    private string? error, status, editing;
+    private Pending? pending;
+    private Subject Subject = default!;
+    private string newFamilyKey = "", newFamilyName = "", variantName = "", variantDescription = "", ruleKind = "Requires", ruleSubject = "", ruleReason = "";
+    private bool newFamilyRequired = true;
+    private readonly Dictionary<string, string> newValueKey = new(StringComparer.Ordinal), newValueName = new(StringComparer.Ordinal), variantChoice = new(StringComparer.Ordinal);
+    private readonly HashSet<string> ruleMembers = new(StringComparer.Ordinal);
+    private ConfigurationResult? draftCheck;
+
+    private IReadOnlyList<Crumb> Crumbs => [new("Options and variants", "options"), new(Number)];
+    private static string FamId(FamilyView f) => "family-" + f.Key;
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    private IReadOnlyList<TabInfo> Tabs() =>
+    [
+        new("options", "Options", model?.Families.Count),
+        new("rules", "Rules", model?.Rules.Count),
+        new("variants", "Variants", model?.Variants.Count),
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Subject = await Users.GetAsync();
+        var outcome = await Variants.GetModelAsync(Subject, Number, Corr());
+        notFound = !outcome.IsOk;
+        Adopt(outcome.Value);
+    }
+
+    private void Adopt(ModelView? next)
+    {
+        model = next;
+        if (next is null) return;
+        foreach (var f in next.Families)
+        {
+            newValueKey.TryAdd(f.Key, "");
+            newValueName.TryAdd(f.Key, "");
+            variantChoice.TryAdd(f.Key, "");
+        }
+    }
+
+    private async Task Run(Task<Outcome<ModelView>> call, string done)
+    {
+        busy = true;
+        status = error = null;
+        var outcome = await call;
+        busy = false;
+        if (outcome.IsOk) { Adopt(outcome.Value); status = done; }
+        else error = UiText.Message(outcome);
+    }
+
+    private void Ask(string title, string body, Func<Task<Outcome<ModelView>>> call, string done)
+    {
+        pending = new Pending(title, body, call, done);
+        confirmOpen = true;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (pending is not { } p) return;
+        pending = null;
+        await Run(p.Call(), p.Done);
+    }
+
+    private const string RuleRemoved = "Rule removed.";
+
+    private Task ToggleValue(FamilyView f, ValueView v) =>
+        Run(Variants.UpdateValueAsync(Subject, Number, f.Key, v.Key, new ValueChange(Retired: !v.Retired), Corr()), v.Retired ? "Value restored." : "Value retired.");
+
+    private Task ToggleFamilyRetired(FamilyView f) =>
+        Run(Variants.UpdateFamilyAsync(Subject, Number, f.Key, new FamilyChange(Retired: !f.Retired), Corr()), f.Retired ? "Option restored." : "Option retired.");
+
+    private Task ToggleRequired(FamilyView f) =>
+        Run(Variants.UpdateFamilyAsync(Subject, Number, f.Key, new FamilyChange(Required: !f.Required), Corr()), "Option changed.");
+
+    private void AskDeleteValue(FamilyView f, ValueView v) =>
+        Ask($"Delete the value {v.Name}?", "A value that a variant or a rule uses cannot be deleted; retire it instead.", () => Variants.DeleteValueAsync(Subject, Number, f.Key, v.Key, Corr()), "Value deleted.");
+
+    private void AskDeleteFamily(FamilyView f) =>
+        Ask($"Delete the option {f.Name}?", "Its values go with it. An option that a variant or a rule uses cannot be deleted.", () => Variants.DeleteFamilyAsync(Subject, Number, f.Key, Corr()), "Option deleted.");
+
+    private void AskRelease(VariantView v) =>
+        Ask($"Release the variant {v.Name}?", "A released variant is frozen: its choices never change, and the options it uses cannot be retired or changed in a way that breaks it. It is reported to the integration outbox.",
+            () => Variants.ReleaseVariantAsync(Subject, Number, v.Name, Corr()), "Variant released.");
+
+    private void AskDeleteVariant(VariantView v) =>
+        Ask($"Delete the draft variant {v.Name}?", "A draft can be deleted. A released variant is retired instead.", () => Variants.DeleteVariantAsync(Subject, Number, v.Name, Corr()), "Variant deleted.");
+
+    private void AskRetire(VariantView v) =>
+        Ask($"Retire the variant {v.Name}?", "A retired variant stays on record and stays retired.", () => Variants.RetireVariantAsync(Subject, Number, v.Name, Corr()), "Variant retired.");
+
+    private async Task AddFamily()
+    {
+        await Run(Variants.AddFamilyAsync(Subject, Number, new NewFamily(newFamilyKey.Trim(), newFamilyName.Trim(), null, newFamilyRequired), Corr()), "Option added.");
+        if (error is null) newFamilyKey = newFamilyName = "";
+    }
+
+    private async Task AddValue(FamilyView f)
+    {
+        await Run(Variants.AddValueAsync(Subject, Number, f.Key, new NewValue(newValueKey[f.Key].Trim(), newValueName[f.Key].Trim()), Corr()), "Value added.");
+        if (error is null) newValueKey[f.Key] = newValueName[f.Key] = "";
+    }
+
+    private sealed record Pair(string Value, string Label);
+
+    private IEnumerable<Pair> Pairs() =>
+        model!.Families.Where(f => !f.Retired).SelectMany(f => f.Values.Where(v => !v.Retired).Select(v => new Pair($"{f.Key}|{v.Key}", $"{f.Name} is {v.Name}")));
+
+    private static OptionRef ToRef(string pair) => new(pair[..pair.IndexOf('|', StringComparison.Ordinal)], pair[(pair.IndexOf('|', StringComparison.Ordinal) + 1)..]);
+
+    private void ToggleMember(string pair, bool on)
+    {
+        if (on) ruleMembers.Add(pair); else ruleMembers.Remove(pair);
+    }
+
+    private async Task AddRule()
+    {
+        var kind = Enum.Parse<RuleKind>(ruleKind);
+        var subject = kind == RuleKind.Mutex || ruleSubject == "" ? null : ToRef(ruleSubject);
+        await Run(Variants.AddRuleAsync(Subject, Number, new NewRule(kind, subject, [.. ruleMembers.Select(ToRef)], string.IsNullOrWhiteSpace(ruleReason) ? null : ruleReason), Corr()), "Rule added.");
+        if (error is null) { ruleMembers.Clear(); ruleSubject = ruleReason = ""; }
+    }
+
+    private Dictionary<string, string> Chosen() => variantChoice.Where(kv => kv.Value != "").ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+
+    private async Task CheckDraft()
+    {
+        var outcome = await Variants.CheckConfigurationAsync(Subject, Number, Chosen(), Corr());
+        draftCheck = outcome.Value;
+        error = outcome.IsOk ? null : UiText.Message(outcome);
+    }
+
+    private async Task SaveVariant()
+    {
+        busy = true;
+        status = error = null;
+        var outcome = editing is null
+            ? await Variants.CreateVariantAsync(Subject, Number, new NewVariant(variantName.Trim(), Chosen(), string.IsNullOrWhiteSpace(variantDescription) ? null : variantDescription), Corr())
+            : await Variants.UpdateVariantAsync(Subject, Number, editing, new VariantChange(variantName.Trim(), variantDescription, Chosen()), Corr());
+        busy = false;
+        if (outcome.IsOk) { Adopt(outcome.Value); status = editing is null ? "Variant saved as a draft." : "Variant changed."; CancelEdit(); }
+        else error = UiText.Message(outcome);
+    }
+
+    private void StartEdit(VariantView v)
+    {
+        editing = v.Name;
+        variantName = v.Name;
+        variantDescription = v.Description ?? "";
+        foreach (var k in variantChoice.Keys.ToList()) variantChoice[k] = v.Selection.GetValueOrDefault(k, "");
+        draftCheck = null;
+    }
+
+    private void CancelEdit()
+    {
+        editing = null;
+        variantName = variantDescription = "";
+        foreach (var k in variantChoice.Keys.ToList()) variantChoice[k] = "";
+        draftCheck = null;
+    }
+}

@@ -1,0 +1,51 @@
+@inject CurrentUser Users
+@inject VariantService Variants
+
+@* Chooses the variant a structure is resolved for (ADR-0039). Shown only for a product that has an option model the user can read. "All lines" is the full
+   structure with every option condition; a variant shows just the lines it uses. *@
+@if (names.Count > 0)
+{
+    <label class="inline-check variant-picker">
+        Variant
+        <select aria-label="@Label" disabled="@Disabled" value="@Value" @onchange="OnChange">
+            <option value="">All lines (every option)</option>
+            @foreach (var v in names) { <option value="@v.Name">@v.Name@(v.State == VariantStates.Released ? "" : $" ({v.State.ToLowerInvariant()})")@(v.Valid ? "" : " (not valid)")</option> }
+        </select>
+    </label>
+    @if (Disabled && DisabledReason is not null) { <span class="muted small">@DisabledReason</span> }
+}
+
+@code {
+    private sealed record Choice(string Name, string State, bool Valid);
+    private IReadOnlyList<Choice> names = [];
+    private string? loadedFor;
+
+    /// <summary>The product whose variants are offered.</summary>
+    [Parameter, EditorRequired] public required string ProductNumber { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? DisabledReason { get; set; }
+    [Parameter] public string Label { get; set; } = "Variant";
+    /// <summary>Raised with the product's marking banner when the list was loaded (the variants are as readable as the product).</summary>
+    [Parameter] public EventCallback<string> OnLoaded { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == ProductNumber) return;
+        loadedFor = ProductNumber;
+        var subject = await Users.GetAsync();
+        // a cheap, unaudited existence check first: most parts have no options
+        var listed = await Variants.ListProductsAsync(subject, null, [ProductNumber], null, 1);
+        if (listed.Rows.Count == 0) { names = []; return; }
+        var model = await Variants.GetModelAsync(subject, ProductNumber, CurrentUser.NewCorrelationId());
+        names = model.IsOk ? [.. model.Value!.Variants.Where(v => v.State != VariantStates.Retired).Select(v => new Choice(v.Name, v.State, v.Valid))] : [];
+        if (model.IsOk) await OnLoaded.InvokeAsync(model.Value!.Banner);
+    }
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        Value = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString();
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

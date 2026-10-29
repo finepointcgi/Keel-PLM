@@ -40,7 +40,9 @@ public sealed record BomQuery(
     /// <summary>Baseline number for <see cref="BomConfigSpec.Baseline"/>.</summary>
     string? Baseline = null,
     /// <summary>Unit for <see cref="BomConfigSpec.Effectivity"/>.</summary>
-    EffectivityRequest? Effectivity = null);
+    EffectivityRequest? Effectivity = null,
+    /// <summary>Resolve the structure for this variant (ADR-0039): lines whose option condition does not hold for its options are left out. Null: the full 150% structure.</summary>
+    Keel.Core.Variants.VariantSelection? Variant = null);
 
 /// <summary>
 /// One line of an exploded structure. Redacted lines (A4) carry only quantity, unit, find number, level and path;
@@ -72,7 +74,9 @@ public sealed record BomLine(
     string? Banner,
     Markings? Markings,
     /// <summary>Applicability of this line (null: applies to every unit). Shown for redacted lines too: it is not identifying (CFG-6).</summary>
-    EffectivityRange? Effectivity = null)
+    EffectivityRange? Effectivity = null,
+    /// <summary>Canonical option usage condition of the line (null: used in every variant). Never shown for restricted lines.</summary>
+    string? Condition = null)
 {
     public string? EffectivityText => Effectivity?.Describe();
 }
@@ -167,7 +171,9 @@ public sealed record WorkingBomLine(
     string? Notes,
     string? Banner,
     Markings? Markings,
-    EffectivityRange? Effectivity = null)
+    EffectivityRange? Effectivity = null,
+    /// <summary>Canonical option usage condition (null: used in every variant).</summary>
+    string? Condition = null)
 {
     public string? EffectivityText => Effectivity?.Describe();
 }

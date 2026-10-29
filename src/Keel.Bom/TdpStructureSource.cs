@@ -8,8 +8,8 @@ namespace Keel.Bom;
 /// </summary>
 internal sealed class TdpStructureSource(BomService bom, BaselineService baselines) : ITdpStructureSource
 {
-    public async Task<Outcome<TdpStructure>> GetPartStructureAsync(Subject subject, string number, string? revision, string? correlationId, CancellationToken ct) =>
-        Map(await bom.ExplodeAsync(subject, new BomQuery(number, revision, null, BomConfigSpec.LatestReleased), correlationId, ct));
+    public async Task<Outcome<TdpStructure>> GetPartStructureAsync(Subject subject, string number, string? revision, string? correlationId, CancellationToken ct, Keel.Core.Variants.VariantSelection? variant = null) =>
+        Map(await bom.ExplodeAsync(subject, new BomQuery(number, revision, null, BomConfigSpec.LatestReleased, Variant: variant), correlationId, ct));
 
     public async Task<Outcome<TdpStructure>> GetBaselineStructureAsync(Subject subject, string baselineNumber, string? correlationId, CancellationToken ct)
     {

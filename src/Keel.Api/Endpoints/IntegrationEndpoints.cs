@@ -8,14 +8,15 @@ using Microsoft.AspNetCore.Antiforgery;
 
 namespace Keel.Api.Endpoints;
 
-public sealed record TdpApiRequest(string ObjectType, string Number, string? Revision, string RecipientProfile);
+/// <summary><c>Variant</c> (a part package only) names a variant of the part as a product: the structure of the package is resolved for it.</summary>
+public sealed record TdpApiRequest(string ObjectType, string Number, string? Revision, string RecipientProfile, string? Variant = null);
 public sealed record RequeueRequest(Guid? DeliveryId, string? Sink);
 public sealed record CategoryRuleRequest(string DocumentType, string? LinkType, string Category);
 
 /// <summary>One line of the released-EBOM snapshot of the pull API. A line the caller may not read carries find number, quantity and unit only (A4).</summary>
 public sealed record BomSnapshotLine(
     int Level, string Path, int FindNumber, decimal Quantity, decimal ExtendedQuantity, string Unit, bool Restricted, bool Unresolved, string? Number, string? Name,
-    string? PartType, string? Revision, string? Iteration, string? State, IReadOnlyList<string> ReferenceDesignators, string? Notes, string? Effectivity, string? Banner);
+    string? PartType, string? Revision, string? Iteration, string? State, IReadOnlyList<string> ReferenceDesignators, string? Notes, string? Effectivity, string? Banner, string? Condition = null);
 
 public sealed record BomSnapshot(string Number, string Name, string Revision, string Iteration, string Spec, string? Configuration, string Banner, int RestrictedLines, int UnresolvedLines,
     IReadOnlyList<BomSnapshotLine> Lines);
@@ -56,17 +57,24 @@ public static class IntegrationEndpoints
             (await q.PullAsync(Who(c), cursor, limit ?? 100, type, aggregate, Corr(c), ct)).ToHttp())
             .WithSummary("Events in commit order after a cursor, limited to what the caller may read.");
 
-        pull.MapGet("/boms/{number}", async (string number, string? revision, string? spec, string? baseline, int? depth, HttpContext c, BomService bom, CancellationToken ct) =>
+        pull.MapGet("/boms/{number}", async (string number, string? revision, string? spec, string? baseline, int? depth, string? variant, HttpContext c, BomService bom, Keel.Core.Variants.IVariantSelectionSource variants, CancellationToken ct) =>
         {
             var parsed = BomConfigSpec.LatestReleased;
             if (!string.IsNullOrWhiteSpace(spec) && !Enum.TryParse(spec, ignoreCase: true, out parsed) || parsed == BomConfigSpec.Effectivity)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["spec"] = ["Use LatestReleased (default), Latest or Baseline."] });
-            var o = await bom.ExplodeAsync(Who(c), new BomQuery(number, revision, null, parsed, depth ?? 1, null, baseline), Corr(c), ct);
+            Keel.Core.Variants.VariantSelection? selection = null;
+            if (!string.IsNullOrWhiteSpace(variant))
+            {
+                var picked = await variants.ResolveAsync(Who(c), number, variant.Trim(), Corr(c), ct);
+                if (!picked.IsOk) return picked.ToHttp();
+                selection = picked.Value;
+            }
+            var o = await bom.ExplodeAsync(Who(c), new BomQuery(number, revision, null, parsed, depth ?? 1, null, baseline, null, selection), Corr(c), ct);
             return o.ToHttp(e => Results.Ok(new BomSnapshot(e.RootNumber, e.RootName, e.RootRevision, $"{e.RootRevision}.{e.RootIteration}", e.Spec.ToString(), e.Configuration, e.Banner,
                 e.RedactedCount, e.UnresolvedCount,
                 [.. e.Lines.Select(l => new BomSnapshotLine(l.Level, l.Path, l.FindNumber, l.Quantity, l.ExtendedQuantity, l.Unit, l.Redacted, l.Unresolved, l.Number, l.Name, l.PartType, l.Revision,
-                    l.Revision is null ? null : $"{l.Revision}.{l.Iteration}", l.StateLabel, l.ReferenceDesignators, l.Notes, l.EffectivityText, l.Banner))])));
-        }).WithSummary("Released EBOM snapshot of an assembly revision (children resolved at the requested configuration spec).");
+                    l.Revision is null ? null : $"{l.Revision}.{l.Iteration}", l.StateLabel, l.ReferenceDesignators, l.Notes, l.EffectivityText, l.Banner, l.Condition))])));
+        }).WithSummary("Released EBOM snapshot of an assembly revision (children resolved at the requested configuration spec). With variant, only the lines that variant uses; otherwise every line with its option condition.");
 
         pull.MapGet("/mboms/{number}", async (string number, string? plant, string? revision, HttpContext c, IManufacturingBomSource mboms, CancellationToken ct) =>
         {
@@ -88,12 +96,18 @@ public static class IntegrationEndpoints
         // ---- Technical Data Packages
         var tdp = app.MapGroup("/api/v1/tdp").RequireAuthorization(Policies.AnyPlmRole).WithTags("Technical Data Package");
 
-        tdp.MapPost("/preview", async (TdpApiRequest req, HttpContext c, TdpService svc, CancellationToken ct) =>
-            (await svc.PlanAsync(Who(c), new TdpRequest(req.ObjectType, req.Number, req.Revision, req.RecipientProfile), Corr(c), ct)).ToHttp())
+        tdp.MapPost("/preview", async (TdpApiRequest req, HttpContext c, TdpService svc, Keel.Core.Variants.IVariantSelectionSource variants, CancellationToken ct) =>
+        {
+            var (selection, refusal) = await PickVariantAsync(c, variants, req, ct);
+            return refusal ?? (await svc.PlanAsync(Who(c), new TdpRequest(req.ObjectType, req.Number, req.Revision, req.RecipientProfile, selection), Corr(c), ct)).ToHttp();
+        })
             .WithSummary("What a package would contain, and why it would be refused (counts only).");
 
-        tdp.MapPost("", async (TdpApiRequest req, HttpContext c, TdpService svc, CancellationToken ct) =>
-            await ExportAsync(c, svc, new TdpRequest(req.ObjectType, req.Number, req.Revision, req.RecipientProfile), ct))
+        tdp.MapPost("", async (TdpApiRequest req, HttpContext c, TdpService svc, Keel.Core.Variants.IVariantSelectionSource variants, CancellationToken ct) =>
+        {
+            var (selection, refusal) = await PickVariantAsync(c, variants, req, ct);
+            return refusal ?? await ExportAsync(c, svc, new TdpRequest(req.ObjectType, req.Number, req.Revision, req.RecipientProfile, selection), ct);
+        })
             .WithSummary("Exports the package as a signed ZIP stream.");
 
         tdp.MapGet("", async (string? number, int? limit, HttpContext c, TdpService svc, CancellationToken ct) =>
@@ -145,6 +159,16 @@ public static class IntegrationEndpoints
             (await s.SaveCategoryRuleAsync(Who(c), body.DocumentType, body.LinkType, body.Category, Corr(c), ct)).ToHttp());
         admin.MapDelete("/tdp-categories", async (string documentType, string? linkType, HttpContext c, IntegrationAdminService s, CancellationToken ct) =>
             (await s.DeleteCategoryRuleAsync(Who(c), documentType, string.IsNullOrWhiteSpace(linkType) ? "*" : linkType, Corr(c), ct)).ToHttp());
+    }
+
+    /// <summary>The variant a package request names (a part package only): its option choices, or the problem to answer with (NotFound for an unknown or unreadable product or variant).</summary>
+    private static async Task<(Keel.Core.Variants.VariantSelection? Selection, IResult? Refusal)> PickVariantAsync(HttpContext c, Keel.Core.Variants.IVariantSelectionSource variants, TdpApiRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Variant)) return (null, null);
+        if (req.ObjectType != TdpObjectTypes.Part)
+            return (null, Results.ValidationProblem(new Dictionary<string, string[]> { ["variant"] = ["A variant applies to a part package; a baseline is a frozen list."] }));
+        var picked = await variants.ResolveAsync(SubjectFactory.Require(c), req.Number.Trim(), req.Variant.Trim(), CorrelationId.Get(c), ct);
+        return picked.IsOk ? (picked.Value, null) : (null, picked.ToHttp());
     }
 
     private static async Task<IResult> ExportAsync(HttpContext c, TdpService svc, TdpRequest request, CancellationToken ct)

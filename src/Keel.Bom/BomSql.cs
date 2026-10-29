@@ -55,10 +55,16 @@ internal static class BomSql
         _ => throw new NotSupportedException($"Configuration spec '{spec}' has no per-level resolution."),
     };
 
-    /// <summary>The usage-line condition of a spec: only Effectivity filters lines.</summary>
-    private static string LineCondition(BomConfigSpec spec) => spec == BomConfigSpec.Effectivity ? UsageApplies("u") : "TRUE";
+    /// <summary>
+    /// Option usage condition (ADR-0039): with no variant (@var_sel null) every line applies; with one, a line applies when it has no condition or its parsed
+    /// tree holds for the selection. Parameter @var_sel is always bound (typed jsonb) so the statement text is the same for every request.
+    /// </summary>
+    public static string VariantApplies(string u) => $"(@var_sel::jsonb IS NULL OR {u}.opt_ast IS NULL OR var.eval_cond({u}.opt_ast, @var_sel::jsonb))";
 
-    private static string ChildCondition(BomConfigSpec spec) => spec == BomConfigSpec.Effectivity ? UsageApplies("c") : "TRUE";
+    /// <summary>The usage-line condition of a spec: Effectivity filters lines by unit, a variant filters them by option conditions (both can apply).</summary>
+    private static string LineCondition(BomConfigSpec spec) => (spec == BomConfigSpec.Effectivity ? UsageApplies("u") : "TRUE") + " AND " + VariantApplies("u");
+
+    private static string ChildCondition(BomConfigSpec spec) => (spec == BomConfigSpec.Effectivity ? UsageApplies("c") : "TRUE") + " AND " + VariantApplies("c");
 
     /// <summary>Revision of a root master for a unit: covering Released revision first, else the highest Released one.</summary>
     public static readonly string ResolveRootRevision =
@@ -82,13 +88,13 @@ internal static class BomSql
                    @base_tpath::text AS tpath, @base_ext::numeric AS ext, NULL::uuid AS master_id, @seed_iter::uuid AS iter_id, NULL::uuid AS rev_id,
                    true AS readable, false AS cyc, @base_anc::uuid[] AS anc, NULL::numeric AS qty, NULL::text AS unit,
                    NULL::int AS find, NULL::text[] AS refdes, NULL::text AS notes,
-                   NULL::text AS ek, NULL::text AS ec, NULL::bigint AS ef, NULL::bigint AS et
+                   NULL::text AS ek, NULL::text AS ec, NULL::bigint AS ef, NULL::bigint AS et, NULL::text AS oc
             UNION ALL
             SELECT u.id, t.line_id, t.lvl + 1, t.path || u.find_number, t.alts || u.alt,
                    t.tpath || CASE WHEN t.tpath = '' THEN '' ELSE '.' END || u.find_number::text || CASE WHEN u.alt > 0 THEN '~' || u.alt::text ELSE '' END,
                    round(LEAST(t.ext * u.quantity, 1e18::numeric), 6),
                    u.child_master_id, res.iter_id, res.rev_id, f.ok, u.child_master_id = ANY(t.anc), t.anc || u.child_master_id,
-                   u.quantity, u.unit, u.find_number, u.reference_designators, u.notes, u.eff_kind, u.eff_context, u.eff_from, u.eff_to
+                   u.quantity, u.unit, u.find_number, u.reference_designators, u.notes, u.eff_kind, u.eff_context, u.eff_from, u.eff_to, u.opt_cond
             FROM tree t
             JOIN plm.bom_usage u ON u.parent_iteration_id = t.iter_id AND {LineCondition(spec)}
             JOIN plm.part_master cm ON cm.id = u.child_master_id
@@ -100,7 +106,7 @@ internal static class BomSql
                (t.readable AND NOT t.cyc AND EXISTS (SELECT 1 FROM plm.bom_usage c WHERE c.parent_iteration_id = t.iter_id AND {ChildCondition(spec)})),
                cm.id, cm.number, cm.name, cm.part_type, r.revision, i.iteration, r.lifecycle_state, ls.label,
                CASE WHEN t.readable THEN t.refdes END, CASE WHEN t.readable THEN t.notes END,
-               {MarkingColumns.Select("cm")}, t.ek, t.ec, t.ef, t.et, t.master_id, t.rev_id, t.iter_id
+               {MarkingColumns.Select("cm")}, t.ek, t.ec, t.ef, t.et, t.master_id, t.rev_id, t.iter_id, t.oc
         FROM tree t
         LEFT JOIN plm.part_master cm ON cm.id = t.master_id AND t.readable AND {filter.Sql}
         LEFT JOIN plm.part_revision r ON r.id = t.rev_id AND cm.id IS NOT NULL
@@ -174,7 +180,7 @@ internal static class BomSql
     public static string WorkingLines(SqlFilter filter, bool single) =>
         $"""
         SELECT w.id, w.find_number, w.quantity, w.unit, w.reference_designators, w.notes, w.child_master_id,
-               cm.id, cm.number, cm.name, cm.part_type, {MarkingColumns.Select("cm")}, w.eff_kind, w.eff_context, w.eff_from, w.eff_to
+               cm.id, cm.number, cm.name, cm.part_type, {MarkingColumns.Select("cm")}, w.eff_kind, w.eff_context, w.eff_from, w.eff_to, w.opt_cond
         FROM plm.bom_working_usage w
         LEFT JOIN plm.part_master cm ON cm.id = w.child_master_id AND {filter.Sql}
         WHERE w.checkout_revision_id = @rid{(single ? " AND w.id = @id" : "")}

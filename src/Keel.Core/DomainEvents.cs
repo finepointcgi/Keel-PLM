@@ -22,11 +22,13 @@ public static class EventTypes
     public const string BomStructurePublished = "bom.structure.published";
     /// <summary>A manufacturing BOM revision was released through the review workflow (additive, FUP-1).</summary>
     public const string MbomReleased = "mbom.released";
+    /// <summary>A named variant of a product (a valid combination of options) was released (additive, ADR-0039).</summary>
+    public const string VariantReleased = "variant.released";
 
     public static readonly IReadOnlyList<string> All =
     [
         PartReleased, PartObsoleted, DocumentReleased, DocumentObsoleted, ChangeApproved, ChangeReleased,
-        BaselineEstablished, BomPublished, BomStructurePublished, MbomReleased,
+        BaselineEstablished, BomPublished, BomStructurePublished, MbomReleased, VariantReleased,
     ];
 
     /// <summary>Types a sink with an empty subscription list receives.</summary>

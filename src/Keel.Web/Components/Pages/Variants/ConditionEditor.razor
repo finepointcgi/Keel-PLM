@@ -1,0 +1,97 @@
+@inject CurrentUser Users
+@inject VariantService Variants
+@inject BomService Bom
+
+@* The usage condition of one line of the working copy (ADR-0039): when the line is used. The text is parsed on the server, shown back in canonical form and in plain
+   words before it is saved, and checked against the option names of a product. Nothing typed here is ever run: it becomes a stored tree. *@
+<form class="stack condition-editor" @onsubmit="Save" aria-label="@($"Usage condition of line {Line.FindNumber}")">
+    <div class="grid-form">
+        <label class="wide">Used when (leave empty: used in every variant)
+            <input @bind="text" @bind:event="oninput" @bind:after="PreviewAsync" maxlength="500" autocomplete="off" spellcheck="false" placeholder="Engine = A AND Payload IN (X, Y)"
+                   aria-describedby="@PreviewId" />
+        </label>
+        <label>Check the option names against
+            <select @bind="product" @bind:after="PreviewAsync">
+                <option value="">No product (check the form only)</option>
+                @foreach (var p in products) { <option value="@p.Number">@p.Number · @p.Name</option> }
+            </select>
+        </label>
+    </div>
+    <div id="@PreviewId" aria-live="polite">
+        @if (preview is { Valid: false })
+        {
+            <ul class="error form-errors" role="alert">@foreach (var e in preview.Errors) { <li>@e</li> }</ul>
+        }
+        else if (preview is not null)
+        {
+            <p><strong>In plain words:</strong> @preview.Description</p>
+            <p class="muted small">Stored as: <code>@preview.Canonical</code></p>
+            @foreach (var w in preview.Warnings) { <p class="muted small">@w</p> }
+        }
+        else if (string.IsNullOrWhiteSpace(text)) { <p class="muted small">No condition: the line is used in every variant.</p> }
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    <div class="toolbar">
+        <button type="submit" disabled="@(busy || (preview is { Valid: false }))">@(string.IsNullOrWhiteSpace(text) ? "Clear the condition" : "Save the condition")</button>
+        <span class="muted small">Words: AND, OR, NOT, IN, =, !=. Group with parentheses. @OptionExpressions.KeyRule</span>
+    </div>
+    @if (model is not null)
+    {
+        <details>
+            <summary>Options of @product</summary>
+            <ul class="plain">
+                @foreach (var f in model.Families.Where(f => !f.Retired))
+                {
+                    <li><strong>@f.Key</strong> (@f.Name): @string.Join(", ", f.Values.Where(v => !v.Retired).Select(v => $"{v.Key} = {v.Name}"))</li>
+                }
+            </ul>
+        </details>
+    }
+</form>
+
+@code {
+    private string PreviewId => $"cond-{Line.Id:N}-preview";
+
+    [Parameter, EditorRequired] public required string PartNumber { get; set; }
+    [Parameter, EditorRequired] public required WorkingBomLine Line { get; set; }
+    /// <summary>Raised after the condition was saved (or cleared).</summary>
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string text = "", product = "";
+    private string? error, loadedFor;
+    private bool busy;
+    private ConditionPreview? preview;
+    private ModelView? model;
+    private IReadOnlyList<ProductRow> products = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == $"{Line.Id}:{Line.Condition}") return;
+        loadedFor = $"{Line.Id}:{Line.Condition}";
+        text = Line.Condition ?? "";
+        var subject = await Users.GetAsync();
+        products = (await Variants.ListProductsAsync(subject, null, null, null, 200)).Rows;
+        if (product == "" && products.Any(p => p.Number == PartNumber)) product = PartNumber;
+        await PreviewAsync();
+    }
+
+    private async Task PreviewAsync()
+    {
+        error = null;
+        var subject = await Users.GetAsync();
+        preview = string.IsNullOrWhiteSpace(text) ? null : await Variants.PreviewConditionAsync(subject, product == "" ? null : product, text);
+        model = product == "" ? null : (await Variants.GetModelAsync(subject, product, CurrentUser.NewCorrelationId())).Value;
+    }
+
+    private async Task Save()
+    {
+        busy = true;
+        error = null;
+        var subject = await Users.GetAsync();
+        ConditionValidator? validator = product == "" ? null : Variants.ConditionValidatorFor(subject, product).Invoke;
+        var outcome = await Bom.SetLineConditionAsync(subject, PartNumber, Line.Id, string.IsNullOrWhiteSpace(text) ? null : text, validator, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) await OnSaved.InvokeAsync();
+        else error = UiText.Message(outcome);
+    }
+}

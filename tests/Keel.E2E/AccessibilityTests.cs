@@ -109,6 +109,12 @@ public sealed class AccessibilityTests(E2EFixture fx)
         Add("ada", $"/suppliers/{SourcingSeed.SupplierA}?tab=portal");
         Add("sup-alpha", "/portal", $"/portal/requests/{SourcingSeed.Request}");
 
+        // Options and variants (8.4, ADR-0039): the seed gives the top assembly two options, rules and two released variants.
+        VariantsSeed.EnsureAsync(fx).GetAwaiter().GetResult();
+        Add("alice", "/options", $"/options/{m.TopAssembly}", $"/options/{m.TopAssembly}?tab=rules", $"/options/{m.TopAssembly}?tab=variants",
+            $"/options/{m.TopAssembly}/compare?left={Uri.EscapeDataString(VariantsSeed.Left)}&right={Uri.EscapeDataString(VariantsSeed.Right)}", $"/parts/{m.TopAssembly}/variants",
+            $"/parts/{m.TopAssembly}?tab=structure&variant={Uri.EscapeDataString(VariantsSeed.Left)}");
+
         Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
             "/admin/integration/profiles", "/admin/integration/sinks", "/admin/integration/tdp-categories", "/admin/lifecycles", "/admin/lists", "/admin/migration",
             "/admin/numbering", "/admin/reasons", "/admin/supply-types", "/admin/workflow-templates", "/audit", "/access", "/parts", "/");

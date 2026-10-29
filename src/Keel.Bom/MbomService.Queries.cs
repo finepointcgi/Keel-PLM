@@ -76,6 +76,7 @@ public sealed partial class MbomService
             cmd.Parameters.AddWithValue("alt", alts[hop]);
             cmd.Parameters.AddWithValue("plant", head.Plant);
             BomService.BindEffectivity(cmd, q.Unit);
+            BomService.BindVariant(cmd, q.Variant);
             await using var r = await cmd.ExecuteReaderAsync(ct);
             if (!await r.ReadAsync(ct) || r.IsDBNull(3)) return null;
             var child = r.GetGuid(0);
@@ -103,6 +104,7 @@ public sealed partial class MbomService
         cmd.Parameters.AddWithValue("base_alts", seed.Alts);
         cmd.Parameters.AddWithValue("base_tpath", seed.PathText);
         BomService.BindEffectivity(cmd, q.Unit);
+        BomService.BindVariant(cmd, q.Variant);
         cmd.Parameters.AddWithValue("base_ext", seed.Extended);
         cmd.Parameters.AddWithValue("base_gross", seed.Gross);
         cmd.Parameters.AddWithValue("seed_iter", seed.IterationId);
@@ -136,7 +138,13 @@ public sealed partial class MbomService
     private static Outcome<T> TooLarge<T>() =>
         Outcome<T>.Invalid([$"The structure has more than {MbomLimits.MaxExplosionLines:N0} lines; request a depth limit or expand one line at a time."]);
 
-    private static string? Configuration(MbomQuery q) => q.Unit is { } u ? u.Describe() : null;
+    private static string? Configuration(MbomQuery q) => (q.Unit, q.Variant) switch
+    {
+        ({ } u, { } v) => $"{u.Describe()}, variant {v.Label}",
+        ({ } u, null) => u.Describe(),
+        (null, { } v) => $"variant {v.Label}",
+        _ => null,
+    };
 
     /// <summary>Multi-level explosion per plant (or one lazily expanded line): same filter and redaction as the EBOM, children resolved to the MBOMs of the same plant.</summary>
     public Task<Outcome<MbomExplosion>> ExplodeAsync(Subject subject, MbomQuery query, string? correlationId, CancellationToken ct = default)

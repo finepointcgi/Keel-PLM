@@ -41,9 +41,9 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
 
         return await WithRootAsync<BomExplosion>(subject, query, PlmAction.Read, "bom.explode", correlationId, async (conn, tx, root) =>
         {
-            var seed = await ResolveSeedAsync(conn, tx, subject, root, query.Spec, path!, alts!, query.ParentLine ?? "", query.Effectivity, ct);
+            var seed = await ResolveSeedAsync(conn, tx, subject, root, query.Spec, path!, alts!, query.ParentLine ?? "", query.Effectivity, query.Variant, ct);
             if (seed is null) return (Outcome<BomExplosion>.NotFound(), []);
-            var data = await ExplodeCoreAsync(conn, tx, subject, root, query.Spec, query.Depth, seed, query.Effectivity, ct);
+            var data = await ExplodeCoreAsync(conn, tx, subject, root, query.Spec, query.Depth, seed, query.Effectivity, ct, query.Variant);
             if (data is null) return (TooLarge<BomExplosion>(), []);
             var result = new BomExplosion(root.Number, root.Name, root.Revision, root.Iteration, query.Spec, query.Depth, query.ParentLine,
                 data.Lines, data.Banner, data.Redacted, data.Unresolved, ConfigurationLabel(query));
@@ -60,10 +60,10 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
 
         return await WithRootAsync<BomExport>(subject, query, PlmAction.Download, "bom.export", correlationId, async (conn, tx, root) =>
         {
-            var data = await ExplodeCoreAsync(conn, tx, subject, root, query.Spec, query.Depth, Seed.ForRoot(root), query.Effectivity, ct);
+            var data = await ExplodeCoreAsync(conn, tx, subject, root, query.Spec, query.Depth, Seed.ForRoot(root), query.Effectivity, ct, query.Variant);
             if (data is null) return (TooLarge<BomExport>(), []);
             var csv = BomCsv.Render(data.Banner, data.Lines);
-            var file = $"{root.Number}_{root.Revision}.{root.Iteration}_{query.Spec}{(query.Effectivity is null ? "" : "_" + FileSafe(query.Effectivity.Describe()))}_bom.csv";
+            var file = $"{root.Number}_{root.Revision}.{root.Iteration}_{query.Spec}{(query.Effectivity is null ? "" : "_" + FileSafe(query.Effectivity.Describe()))}{(query.Variant is null ? "" : "_variant_" + FileSafe(query.Variant.Label))}_bom.csv";
             return (Outcome<BomExport>.Ok(new BomExport(file, csv, data.Banner, data.Lines.Count, data.Redacted)),
                 Details(root, query, data, ("format", "csv")));
         }, ct);
@@ -81,7 +81,7 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
 
         return await WithRootAsync<BomSummary>(subject, query, PlmAction.Read, "bom.summary", correlationId, async (conn, tx, root) =>
         {
-            var data = await ExplodeCoreAsync(conn, tx, subject, root, query.Spec, query.Depth, Seed.ForRoot(root), query.Effectivity, ct);
+            var data = await ExplodeCoreAsync(conn, tx, subject, root, query.Spec, query.Depth, Seed.ForRoot(root), query.Effectivity, ct, query.Variant);
             if (data is null) return (TooLarge<BomSummary>(), []);
             var summary = SummarizeCore(root.Number, $"{root.Revision}.{root.Iteration}", query.Spec, leavesOnly, data);
             return (Outcome<BomSummary>.Ok(summary), Details(root, query, data, ("leavesOnly", leavesOnly.ToString()), ("distinctParts", summary.Lines.Count.ToString(CultureInfo.InvariantCulture))));
@@ -121,15 +121,21 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
             else errors.AddRange(q.Effectivity.Validate());
         }
         if (q.Spec == BomConfigSpec.Baseline && string.IsNullOrWhiteSpace(q.Baseline)) errors.Add("Name the baseline.");
+        if (q.Spec == BomConfigSpec.Baseline && q.Variant is not null) errors.Add("A baseline is a frozen list of items and cannot be resolved for a variant.");
         return errors;
     }
 
-    internal static string? ConfigurationLabel(BomQuery q) => q.Spec switch
+    internal static string? ConfigurationLabel(BomQuery q)
     {
-        BomConfigSpec.Effectivity when q.Effectivity is { } e => e.Describe(),
-        BomConfigSpec.Baseline => $"baseline {q.Baseline}",
-        _ => null,
-    };
+        var spec = q.Spec switch
+        {
+            BomConfigSpec.Effectivity when q.Effectivity is { } e => e.Describe(),
+            BomConfigSpec.Baseline => $"baseline {q.Baseline}",
+            _ => null,
+        };
+        if (q.Variant is null) return spec;
+        return spec is null ? $"variant {q.Variant.Label}" : $"{spec}, variant {q.Variant.Label}";
+    }
 
     private static string FileSafe(string text) => new string([.. text.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_')]).Trim('_');
 
@@ -141,6 +147,10 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
         cmd.Parameters.Add(new NpgsqlParameter("eff_lot", NpgsqlDbType.Bigint) { Value = (object?)eff?.Lot ?? DBNull.Value });
         cmd.Parameters.Add(new NpgsqlParameter("eff_day", NpgsqlDbType.Bigint) { Value = (object?)eff?.Day ?? DBNull.Value });
     }
+
+    /// <summary>Binds the option selection of a resolved variant (null: no variant, every line applies). Always bound so the statement text never changes.</summary>
+    internal static void BindVariant(NpgsqlCommand cmd, Keel.Core.Variants.VariantSelection? variant) =>
+        cmd.Parameters.Add(new NpgsqlParameter("var_sel", NpgsqlDbType.Jsonb) { Value = (object?)variant?.Json ?? DBNull.Value });
 
     private static Outcome<T> TooLarge<T>() =>
         Outcome<T>.Invalid([$"The structure has more than {BomLimits.MaxExplosionLines:N0} lines; request a depth limit or expand one line at a time."]);
@@ -154,7 +164,7 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
     ];
 
     internal static async Task<ExplodeData?> ExplodeCoreAsync(
-        NpgsqlConnection conn, NpgsqlTransaction tx, Subject subject, Root root, BomConfigSpec spec, int? depth, Seed seed, EffectivityRequest? eff, CancellationToken ct)
+        NpgsqlConnection conn, NpgsqlTransaction tx, Subject subject, Root root, BomConfigSpec spec, int? depth, Seed seed, EffectivityRequest? eff, CancellationToken ct, Keel.Core.Variants.VariantSelection? variant = null)
     {
         var filter = AccessPolicy.BuildReadFilter(subject, "cm");
         var lines = new List<BomLine>(1024);
@@ -169,6 +179,7 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
         cmd.Parameters.AddWithValue("base_alts", seed.Alts);
         cmd.Parameters.AddWithValue("base_tpath", seed.PathText);
         BindEffectivity(cmd, eff);
+        BindVariant(cmd, variant);
         cmd.Parameters.AddWithValue("base_ext", seed.Extended);
         cmd.Parameters.AddWithValue("seed_iter", seed.IterationId);
         cmd.Parameters.AddWithValue("base_anc", seed.Ancestors.ToArray());
@@ -202,7 +213,7 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
                 rev, isRedacted || r.IsDBNull(16) ? null : r.GetInt32(16), isRedacted || r.IsDBNull(17) ? null : r.GetString(17),
                 isRedacted || r.IsDBNull(18) ? null : r.GetString(18),
                 isRedacted || r.IsDBNull(19) ? [] : r.GetFieldValue<string[]>(19), isRedacted || r.IsDBNull(20) ? null : r.GetString(20),
-                banner, markings, lineEff));
+                banner, markings, lineEff, isRedacted || r.IsDBNull(38) ? null : r.GetString(38)));
             if (lines.Count > BomLimits.MaxExplosionLines) return null;
         }
         var pageBanner = Markings.AggregateBanner(cache.Distinct.Append(root.Markings));
@@ -211,7 +222,7 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
 
     /// <summary>Walks the find-number path from the root, one readable hop at a time, to the iteration whose children are wanted.</summary>
     private static async Task<Seed?> ResolveSeedAsync(
-        NpgsqlConnection conn, NpgsqlTransaction tx, Subject subject, Root root, BomConfigSpec spec, int[] path, int[] alts, string pathText, EffectivityRequest? eff, CancellationToken ct)
+        NpgsqlConnection conn, NpgsqlTransaction tx, Subject subject, Root root, BomConfigSpec spec, int[] path, int[] alts, string pathText, EffectivityRequest? eff, Keel.Core.Variants.VariantSelection? variant, CancellationToken ct)
     {
         var iteration = root.IterationId;
         var extended = 1m;
@@ -225,6 +236,7 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
             cmd.Parameters.AddWithValue("find", path[hop]);
             cmd.Parameters.AddWithValue("alt", alts[hop]);
             BindEffectivity(cmd, eff);
+            BindVariant(cmd, variant);
             await using var r = await cmd.ExecuteReaderAsync(ct);
             if (!await r.ReadAsync(ct) || r.IsDBNull(2)) return null;
             var child = r.GetGuid(0);

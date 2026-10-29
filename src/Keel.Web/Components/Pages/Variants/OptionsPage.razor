@@ -1,0 +1,84 @@
+@page "/options"
+@inject CurrentUser Users
+@inject VariantService Variants
+@inject NavigationManager Nav
+
+@* Products with an option model: the choices a product comes in (Engine, Payload), the rules between them and the named variants (ADR-0039). The list is read through the
+   same access filter as parts; a product you cannot read is not listed and not counted. *@
+<PageFrame Banner="@Banner" Title="Options and variants" Crumbs="@Crumbs">
+    <form class="toolbar" role="search" @onsubmit="() => Search()">
+        <input aria-label="Search products" placeholder="Part number or name" class="grow" @bind="text" />
+        <button type="submit">Search</button>
+    </form>
+
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total product@(result.Total == 1 ? "" : "s") with options that you can access</p>
+        <DataTable TItem="ProductRow" TableId="option-products" Items="result.Rows" Columns="Columns" Caption="Products with options" OnServerSort="OnSort" ServerSort="sort">
+            <Empty>
+                <EmptyState Title="@(text.Length > 0 ? "No products match" : "No products with options yet")" IconName="part">
+                    @(text.Length > 0 ? "Try a different search." : "Give an assembly its options below, then define the variants it is built in.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+    }
+
+    <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
+        <form class="panel stack" @onsubmit="Create" aria-label="Create an option model">
+            <h2>Give an assembly options</h2>
+            <p class="muted small">Options belong to an assembly (the product). Anyone who can change the part can change its options.</p>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <div class="toolbar">
+                <label>Assembly part number * <input @bind="number" maxlength="40" required autocomplete="off" /></label>
+                <button type="submit" disabled="@busy">Create option model</button>
+            </div>
+        </form>
+    </AuthorizeView>
+</PageFrame>
+
+@code {
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded, busy;
+    private string text = "", number = "";
+    private string? error;
+    private ProductList? result;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Options and variants")];
+    private string Banner => result?.Banner ?? UiText.Unclassified;
+
+    private static readonly IReadOnlyList<DataColumn<ProductRow>> Columns =
+    [
+        new() { Key = "number", Title = "Part", Required = true, ServerSortKey = "number", Cell = p => @<a href="@VariantUi.ProductHref(p.Number)">@p.Number</a> },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = p => p.Name },
+        new() { Key = "families", Title = "Options", ServerSortKey = "families", Text = p => p.Families.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+        new() { Key = "variants", Title = "Variants", ServerSortKey = "variants", Text = p => $"{p.Variants} ({p.ReleasedVariants} released)" },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = p => @<MarkingChip Text="@p.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = VariantService.TryResolveSort(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search();
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search();
+    }
+
+    private async Task Search() => result = await Variants.ListProductsAsync(await Users.GetAsync(), text, null, sort, 200);
+
+    private async Task Create()
+    {
+        busy = true;
+        var outcome = await Variants.CreateModelAsync(await Users.GetAsync(), number.Trim(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) Nav.NavigateTo(VariantUi.ProductHref(number.Trim()));
+        else error = UiText.Message(outcome);
+    }
+}

@@ -1,7 +1,11 @@
 @* Multi-level structure of the MBOM in its plant (ADR-0024): a lazily expanded tree in the shared virtualized grid, or the purchasing summary with net and gross
    quantities (scrap compounded through the levels). "As of" a serial, lot or date shows only the lines that apply to the unit. Same filter and redaction as the EBOM. *@
+@using Keel.Web.Components.Pages.Variants
+@using Keel.Variants
+@using Keel.Core.Variants
 @inject CurrentUser Users
 @inject MbomService Mbom
+@inject VariantService Variants
 
 <section class="panel stack" aria-labelledby="mbom-structure-heading">
     <h3 id="mbom-structure-heading">Structure in plant @Detail.Summary.Plant</h3>
@@ -18,6 +22,7 @@
             <UnitFields Value="unitForm" Label="As of: " />
             <button type="button" class="secondary" @onclick="Reload">Show</button>
         }
+        <VariantPicker ProductNumber="@Detail.Summary.PartNumber" Value="@variantName" ValueChanged="SetVariant" />
         <label class="inline-check"><input type="checkbox" checked="@latestChildren" @onchange="e => SetLatest(e.Value is true)" /> Include sub-assembly MBOMs still in work</label>
         <label class="inline-check"><input type="radio" name="mbom-view" checked="@(!summaryView && !treemapView)" @onchange="() => SetView(false)" /> Tree</label>
         <label class="inline-check"><input type="radio" name="mbom-view" checked="@summaryView" @onchange="() => SetView(true)" /> Purchasing summary</label>
@@ -91,12 +96,29 @@
     private MbomQuery Query(int? depth, string? parentLine = null)
     {
         var unit = asOf ? unitForm.ToRequest().Request : null;
-        return new MbomQuery(Detail.Summary.Number, Detail.Displayed.Revision, Detail.Iteration.Iteration, latestChildren, depth, parentLine, unit);
+        return new MbomQuery(Detail.Summary.Number, Detail.Displayed.Revision, Detail.Iteration.Iteration, latestChildren, depth, parentLine, unit, variantSel);
+    }
+
+    private string? variantName;
+    private VariantSelection? variantSel;
+
+    /// <summary>Resolves the chosen variant of the product (null: every line). MBOM lines take the option conditions of the engineering lines they implement.</summary>
+    private async Task SetVariant(string? name)
+    {
+        (variantName, variantSel) = (null, null);
+        if (name is not null)
+        {
+            var picked = await Variants.ResolveAsync(await Users.GetAsync(), Detail.Summary.PartNumber, name, Corr());
+            if (picked.IsOk) (variantName, variantSel) = (picked.Value!.Name, picked.Value.Selection);
+            else error = UiText.Message(picked);
+        }
+        await Reload();
     }
 
     private string ExportUrl() =>
         $"ui/mboms/{Uri.EscapeDataString(Detail.Summary.Number)}/explosion.csv?revision={Uri.EscapeDataString(Detail.Displayed.Revision)}&iteration={Detail.Iteration.Iteration}&latestChildren={latestChildren.ToString().ToLowerInvariant()}{(levels > 0 ? $"&depth={levels}" : "")}"
-        + (asOf ? "&" + unitForm.Query() : "");
+        + (asOf ? "&" + unitForm.Query() : "")
+        + (variantName is null ? "" : $"&product={Uri.EscapeDataString(Detail.Summary.PartNumber)}&variant={Uri.EscapeDataString(variantName)}");
 
     private async Task Reload()
     {

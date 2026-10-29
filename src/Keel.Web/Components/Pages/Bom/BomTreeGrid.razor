@@ -13,7 +13,7 @@
         <span role="columnheader">Unit</span>
         <span role="columnheader" class="num">Ext qty</span>
         <span role="columnheader">State</span>
-        <span role="columnheader">Effectivity</span>
+        <span role="columnheader">Effectivity and options</span>
         <span role="columnheader">Markings</span>
     </div>
     <div class="bom-body" role="rowgroup" tabindex="0" aria-label="@(AriaLabel) rows">
@@ -55,7 +55,7 @@
                     @if (line.Circular) { <span class="flag">Circular reference</span> }
                     else { @line.StateLabel }
                 </span>
-                <span role="gridcell" class="cell-eff" title="@line.EffectivityText">@line.EffectivityText</span>
+                <span role="gridcell" class="cell-eff" title="@EffectivityAndOptions(line)">@EffectivityAndOptions(line)</span>
                 <span role="gridcell">@if (line.Banner is not null) { <MarkingChip Text="@line.Banner" /> }</span>
             </div>
         </Virtualize>
@@ -77,6 +77,10 @@
     [Parameter] public string AriaLabel { get; set; } = "Bill of materials";
 
     private IReadOnlyList<BomLine>? lastLines;
+
+    /// <summary>Effectivity, then the option usage condition (ADR-0039) as "If Engine = A"; the condition of a restricted line is never shown.</summary>
+    private static string EffectivityAndOptions(BomLine line) =>
+        line.Condition is null ? line.EffectivityText ?? "" : string.IsNullOrEmpty(line.EffectivityText) ? "If " + line.Condition : line.EffectivityText + " · If " + line.Condition;
 
     protected override async Task OnParametersSetAsync()
     {

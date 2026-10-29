@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://keel.invalid/schemas/variant.released.v1.json",
+  "title": "variant.released v1",
+  "description": "A named variant of a product (an assembly) was released: a valid combination of option values. The ERP resolves the product's 150% BOM for it (lines carry option conditions in the bom.published lines and in the pull API) or asks the pull API for the resolved structure with ?variant=. The event's markings are those of the product.",
+  "type": "object",
+  "properties": {
+    "product": {
+      "type": "object",
+      "properties": {
+        "partId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "number": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "partId",
+        "number",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "variant": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "const": "Released"
+        }
+      },
+      "required": [
+        "name",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "choices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "type": "string"
+          },
+          "familyName": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "valueName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "familyName",
+          "value",
+          "valueName"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "modelVersion": {
+      "type": "integer"
+    },
+    "releasedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "product",
+    "variant",
+    "choices",
+    "modelVersion",
+    "releasedAt"
+  ],
+  "additionalProperties": false
+}
