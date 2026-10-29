@@ -23,7 +23,7 @@ public sealed partial class ToolingService(
     private ToolSummary Summarize(ToolRow t)
     {
         var state = ProcessRules.CalibrationState(t.RequiresCalibration, t.DueOn, ProcessStore.Today(clock));
-        return new ToolSummary(t.Number, t.Name, t.Kind, t.Plant, t.Status, t.RequiresCalibration, t.IntervalDays, t.LastCalibratedOn, t.DueOn, state, t.Markings.BannerText(), t.Markings);
+        return new ToolSummary(t.Id, t.Number, t.Name, t.Kind, t.Plant, t.Status, t.RequiresCalibration, t.IntervalDays, t.LastCalibratedOn, t.DueOn, state, t.Markings.BannerText(), t.Markings);
     }
 
     [GeneratedRegex("^[A-Z][A-Z0-9-]{1,19}$")]
@@ -202,7 +202,7 @@ public sealed partial class ToolingService(
         return Outcome<ToolDetail>.Ok(detail);
     }
 
-    public async Task<Outcome<ToolPage>> SearchAsync(Subject subject, ToolSearch query, string? correlationId, CancellationToken ct = default)
+    public async Task<Outcome<ToolResults>> SearchAsync(Subject subject, ToolSearch query, string? correlationId, CancellationToken ct = default)
     {
         var limit = Math.Clamp(query.Limit, 1, 200);
         var offset = Math.Max(0, query.Offset);
@@ -237,7 +237,7 @@ public sealed partial class ToolingService(
         await audit.AppendAsync(tx, Entry(subject, "tool.search", AuditOutcome.Success, ProcessStore.ToolObjectType, null, correlationId,
             ("plant", query.Plant), ("kind", query.Kind), ("dueOnly", query.DueOnly ? "true" : null), ("results", ProcessStore.Fmt(items.Count)), ("banner", banner)), ct);
         await tx.CommitAsync(ct);
-        return Outcome<ToolPage>.Ok(new ToolPage(items, total, banner));
+        return Outcome<ToolResults>.Ok(new ToolResults(items, total, banner));
     }
 
     /// <summary>Key lookup for the palette and recent items: tools among <paramref name="numbers"/> the caller may read.</summary>

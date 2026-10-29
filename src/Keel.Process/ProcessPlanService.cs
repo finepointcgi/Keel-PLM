@@ -112,7 +112,7 @@ public sealed partial class ProcessPlanService(
 
     // ---------------------------------------------------------------- search
 
-    public async Task<Outcome<PlanPage>> SearchAsync(Subject subject, PlanSearch query, string? correlationId, CancellationToken ct = default)
+    public async Task<Outcome<PlanResults>> SearchAsync(Subject subject, PlanSearch query, string? correlationId, CancellationToken ct = default)
     {
         var limit = Math.Clamp(query.Limit, 1, 200);
         var offset = Math.Max(0, query.Offset);
@@ -154,7 +154,7 @@ public sealed partial class ProcessPlanService(
             ("plant", query.Plant), ("state", query.State), ("staleOnly", query.StaleOnly ? "true" : null), ("sort", query.Sort is null ? null : $"{query.Sort.Key} {query.Sort.DirectionText}"),
             ("results", Fmt(page.Count)), ("banner", banner)), ct);
         await tx.CommitAsync(ct);
-        return Outcome<PlanPage>.Ok(new PlanPage(page, total, banner));
+        return Outcome<PlanResults>.Ok(new PlanResults(page, total, banner));
     }
 
     /// <summary>Key lookup for recent items and the palette: the plans among <paramref name="numbers"/> the caller may read (plan and MBOM).</summary>
@@ -327,7 +327,7 @@ public sealed partial class ProcessPlanService(
         var owner = head.IsOpen && head.OpenBy == subject.Id;
         var permissions = new PlanPermissions(modify, AccessPolicy.Evaluate(subject, head.Markings, PlmAction.Administer).Permitted, owner,
             modify && head.IsLatest && head.State == PlanStates.InWork && !head.IsOpen, modify && head.IsLatest && head.State == PlanStates.Released);
-        var boundLines = lines.Select(l => new BoundLineView(l.Find, l.Alt, l.Redacted, l.ChildNumber, l.ChildName, l.Quantity, l.Unit, l.Phantom, l.SupplyType)).ToList();
+        var boundLines = lines.Select(l => new BoundLineView(l.Find, l.Alt, l.Redacted, l.ChildNumber, l.ChildName, l.Quantity, l.Unit, l.Phantom, l.SupplyType, l.ChildMasterId ?? Guid.Empty)).ToList();
         return new PlanDetail(summary, head.Description, revisions, view, boundLines, findings, working, head.CreatedAt, head.CreatedBy, permissions);
     }
 

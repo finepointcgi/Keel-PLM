@@ -132,6 +132,9 @@
                     case "comments":
                         <CommentThread Kind="@ObjectKinds.Mbom" Number="@s.Number" OnCount="c => commentCount = c" />
                         break;
+                    case "process":
+                        <MbomProcessPanel MbomNumber="@s.Number" CanCreate="@d.Permissions.CanModify" />
+                        break;
                     case "timeline":
                         @* UX-3: the life of the manufacturing BOM. *@
                         <TimelinePanel ObjectType="mbom" Key="@s.Number" Version="@($"{d.Displayed.Revision}.{d.Iteration.Iteration}.{d.Displayed.State}")"
@@ -153,8 +156,8 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure", "timeline", "security", .. AwarenessTabs.Ids];
-    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure"), new("timeline", "Timeline"), new("security", "Security markings")];
+    private static readonly string[] TabIds = ["overview", "lines", "reconciliation", "review", "structure", "process", "timeline", "security", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("lines", "Lines"), new("reconciliation", "Reconciliation"), new("review", "Review & release"), new("structure", "Structure"), new("process", "Process plan"), new("timeline", "Timeline"), new("security", "Security markings")];
     private string tab = "overview";
     private int? commentCount; // number of comments, shown on the Comments tab (UX-4)
     private IReadOnlyList<LifecycleState> steps = [];

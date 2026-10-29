@@ -61,6 +61,7 @@ public static class WorkflowText
         "ncr" or "capa" or "deviation" => AwarenessKinds.Path(objectType, key), // 8.1: quality records reviewed through the same engine
         "reqspec" => $"requirements/{Uri.EscapeDataString(key)}", // 8.3: requirement specifications released by signatures
         "supplier" => $"suppliers/{Uri.EscapeDataString(key)}", // 8.2: supplier approval
+        "process_plan" => $"process/plans/{Uri.EscapeDataString(key)}", // 8.7: process plan release
         "source_entry" => $"sourcing/entries/{Uri.EscapeDataString(key)}", // 8.2: approved list entries
         "retention_schedule" => $"records/schedules/{key.TrimStart('v')}", // 8.6: retention schedule publication
         "legal_hold" => $"records/holds/{Uri.EscapeDataString(key)}", // 8.6: legal hold release

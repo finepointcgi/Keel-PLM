@@ -1,0 +1,218 @@
+@page "/process/plans/{Number}"
+@using Keel.Web.Components.Pages.Sourcing
+@inject CurrentUser Users
+@inject ProcessPlanService Plans
+@inject NavigationManager Nav
+
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">Process plan @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.ProcessPlan" Number="@d.Summary.Number" />
+            <CommentCount Kind="@ObjectKinds.ProcessPlan" Number="@d.Summary.Number" OnCount="c => commentCount = c" />
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (d.Summary.Stale != Staleness.Current)
+            {
+                <p class="notice" role="status">@d.Summary.StaleText. The plan is flagged, not changed: @(d.Permissions.CanRevise ? "start a new revision to write it against the released MBOM revision." : d.Summary.IsOpen ? "bind the working copy to the released MBOM revision when you have reviewed it." : "check it out to review it.")</p>
+            }
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs(d), commentCount)" Active="@tab" ActiveChanged="OnTabChanged" Label="Process plan sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <section class="panel stack" aria-labelledby="facts-heading">
+                            <h2 id="facts-heading">Plan</h2>
+                            <dl class="facts">
+                                <dt>Plan</dt><dd>@d.Summary.Number, revision @d.Summary.Revision (version @d.Summary.IterationLabel)</dd>
+                                <dt>Part</dt><dd>@d.Summary.PartNumber @d.Summary.PartName</dd>
+                                <dt>Manufacturing BOM</dt><dd><a href="mboms/@Uri.EscapeDataString(d.Summary.MbomNumber)">@d.Summary.MbomNumber</a>, plant @d.Summary.Plant</dd>
+                                <dt>Written against</dt><dd>MBOM revision @d.Summary.BoundMbomRevision@(d.Summary.Stale == Staleness.Current ? " (the released revision)" : "")</dd>
+                                <dt>State</dt><dd><span class="badge @ProcessUi.StateClass(d.Summary.State)">@d.Summary.StateLabel</span>@(d.Summary.IsOpen ? $", checked out by {d.Summary.OpenBy}" : "")</dd>
+                                @if (d.Description.Length > 0) { <dt>Description</dt><dd>@d.Description</dd> }
+                                <dt>Created</dt><dd>@UiText.Utc(d.CreatedAt) by @d.CreatedBy</dd>
+                            </dl>
+                            <div class="toolbar">
+                                @if (d.Permissions.CanCheckOut) { <button type="button" disabled="@busy" @onclick="CheckOut">Check out</button> }
+                                @if (d.Permissions.IsCheckoutOwner)
+                                {
+                                    <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
+                                    <button type="button" class="secondary" disabled="@busy" @onclick="Rebind">Bind to the released MBOM revision</button>
+                                    <button type="button" class="secondary" disabled="@busy" @onclick="Undo">Discard the working copy</button>
+                                }
+                                @if (d.Permissions.CanRevise) { <button type="button" disabled="@busy" @onclick="Revise">Start a new revision</button> }
+                                @if (d.Revisions.Any(r => r.State == PlanStates.Released || r.State == PlanStates.Obsolete))
+                                {
+                                    <a class="button secondary" href="@ProcessUi.ShopFloorHref(d.Summary.Number)">Shop floor view</a>
+                                }
+                            </div>
+                        </section>
+                        <section class="panel" aria-labelledby="findings-heading">
+                            <h3 id="findings-heading">Findings</h3>
+                            @if (d.Findings.Count == 0) { <p class="muted">No findings: the plan is consistent with the bound MBOM revision.</p> }
+                            else
+                            {
+                                <ul class="plain">
+                                    @foreach (var f in d.Findings)
+                                    {
+                                        <li><span class="badge @(f.Severity == Severities.Error ? "state-obsolete" : f.Severity == Severities.Warning ? "state-underreview" : "")">@ProcessUi.SeverityLabel(f.Severity)</span> @f.Message</li>
+                                    }
+                                </ul>
+                                <p class="muted small">Errors keep the plan from being submitted for review; warnings do not.</p>
+                            }
+                        </section>
+                        <section class="panel" aria-labelledby="revs-heading">
+                            <h3 id="revs-heading">Revisions</h3>
+                            <div class="table-wrap">
+                                <table class="data">
+                                    <caption class="sr-only">Revisions of the plan</caption>
+                                    <thead><tr><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Versions</th><th scope="col">MBOM revision</th><th scope="col">Changed</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var r in d.Revisions)
+                                        {
+                                            <tr><th scope="row"><a href="@(ProcessUi.PlanHref(d.Summary.Number))?revision=@r.Revision">@r.Revision</a></th><td><span class="badge @ProcessUi.StateClass(r.State)">@r.StateLabel</span></td><td>@r.LatestIteration</td><td>@r.BoundMbomRevision</td><td>@UiText.Utc(r.StateChangedAt) by @r.StateChangedBy</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                        break;
+                    case "routing":
+                        @if (d.Permissions.IsCheckoutOwner && d.Summary.State == PlanStates.InWork)
+                        {
+                            <PlanEditor Detail="d" OnSaved="OnSaved" />
+                        }
+                        else
+                        {
+                            @if (d.IsWorkingCopy) { <p class="notice" role="status">You are looking at your working copy.</p> }
+                            @if (d.Summary.IsOpen && !d.Permissions.IsCheckoutOwner) { <p class="muted">@d.Summary.OpenBy is editing the plan; you see the last checked-in version.</p> }
+                            @foreach (var r in d.Routings)
+                            {
+                                <section class="panel stack" aria-labelledby="r-@r.Code">
+                                    <h2 id="r-@r.Code">Routing @r.Code: @r.Name@(r.IsPrimary ? " (primary)" : "")</h2>
+                                    @if (r.Condition is not null) { <p>Applies when: @r.Condition</p> }
+                                    @if (r.Note is not null) { <p class="muted">@r.Note</p> }
+                                    @if (r.Operations.Count == 0) { <p class="muted">No operations yet.</p> }
+                                    @foreach (var o in r.Operations) { <OperationBlock Operation="o" /> }
+                                </section>
+                            }
+                        }
+                        break;
+                    case "flow":
+                        <section class="panel stack" aria-labelledby="flow-heading">
+                            <h2 id="flow-heading">Routing flow</h2>
+                            <RoutingFlowView Graph="flow" Routings="d.Routings" />
+                        </section>
+                        break;
+                    case "matrix":
+                        <section class="panel stack" aria-labelledby="matrix-heading">
+                            <h2 id="matrix-heading">Components by operation</h2>
+                            <div class="toolbar">
+                                <label>Routing
+                                    <select @bind="matrixRouting">@foreach (var r in d.Routings) { <option value="@r.Code">@r.Code</option> }</select>
+                                </label>
+                            </div>
+                            @{ var chosen = d.Routings.FirstOrDefault(r => r.Code == matrixRouting) ?? d.Routings.FirstOrDefault(r => r.IsPrimary); }
+                            @if (chosen is not null) { <PlanMatrixView Matrix="PlanMatrix.Build(chosen, d.Lines)" /> }
+                        </section>
+                        break;
+                    case "review":
+                        <SourcingReviewPanel ObjectType="process_plan" Key="@d.Summary.Number" Noun="process plan" OnChanged="Reload"
+                                             CanSubmit="@(d.Permissions.CanModify && d.Summary.State == PlanStates.InWork && !d.Summary.IsOpen && d.Summary.IsOpen == false && d.Revisions.First().Revision == d.Summary.Revision)"
+                                             SubmitHint="@SubmitHint(d)" />
+                        break;
+                    case "timeline":
+                        <TimelinePanel ObjectType="process_plan" Key="@d.Summary.Number" Version="@($"{d.Summary.IterationLabel}:{d.Summary.State}")" />
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.ProcessPlan" Number="@d.Summary.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.ProcessPlan" Number="@d.Summary.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading the process plan" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    [SupplyParameterFromQuery(Name = "revision")] public string? Revision { get; set; }
+    private static readonly string[] TabIds = ["overview", "routing", "flow", "matrix", "review", "timeline", .. AwarenessTabs.Ids];
+
+    private PlanDetail? detail;
+    private ImpactGraph flow = new([], [], false, 0, 0, "UNCLASSIFIED");
+    private bool notFound, busy;
+    private string? error, seenUri;
+    private string tab = "overview", matrixRouting = "";
+    private int? commentCount;
+
+    private string Banner => detail?.Summary.Banner ?? UiText.Unclassified;
+    private string PageTitle => detail is null ? "Process plan" : $"{detail.Summary.Number} · {detail.Summary.PartName}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Process plans", "process/plans"), new(detail?.Summary.Number ?? Number)];
+
+    private IReadOnlyList<TabInfo> Tabs(PlanDetail d) =>
+        [new("overview", "Overview", d.Findings.Count(f => f.Severity != Severities.Info) is > 0 and var n ? n : null), new("routing", "Routings and instructions", d.Routings.Count), new("flow", "Flow"), new("matrix", "Components"), new("review", "Review and release"), new("timeline", "Timeline")];
+
+    private static string? SubmitHint(PlanDetail d) =>
+        d.Summary.IsOpen ? "Check the plan in first." : d.Findings.Any(f => f.Severity == Severities.Error) ? "Resolve the errors under Findings first." : d.Summary.Stale != Staleness.Current ? "The plan is stale: bind it to the released MBOM revision first." : null;
+
+    private RenderFragment HeaderFragment(PlanDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Summary.Banner"
+                  Subtitle="@($"Revision {d.Summary.Revision} · plant {d.Summary.Plant} · MBOM {d.Summary.MbomNumber}")">
+        <Badges>
+            <span class="badge @ProcessUi.StateClass(d.Summary.State)">@d.Summary.StateLabel</span>
+            @if (d.Summary.Stale != Staleness.Current) { <span class="badge state-underreview">Stale</span> }
+            @if (d.Summary.IsOpen) { <span class="badge">Checked out</span> }
+            <FavoriteButton Kind="@ObjectKinds.ProcessPlan" Number="@d.Summary.Number" />
+            <WatchButton Kind="@ObjectKinds.ProcessPlan" Number="@d.Summary.Number" />
+        </Badges>
+    </ObjectHeader>;
+
+    private void OnTabChanged(string id) => tab = id;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        var outcome = await Plans.GetAsync(await Users.GetAsync(), Number, Revision, CurrentUser.NewCorrelationId());
+        Apply(outcome);
+    }
+
+    private void Apply(Outcome<PlanDetail> outcome)
+    {
+        notFound = !outcome.IsOk && outcome.Kind == OutcomeKind.NotFound;
+        if (!outcome.IsOk) { error = notFound ? null : UiText.Message(outcome); return; }
+        error = null;
+        detail = outcome.Value;
+        flow = RoutingFlowGraphBuilder.Build(detail!.Routings, detail.Summary.Number, detail.Summary.Banner);
+        if (matrixRouting == "" || detail.Routings.All(r => r.Code != matrixRouting)) matrixRouting = detail.Routings.FirstOrDefault(r => r.IsPrimary)?.Code ?? "";
+    }
+
+    private Task OnSaved(PlanDetail d) { Apply(Outcome<PlanDetail>.Ok(d)); StateHasChanged(); return Task.CompletedTask; }
+
+    private async Task Run(Func<Subject, string, Task<Outcome<PlanDetail>>> action)
+    {
+        busy = true;
+        var outcome = await action(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) Apply(outcome); else error = UiText.Message(outcome);
+    }
+
+    private Task CheckOut() => Run((s, c) => Plans.CheckOutAsync(s, Number, c));
+    private Task CheckIn() => Run((s, c) => Plans.CheckInAsync(s, Number, null, c));
+    private Task Undo() => Run((s, c) => Plans.UndoCheckOutAsync(s, Number, c));
+    private Task Revise() => Run((s, c) => Plans.ReviseAsync(s, Number, c));
+    private Task Rebind() => Run((s, c) => Plans.RebindAsync(s, Number, c));
+}

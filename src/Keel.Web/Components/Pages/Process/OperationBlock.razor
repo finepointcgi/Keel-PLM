@@ -1,0 +1,68 @@
+@* One operation of a routing as people read it: header facts, components consumed, tools and the work instruction steps with safety and quality callouts and attachments.
+   Used by the plan page and the shop floor view. A callout says its kind in words and with a symbol, never by colour alone. What the reader may not see is a neutral placeholder. *@
+<article class="sf-op" aria-labelledby="op-@Operation.Id">
+    <h3 id="op-@Operation.Id">Operation @Operation.Number: @Operation.Name</h3>
+    <dl class="facts compact">
+        <dt>Work center</dt><dd>@(Operation.WorkCenter is null ? "None" : $"{Operation.WorkCenter}{(Operation.WorkCenterName is null ? "" : " " + Operation.WorkCenterName)}")</dd>
+        <dt>Setup time</dt><dd>@(Operation.SetupMinutes is { } s ? $"{ProcessRules.Fmt(s)} min" : "Not set")</dd>
+        <dt>Run time per unit</dt><dd>@(Operation.RunMinutes is { } r ? $"{ProcessRules.Fmt(r)} min" : "Not set")</dd>
+        @if (Operation.Condition is not null) { <dt>Applies when</dt><dd>@Operation.Condition</dd> }
+        @if (Operation.Inspection) { <dt>Inspection point</dt><dd>@Operation.InspectionText</dd> }
+    </dl>
+    @if (Operation.Components.Count > 0)
+    {
+        <h4>Components</h4>
+        <div class="table-wrap">
+            <table class="data">
+                <caption class="sr-only">Components consumed at operation @Operation.Number</caption>
+                <thead><tr><th scope="col">Find</th><th scope="col">Component</th><th scope="col">Quantity</th></tr></thead>
+                <tbody>
+                    @foreach (var c in Operation.Components)
+                    {
+                        <tr class="@(c.Redacted ? "restricted" : null)">
+                            <th scope="row">@c.Find@(c.Alt > 0 ? $".{c.Alt}" : "")</th>
+                            <td>@(c.Redacted ? "Restricted component" : $"{c.PartNumber} {c.PartName}")</td>
+                            <td>@ProcessRules.Fmt(c.AssignedQuantity) @c.Unit@(c.Whole ? "" : $" of {ProcessRules.Fmt(c.LineQuantity)}")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    @if (Operation.Tools.Count > 0)
+    {
+        <h4>Tools, fixtures and gauges</h4>
+        <ul class="plain"><ToolItems Tools="Operation.Tools" /></ul>
+    }
+    @if (Operation.Steps.Count > 0)
+    {
+        <h4>Work instruction</h4>
+        <ol class="sf-steps">
+            @foreach (var step in Operation.Steps)
+            {
+                <li class="sf-step sf-kind-@step.Kind">
+                    @if (StepKinds.IsCallout(step.Kind) || step.Kind == StepKinds.Note)
+                    {
+                        <p class="sf-callout"><span class="sf-glyph" aria-hidden="true">@StepKinds.Glyph(step.Kind)</span> <strong>@step.KindLabel:</strong> @step.Text</p>
+                    }
+                    else { <p>@step.Text</p> }
+                    @if (step.Tools.Count > 0) { <ul class="plain small"><li>Use:</li><ToolItems Tools="step.Tools" /></ul> }
+                    @foreach (var a in step.Attachments)
+                    {
+                        <figure class="sf-figure">
+                            @if (a.Availability == "available" && a.IsImage && a.ContentUrl is not null) { <img src="@a.ContentUrl" alt="@a.Caption" loading="lazy" /> }
+                            else if (a.Availability == "available") { <p><a href="@a.ViewUrl">@a.FileName</a></p> }
+                            else if (a.Availability == "quarantined") { <p class="error">This file is quarantined by the malware scanner and is not shown.</p> }
+                            else { <p class="muted">Restricted attachment: you are not authorized to view it.</p> }
+                            <figcaption>@a.Caption@(a.Availability == "available" && a.Banner is not null ? $" ({a.Banner})" : "")</figcaption>
+                        </figure>
+                    }
+                </li>
+            }
+        </ol>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired] public required OperationView Operation { get; set; }
+}

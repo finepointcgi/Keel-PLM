@@ -101,7 +101,7 @@ public sealed record PlanSummary(
     };
 }
 
-public sealed record PlanPage(IReadOnlyList<PlanSummary> Items, int Total, string Banner);
+public sealed record PlanResults(IReadOnlyList<PlanSummary> Items, int Total, string Banner);
 
 public sealed record ComponentView(int Find, int Alt, bool Redacted, string? PartNumber, string? PartName, decimal LineQuantity, string Unit, decimal AssignedQuantity, bool Whole, string? Banner, bool PartChanged);
 
@@ -118,7 +118,7 @@ public sealed record OperationView(
 public sealed record RoutingView(string Code, string Name, bool IsPrimary, string? Condition, string? Note, IReadOnlyList<OperationView> Operations);
 
 /// <summary>A line of the bound MBOM revision, as the reader may see it.</summary>
-public sealed record BoundLineView(int Find, int Alt, bool Redacted, string? PartNumber, string? PartName, decimal Quantity, string Unit, bool Phantom, string? SupplyType);
+public sealed record BoundLineView(int Find, int Alt, bool Redacted, string? PartNumber, string? PartName, decimal Quantity, string Unit, bool Phantom, string? SupplyType, Guid MasterId = default);
 
 public sealed record PlanPermissions(bool CanModify, bool CanAdminister, bool IsCheckoutOwner, bool CanCheckOut, bool CanRevise);
 
@@ -131,7 +131,7 @@ public sealed record ShopFloorView(
     string Banner, RoutingView Routing, IReadOnlyList<string> OtherRoutings, DateTimeOffset GeneratedAt);
 
 public sealed record ToolSummary(
-    string Number, string Name, string Kind, string Plant, string Status, bool RequiresCalibration, int? IntervalDays, DateOnly? LastCalibratedOn, DateOnly? DueOn, string CalibrationState, string Banner, Markings Markings);
+    Guid Id, string Number, string Name, string Kind, string Plant, string Status, bool RequiresCalibration, int? IntervalDays, DateOnly? LastCalibratedOn, DateOnly? DueOn, string CalibrationState, string Banner, Markings Markings);
 
 public sealed record CalibrationRecord(DateOnly CalibratedOn, DateOnly NextDueOn, string? Reference, string? Note, DateTimeOffset RecordedAt, string RecordedBy);
 
@@ -140,7 +140,7 @@ public sealed record ToolPlanUse(string PlanNumber, string PartNumber, string Pl
 public sealed record ToolDetail(
     ToolSummary Summary, string? Description, int Revision, IReadOnlyList<CalibrationRecord> History, IReadOnlyList<ToolPlanUse> UsedBy, bool CanModify);
 
-public sealed record ToolPage(IReadOnlyList<ToolSummary> Items, int Total, string Banner);
+public sealed record ToolResults(IReadOnlyList<ToolSummary> Items, int Total, string Banner);
 
 public sealed record WorkCenterInfo(Guid Id, string Plant, string Code, string Name, string ResourceKind, bool IsActive);
 
