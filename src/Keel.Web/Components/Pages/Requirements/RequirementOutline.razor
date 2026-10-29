@@ -16,7 +16,7 @@
     @if (error is not null) { <p class="error" role="alert">@error</p> }
     <div class="toolbar">
         <input aria-label="Filter requirements" placeholder="Filter by key, title or text" class="grow" @bind="filter" @bind:event="oninput" />
-        <p class="muted small" aria-live="polite">@Visible().Count() of @Set.Rows.Count(r => !r.Redacted) readable@(Set.Rows.Any(r => r.Redacted) ? " · restricted items are shown as placeholders" : "")</p>
+        <p class="muted small" aria-live="polite">@Visible().Count(r => !r.Redacted) of @Set.Rows.Count(r => !r.Redacted) readable@(Set.Rows.Any(r => r.Redacted) ? " · restricted items are shown as placeholders" : "")</p>
     </div>
     @if (Set.Rows.Count == 0) { <p class="muted">No requirements yet.@(CanEdit ? " Add the first one, or import a file on the Import and export tab." : "")</p> }
     else
