@@ -24,7 +24,7 @@
         var user = (await AuthState!).User;
         signedIn = SessionRevalidatingStateProvider.IsValid(user, DateTimeOffset.UtcNow) && SubjectClaims.FromPrincipal(user) is not null;
         // An external supplier user who lands on the home page goes to the supplier portal (8.2); any other internal page stays denied and audited.
-        if (signedIn && user.IsInRole(Roles.Supplier) && Nav.ToBaseRelativePath(Nav.Uri).Length == 0) { Nav.NavigateTo("portal", replace: true); return; }
+        if (signedIn && user.IsInRole(Roles.Supplier) && LandedFromHome()) { Nav.NavigateTo("portal", replace: true); return; }
         if (!signedIn || !RecordDenial) return;
         // In-circuit navigation is authorized by AuthorizeRouteView, not the HTTP middleware, so audit the denial here.
         await Audit.AppendAsync(new AuditEntry
@@ -37,6 +37,16 @@
             CorrelationId = CurrentUser.NewCorrelationId(),
             Details = AuditDetails.Of(("reason", "role.missing")),
         });
+    }
+
+    // The home page itself (in-circuit), or the cookie handler's redirect after a refused "/" (sign-in lands there): ReturnUrl is the home page or absent.
+    private bool LandedFromHome()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri);
+        if (path.Length == 0) return true;
+        if (!path.StartsWith("access-denied", StringComparison.Ordinal)) return false;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        return !query.TryGetValue("ReturnUrl", out var ret) || ret.ToString() is "" or "/";
     }
 
     private void Reload() => Nav.NavigateTo(Nav.Uri, forceLoad: true);

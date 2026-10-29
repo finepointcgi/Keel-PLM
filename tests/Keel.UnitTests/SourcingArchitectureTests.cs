@@ -94,8 +94,8 @@ public sealed partial class SourcingArchitectureTests
     {
         var layout = File.ReadAllText(Path.Combine(Root, "src", "Keel.Web", "Components", "Layout", "MainLayout.razor"));
         Assert.Contains("NavModel.ForSupplier()", layout, StringComparison.Ordinal);
-        Assert.Matches(@"@if \(!locked && !supplier\)\s*\{\s*<CommandPalette />", layout);
-        Assert.Contains("@if (!supplier) { <NotificationBell /> }", layout, StringComparison.Ordinal);
+        Assert.Matches(@"@if \(!locked && ready && !supplier\)\s*\{\s*<CommandPalette />", layout);
+        Assert.Contains("@if (ready && !supplier) { <NotificationBell /> }", layout, StringComparison.Ordinal);
     }
 
     [Fact]
