@@ -63,7 +63,7 @@ public sealed partial class BomService(NpgsqlDataSource dataSource, IAuditLog au
             var data = await ExplodeCoreAsync(conn, tx, subject, root, query.Spec, query.Depth, Seed.ForRoot(root), query.Effectivity, ct, query.Variant);
             if (data is null) return (TooLarge<BomExport>(), []);
             var csv = BomCsv.Render(data.Banner, data.Lines);
-            var file = $"{root.Number}_{root.Revision}.{root.Iteration}_{query.Spec}{(query.Effectivity is null ? "" : "_" + FileSafe(query.Effectivity.Describe()))}_bom.csv";
+            var file = $"{root.Number}_{root.Revision}.{root.Iteration}_{query.Spec}{(query.Effectivity is null ? "" : "_" + FileSafe(query.Effectivity.Describe()))}{(query.Variant is null ? "" : "_variant_" + FileSafe(query.Variant.Label))}_bom.csv";
             return (Outcome<BomExport>.Ok(new BomExport(file, csv, data.Banner, data.Lines.Count, data.Redacted)),
                 Details(root, query, data, ("format", "csv")));
         }, ct);
