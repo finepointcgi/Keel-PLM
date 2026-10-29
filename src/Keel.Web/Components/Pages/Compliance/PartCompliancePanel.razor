@@ -1,0 +1,97 @@
+@inject CurrentUser Users
+@inject DeclarationService Declarations
+
+@* The Compliance tab of a part: what the part stands at for each regulation in force (the worst of its current declarations), its declarations with their status and expiry, and the
+   form to add one. A declaration counts only while it has not expired or been withdrawn and covers the part's revision. The part's banner covers everything shown here. *@
+@if (notFound)
+{
+    <p class="error" role="alert">Compliance for this part is not available to you.</p>
+}
+else if (data is not null)
+{
+    <section class="panel stack" aria-labelledby="compliance-heading">
+        <h2 id="compliance-heading">Compliance</h2>
+        @if (data.Regulations.Count == 0) { <p class="muted">No regulatory list is in force.</p> }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <caption class="visually-hidden">Standing of the part for each regulation</caption>
+                    <thead><tr><th scope="col">Regulation</th><th scope="col">List version</th><th scope="col">Standing</th><th scope="col">Declarations considered</th><th scope="col">What was found</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in data.Regulations)
+                        {
+                            <tr>
+                                <th scope="row"><a href="@ComplianceUi.VersionHref(r.ListCode, r.ListVersion)">@r.ListName</a></th>
+                                <td>@r.ListVersion</td>
+                                <td><span class="badge @ComplianceUi.StandingClass(r.Standing)">@r.StandingLabel</span></td>
+                                <td>@foreach (var n in r.DeclarationNumbers) { <a href="@ComplianceUi.DeclarationHref(n)">@n</a>@(" ") }</td>
+                                <td>
+                                    @if (r.Findings.Count == 0) { <span class="muted">Nothing</span> }
+                                    else
+                                    {
+                                        <ul class="plain" aria-label="What was found for @r.ListName">
+                                            @foreach (var f in r.Findings.Where(f => f.Reason != FindingReasons.ConflictFree)) { <li class="small">@ComplianceUi.FindingText(f)</li> }
+                                        </ul>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <h3>Declarations</h3>
+        @if (data.Declarations.Count == 0) { <p class="muted">No declaration was made for this part yet. Without one, an assembly that contains it reads as incomplete.</p> }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <caption class="visually-hidden">Declarations of the part</caption>
+                    <thead><tr><th scope="col">Declaration</th><th scope="col">Status</th><th scope="col">Source</th><th scope="col">Revision</th><th scope="col">Declared</th><th scope="col">Valid until</th></tr></thead>
+                    <tbody>
+                        @foreach (var d in data.Declarations)
+                        {
+                            <tr>
+                                <th scope="row"><a href="@ComplianceUi.DeclarationHref(d.Number)">@d.Number</a></th>
+                                <td><span class="badge @ComplianceUi.StatusClass(d.Status)">@d.StatusLabel</span></td>
+                                <td>@DeclarationSources.Label(d.Source)@(d.SupplierRef is null ? "" : $" ({d.SupplierRef})")</td>
+                                <td>@(d.RevisionScope ?? "All")</td>
+                                <td>@ComplianceUi.Date(d.DeclaredOn)</td>
+                                <td>@ComplianceUi.Date(d.ExpiresOn) <span class="muted small">(@ComplianceUi.Countdown(d))</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+    @if (data.CanModify)
+    {
+        <DeclarationForm @key="formKey" PartNumber="@PartNumber" OnSaved="Saved" />
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public required string PartNumber { get; set; }
+
+    private PartComplianceView? data;
+    private bool notFound;
+    private int formKey;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Declarations.GetForPartAsync(await Users.GetAsync(), PartNumber, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        data = outcome.Value;
+    }
+
+    private async Task Saved(string number)
+    {
+        formKey++;
+        await Load();
+    }
+}

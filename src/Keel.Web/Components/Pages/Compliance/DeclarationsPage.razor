@@ -1,0 +1,80 @@
+@page "/compliance/declarations"
+@inject CurrentUser Users
+@inject DeclarationService Declarations
+
+<PageFrame Banner="@Banner" Title="Compliance declarations" Crumbs="@Crumbs">
+    <ComplianceNav />
+    <p class="muted">The declarations of the parts you can read, soonest to expire first. Add a declaration from the Compliance tab of a part.</p>
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Part number" placeholder="Part number" class="grow" @bind="part" />
+        <input aria-label="Supplier number" placeholder="Supplier number" @bind="supplier" />
+        <select aria-label="Status" @bind="status" @bind:after="() => Search(0)">
+            <option value="">Any status</option>
+            @foreach (var s in DeclarationStatuses.All) { <option value="@s">@DeclarationStatuses.Label(s)</option> }
+        </select>
+        <select aria-label="Source" @bind="source" @bind:after="() => Search(0)">
+            <option value="">Any source</option>
+            <option value="internal">Made by us</option>
+            <option value="supplier">Provided by a supplier</option>
+        </select>
+        <button type="submit">Search</button>
+    </form>
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total declaration@(result.Total == 1 ? "" : "s") you can access</p>
+        <DataTable TItem="DeclarationSummary" TableId="declarations" Items="result.Items" Columns="Columns" Caption="Declarations" OnServerSort="OnSort" ServerSort="sort">
+            <Empty><EmptyState Title="@(Filtered ? "No declarations match" : "No declarations yet")" IconName="folder">@(Filtered ? "Try a different search or clear the filters." : "Declarations are added on the Compliance tab of a part.")</EmptyState></Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    [SupplyParameterFromQuery(Name = "status")] public string? StatusParam { get; set; }
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Compliance", "compliance"), new("Declarations")];
+    private SortSpec? sort;
+    private bool sortLoaded;
+    private string part = "", supplier = "", status = "", source = "";
+    private int offset;
+    private DeclarationResults? result;
+    private bool Filtered => part.Length > 0 || supplier.Length > 0 || status != "" || source != "";
+    private string Banner => result?.PageBanner ?? UiText.Unclassified;
+
+    private static readonly IReadOnlyList<DataColumn<DeclarationSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Declaration", Required = true, ServerSortKey = "number", Cell = d => @<a href="@ComplianceUi.DeclarationHref(d.Number)">@d.Number</a> },
+        new() { Key = "part", Title = "Part", ServerSortKey = "part", Cell = d => @<a href="@ComplianceUi.PartHref(d.PartNumber)">@d.PartNumber</a> },
+        new() { Key = "status", Title = "Status", ServerSortKey = "status", Cell = d => @<span class="badge @ComplianceUi.StatusClass(d.Status)">@d.StatusLabel</span> },
+        new() { Key = "source", Title = "Source", ServerSortKey = "source", Text = d => DeclarationSources.Label(d.Source) },
+        new() { Key = "supplier", Title = "Supplier", Text = d => d.SupplierRef ?? "" },
+        new() { Key = "declared", Title = "Declared", ServerSortKey = "declared", Text = d => ComplianceUi.Date(d.DeclaredOn) },
+        new() { Key = "expires", Title = "Valid until", ServerSortKey = "expires", Text = d => $"{ComplianceUi.Date(d.ExpiresOn)} ({ComplianceUi.Countdown(d)})" },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = DeclarationService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        if (status == "" && StatusParam is not null && DeclarationStatuses.All.Contains(StatusParam)) status = StatusParam;
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        var outcome = await Declarations.SearchAsync(await Users.GetAsync(),
+            new DeclarationSearch(string.IsNullOrWhiteSpace(part) ? null : part, status == "" ? null : status, source == "" ? null : source, string.IsNullOrWhiteSpace(supplier) ? null : supplier, PageSize, offset, sort),
+            CurrentUser.NewCorrelationId());
+        result = outcome.Value;
+    }
+}

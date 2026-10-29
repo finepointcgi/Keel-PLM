@@ -224,6 +224,15 @@ public static partial class ActivityCatalog
         R("sourcing.entry_end", "state", "{actor} ended the list entry {entry}", "{actor} ended a list entry", F("entry", "Entry"), F("endsOn", "Ends on"), Reason),
         R("sourcing.relation_add", "link", "{actor} related the part to {related}", "{actor} related another part", F("related", "Part", FieldKind.ObjectRef), F("relation", "Relation")),
         R("sourcing.relation_remove", "link", "{actor} removed a related part"),
+        // product compliance (8.5): events of a part's declarations; details are declaration numbers, codes and counts only, never names, notes or reasons
+        R("compliance.declaration_create", "created", "{actor} added the compliance declaration {declaration}", "{actor} added a compliance declaration", F("declaration", "Declaration"), F("source", "Source"), F("status", "Status", FieldKind.State)),
+        R("compliance.declaration_update", "edit", "{actor} changed the compliance declaration {declaration}", "{actor} changed a compliance declaration", F("declaration", "Declaration"), F("status", "Status", FieldKind.State)),
+        R("compliance.declaration_verify", "state", "{actor} verified the compliance declaration {declaration}", "{actor} verified a compliance declaration", F("declaration", "Declaration"), F("status", "Status", FieldKind.State)),
+        R("compliance.declaration_withdraw", "state", "{actor} withdrew the compliance declaration {declaration}", "{actor} withdrew a compliance declaration", F("declaration", "Declaration"), From),
+        R("compliance.document_link", "link", "{actor} linked the document {document} to the compliance declaration {declaration}", "{actor} linked a document to a compliance declaration", F("declaration", "Declaration"), F("document", "Document", FieldKind.ObjectRef)),
+        R("compliance.document_unlink", "link", "{actor} removed the link to the document {document} from the compliance declaration {declaration}", "{actor} removed a document link from a compliance declaration", F("declaration", "Declaration"), F("document", "Document", FieldKind.ObjectRef)),
+        R("compliance.status_change", "state", "The status of the compliance declaration {declaration} changed from {from} to {to}", "The status of a compliance declaration changed", F("declaration", "Declaration"), From, To, F("cause", "Cause")),
+        R("compliance.expiry_notice", "state", "The compliance declaration {declaration} needs attention: it expires soon or has expired", "A compliance declaration needs attention: it expires soon or has expired", F("declaration", "Declaration"), F("stage", "Stage"), F("expires", "Expires")),
         // comments
         R("comment.create", "comment", "{actor} commented"),
         R("comment.delete", "comment", "{actor} removed a comment", null, F("by", "Removed as")),
@@ -306,6 +315,11 @@ public static partial class ActivityCatalog
         ["deviation.read"] = "{actor} viewed the deviation or waiver",
         ["deviation.search"] = "{actor} found the deviation or waiver in a search",
         ["deviation.for_part"] = "{actor} listed the deviations and waivers of the part",
+        ["compliance.part_read"] = "{actor} viewed the compliance of the part",
+        ["compliance.declaration_read"] = "{actor} viewed a compliance declaration",
+        ["compliance.declaration_search"] = "{actor} searched compliance declarations",
+        ["compliance.rollup"] = "{actor} ran a compliance roll-up",
+        ["compliance.export"] = "{actor} exported a compliance report",
         ["workflow.read"] = "{actor} viewed a review",
         ["workflow.task_read"] = "{actor} viewed a review task",
         ["workflow.status"] = "{actor} viewed the review status",
@@ -327,6 +341,10 @@ public static partial class ActivityCatalog
         "workflow.task_skip", "workflow.list", "workflow.tasks_list", "workflow.templates_list", "workflow.template_upload", "workflow.users_search",
         "workspace.read", "workspace.saved_search.create", "workspace.saved_search.delete", "workspace.saved_search.replace", "activity.read", "comment.read", "watch.set",
         "integration.event_skipped", "quality.my_actions", "quality.dashboard",
+        // Product compliance (8.5) reference data and list publication: administration, not events of one object a person can open.
+        "compliance.substance_create", "compliance.substance_update", "compliance.substance_read", "compliance.substance_search", "compliance.material_create", "compliance.material_update",
+        "compliance.material_read", "compliance.list_create", "compliance.list_read", "compliance.list_draft_create", "compliance.list_draft_save", "compliance.list_draft_discard",
+        "compliance.list_submit", "compliance.list_publish", "compliance.list_review_cancel",
         // Refusal reason codes that happen to look like actions (they are written into the details of a denial, never as an event's action).
         "comment.not_author_or_admin", "workflow.cancel_not_starter_or_admin",
     }.Concat(Keel.Core.EventTypes.All).ToFrozenSet(StringComparer.Ordinal); // the event types of the ERP contract are outbox events, not audit actions

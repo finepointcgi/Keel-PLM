@@ -163,4 +163,9 @@ public static class NotificationKindCodes
     public const string SupplierCertExpiring = "supplier_cert_expiring";
     public const string SupplierCertExpired = "supplier_cert_expired";
     public const string SupplierStatusChanged = "supplier_status_changed";
+    /// <summary>8.5 compliance: a part's declaration became non-compliant (list update or edit), is about to expire / has expired, or a supplier provided a declaration. Pointer is the part.</summary>
+    public const string ComplianceNonCompliant = "compliance_noncompliant";
+    public const string ComplianceDeclarationExpiring = "compliance_declaration_expiring";
+    public const string ComplianceDeclarationExpired = "compliance_declaration_expired";
+    public const string ComplianceSupplierDeclaration = "compliance_supplier_declaration";
 }

@@ -14,8 +14,10 @@ public static class ObjectKinds
     public const string Capa = "capa";
     public const string Deviation = "deviation";
     public const string Supplier = "supplier";
+    /// <summary>8.5 compliance: a substance of the substance master (found by search and the palette; not a pointer a user can favorite or watch).</summary>
+    public const string Substance = "substance";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, Substance];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -31,6 +33,7 @@ public static class ObjectKinds
         Capa => "quality/capas/" + Uri.EscapeDataString(number),
         Deviation => "quality/deviations/" + Uri.EscapeDataString(number),
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
+        Substance => "compliance/substances/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -45,6 +48,7 @@ public static class ObjectKinds
         Capa => "CAPA",
         Deviation => "Deviation",
         Supplier => "Supplier",
+        Substance => "Substance",
         _ => kind,
     };
 }

@@ -23,7 +23,7 @@ public sealed partial class ArchitectureTests
         ["Keel.Admin"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Integration (ADR-0025) reaches parts, BOM, documents and change data only through Keel.Core interfaces implemented by their owners.
         ["Keel.Integration"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
-        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality"],
+        ["Keel.Web"] = ["Keel.Cad", "Keel.Core", "Keel.Security", "Keel.Audit", "Keel.Parts", "Keel.Documents", "Keel.Bom", "Keel.Workflow", "Keel.Change", "Keel.Migration", "Keel.Admin", "Keel.Integration", "Keel.Workspace", "Keel.Notifications", "Keel.Sourcing", "Keel.Variants", "Keel.Records", "Keel.Quality", "Keel.Compliance"],
         // Personal workspace data (UX-1, ADR-0028): preferences, recent items, favorites, saved searches. Pointers only; Keel.Web re-authorizes them through the module services.
         ["Keel.Workspace"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         ["Keel.Workflow"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
@@ -43,6 +43,8 @@ public sealed partial class ArchitectureTests
         ["Keel.Records"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
         // Quality (8.1, ADR-0036) reaches parts, changes and the supplier page only through Keel.Core interfaces implemented by their owners.
         ["Keel.Quality"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
+        // Product compliance (8.5, ADR-0040): the structure of an assembly is read by the host through the BOM read paths and handed in; documents and notifications are reached through Keel.Core interfaces.
+        ["Keel.Compliance"] = ["Keel.Core", "Keel.Security", "Keel.Audit"],
     };
 
     [Fact]

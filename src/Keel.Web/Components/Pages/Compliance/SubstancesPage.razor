@@ -1,0 +1,94 @@
+@page "/compliance/substances"
+@inject CurrentUser Users
+@inject RegulatoryCatalogService Catalog
+
+<PageFrame Banner="@UiText.Unclassified" Title="Substances" Crumbs="@Crumbs">
+    <ComplianceNav />
+    <p class="muted">The substance master: every substance a list or a declaration can name, by CAS number. Conflict minerals (tin, tantalum, tungsten, gold) are flagged.</p>
+    <form class="toolbar" role="search" @onsubmit="() => Search(0)">
+        <input aria-label="Search substances" placeholder="Number, CAS number or name" class="grow" @bind="text" />
+        <select aria-label="Conflict mineral" @bind="mineral" @bind:after="() => Search(0)">
+            <option value="">Any substance</option>
+            @foreach (var m in Minerals.All) { <option value="@m">@Minerals.Label(m)</option> }
+        </select>
+        <button type="submit">Search</button>
+    </form>
+    @if (result is not null)
+    {
+        <p class="muted">@result.Total substance@(result.Total == 1 ? "" : "s")</p>
+        <DataTable TItem="SubstanceView" TableId="substances" Items="result.Items" Columns="Columns" Caption="Substances" OnServerSort="OnSort" ServerSort="sort">
+            <Empty><EmptyState Title="@(Filtered ? "No substances match" : "No substances yet")" IconName="folder">@(Filtered ? "Try a different search." : "An administrator adds the substances that lists and declarations name.")</EmptyState></Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+    <AuthorizeView Roles="@Roles.Admin" Context="admin">
+        <EditForm Model="this" OnSubmit="Create" FormName="create-substance" class="panel stack">
+            <h2>Add a substance</h2>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <div class="grid-form">
+                <label>CAS number * <InputText @bind-Value="cas" maxlength="12" placeholder="7439-92-1" required /></label>
+                <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+                <label>EC number <InputText @bind-Value="ec" maxlength="9" placeholder="231-100-4" /></label>
+                <label>
+                    Conflict mineral
+                    <InputSelect @bind-Value="newMineral"><option value="">None</option>@foreach (var m in Minerals.All) { <option value="@m">@Minerals.Label(m)</option> }</InputSelect>
+                </label>
+            </div>
+            <div class="toolbar"><button type="submit" disabled="@busy">Add substance</button></div>
+        </EditForm>
+    </AuthorizeView>
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Compliance", "compliance"), new("Substances")];
+    private SortSpec? sort;
+    private bool sortLoaded, busy;
+    private string text = "", mineral = "", cas = "", name = "", ec = "", newMineral = "";
+    private string? error;
+    private int offset;
+    private SubstanceResults? result;
+    private bool Filtered => text.Length > 0 || mineral != "";
+
+    private static readonly IReadOnlyList<DataColumn<SubstanceView>> Columns =
+    [
+        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = s => @<a href="@ComplianceUi.SubstanceHref(s.Number)">@s.Number</a> },
+        new() { Key = "cas", Title = "CAS number", ServerSortKey = "cas", Text = s => s.CasNumber },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = s => s.Name },
+        new() { Key = "ec", Title = "EC number", DefaultHidden = true, Text = s => s.EcNumber ?? "" },
+        new() { Key = "mineral", Title = "Conflict mineral", ServerSortKey = "mineral", Text = s => s.Mineral is { } m ? Minerals.Label(m) : "" },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = RegulatoryCatalogService.SubstanceSortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        offset = newOffset;
+        var outcome = await Catalog.SearchSubstancesAsync(await Users.GetAsync(), new SubstanceSearch(text, mineral == "" ? null : mineral, PageSize, offset, sort), CurrentUser.NewCorrelationId());
+        result = outcome.Value;
+    }
+
+    private async Task Create()
+    {
+        busy = true; error = null;
+        var outcome = await Catalog.CreateSubstanceAsync(await Users.GetAsync(), new SubstanceInput(cas, name, string.IsNullOrWhiteSpace(ec) ? null : ec, newMineral == "" ? null : newMineral), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        (cas, name, ec, newMineral) = ("", "", "", "");
+        await Search(0);
+    }
+}

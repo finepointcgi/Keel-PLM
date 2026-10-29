@@ -1,0 +1,87 @@
+@page "/compliance/lists/{Code}"
+@inject CurrentUser Users
+@inject RegulatoryCatalogService Catalog
+@inject NavigationManager Nav
+
+<PageFrame Banner="@UiText.Unclassified" Title="@(detail?.List.Name ?? "Regulatory list")" Crumbs="@Crumbs">
+    <ComplianceNav />
+    @if (notFound)
+    {
+        <p class="error" role="alert">This list does not exist.</p>
+    }
+    else if (detail is not null)
+    {
+        <p class="muted">@ListKinds.Label(detail.List.Kind). @detail.List.Description</p>
+        <section class="panel" aria-labelledby="versions-heading">
+            <h2 id="versions-heading">Versions</h2>
+            <div class="table-wrap">
+                <table class="data">
+                    <caption class="visually-hidden">Versions of @detail.List.Name</caption>
+                    <thead><tr><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Effective from</th><th scope="col">Substances</th><th scope="col">Exemptions</th><th scope="col">Published</th><th scope="col">Source</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in detail.Versions)
+                        {
+                            <tr>
+                                <th scope="row"><a href="@ComplianceUi.VersionHref(detail.List.Code, v.Version)">Version @v.Version</a></th>
+                                <td><span class="badge @ComplianceUi.VersionClass(v.Status)">@VersionStates.Label(v.Status)</span></td>
+                                <td>@ComplianceUi.Date(v.EffectiveFrom)</td>
+                                <td>@v.Entries</td>
+                                <td>@v.Exemptions</td>
+                                <td>@(v.PublishedAt is { } at ? UiText.Utc(at) : "")</td>
+                                <td>@v.SourceNote</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <AuthorizeView Roles="@Roles.Admin" Context="admin">
+            @if (detail.List.OpenVersion is null)
+            {
+                <EditForm Model="this" OnSubmit="Draft" FormName="draft-reg-list" class="panel stack">
+                    <h2>Prepare the next version</h2>
+                    <p class="muted small">The draft starts as a copy of the newest version. Edit it, submit it for review, and it becomes the version in force on its effective date once the approvers sign.</p>
+                    @if (error is not null) { <p class="error" role="alert">@error</p> }
+                    <div class="grid-form">
+                        <label>Effective from * <InputDate @bind-Value="effective" /></label>
+                        <label class="wide">Source (for example the regulation amendment) <InputText @bind-Value="note" maxlength="500" /></label>
+                    </div>
+                    <div class="toolbar"><button type="submit" disabled="@busy">Create the draft</button></div>
+                </EditForm>
+            }
+            else
+            {
+                <p class="panel">Version @detail.List.OpenVersion is @VersionStates.Label(detail.List.OpenStatus ?? "").ToLowerInvariant(). Only one version of a list is prepared at a time.
+                    <a href="@ComplianceUi.VersionHref(detail.List.Code, detail.List.OpenVersion.Value)">Open it</a></p>
+            }
+        </AuthorizeView>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+    private RegListDetail? detail;
+    private bool notFound, busy;
+    private string? error, note;
+    private DateTime? effective = DateTime.UtcNow.Date;
+
+    private IReadOnlyList<Crumb> Crumbs => [new("Compliance", "compliance"), new("Regulatory lists", "compliance/lists"), new(detail?.List.Name ?? Code)];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Catalog.GetListAsync(await Users.GetAsync(), Code, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+    }
+
+    private async Task Draft()
+    {
+        busy = true; error = null;
+        var outcome = await Catalog.CreateDraftAsync(await Users.GetAsync(), Code, DateOnly.FromDateTime(effective ?? DateTime.UtcNow.Date), note, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        Nav.NavigateTo(ComplianceUi.VersionHref(Code, outcome.Value!.Version));
+    }
+}

@@ -1,0 +1,66 @@
+@page "/compliance/lists"
+@inject CurrentUser Users
+@inject RegulatoryCatalogService Catalog
+
+<PageFrame Banner="@UiText.Unclassified" Title="Regulatory lists" Crumbs="@Crumbs">
+    <ComplianceNav />
+    <p class="muted">The lists that declarations are measured against: restricted substances, substances of very high concern and conflict minerals. Each list has versions with an effective date; a new version is published only after the approvers sign it. Regulatory lists are public reference data.</p>
+    @if (lists is not null)
+    {
+        <DataTable TItem="RegListSummary" TableId="reg-lists" Items="lists" Columns="Columns" Caption="Regulatory lists">
+            <Empty><EmptyState Title="No lists yet" IconName="folder">An administrator adds the lists to measure declarations against.</EmptyState></Empty>
+        </DataTable>
+    }
+    <AuthorizeView Roles="@Roles.Admin" Context="admin">
+        <EditForm Model="this" OnSubmit="Create" FormName="create-reg-list" class="panel stack">
+            <h2>Add a list</h2>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <div class="grid-form">
+                <label>Code * <InputText @bind-Value="code" maxlength="31" placeholder="prop65" required /></label>
+                <label>Name * <InputText @bind-Value="name" maxlength="120" required /></label>
+                <label>
+                    What a substance on the list means
+                    <InputSelect @bind-Value="kind">@foreach (var k in ListKinds.All) { <option value="@k">@ListKinds.Label(k)</option> }</InputSelect>
+                </label>
+                <label class="wide">Description <InputText @bind-Value="description" maxlength="1000" /></label>
+            </div>
+            <div class="toolbar"><button type="submit" disabled="@busy">Add list</button></div>
+        </EditForm>
+    </AuthorizeView>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Compliance", "compliance"), new("Regulatory lists")];
+    private IReadOnlyList<RegListSummary>? lists;
+    private string code = "", name = "", kind = ListKinds.Restricted, description = "";
+    private string? error;
+    private bool busy;
+
+    private static readonly IReadOnlyList<DataColumn<RegListSummary>> Columns =
+    [
+        new() { Key = "name", Title = "List", Required = true, SortValue = l => l.Name, Cell = l => @<a href="@ComplianceUi.ListHref(l.Code)">@l.Name</a> },
+        new() { Key = "code", Title = "Code", SortValue = l => l.Code, Text = l => l.Code },
+        new() { Key = "kind", Title = "Kind", SortValue = l => l.Kind, Text = l => ListKinds.Label(l.Kind) },
+        new() { Key = "active", Title = "Version in force", SortValue = l => l.ActiveVersion, Text = l => l.ActiveVersion is { } v ? $"Version {v}, from {ComplianceUi.Date(l.ActiveFrom)}" : "None yet" },
+        new() { Key = "entries", Title = "Substances", SortValue = l => l.EntryCount, Text = l => l.EntryCount.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+        new() { Key = "open", Title = "In preparation", Text = l => l.OpenVersion is { } v ? $"Version {v} ({VersionStates.Label(l.OpenStatus ?? "").ToLowerInvariant()})" : "" },
+    ];
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Catalog.ListsAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        lists = outcome.Value ?? [];
+    }
+
+    private async Task Create()
+    {
+        busy = true; error = null;
+        var outcome = await Catalog.CreateListAsync(await Users.GetAsync(), new CreateListCommand(code, name, kind, description), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        (code, name, description) = ("", "", "");
+        await Load();
+    }
+}

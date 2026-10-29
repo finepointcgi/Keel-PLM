@@ -52,6 +52,10 @@ public static class NotificationKinds
     public const string SupplierCertExpiring = NotificationKindCodes.SupplierCertExpiring;
     public const string SupplierCertExpired = NotificationKindCodes.SupplierCertExpired;
     public const string SupplierStatusChanged = NotificationKindCodes.SupplierStatusChanged;
+    public const string ComplianceNonCompliant = NotificationKindCodes.ComplianceNonCompliant;
+    public const string ComplianceDeclarationExpiring = NotificationKindCodes.ComplianceDeclarationExpiring;
+    public const string ComplianceDeclarationExpired = NotificationKindCodes.ComplianceDeclarationExpired;
+    public const string ComplianceSupplierDeclaration = NotificationKindCodes.ComplianceSupplierDeclaration;
 
     private const string TasksLocked = "A task or review that waits for you cannot be turned off: it would be missed.";
     private const string MentionLocked = "Someone asked for you by name: this cannot be turned off.";
@@ -98,6 +102,14 @@ public static class NotificationKinds
             "Ends soon", true, null, false, true, 40),
         new(DeviationExpired, NotificationGroups.Watching, "Deviation or waiver expired", "A deviation or waiver you follow reached the end of its window.",
             "Expired", true, null, false, true, 40),
+        new(ComplianceNonCompliant, NotificationGroups.Watching, "Part declaration became non-compliant", "A compliance declaration of a part you watch became non-compliant, for example after a regulatory list was updated.",
+            "A compliance declaration became non-compliant", true, null, false, true, 46),
+        new(ComplianceDeclarationExpired, NotificationGroups.Watching, "Part compliance declaration expired", "A compliance declaration of a part you watch has expired.",
+            "A compliance declaration has expired", true, null, false, true, 44),
+        new(ComplianceDeclarationExpiring, NotificationGroups.Watching, "Part compliance declaration expiring", "A compliance declaration of a part you watch expires soon.",
+            "A compliance declaration expires soon", true, null, false, false, 34),
+        new(ComplianceSupplierDeclaration, NotificationGroups.Watching, "Supplier declaration received", "A supplier-provided compliance declaration was recorded for a part you watch.",
+            "{actor} recorded a compliance declaration provided by a supplier", true, null, false, false, 36),
         new(WatchedState, NotificationGroups.Watching, "Watched object changed state", "An object you watch moved to another lifecycle state.",
             "Changed state (by {actor})", true, null, true, false, 30),
         new(WatchedChanged, NotificationGroups.Watching, "Watched object changed", "A new version of an object you watch was checked in.",
@@ -128,6 +140,7 @@ public static class NotificationKinds
             QualityActionAssigned or QualityActionOverdue => $"{path}?tab=actions",
             ReviewApproved or ReviewRejected => $"{path}#{AwarenessKinds.ReviewTab(objectType)}",
             WatchedChanged or WatchedState => $"{path}#activity",
+            ComplianceNonCompliant or ComplianceDeclarationExpiring or ComplianceDeclarationExpired or ComplianceSupplierDeclaration => $"{path}?tab=compliance",
             _ => path,
         };
     }

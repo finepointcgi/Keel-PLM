@@ -64,8 +64,16 @@ public static class WorkflowText
         "retention_schedule" => $"records/schedules/{key.TrimStart('v')}", // 8.6: retention schedule publication
         "legal_hold" => $"records/holds/{Uri.EscapeDataString(key)}", // 8.6: legal hold release
         "disposition" => $"records/disposition/{Uri.EscapeDataString(key)}", // 8.6: disposition approval
+        "reg_list_version" => TryListVersionHref(key), // 8.5: regulatory list versions (key is "{list code}-{version}")
         _ => null,
     };
+
+    private static string? TryListVersionHref(string key)
+    {
+        var dash = key.LastIndexOf('-');
+        return dash > 0 && int.TryParse(key.AsSpan(dash + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v)
+            ? $"compliance/lists/{Uri.EscapeDataString(key[..dash])}/versions/{v}" : null;
+    }
 
     public static string Utc(DateTimeOffset t) => t.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " UTC";
 }

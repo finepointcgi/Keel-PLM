@@ -139,6 +139,9 @@
                     case "sourcing":
                         <Keel.Web.Components.Pages.Sourcing.PartSourcingPanel PartNumber="@p.Number" OnBanner="b => sourcingBanner = b" />
                         break;
+                    case "compliance":
+                        <Keel.Web.Components.Pages.Compliance.PartCompliancePanel PartNumber="@p.Number" />
+                        break;
                     case "classification":
                         @if (p.Revision.IsLatest)
                         {
@@ -229,11 +232,11 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "sourcing", "quality", .. AwarenessTabs.Ids];
+    private static readonly string[] TabIds = ["overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "sourcing", "quality", "compliance", .. AwarenessTabs.Ids];
     private static readonly IReadOnlyList<TabInfo> Tabs =
     [
         new("overview", "Overview"), new("structure", "Structure"), new("documents", "Documents"), new("changes", "Changes"),
-        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"), new("sourcing", "Sourcing"), new("quality", "Quality"),
+        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"), new("sourcing", "Sourcing"), new("quality", "Quality"), new("compliance", "Compliance"),
     ];
 
     private PartDetail? part;

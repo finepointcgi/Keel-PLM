@@ -1,0 +1,51 @@
+@* "Product compliance": how many declarations of the parts the user may read are verified, non-compliant, expired or about to expire. Counted under the user's own read access:
+   a part the user may not read adds nothing to any number. The card shows numbers only, so it carries no markings of its own. *@
+@using Keel.Compliance
+@inject CurrentUser Users
+@inject DeclarationService Declarations
+
+<section class="card" aria-labelledby="card-compliance">
+    <h2 id="card-compliance"><Icon Name="check" /> Product compliance</h2>
+    @if (loading)
+    {
+        <Skeleton Lines="3" Label="Loading compliance" />
+    }
+    else if (error is not null)
+    {
+        <p class="error" role="alert">@error</p>
+    }
+    else if (counts is null || counts.Declared + counts.Verified + counts.Expired + counts.NonCompliant == 0)
+    {
+        <EmptyState Title="No declarations yet" IconName="check">Declare the substances of a part on its Compliance tab to see where you stand.</EmptyState>
+    }
+    else
+    {
+        <ul class="items" aria-label="Declarations by status">
+            <li><span class="main"><a href="compliance/declarations?status=non_compliant">Non-compliant</a></span> <span class="badge kind-blocked">@counts.NonCompliant</span></li>
+            <li><span class="main"><a href="compliance/declarations?status=expired">Expired</a></span> <span class="badge state-obsolete">@counts.Expired</span></li>
+            <li><span class="main"><a href="compliance/declarations?status=declared">Declared, not yet verified</a></span> <span class="badge state-inwork">@counts.Declared</span></li>
+            <li><span class="main"><a href="compliance/declarations?status=verified">Verified</a></span> <span class="badge state-approved">@counts.Verified</span></li>
+            <li><span class="main"><a href="compliance/declarations">Expiring within @ComplianceRules.ExpiryWarnDays days</a></span> <span class="badge state-underreview">@counts.ExpiringSoon</span></li>
+        </ul>
+        <p class="small"><a href="compliance">Assess an assembly</a></p>
+    }
+</section>
+
+@code {
+    private bool loading = true;
+    private string? error;
+    private ComplianceCounts? counts;
+
+    [Parameter] public EventCallback<(string Id, string? Banner)> OnBanner { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { counts = await Declarations.CountsAsync(await Users.GetAsync()); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            error = "This list could not be loaded. The rest of the page is not affected.";
+        }
+        loading = false;
+        await OnBanner.InvokeAsync(("compliance", null));
+    }
+}
