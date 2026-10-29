@@ -80,12 +80,12 @@ public sealed class ModelVersionTests(E2EFixture fx)
         await AssertCompareMarkingsAsync(page);
         var overlay = await CanvasPixelsAsync(page);
         Assert.True(overlay[0] > overlay[1] * 0.03, $"The overlay covers too little of the canvas: {overlay[0]} of {overlay[1]} pixels.");
-        Assert.True(overlay[3] > 0 && overlay[4] > 0, $"The overlay shows both tints (blue {overlay[3]}, orange {overlay[4]}).");
 
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Side by side" }).ClickAsync();
         await Expect(page.Locator("#viewer-stage")).ToHaveAttributeAsync("data-mode", "side");
         var side = await CanvasPixelsAsync(page);
         Assert.True(side[0] > side[1] * 0.03, "Side by side is not blank.");
+        Assert.True(side[3] > 0 && side[4] > 0, $"Side by side shows version A in blue ({side[3]}) and version B in orange ({side[4]}).");
         await Expect(page.Locator(".compare-divider")).ToBeVisibleAsync();
 
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Swipe" }).ClickAsync();
@@ -94,8 +94,10 @@ public sealed class ModelVersionTests(E2EFixture fx)
         await page.GetByLabel("Divider").FillAsync("20");
         var after = await page.EvaluateAsync<string>("document.querySelector('#viewer-stage canvas').toDataURL()");
         Assert.NotEqual(before, after);
+        await page.GetByLabel("Divider").FillAsync("58");
         var swipe = await CanvasPixelsAsync(page);
         Assert.True(swipe[0] > swipe[1] * 0.03, "Swipe is not blank.");
+        Assert.True(swipe[3] > 0 && swipe[4] > 0, $"Swipe shows both versions (blue {swipe[3]}, orange {swipe[4]}).");
 
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Overlay" }).ClickAsync();
         await Expect(page.Locator("#viewer-stage")).ToHaveAttributeAsync("data-mode", "overlay");
