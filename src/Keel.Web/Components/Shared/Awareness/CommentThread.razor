@@ -141,7 +141,7 @@
     private CommentPage? page;
     private IReadOnlyDictionary<string, ObjectChip> chips = new Dictionary<string, ObjectChip>();
     private IReadOnlyList<MentionCandidate> candidates = [];
-    private bool notFound, busy, confirmOpen, newestFirst = true, deepLinkHandled;
+    private bool focusReply, notFound, busy, confirmOpen, newestFirst = true, deepLinkHandled;
     private string draft = "", replyDraft = "", announcement = "";
     private string? error, loadedKey;
     private Guid? replyTo, removing, highlight, focusAfterRender;
@@ -190,6 +190,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (focusReply)
+        {
+            focusReply = false;
+            await Js.InvokeVoidAsync("focusSelector", "#reply-box");
+        }
         if (focusAfterRender is { } id)
         {
             focusAfterRender = null;
@@ -290,8 +295,8 @@
     {
         replyTo = id;
         replyDraft = Drafts.Get(Kind, Number, id);
-        await InvokeAsync(StateHasChanged);
-        await Js.InvokeVoidAsync("focusSelector", "#reply-box");
+        focusReply = true; // the box exists only after this render: focus it in OnAfterRender
+        await Task.CompletedTask;
     }
 
     private void CancelReply()

@@ -10,7 +10,7 @@ namespace Keel.Notifications;
 /// <see cref="IObjectAccess"/> and applies the access policy to the VIEWER's live attributes, so a user who lost access (markings raised, programme left, role
 /// removed) sees a neutral row and nothing about the object. Every statement filters on the signed-in user's id: no method can return another user's rows.
 /// </summary>
-public sealed class NotificationCenter(NpgsqlDataSource dataSource, ObjectAccessResolver objects, IAuditLog audit, TimeProvider clock) : INotificationCenter
+public sealed class NotificationCenter(NpgsqlDataSource dataSource, ObjectAccessResolver objects, IAuditLog audit, TimeProvider clock, INotificationHub? hub = null) : INotificationCenter
 {
     public async Task<int> CountUnreadAsync(Subject subject, CancellationToken ct = default)
     {
@@ -132,7 +132,9 @@ public sealed class NotificationCenter(NpgsqlDataSource dataSource, ObjectAccess
         cmd.Parameters.AddWithValue("now", clock.GetUtcNow());
         cmd.Parameters.AddWithValue("u", subject.Id);
         cmd.Parameters.AddWithValue("ids", ids.ToArray());
-        return await cmd.ExecuteNonQueryAsync(ct);
+        var n = await cmd.ExecuteNonQueryAsync(ct);
+        if (n > 0) hub?.Publish(subject.Id, TimeSpan.Zero); // the bell of this user's other circuits follows
+        return n;
     }
 
     public async Task<int> MarkAllReadAsync(Subject subject, CancellationToken ct = default)
@@ -141,7 +143,9 @@ public sealed class NotificationCenter(NpgsqlDataSource dataSource, ObjectAccess
             "UPDATE ntf.notification SET read_at = @now, seen_at = COALESCE(seen_at, @now) WHERE recipient_sub = @u AND read_at IS NULL");
         cmd.Parameters.AddWithValue("now", clock.GetUtcNow());
         cmd.Parameters.AddWithValue("u", subject.Id);
-        return await cmd.ExecuteNonQueryAsync(ct);
+        var n = await cmd.ExecuteNonQueryAsync(ct);
+        if (n > 0) hub?.Publish(subject.Id, TimeSpan.Zero);
+        return n;
     }
 
     public async Task<NotificationPreferences> GetPreferencesAsync(Subject subject, CancellationToken ct = default)

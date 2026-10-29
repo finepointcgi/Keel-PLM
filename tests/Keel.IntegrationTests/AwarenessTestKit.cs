@@ -80,7 +80,7 @@ internal sealed class AwarenessEnv
                 [new PartWorkflowGateway([new ChangeBindingGuard()], null, outbox), new ChangeWorkflowGateway(ChangeTypes.Ecr, audit, [partChange], null, outbox, sink), new ChangeWorkflowGateway(ChangeTypes.Ecn, audit, [partChange], null, outbox, sink)],
                 wfOptions, clock, sink),
             Directory = new UserDirectory(ds, clock, wfOptions, NullLogger<UserDirectory>.Instance),
-            Center = new NotificationCenter(ds, objects, audit, clock),
+            Center = new NotificationCenter(ds, objects, audit, clock, hub),
             Watches = new WatchService(ds, objects, audit, options, clock),
             Comments = new CommentService(ds, objects, audit, options, writer, clock),
             Feed = new ActivityService(ds, objects, audit),

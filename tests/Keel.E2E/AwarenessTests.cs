@@ -20,6 +20,14 @@ public sealed partial class AwarenessTests(E2EFixture fx)
         return m.Success ? int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture) : 0;
     }
 
+    /// <summary>Saves a screenshot for the documentation when KEEL_E2E_SHOTS names a directory (synthetic demo data only).</summary>
+    private static async Task ShotAsync(IPage page, string name)
+    {
+        if (Environment.GetEnvironmentVariable("KEEL_E2E_SHOTS") is { Length: > 0 } dir) await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(dir, name + ".png") });
+    }
+
+    private static string Label(int unread) => unread == 0 ? "Notifications, none unread" : $"Notifications, {unread} unread";
+
     [GeneratedRegex(@"Notifications, (\d+) unread")]
     private static partial Regex UnreadLabel();
 
@@ -88,16 +96,18 @@ public sealed partial class AwarenessTests(E2EFixture fx)
             await Expect(panel).ToHaveCountAsync(0);
             await Expect(bell).ToBeFocusedAsync();
             await bell.PressAsync("Enter");
+            await ShotAsync(bob.Page, "awareness-bell-flyout");
             await item.Locator("a.notif-title").ClickAsync();
             await bob.Page.WaitForURLAsync(new Regex(@"/parts/.*\?comment=.*#comments"));
             await Expect(bob.Page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Comments" })).ToHaveAttributeAsync("aria-selected", "true");
             await Expect(bob.Page.Locator("article.comment.target")).ToContainTextAsync("Please check the wall thickness");
-            await Expect(bob.Page.Locator("#bell-button")).ToHaveAttributeAsync("aria-label", $"Notifications, {bobBefore} unread"); // opening it marked it read
+            await ShotAsync(bob.Page, "awareness-comment-thread");
+            await Expect(bob.Page.Locator("#bell-button")).ToHaveAttributeAsync("aria-label", Label(bobBefore)); // opening it marked it read
             await BrowserSession.AssertBannersAsync(bob.Page);
 
             // bob replies; the thread is a list with a reply button and heading structure
             await Expect(bob.Page.Locator("ol.comment-thread > li").First).ToBeVisibleAsync();
-            await bob.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Reply to Alice Example" }).ClickAsync();
+            await bob.Page.Locator("article.comment.target [data-action=reply]").ClickAsync();
             await Expect(bob.Page.Locator("#reply-box")).ToBeFocusedAsync();
             await bob.Page.Locator("#reply-box").FillAsync("Checked: 3 mm is right.");
             await BrowserSession.ClickAsync(bob.Page, "Post reply");
@@ -110,6 +120,7 @@ public sealed partial class AwarenessTests(E2EFixture fx)
             var feed = alice.Page.Locator("ol.activity-list");
             await Expect(feed).ToContainTextAsync("alice commented");
             await Expect(feed).ToContainTextAsync("bob commented");
+            await ShotAsync(alice.Page, "awareness-activity-feed");
             var text = await feed.InnerTextAsync();
             Assert.DoesNotMatch(@"\b(part|workflow|comment|document)\.[a-z_]+\b", text); // no raw action codes
             Assert.DoesNotContain("viewed the part", text, StringComparison.Ordinal); // views are not in the feed
@@ -147,6 +158,7 @@ public sealed partial class AwarenessTests(E2EFixture fx)
             var row = page.Locator("tr", new PageLocatorOptions { HasText = m.EndCap });
             await Expect(row).ToBeVisibleAsync();
             await Expect(row.Locator("select[data-action=level]")).ToHaveValueAsync("decisions");
+            await ShotAsync(page, "awareness-watch-list");
             await BrowserSession.AssertBannersAsync(page);
 
             // Stop watching from the list.
@@ -201,6 +213,7 @@ public sealed partial class AwarenessTests(E2EFixture fx)
             await Expect(page.Locator("li.notif", new PageLocatorOptions { HasText = m.OpenFastener })).ToBeVisibleAsync();
 
             // The Mentions tab never shows a neutral row (it would reveal the kind); the badge counted every unread row once.
+            await ShotAsync(page, "awareness-notifications-page");
             await BrowserSession.OpenTabAsync(page, "Mentions");
             await Expect(page.Locator("li.notif[data-restricted=true]")).ToHaveCountAsync(0);
             await BrowserSession.OpenTabAsync(page, "All");
@@ -210,7 +223,7 @@ public sealed partial class AwarenessTests(E2EFixture fx)
             Assert.True(unreadBefore >= 3);
             await page.Locator("li.notif.unread .notif-select").First.CheckAsync();
             await BrowserSession.ClickAsync(page, "Mark selected as read");
-            await Expect(page.Locator("#bell-button")).ToHaveAttributeAsync("aria-label", $"Notifications, {unreadBefore - 1} unread");
+            await Expect(page.Locator("#bell-button")).ToHaveAttributeAsync("aria-label", Label(unreadBefore - 1));
             await BrowserSession.ClickAsync(page, "Mark all as read");
             await Expect(page.Locator("#bell-button")).ToHaveAttributeAsync("aria-label", "Notifications, none unread");
             await BrowserSession.OpenTabAsync(page, "Unread");
