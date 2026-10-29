@@ -1,0 +1,68 @@
+@page "/process/work-centers"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject ToolingService Tooling
+@inject MbomService Mboms
+
+<PageFrame Banner="@UiText.Unclassified" Title="Work centers and resources" Crumbs="@Crumbs">
+    <p class="muted">Work centers, machines, stations and labor pools per plant. Operations of process plans name one of them; a retired one is never deleted, so released plans keep a valid name.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    <EditForm Model="this" OnSubmit="Save" FormName="save-work-center" class="panel stack">
+        <h2>Add or change</h2>
+        <div class="grid-form">
+            <label>Plant *
+                <InputSelect @bind-Value="plant">@foreach (var p in plants) { <option value="@p.Code">@p.Code @p.Name</option> }</InputSelect>
+            </label>
+            <label>Code * <InputText @bind-Value="code" maxlength="20" required /></label>
+            <label>Name * <InputText @bind-Value="name" maxlength="120" required /></label>
+            <label>Kind
+                <InputSelect @bind-Value="kind">@foreach (var k in ResourceKinds.All) { <option value="@k">@ResourceKinds.Label(k)</option> }</InputSelect>
+            </label>
+            <label class="inline"><InputCheckbox @bind-Value="active" /> Active</label>
+        </div>
+        <div class="toolbar"><button type="submit" disabled="@busy">Save</button></div>
+    </EditForm>
+    <div class="table-wrap">
+        <table class="data">
+            <caption class="sr-only">Work centers and resources</caption>
+            <thead><tr><th scope="col">Plant</th><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+                @foreach (var w in centers)
+                {
+                    <tr><td>@w.Plant</td><th scope="row">@w.Code</th><td>@w.Name</td><td>@ResourceKinds.Label(w.ResourceKind)</td><td>@(w.IsActive ? "Active" : "Retired")</td>
+                        <td><button type="button" class="secondary" @onclick="() => Edit(w)">Edit</button></td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Process plans", "process/plans"), new("Work centers")];
+    private IReadOnlyList<Keel.Bom.PlantInfo> plants = [];
+    private IReadOnlyList<WorkCenterInfo> centers = [];
+    private string plant = "", code = "", name = "", kind = "work_center";
+    private bool active = true, busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        plants = await Mboms.ListPlantsAsync();
+        plant = plants.FirstOrDefault()?.Code ?? "";
+        await Load();
+    }
+
+    private async Task Load() => centers = await Tooling.ListWorkCentersAsync(null, true);
+
+    private void Edit(WorkCenterInfo w) => (plant, code, name, kind, active) = (w.Plant, w.Code, w.Name, w.ResourceKind, w.IsActive);
+
+    private async Task Save()
+    {
+        busy = true; error = null;
+        var outcome = await Tooling.SaveWorkCenterAsync(await Users.GetAsync(), new SaveWorkCenterCommand(plant, code, name, kind, active), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        (code, name) = ("", "");
+        await Load();
+    }
+}

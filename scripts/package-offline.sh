@@ -62,7 +62,7 @@ else
   docker system df
   log "building $APP_REF from the Dockerfile on the pinned UBI base images"
   REVISION=$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
-  docker build -t "$APP_REF" \
+  docker build --target runtime -t "$APP_REF" \
     --build-arg SDK_IMAGE="$SDK_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
     --build-arg KEEL_VERSION="$VERSION" --build-arg KEEL_REVISION="$REVISION" .
 fi

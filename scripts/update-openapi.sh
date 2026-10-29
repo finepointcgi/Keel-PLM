@@ -30,6 +30,9 @@ git --no-pager diff --stat -- docs/compliance/openapi.json || true
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.RequirementsApiTests.The_published_requirements_openapi_document_equals_the_committed_one"
 git --no-pager diff --stat -- docs/requirements/openapi.json || true
+# Manufacturing process data (plans, work instructions, shop floor view, tools) has its own document (docs/process/openapi.json).
+KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
+  --filter-method "Keel.IntegrationTests.ProcessApiTests.The_published_process_openapi_document_equals_the_committed_one_and_lists_nothing_else"
 # Output and bulk work (8.9) has its own document (docs/reports/openapi.json).
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.ReportsTests.The_published_reports_openapi_document_equals_the_committed_one_and_lists_nothing_else"

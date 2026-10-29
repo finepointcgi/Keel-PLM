@@ -20,8 +20,11 @@ public static class AwarenessKinds
     public const string Deviation = "deviation";
     public const string Supplier = "supplier";
     public const string ReqSpec = "reqspec";
+    /// <summary>8.7 manufacturing process data: a process plan (routing, operations, work instructions) and a tool, fixture or gauge.</summary>
+    public const string ProcessPlan = "process_plan";
+    public const string Tool = "tool";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, ReqSpec];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, ReqSpec, ProcessPlan, Tool];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -38,6 +41,8 @@ public static class AwarenessKinds
         Deviation => "quality/deviations/" + Uri.EscapeDataString(number),
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
         ReqSpec => "requirements/" + Uri.EscapeDataString(number),
+        ProcessPlan => "process/plans/" + Uri.EscapeDataString(number),
+        Tool => "process/tools/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -53,6 +58,8 @@ public static class AwarenessKinds
         Deviation => "Deviation",
         Supplier => "Supplier",
         ReqSpec => "Requirement specification",
+        ProcessPlan => "Process plan",
+        Tool => "Tool",
         _ => kind,
     };
 
@@ -81,6 +88,8 @@ public static class AwarenessKinds
         "deviation" => Deviation,
         "supplier" => Supplier,
         "reqspec" => ReqSpec,
+        "process_plan" => ProcessPlan,
+        "tool" => Tool,
         _ => null,
     };
 
@@ -172,4 +181,7 @@ public static class NotificationKindCodes
     public const string ComplianceDeclarationExpiring = "compliance_declaration_expiring";
     public const string ComplianceDeclarationExpired = "compliance_declaration_expired";
     public const string ComplianceSupplierDeclaration = "compliance_supplier_declaration";
+    /// <summary>8.7 process data: a tool, fixture or gauge is due for calibration soon / is overdue. Pointer is the tool.</summary>
+    public const string ToolCalibrationDue = "tool_calibration_due";
+    public const string ToolCalibrationOverdue = "tool_calibration_overdue";
 }

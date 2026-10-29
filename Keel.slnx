@@ -25,6 +25,7 @@
     <Project Path="src/Keel.Seed/Keel.Seed.csproj" />
     <Project Path="src/Keel.Siem/Keel.Siem.csproj" />
     <Project Path="src/Keel.Sourcing/Keel.Sourcing.csproj" />
+    <Project Path="src/Keel.Process/Keel.Process.csproj" />
     <Project Path="src/Keel.Variants/Keel.Variants.csproj" />
     <Project Path="src/Keel.Compliance/Keel.Compliance.csproj" />
     <Project Path="src/Keel.Viewer/Keel.Viewer.csproj" />

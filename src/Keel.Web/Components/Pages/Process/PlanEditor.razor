@@ -1,0 +1,343 @@
+@using Keel.Documents
+@inject CurrentUser Users
+@inject ProcessPlanService Plans
+@inject ToolingService Tooling
+@inject DocumentService Documents
+
+@* The working copy editor of a process plan (ADR-0042). It edits a local copy of the content and saves it as a whole; the service validates structure, work centers, tools, attachments and
+   assignments and says what is wrong in plain words. Only the person who checked the plan out sees it. Every control is a labelled form field; steps and operations move with buttons, not drag and drop. *@
+@if (routings.Count == 0) { <Skeleton Lines="3" Label="Loading the working copy" /> }
+else
+{
+    <section class="panel stack" aria-labelledby="ed-heading">
+        <h3 id="ed-heading">Edit the working copy</h3>
+        @if (error is not null) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
+        @if (saved) { <p class="notice" role="status">Saved. Check the plan in when you are done so that others can see this version.</p> }
+        <div class="toolbar">
+            <label>Routing
+                <select @bind="current">
+                    @foreach (var r in routings) { <option value="@r.Code">@r.Code @(r.IsPrimary ? "(primary)" : "")</option> }
+                </select>
+            </label>
+            <button type="button" class="secondary" @onclick="AddRouting">Add alternate routing</button>
+            <button type="button" disabled="@busy" @onclick="Save">Save the working copy</button>
+        </div>
+        @{ var r0 = routings.First(x => x.Code == current); }
+        <div class="grid-form">
+            <label>Code <input value="@r0.Code" maxlength="20" @onchange="e => RenameRouting(r0, e.Value?.ToString() ?? r0.Code)" /></label>
+            <label>Name <input @bind="r0.Name" maxlength="120" /></label>
+            <label class="wide">Applies when (condition text, kept as written) <input @bind="r0.Condition" maxlength="500" placeholder="For example: Engine = A and Payload = X" /></label>
+            <label class="wide">Note <input @bind="r0.Note" maxlength="1000" /></label>
+            <label class="inline"><input type="checkbox" checked="@r0.IsPrimary" @onchange="() => MakePrimary(r0)" /> Primary routing</label>
+        </div>
+        @if (routings.Count > 1 && !r0.IsPrimary) { <p><button type="button" class="secondary" @onclick="() => RemoveRouting(r0)">Remove this routing</button></p> }
+
+        @for (var oi = 0; oi < r0.Ops.Count; oi++)
+        {
+            var o = r0.Ops[oi];
+            var index = oi;
+            <fieldset class="panel stack" @key="o.Id">
+                <legend>Operation @o.Number: @o.Name</legend>
+                <div class="grid-form">
+                    <label>Number <input type="number" min="1" max="9999" @bind="o.Number" /></label>
+                    <label class="wide">Description * <input @bind="o.Name" maxlength="200" /></label>
+                    <label>Work center
+                        <select @bind="o.WorkCenter">
+                            <option value="">None</option>
+                            @foreach (var w in workCenters) { <option value="@w.Code">@w.Code @w.Name</option> }
+                        </select>
+                    </label>
+                    <label>Setup time (minutes) <input type="number" min="0" step="0.01" @bind="o.Setup" /></label>
+                    <label>Run time per unit (minutes) <input type="number" min="0" step="0.0001" @bind="o.Run" /></label>
+                    <label class="wide">Applies when (condition text) <input @bind="o.Condition" maxlength="500" /></label>
+                    <label class="inline"><input type="checkbox" @bind="o.Inspection" /> Inspection point</label>
+                    @if (o.Inspection) { <label class="wide">What to inspect * <input @bind="o.InspectionText" maxlength="1000" /></label> }
+                </div>
+                <div class="toolbar">
+                    <button type="button" class="secondary" disabled="@(index == 0)" @onclick="() => Move(r0.Ops, index, -1)">Move up</button>
+                    <button type="button" class="secondary" disabled="@(index == r0.Ops.Count - 1)" @onclick="() => Move(r0.Ops, index, 1)">Move down</button>
+                    <button type="button" class="secondary" @onclick="() => r0.Ops.Remove(o)">Remove operation</button>
+                </div>
+
+                <h4>Components consumed here</h4>
+                @if (Detail.Lines.Count == 0) { <p class="muted">The bound MBOM revision has no lines.</p> }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data">
+                            <caption class="sr-only">Components of the MBOM consumed at operation @o.Number</caption>
+                            <thead><tr><th scope="col">Consumed</th><th scope="col">Find</th><th scope="col">Component</th><th scope="col">Line quantity</th><th scope="col">Quantity here (empty: the whole line)</th></tr></thead>
+                            <tbody>
+                                @foreach (var l in Detail.Lines.Where(l => !l.Phantom))
+                                {
+                                    var a = o.Components.FirstOrDefault(c => c.Find == l.Find && c.Alt == l.Alt);
+                                    var enabled = !l.Redacted || a is not null;
+                                    <tr>
+                                        <td><input type="checkbox" aria-label="Consumed at operation @o.Number: line @l.Find" checked="@(a is not null)" disabled="@(l.Redacted)" @onchange="e => ToggleLine(o, l, (bool)(e.Value ?? false))" /></td>
+                                        <th scope="row">@l.Find@(l.Alt > 0 ? $".{l.Alt}" : "")</th>
+                                        <td>@(l.Redacted ? "Restricted component" : $"{l.PartNumber} {l.PartName}")</td>
+                                        <td>@ProcessRules.Fmt(l.Quantity) @l.Unit</td>
+                                        <td>@if (a is not null && enabled) { <input type="number" min="0" step="0.0001" aria-label="Quantity at operation @o.Number for line @l.Find" @bind="a.Quantity" /> }</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <h4>Tools, fixtures and gauges</h4>
+                <ul class="plain">
+                    @foreach (var t in tools)
+                    {
+                        <li><label class="inline"><input type="checkbox" checked="@o.Tools.Contains(t.Id)" @onchange="e => ToggleTool(o.Tools, t.Id, (bool)(e.Value ?? false))" /> @t.Number @t.Name (@ToolKinds.Label(t.Kind))</label></li>
+                    }
+                    @if (tools.Count == 0) { <li class="muted">There are no active tools for this plant yet.</li> }
+                </ul>
+
+                <h4>Work instruction steps</h4>
+                @for (var si = 0; si < o.Steps.Count; si++)
+                {
+                    var s = o.Steps[si];
+                    var sIndex = si;
+                    <div class="panel stack" @key="s.Id">
+                        <div class="grid-form">
+                            <label>Kind
+                                <select @bind="s.Kind">@foreach (var k in StepKinds.All) { <option value="@k">@StepKinds.Label(k)</option> }</select>
+                            </label>
+                            <label class="wide">Text * <textarea rows="3" maxlength="2000" @bind="s.Text"></textarea></label>
+                        </div>
+                        <fieldset>
+                            <legend class="small">Tools for this step</legend>
+                            @foreach (var t in tools)
+                            {
+                                <label class="inline"><input type="checkbox" checked="@s.Tools.Contains(t.Id)" @onchange="e => ToggleTool(s.Tools, t.Id, (bool)(e.Value ?? false))" /> @t.Number @t.Name</label>
+                            }
+                        </fieldset>
+                        <h5>Images and attachments</h5>
+                        <ul class="plain">
+                            @foreach (var at in s.Attachments)
+                            {
+                                <li>@(string.IsNullOrEmpty(at.Document) ? "A restricted attachment" : at.Document + " file " + at.FileName): @at.Caption
+                                    <button type="button" class="secondary" @onclick="() => s.Attachments.Remove(at)">Remove</button></li>
+                            }
+                        </ul>
+                        <div class="toolbar">
+                            <label>Document number <input @bind="s.PickDocument" maxlength="40" /></label>
+                            <button type="button" class="secondary" @onclick="() => FindFiles(s)">Find its files</button>
+                        </div>
+                        @if (s.PickFiles.Count > 0)
+                        {
+                            <div class="toolbar">
+                                <label>File
+                                    <select @bind="s.PickFile">
+                                        @foreach (var f in s.PickFiles) { <option value="@f.Id">@f.FileName</option> }
+                                    </select>
+                                </label>
+                                <label class="grow">Caption (the text alternative of an image) * <input @bind="s.PickCaption" maxlength="200" /></label>
+                                <button type="button" class="secondary" @onclick="() => Attach(s)">Attach</button>
+                            </div>
+                        }
+                        @if (s.PickError is not null) { <p class="error" role="alert">@s.PickError</p> }
+                        <div class="toolbar">
+                            <button type="button" class="secondary" disabled="@(sIndex == 0)" @onclick="() => Move(o.Steps, sIndex, -1)">Move up</button>
+                            <button type="button" class="secondary" disabled="@(sIndex == o.Steps.Count - 1)" @onclick="() => Move(o.Steps, sIndex, 1)">Move down</button>
+                            <button type="button" class="secondary" @onclick="() => o.Steps.Remove(s)">Remove step</button>
+                        </div>
+                    </div>
+                }
+                <p><button type="button" class="secondary" @onclick="() => o.Steps.Add(new EdStep())">Add a step</button></p>
+            </fieldset>
+        }
+        <p><button type="button" class="secondary" @onclick="() => AddOperation(r0)">Add an operation</button></p>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public required PlanDetail Detail { get; set; }
+    [Parameter] public EventCallback<PlanDetail> OnSaved { get; set; }
+
+    private List<EdRouting> routings = [];
+    private IReadOnlyList<WorkCenterInfo> workCenters = [];
+    private IReadOnlyList<ToolSummary> tools = [];
+    private string current = "";
+    private bool busy, saved;
+    private string? error;
+    private IReadOnlyList<string> errors = [];
+    private string? loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Detail.Summary.Number + ":" + Detail.Summary.IterationLabel;
+        if (key == loadedFor) return;
+        loadedFor = key;
+        var subject = await Users.GetAsync();
+        var wc = await Plans.GetWorkingCopyAsync(subject, Detail.Summary.Number, CurrentUser.NewCorrelationId());
+        if (!wc.IsOk) { error = UiText.Message(wc); errors = [error]; return; }
+        routings = [.. wc.Value!.Routings.Select(EdRouting.From)];
+        current = routings.FirstOrDefault(r => r.IsPrimary)?.Code ?? routings[0].Code;
+        workCenters = await Tooling.ListWorkCentersAsync(Detail.Summary.Plant, false);
+        var found = await Tooling.SearchAsync(subject, new ToolSearch(Plant: Detail.Summary.Plant, Limit: 200), CurrentUser.NewCorrelationId());
+        tools = found.Value?.Items ?? [];
+    }
+
+    private void AddRouting()
+    {
+        var n = 1;
+        while (routings.Any(r => r.Code == $"ALT-{n}")) n++;
+        routings.Add(new EdRouting { Code = $"ALT-{n}", Name = $"Alternate routing {n}" });
+        current = $"ALT-{n}";
+    }
+
+    private void RenameRouting(EdRouting r, string code) { var old = r.Code; r.Code = code.Trim().ToUpperInvariant(); if (current == old) current = r.Code; }
+
+    private void MakePrimary(EdRouting r) { foreach (var x in routings) x.IsPrimary = x == r; }
+
+    private void RemoveRouting(EdRouting r)
+    {
+        routings.Remove(r);
+        current = routings.First(x => x.IsPrimary).Code;
+    }
+
+    private static void AddOperation(EdRouting r) =>
+        r.Ops.Add(new EdOp { Id = Guid.NewGuid(), Number = ProcessRules.NextOperationNumber(r.Ops.Select(o => o.Number)), Name = "New operation" });
+
+    private static void Move<T>(List<T> list, int index, int delta)
+    {
+        var to = index + delta;
+        if (to < 0 || to >= list.Count) return;
+        (list[index], list[to]) = (list[to], list[index]);
+    }
+
+    private static void ToggleLine(EdOp o, BoundLineView l, bool on)
+    {
+        o.Components.RemoveAll(c => c.Find == l.Find && c.Alt == l.Alt);
+        if (on) o.Components.Add(new EdAssign { Find = l.Find, Alt = l.Alt, PartMasterId = l.MasterId });
+    }
+
+    private static void ToggleTool(List<Guid> list, Guid id, bool on)
+    {
+        list.Remove(id);
+        if (on) list.Add(id);
+    }
+
+    private async Task FindFiles(EdStep s)
+    {
+        s.PickError = null; s.PickFiles = [];
+        var outcome = await Documents.GetAsync(await Users.GetAsync(), s.PickDocument.Trim(), null, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { s.PickError = $"Document '{s.PickDocument}' was not found, or you are not authorized to see it."; return; }
+        s.PickFiles = outcome.Value!.Iteration.Files;
+        s.PickDocument = outcome.Value.Number;
+        if (s.PickFiles.Count > 0) s.PickFile = s.PickFiles[0].Id;
+        else s.PickError = "The document has no files.";
+    }
+
+    private static void Attach(EdStep s)
+    {
+        s.PickError = null;
+        if (string.IsNullOrWhiteSpace(s.PickCaption)) { s.PickError = "Give the attachment a caption: it is the text alternative of an image."; return; }
+        var f = s.PickFiles.FirstOrDefault(x => x.Id == s.PickFile);
+        if (f is null) return;
+        s.Attachments.Add(new EdAtt { Document = s.PickDocument, FileId = f.Id, FileName = f.FileName, Caption = s.PickCaption.Trim() });
+        s.PickCaption = ""; s.PickFiles = [];
+    }
+
+    private async Task Save()
+    {
+        busy = true; saved = false; error = null; errors = [];
+        var content = new PlanContent([.. routings.Select(r => r.ToDef())]);
+        var outcome = await Plans.SaveWorkingCopyAsync(await Users.GetAsync(), Detail.Summary.Number, content, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); errors = outcome.Errors.Count > 0 ? outcome.Errors : [error]; return; }
+        saved = true;
+        await OnSaved.InvokeAsync(outcome.Value!);
+    }
+
+    // ---------------------------------------------------------------- the local, mutable copy of the content
+
+    private sealed class EdRouting
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public bool IsPrimary { get; set; }
+        public string? Condition { get; set; }
+        public string? Note { get; set; }
+        public List<EdOp> Ops { get; } = [];
+
+        public static EdRouting From(RoutingDef r)
+        {
+            var e = new EdRouting { Code = r.Code, Name = r.Name, IsPrimary = r.IsPrimary, Condition = r.Condition, Note = r.Note };
+            e.Ops.AddRange(r.Operations.Select(EdOp.From));
+            return e;
+        }
+
+        public RoutingDef ToDef() => new(Code, Name, IsPrimary, ProcessRules.Clean(Condition), ProcessRules.Clean(Note), [.. Ops.Select(o => o.ToDef())]);
+    }
+
+    private sealed class EdOp
+    {
+        public Guid Id { get; set; }
+        public int Number { get; set; }
+        public string Name { get; set; } = "";
+        public string? WorkCenter { get; set; }
+        public decimal? Setup { get; set; }
+        public decimal? Run { get; set; }
+        public string? Condition { get; set; }
+        public bool Inspection { get; set; }
+        public string? InspectionText { get; set; }
+        public List<EdAssign> Components { get; } = [];
+        public List<Guid> Tools { get; } = [];
+        public List<EdStep> Steps { get; } = [];
+
+        public static EdOp From(OperationDef o)
+        {
+            var e = new EdOp { Id = o.Id, Number = o.Number, Name = o.Name, WorkCenter = o.WorkCenter, Setup = o.SetupMinutes, Run = o.RunMinutes, Condition = o.Condition, Inspection = o.Inspection, InspectionText = o.InspectionText };
+            e.Components.AddRange(o.Components.Select(c => new EdAssign { Find = c.Find, Alt = c.Alt, PartMasterId = c.PartMasterId, Quantity = c.Quantity }));
+            e.Tools.AddRange(o.Tools);
+            e.Steps.AddRange(o.Steps.Select(EdStep.From));
+            return e;
+        }
+
+        public OperationDef ToDef() => new(Id, Number, Name, string.IsNullOrEmpty(WorkCenter) ? null : WorkCenter, Setup, Run, ProcessRules.Clean(Condition), Inspection, Inspection ? ProcessRules.Clean(InspectionText) : null,
+            [.. Components.Select(c => new ComponentAssignment(c.PartMasterId, c.Find, c.Alt, c.Quantity))], [.. Tools], [.. Steps.Select(s => s.ToDef())]);
+    }
+
+    private sealed class EdAssign
+    {
+        public Guid PartMasterId { get; set; }
+        public int Find { get; set; }
+        public int Alt { get; set; }
+        public decimal? Quantity { get; set; }
+    }
+
+    private sealed class EdAtt
+    {
+        public string Document { get; set; } = "";
+        public Guid FileId { get; set; }
+        public string FileName { get; set; } = "";
+        public string Caption { get; set; } = "";
+    }
+
+    private sealed class EdStep
+    {
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public string Kind { get; set; } = StepKinds.Step;
+        public string Text { get; set; } = "";
+        public List<Guid> Tools { get; } = [];
+        public List<EdAtt> Attachments { get; } = [];
+        public string PickDocument { get; set; } = "";
+        public IReadOnlyList<DocumentFileView> PickFiles { get; set; } = [];
+        public Guid PickFile { get; set; }
+        public string PickCaption { get; set; } = "";
+        public string? PickError { get; set; }
+
+        public static EdStep From(StepDef s)
+        {
+            var e = new EdStep { Id = s.Id, Kind = s.Kind, Text = s.Text };
+            e.Tools.AddRange(s.Tools);
+            e.Attachments.AddRange(s.Attachments.Select(a => new EdAtt { Document = a.Document, FileId = a.FileId, FileName = a.FileId.ToString("N")[..8], Caption = a.Caption }));
+            return e;
+        }
+
+        public StepDef ToDef() => new(Id, Kind, Text, [.. Tools], [.. Attachments.Select(a => new AttachmentDef(a.Document, a.FileId, a.Caption))]);
+    }
+}

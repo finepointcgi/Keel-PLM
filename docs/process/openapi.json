@@ -1,0 +1,1336 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Keel PLM manufacturing process API",
+    "description": "Process plans per MBOM (routings, operations, component assignments, work instructions), their revisions and release review, the shop floor view, tools, fixtures and gauges with calibration, and work centers per plant. A plan or tool you may not read answers 404, like one that does not exist. Documented in docs/adr/0042-manufacturing-process-data.md.",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/v1/process/plans": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "Process plans you may read (plan, MBOM and part).",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "Creates the process plan of an MBOM that has a released revision, bound to that revision.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "A plan with routings, operations, work instructions, findings and staleness.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/matrix": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "The operation-by-component matrix of a routing.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "routing",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/shop-floor": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "The read-only shop floor view of a released revision (one routing).",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "routing",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/mboms/{mbom}/plan": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "The process plan of an MBOM, when there is one you may read.",
+        "parameters": [
+          {
+            "name": "mbom",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/checkout": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/working-copy": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "Your working copy; attachments you may not view are returned without a document number and kept on save.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "Replaces the content of your working copy after validating structure, work centers, tools, attachments and assignments.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanContent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/checkin": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckInPlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/undo-checkout": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/revise": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/rebind": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "Binds the working revision to the MBOM revision released now.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/review": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/plans/{number}/workflow": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/tools": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "due",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "retired",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateToolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/tools/{number}": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateToolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/tools/{number}/calibrations": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "summary": "Records a calibration; the next due date is the calibration date plus the interval.",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/tools/{number}/retire": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/tools/{number}/restore": {
+      "post": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/process/work-centers": {
+      "get": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "parameters": [
+          {
+            "name": "plant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "retired",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Manufacturing process data"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkCenterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AttachmentDef": {
+        "required": [
+          "document",
+          "fileId",
+          "caption"
+        ],
+        "type": "object",
+        "properties": {
+          "document": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caption": {
+            "type": "string"
+          }
+        }
+      },
+      "CalibrationRequest": {
+        "required": [
+          "calibratedOn"
+        ],
+        "type": "object",
+        "properties": {
+          "calibratedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "reference": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CheckInPlanRequest": {
+        "type": "object",
+        "properties": {
+          "comment": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ComponentAssignment": {
+        "required": [
+          "partMasterId",
+          "find",
+          "alt",
+          "quantity"
+        ],
+        "type": "object",
+        "properties": {
+          "partMasterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "find": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "alt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "quantity": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "CreatePlanRequest": {
+        "required": [
+          "mbom"
+        ],
+        "type": "object",
+        "properties": {
+          "mbom": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "markings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MarkingsDto"
+              }
+            ]
+          },
+          "confirmRaiseMarkings": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "CreateToolRequest": {
+        "required": [
+          "name",
+          "kind",
+          "plant",
+          "markings"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "plant": {
+            "type": "string"
+          },
+          "markings": {
+            "$ref": "#/components/schemas/MarkingsDto"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requiresCalibration": {
+            "type": "boolean",
+            "default": false
+          },
+          "intervalDays": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "lastCalibratedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          }
+        }
+      },
+      "DistributionStatement": {
+        "enum": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F"
+        ]
+      },
+      "ExportJurisdiction": {
+        "enum": [
+          "None",
+          "Ear",
+          "Itar"
+        ]
+      },
+      "MarkingsDto": {
+        "required": [
+          "exportJurisdiction",
+          "distributionStatement",
+          "owningOrg"
+        ],
+        "type": "object",
+        "properties": {
+          "exportJurisdiction": {
+            "$ref": "#/components/schemas/ExportJurisdiction"
+          },
+          "distributionStatement": {
+            "$ref": "#/components/schemas/DistributionStatement"
+          },
+          "owningOrg": {
+            "type": "string"
+          },
+          "eccn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "usmlCategory": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cuiCategories": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "controllingOffice": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "distributionReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "program": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "exportAuthorizations": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "OperationDef": {
+        "required": [
+          "id",
+          "number",
+          "name",
+          "workCenter",
+          "setupMinutes",
+          "runMinutes",
+          "condition",
+          "inspection",
+          "inspectionText",
+          "components",
+          "tools",
+          "steps"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "workCenter": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "setupMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "runMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "condition": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "inspection": {
+            "type": "boolean"
+          },
+          "inspectionText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComponentAssignment"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepDef"
+            }
+          }
+        }
+      },
+      "PlanContent": {
+        "required": [
+          "routings"
+        ],
+        "type": "object",
+        "properties": {
+          "routings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingDef"
+            }
+          }
+        }
+      },
+      "RoutingDef": {
+        "required": [
+          "code",
+          "name",
+          "isPrimary",
+          "condition",
+          "note",
+          "operations"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "condition": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationDef"
+            }
+          }
+        }
+      },
+      "StartReviewRequest": {
+        "required": [
+          "participants"
+        ],
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "templateId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "comment": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "StepDef": {
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "tools",
+          "attachments"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentDef"
+            }
+          }
+        }
+      },
+      "ToolStatusRequest": {
+        "required": [
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateToolRequest": {
+        "required": [
+          "name",
+          "requiresCalibration",
+          "intervalDays",
+          "expectedRevision"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "requiresCalibration": {
+            "type": "boolean"
+          },
+          "intervalDays": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "expectedRevision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WorkCenterRequest": {
+        "required": [
+          "plant",
+          "code",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "plant": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "resourceKind": {
+            "type": "string",
+            "default": "work_center"
+          },
+          "isActive": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Manufacturing process data"
+    }
+  ]
+}

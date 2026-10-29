@@ -54,7 +54,7 @@ public sealed class WorkflowTimelineSource(WorkflowService workflow) : ITimeline
 {
     public const int RankValue = 30;
     public int Rank => RankValue;
-    public bool Handles(string objectType) => objectType is "part" or "document" or "mbom" or "reqspec";
+    public bool Handles(string objectType) => objectType is "part" or "document" or "mbom" or "reqspec" or "process_plan";
 
     public Task<TimelineSlice> GetAsync(Subject subject, string objectType, string key, string? correlationId, CancellationToken ct) =>
         workflow.TimelineAsync(subject, objectType, key, Rank, ct);

@@ -11,6 +11,7 @@
    is unchanged: while the session is locked this renders the lock panel INSTEAD of the page, with no navigation, no search and no page data in the DOM. *@
 <div class="app @(Shell.Preferences.NavCollapsed ? "rail-collapsed" : null) @(railOpen ? "rail-open" : null)">
     <a class="skip-link" href="#main" @onclick="SkipToMainAsync" @onclick:preventDefault>Skip to main content</a>
+    <DemoBanner />
     <SectionOutlet SectionName="@PageFrame.TopBanner" />
     <header class="topbar">
         @if (!locked)

@@ -19,12 +19,17 @@
     <ProjectReference Include="..\Keel.Cad\Keel.Cad.csproj" />
     <ProjectReference Include="..\Keel.Notifications\Keel.Notifications.csproj" />
     <ProjectReference Include="..\Keel.Sourcing\Keel.Sourcing.csproj" />
+    <ProjectReference Include="..\Keel.Process\Keel.Process.csproj" />
     <ProjectReference Include="..\Keel.Variants\Keel.Variants.csproj" />
     <ProjectReference Include="..\Keel.Records\Keel.Records.csproj" />
     <ProjectReference Include="..\Keel.Compliance\Keel.Compliance.csproj" />
     <ProjectReference Include="..\Keel.Requirements\Keel.Requirements.csproj" />
     <ProjectReference Include="..\Keel.Reports\Keel.Reports.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Demo mode (ADR-0045): the demo sign-in people come from the dev realm itself, so they can never drift from what Keycloak issues. -->
+    <EmbeddedResource Include="..\..\deploy\compose\keycloak\keel-realm.json" LogicalName="keel-realm.json" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Keel.UnitTests" />

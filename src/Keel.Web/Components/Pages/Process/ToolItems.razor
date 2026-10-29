@@ -1,0 +1,17 @@
+@foreach (var t in Tools)
+{
+    <li>
+        @if (t.Restricted) { <span class="muted">Restricted tool</span> }
+        else
+        {
+            <span>@t.Number @t.Name (@ToolKinds.Label(t.Kind!))</span>
+            @if (t.Status == "retired") { <span class="badge state-obsolete">Retired</span> }
+            @if (t.CalibrationOverdue) { <span class="badge state-obsolete">Calibration overdue</span> }
+            else if (t.DueOn is { } due) { <span class="muted small">calibration due @due.ToString("yyyy-MM-dd")</span> }
+        }
+    </li>
+}
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<ToolView> Tools { get; set; }
+}

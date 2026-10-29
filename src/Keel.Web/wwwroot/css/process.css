@@ -1,0 +1,35 @@
+/* Manufacturing process data (8.7, ADR-0042): work instructions, callouts, the matrix and the print stylesheet of the shop floor view. */
+.sf-op { border-top: 1px solid var(--c-border); padding-top: var(--sp-3); margin-top: var(--sp-3); }
+.sf-steps { padding-left: 1.4em; display: flex; flex-direction: column; gap: var(--sp-3); }
+.sf-step p { margin: 0 0 var(--sp-2); }
+.sf-callout { border: 2px solid var(--c-border-strong); border-radius: var(--radius-1); padding: var(--sp-2) var(--sp-3); background: var(--c-surface-2); }
+.sf-kind-warning .sf-callout { border-style: double; border-width: 4px; }
+.sf-kind-caution .sf-callout { border-style: dashed; }
+.sf-kind-quality .sf-callout { border-style: dotted; }
+.sf-glyph { display: inline-block; min-width: 1.6em; text-align: center; font-weight: 800; border: 1px solid currentColor; border-radius: 50%; margin-right: 0.3em; }
+.sf-figure { margin: var(--sp-2) 0; }
+.sf-figure img { max-width: 100%; height: auto; display: block; border: 1px solid var(--c-border); }
+.sf-figure figcaption { font-size: 0.9em; color: var(--c-muted); }
+.sf-print-banner { display: none; }
+.matrix-cell { font-weight: 700; text-align: center; }
+.cov-over, .cov-none { border: 1px dashed currentColor; }
+.cov-full { border: 1px solid currentColor; }
+
+@media print {
+  /* Only the shop floor view (it contains .sf) changes how it prints: nothing of the application shell prints except the marking banners, which repeat on every page, top and bottom.
+     Every other page prints as it did before. */
+  .app:has(.sf) .topbar, .app:has(.sf) .rail, .app:has(.sf) .rail-backdrop, .app:has(.sf) .skip-link, .app:has(.sf) .breadcrumbs, .app:has(.sf) .toasts, .app:has(.sf) #blazor-error-ui,
+  .sf-noprint { display: none !important; }
+  .app:has(.sf) .marking-banner { display: none !important; }
+  .sf-print-banner { display: block; position: fixed; left: 0; right: 0; text-align: center; font-weight: 700; padding: 4px 8px; background: #fff !important; color: #000 !important; border: 2px solid #000;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; z-index: 1000; }
+  .sf-print-top { top: 0; }
+  .sf-print-bottom { bottom: 0; }
+  .app:has(.sf) .shell, .app:has(.sf) main, .app:has(.sf) { display: block !important; margin: 0 !important; }
+  .app:has(.sf) main { padding: 34px 0 !important; }
+  .app:has(.sf) { background: #fff !important; color: #000 !important; font-size: 11pt; }
+  .sf-op { break-inside: avoid-page; }
+  .sf-figure { break-inside: avoid; }
+  .sf-figure img { max-height: 9cm; }
+  .sf a { color: #000; text-decoration: none; }
+}

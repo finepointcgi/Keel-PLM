@@ -1,0 +1,13 @@
+@* Shown on every page of a demo build (ADR-0045) and nowhere else: the layout renders it only when the host registered DemoModeInfo, which happens only in demo mode. *@
+@inject IServiceProvider Services
+
+@if (info is not null)
+{
+    <div class="demo-banner" role="note" data-demo-banner>@info.Banner</div>
+}
+
+@code {
+    private Keel.Web.Services.Demo.DemoModeInfo? info;
+
+    protected override void OnInitialized() => info = Services.GetService<Keel.Web.Services.Demo.DemoModeInfo>();
+}

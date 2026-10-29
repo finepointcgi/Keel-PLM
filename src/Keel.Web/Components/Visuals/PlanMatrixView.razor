@@ -1,0 +1,66 @@
+@using Keel.Process
+@* The operation-by-component matrix of a routing (ADR-0042) with a list alternative. Every cell is a number or empty and every row says its coverage in words, so nothing rests
+   on colour. Components the reader may not see are rows with the find number and quantity only. *@
+<div class="sf-noprint">
+    <ViewSwitch Label="Matrix view" Options="views" Value="@(list ? "list" : "matrix")" ValueChanged='v => list = v == "list"' />
+</div>
+@if (Matrix.Rows.Count == 0)
+{
+    <p class="muted">The bound MBOM revision has no lines.</p>
+}
+else if (!list)
+{
+    <div class="table-wrap">
+        <table class="data matrix" aria-label="Components by operation">
+            <caption class="sr-only">Quantity of each MBOM line consumed at each operation of routing @Matrix.RoutingCode</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Find</th><th scope="col">Component</th><th scope="col">Needed</th>
+                    @foreach (var o in Matrix.Operations) { <th scope="col" title="@o.Name">Op @o.Number</th> }
+                    <th scope="col">Assigned</th><th scope="col">Coverage</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Matrix.Rows)
+                {
+                    <tr class="@(r.Line.Redacted ? "restricted" : null)">
+                        <th scope="row">@r.Line.Find@(r.Line.Alt > 0 ? $".{r.Line.Alt}" : "")</th>
+                        <td>@(r.Line.Redacted ? "Restricted component" : $"{r.Line.PartNumber} {r.Line.PartName}")</td>
+                        <td>@ProcessRules.Fmt(r.Line.Quantity) @r.Line.Unit</td>
+                        @foreach (var c in r.Cells) { <td class="@(c is null ? null : "matrix-cell")">@(c is null ? "" : ProcessRules.Fmt(c.Quantity))</td> }
+                        <td>@ProcessRules.Fmt(r.Assigned)</td>
+                        <td><span class="badge cov-@r.Coverage">@PlanMatrix.CoverageLabel(r.Coverage)</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <ul class="plain stack">
+        @for (var i = 0; i < Matrix.Operations.Count; i++)
+        {
+            var index = i;
+            var op = Matrix.Operations[i];
+            <li>
+                <strong>Operation @op.Number, @op.Name</strong>
+                <ul>
+                    @{ var rows = Matrix.Rows.Where(r => r.Cells[index] is not null).ToList(); }
+                    @if (rows.Count == 0) { <li class="muted">Consumes no components.</li> }
+                    @foreach (var r in rows)
+                    {
+                        <li>Line @r.Line.Find: @(r.Line.Redacted ? "Restricted component" : $"{r.Line.PartNumber} {r.Line.PartName}"), @ProcessRules.Fmt(r.Cells[index]!.Quantity) @r.Line.Unit@(r.Cells[index]!.Whole ? " (the whole line)" : "")</li>
+                    }
+                </ul>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private bool list;
+    private static readonly IReadOnlyList<ViewOption> views = [new("matrix", "Matrix"), new("list", "List by operation")];
+
+    [Parameter, EditorRequired] public required PlanMatrix Matrix { get; set; }
+}

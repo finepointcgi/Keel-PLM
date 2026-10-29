@@ -18,8 +18,11 @@ public static class ObjectKinds
     public const string Substance = "substance";
 
     public const string ReqSpec = "reqspec";
+    /// <summary>8.7 manufacturing process data: process plans and tools, fixtures and gauges.</summary>
+    public const string ProcessPlan = "process_plan";
+    public const string Tool = "tool";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, Substance, ReqSpec];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Ncr, Capa, Deviation, Substance, ReqSpec, ProcessPlan, Tool];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -37,6 +40,8 @@ public static class ObjectKinds
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
         Substance => "compliance/substances/" + Uri.EscapeDataString(number),
         ReqSpec => "requirements/" + Uri.EscapeDataString(number),
+        ProcessPlan => "process/plans/" + Uri.EscapeDataString(number),
+        Tool => "process/tools/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -53,6 +58,8 @@ public static class ObjectKinds
         Supplier => "Supplier",
         Substance => "Substance",
         ReqSpec => "Requirement specification",
+        ProcessPlan => "Process plan",
+        Tool => "Tool",
         _ => kind,
     };
 }
