@@ -84,6 +84,8 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
         foreach (var tab in new[] { "overview", "usedby", "history", "timeline", "security", "activity", "comments", "trace" })
             Add("alice", $"/documents/{m.SystemSpecification}?tab={tab}");
+        // Model versions (ADR-0046): the Versions tab of the two seeded models.
+        if (m.Models is { } models) Add("alice", $"/documents/{models.BracketModel}?tab=versions", $"/documents/{models.PlateModel}?tab=versions");
         // CAD integration (ADR-0035): the CAD tab of a document, the proposals list and the review page.
         var cadProposal = CadE2ESeed.EnsureAsync(fx).GetAwaiter().GetResult();
         Add("alice", $"/documents/{m.SystemSpecification}?tab=cad", "/cad/bom-proposals", $"/cad/bom-proposals/{cadProposal}");
@@ -200,6 +202,9 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
                 audited += await AuditOverlaysAsync(users["alice"].Page, users["ada"].Page, theme, width, axe, findings);
 
+                if (fx.Manifest.Models is { } models)
+                    audited += await AuditModelVersionsAsync(alice.Page, models.BracketModel, $"{theme}/{width}px alice model versions", axe, findings);
+
                 var png = await CreateImageDocumentAsync();
                 audited += await AuditViewerAsync(alice.Page, png, $"{theme}/{width}px alice viewer", axe, findings);
             }
@@ -314,6 +319,43 @@ public sealed class AccessibilityTests(E2EFixture fx)
         count++;
         await ada.Keyboard.PressAsync("Escape");
         await Expect(ada.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
+        return count;
+    }
+
+    /// <summary>The model version states that are not a plain page load (ADR-0046): the comparison table, both dialogs and the three modes of the visual comparison.</summary>
+    private async Task<int> AuditModelVersionsAsync(IPage page, string number, string label, string axe, List<string> findings)
+    {
+        var count = 0;
+        await page.GotoAsync(fx.BaseUrl + $"/documents/{number}?tab=versions");
+        await Expect(page.GetByTestId("version-table")).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = 30_000 });
+        await page.GetByTestId("compare-go").ClickAsync();
+        await Expect(page.GetByTestId("compare-summary")).ToBeVisibleAsync();
+        await RunAxeAsync(page, label + " comparison result", axe, findings);
+        count++;
+
+        await page.GetByTestId("upload-new-version").ClickAsync();
+        await Expect(page.GetByRole(AriaRole.Dialog)).ToBeVisibleAsync();
+        await RunAxeAsync(page, label + " upload dialog open", axe, findings);
+        count++;
+        await page.Keyboard.PressAsync("Escape");
+        await Expect(page.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
+
+        await page.GetByTestId("restore-A.1").ClickAsync();
+        await Expect(page.GetByRole(AriaRole.Dialog)).ToBeVisibleAsync();
+        await RunAxeAsync(page, label + " restore dialog open", axe, findings);
+        count++;
+        await page.Keyboard.PressAsync("Escape");
+        await Expect(page.GetByRole(AriaRole.Dialog)).ToHaveCountAsync(0);
+
+        await page.GetByTestId("open-visual-compare").ClickAsync();
+        await Expect(page.Locator("body[data-viewer-state=ready]")).ToHaveCountAsync(1, new LocatorAssertionsToHaveCountOptions { Timeout = 90_000 });
+        await BrowserSession.AssertBannersAsync(page);
+        foreach (var mode in new[] { "Overlay", "Side by side", "Swipe" })
+        {
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = mode }).ClickAsync();
+            await RunAxeAsync(page, $"{label} visual comparison ({mode})", axe, findings);
+            count++;
+        }
         return count;
     }
 
