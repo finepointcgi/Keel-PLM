@@ -1,0 +1,49 @@
+@* The legend of a picture: every kind is listed with its shape or pattern AND its name, so no meaning rests on colour alone (UX-3, ADR-0029).
+   LegendItem.Pattern names one of hatch, dots, cross, horiz, vert (the same patterns the diagram frame defines). *@
+<section class="vis-legend" aria-label="@Label">
+    <h4 class="vis-legend-title">@Label</h4>
+    <ul class="plain vis-legend-list">
+        @foreach (var item in Items)
+        {
+            <li>
+                <svg class="vis-legend-swatch vis-k-@item.Class" width="34" height="22" viewBox="0 0 34 22" aria-hidden="true" focusable="false">
+                    @if (item.Pattern is not null)
+                    {
+                        <defs>
+                            <pattern id="@(uid)-@item.Pattern" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="@(item.Pattern == "hatch" ? "rotate(45)" : null)">
+                                @switch (item.Pattern)
+                                {
+                                    case "dots":
+                                        <circle class="vis-pattern-dot" cx="4" cy="4" r="1.6" />
+                                        break;
+                                    case "cross":
+                                        <path class="vis-pattern-line" d="M0 0 L8 8 M8 0 L0 8" stroke-width="1.2" />
+                                        break;
+                                    case "horiz":
+                                        <line class="vis-pattern-line" x1="0" y1="4" x2="8" y2="4" stroke-width="1.5" />
+                                        break;
+                                    case "vert":
+                                        <line class="vis-pattern-line" x1="4" y1="0" x2="4" y2="8" stroke-width="1.5" />
+                                        break;
+                                    default:
+                                        <line class="vis-pattern-line" x1="0" y1="0" x2="0" y2="8" stroke-width="2" />
+                                        break;
+                                }
+                            </pattern>
+                        </defs>
+                    }
+                    <path class="vis-shape" d="@item.Path" />
+                    @if (item.Pattern is not null) { <path d="@item.Path" fill="url(#@(uid)-@item.Pattern)" stroke="none" /> }
+                </svg>
+                <span>@item.Text</span>
+            </li>
+        }
+    </ul>
+</section>
+
+@code {
+    private readonly string uid = "lg" + Guid.NewGuid().ToString("N")[..8];
+
+    [Parameter, EditorRequired] public required IReadOnlyList<LegendItem> Items { get; set; }
+    [Parameter] public string Label { get; set; } = "Legend";
+}

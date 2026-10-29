@@ -112,3 +112,7 @@ scripts/seed.sh --use-dev-stack
 | Audit page shows "Chain INVALID" | Someone tampered with `audit.event`, or the seed ran with a different checkpoint key. Check the failure text; a first run on a fresh database is valid. |
 | Keycloak redirect error | The realm's redirect URI is `http://localhost:5080`; run the API on that port. |
 | Console error about inline styles | Known notice from Blazor Virtualize under the strict CSP; the BOM grid ships a shim, see [1.4 notes](increments/1.4-bom.md). |
+
+## Seeing relationships (UX-3)
+Sign in as alice. 1) `/changes/ECN-000001`, tab **Impact map**: the notice at the left, P-000015 (A to B), the assemblies that use it, documents; arrow keys follow connections, Enter opens, **Table** shows the same data, **Export SVG** downloads the picture with its banner. 2) `/parts/P-000001`, **Structure**, choose **Treemap**: drill into an assembly, Backspace goes up, colour by markings shows the hatched Restricted block. 3) `/parts/P-000005/compare-units`: ORCA-POD serial 100 against 101, **Side by side**, Next change. 4) `/parts/P-000015` and `/parts/P-000016`, tab **Timeline** (the ECN-000004 effectivity entry). 5) `/changes/ECN-000002`, **Review & release**: the workflow map shows the pending approver. As lena the notice and bracket are "not found" and nothing restricted is named.
+Screenshots: docs/ux/screenshots (impact-map, bom-treemap, structure-diff, timeline, workflow-map).

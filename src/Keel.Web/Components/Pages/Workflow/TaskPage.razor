@@ -17,6 +17,8 @@
             <article class="stack">
                 <h2>@d.Summary.Name</h2>
                 <p role="status">You are no longer eligible to see the item this task is about, so its details are hidden and the task cannot be signed. Ask the person who started the review, or an administrator, to reassign it.</p>
+                @* UX-3: the steps and their status, with every participant shown as "Participant". *@
+                <WorkflowMapPanel InstanceId="@d.Summary.InstanceId" Version="@d.Status" />
             </article>
         }
         else
@@ -57,6 +59,10 @@
                 @if (d.Instance is { } inst)
                 {
                     @if (inst.Comment is not null) { <section class="panel"><h3>Submitter's comment</h3><p>@inst.Comment</p></section> }
+                    <section class="panel" aria-label="Workflow progress">
+                        <h3>Progress</h3>
+                        <WorkflowMapPanel InstanceId="@inst.Id" Version="@($"{inst.Status}:{inst.Tasks.Count(t => t.Status != "Open")}")" />
+                    </section>
                     <section class="panel">
                         <h3>Workflow history</h3>
                         <p><a href="workflows/@inst.Id">Open the workflow</a> · @WorkflowText.Status(inst.Status)</p>

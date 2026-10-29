@@ -30,6 +30,11 @@
             @if (v.CompletionNote is not null) { <p>@v.CompletionNote</p> }
             @if (v.Comment is not null) { <p class="muted">Submitter's comment: @v.Comment</p> }
 
+            <section class="panel" aria-label="Workflow progress">
+                <h3>Progress</h3>
+                <WorkflowMapPanel InstanceId="@v.Id" Version="@($"{v.Status}:{v.Tasks.Count(t => t.Status != "Open")}")" />
+            </section>
+
             <section class="panel">
                 <h3>Tasks</h3>
                 <div class="table-wrap"><table class="data">

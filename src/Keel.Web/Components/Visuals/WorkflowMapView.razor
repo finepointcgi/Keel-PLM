@@ -1,0 +1,75 @@
+@* A compact map of a review workflow (UX-3, ADR-0029): the steps in order, a parallel group with its vote rule (All, Any, 2 of 3), each participant as an avatar with initials, and a status per task
+   as a symbol AND a word (Pending, Signed with its meaning, Rejected, Skipped, Cancelled, Waiting). Data comes from WorkflowService.GetMapAsync (the stored tasks, signatures and the definition the
+   instance runs). A reader who may no longer read the object sees "Participant" for every person and no meanings or times. It is an ordered list, so it reads in order without the picture. *@
+<section class="wm-wrap" aria-label="@Label">
+    <ol class="wm">
+        @foreach (var stage in Map.Stages)
+        {
+            <li class="wm-stage wm-st-@stage.State.ToLowerInvariant()" aria-label="@StageAria(stage)">
+                <div class="wm-head">
+                    <span class="wm-stage-name">@stage.Name</span>
+                    <span class="wm-state"><span class="wm-glyph" aria-hidden="true">@StageGlyph(stage.State)</span> @StageText(stage)</span>
+                </div>
+                @if (stage.Type == "Parallel")
+                {
+                    <div class="wm-rule">Parallel group · @RuleText(stage)</div>
+                }
+                @if (stage.Tasks.Count > 0)
+                {
+                    <ul class="plain wm-tasks">
+                        @foreach (var t in stage.Tasks)
+                        {
+                            <li class="wm-task wm-s-@t.Status.ToLowerInvariant()">
+                                <span class="wm-avatar" aria-hidden="true">@(t.Person?.Initials ?? "·")</span>
+                                <span class="wm-person">
+                                    <span class="wm-name">@PersonName(t)</span>
+                                    <span class="wm-status"><span class="wm-glyph" aria-hidden="true">@TaskGlyph(t.Status)</span> @TaskText(t)</span>
+                                    @if (t.At is { } at) { <time class="muted small" datetime="@at.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture)">@at.UtcDateTime.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) UTC</time> }
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </li>
+        }
+    </ol>
+    @if (Map.Redacted) { <p class="muted small">You are no longer authorized to see the item under review, so participants are hidden.</p> }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required WorkflowMap Map { get; set; }
+    [Parameter] public string Label { get; set; } = "Workflow progress";
+
+    private static string PersonName(MapTask t) =>
+        t.Person?.Name ?? (t.PoolRole is { } role ? $"Anyone holding {role.Replace("plm-", "", StringComparison.Ordinal)}" : "Unassigned");
+
+    private static string RuleText(MapStage s) => s.Rule switch
+    {
+        "All" => $"All {s.Total} must approve",
+        "Any" => "Any one approval is enough",
+        _ => $"{s.Rule} must approve",
+    };
+
+    private static string StageText(MapStage s) => s.State switch
+    {
+        "Active" => "In progress",
+        "Approved" => s.Type == "End" ? "Reached" : "Approved",
+        "Rejected" => "Rejected",
+        "Skipped" => "Skipped",
+        _ => "Waiting",
+    };
+
+    private static string StageGlyph(string state) => state switch { "Active" => "●", "Approved" => "✓", "Rejected" => "✗", "Skipped" => "–", _ => "○" };
+
+    private static string TaskGlyph(string status) => status switch { "Signed" => "✓", "Rejected" => "✗", "Pending" => "●", "Skipped" => "–", "Cancelled" => "–", _ => "○" };
+
+    private static string TaskText(MapTask t) => t.Status switch
+    {
+        "Signed" => t.Meaning is { Length: > 0 } m ? $"Signed: {m}" : "Signed",
+        "Rejected" => t.Meaning is { Length: > 0 } m ? $"Rejected: {m}" : "Rejected",
+        "Pending" => t.Overdue ? "Pending, overdue" : "Pending",
+        _ => t.Status,
+    };
+
+    private static string StageAria(MapStage s) => $"{s.Name}: {StageText(s)}{(s.Type == "Parallel" ? ", " + RuleText(s) : "")}";
+}

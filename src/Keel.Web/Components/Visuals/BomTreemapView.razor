@@ -1,0 +1,273 @@
+@* The exploded structure as a treemap (UX-3, ADR-0029): area is extended quantity or the number of parts below, fill and pattern are lifecycle state or marking class.
+   Click or Enter drills into an assembly (breadcrumb, Backspace goes up), arrow keys move between sibling tiles (Right, Left) and between a tile and the tiles inside it (Down, Up),
+   a leaf opens with Enter. Hover or focus shows the details. The table below is the same data for every child of the assembly in view. At most MaxTiles tiles are drawn;
+   smaller siblings fold into one "others" tile that counts only readable parts. Restricted parts form one hatched block per assembly, sized by the quantities the BOM
+   service already returns for them (A4); the block does not say how many lines it holds. *@
+@using Keel.Bom
+@inject VisualsJs Js
+
+<div class="stack tm">
+    <div class="toolbar vis-filters">
+        <ViewSwitch Label="Structure picture" Options="views" Value="@(table ? "table" : "map")" ValueChanged="OnView" />
+        <label class="inline">Area shows
+            <select aria-label="Area shows" @bind="metric" @bind:after="Relayout">
+                <option value="@TreemapMetric.ExtendedQuantity">Extended quantity</option>
+                <option value="@TreemapMetric.DescendantCount">Number of parts below</option>
+            </select>
+        </label>
+        <label class="inline">Colour and pattern show
+            <select aria-label="Colour and pattern show" @bind="colour" @bind:after="Relayout">
+                <option value="@TreemapColour.State">Lifecycle state</option>
+                <option value="@TreemapColour.Markings">Markings class</option>
+            </select>
+        </label>
+    </div>
+
+    <nav class="tm-crumbs" aria-label="Treemap path">
+        <ol class="plain">
+            @foreach (var (node, last) in Trail())
+            {
+                <li>
+                    @if (last) { <span aria-current="location">@Crumb(node)</span> }
+                    else { <button type="button" class="link" @onclick="() => Drill(node.Path)">@Crumb(node)</button> }
+                </li>
+            }
+        </ol>
+    </nav>
+
+    @if (focus.Children.Count == 0)
+    {
+        <p class="muted">@(focus.Path.Length == 0 ? "No components." : "This item has no components.")</p>
+    }
+    else if (table)
+    {
+        <div class="table-wrap"><table class="data tm-table" aria-label="Structure as a table">
+            <caption class="sr-only">Components of @Crumb(focus) with their share of the area</caption>
+            <thead><tr><th scope="col">Find</th><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Revision</th><th scope="col">State</th><th scope="col">Qty</th><th scope="col">Ext qty</th><th scope="col">Parts below</th><th scope="col">Share</th><th scope="col">Marking</th></tr></thead>
+            <tbody>
+                @foreach (var c in focus.Children.OrderByDescending(c => c.Value(metric)).ThenBy(c => c.Path, StringComparer.Ordinal).Take(rowLimit))
+                {
+                    <tr class="@(c.Redacted ? "restricted" : null)">
+                        <td>@c.FindNumber</td>
+                        <td>
+                            @if (c.Redacted) { <span class="restricted-label">Restricted item</span> }
+                            else if (c.Children.Count > 0) { <button type="button" class="link" @onclick="() => Drill(c.Path)">@c.Label</button> }
+                            else { <a href="parts/@Uri.EscapeDataString(c.Number!)">@c.Label</a> }
+                        </td>
+                        <td>@c.Sublabel</td>
+                        <td>@(c.Redacted ? "" : c.Unresolved ? "No released revision" : "")</td>
+                        <td>@c.StateLabel</td>
+                        <td>@BomTreemapModel.FormatQty(c.Quantity) @c.Unit</td>
+                        <td>@BomTreemapModel.FormatQty(c.ExtendedQuantity)</td>
+                        <td>@(c.Redacted ? "" : c.Descendants.ToString(System.Globalization.CultureInfo.InvariantCulture))</td>
+                        <td>@Share(c)</td>
+                        <td>@if (c.Banner is not null) { <MarkingChip Text="@c.Banner" /> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        @if (focus.Children.Count > rowLimit)
+        {
+            <p class="muted small">Showing the largest @rowLimit of this assembly's components. <button type="button" class="link" @onclick="() => rowLimit = int.MaxValue">Show all</button></p>
+        }
+    }
+    else
+    {
+        <div class="vis-split" @onkeydown="OnKey">
+            <div class="vis-main">
+                <DiagramViewport @ref="frame" Width="@Width" Height="@Height" Label="@($"Structure treemap of {Crumb(focus)}")" FirstId="@FirstId" LastId="@LastId" ContentKey="@focus.Path">
+                    @{
+                        var ctx = context;
+                        foreach (var t in result.Tiles)
+                        {
+                            var (cls, pattern) = t.IsOthers ? ("others", (string?)"horiz") : TreemapStyle.For(t.Node!, colour);
+                            var nav = Navigation(t);
+                            var dom = ctx.NodeId(Dom(t));
+                            <g id="@dom" class="vis-node vis-tile vis-k-@cls vis-d@(t.Depth) @(selected == t.Id ? "is-selected" : null)" @key="t.Id"
+                               role="@(t.Drillable ? "button" : t.Node?.Redacted == false ? "link" : "img")" tabindex="@(t.Id == result.Tiles[0].Id ? 0 : -1)"
+                               aria-label="@Describe(t)" data-tip="@Tip(t)" data-href="@Href(t)"
+                               data-x="@Num(t.X)" data-y="@Num(t.Y)" data-w="@Num(t.Width)" data-h="@Num(t.Height)"
+                               data-right="@Id(ctx, nav.Right)" data-left="@Id(ctx, nav.Left)" data-up="@Id(ctx, nav.Up)" data-down="@Id(ctx, nav.Down)"
+                               @onclick="() => Activate(t)">
+                                <rect class="vis-shape" x="@Num(t.X)" y="@Num(t.Y)" width="@Num(Math.Max(t.Width - 1, 0))" height="@Num(Math.Max(t.Height - 1, 0))" />
+                                @if (pattern is not null) { <rect class="vis-overlay" x="@Num(t.X)" y="@Num(t.Y)" width="@Num(Math.Max(t.Width - 1, 0))" height="@Num(Math.Max(t.Height - 1, 0))" fill="@ctx.Pattern(pattern)" /> }
+                                @if (t.Width >= 56 && t.Height >= 22)
+                                {
+                                    <g><text class="vis-label" x="@Num(t.X + 6)" y="@Num(t.Y + 15)">@Fit(TileLabel(t), t.Width)</text></g>
+                                }
+                                @if (t.Width >= 90 && t.Height >= 40 && t.Depth == 1 && !t.IsOthers && t.Node!.Sublabel is { Length: > 0 } sub && !t.Node.Redacted)
+                                {
+                                    <g><text class="vis-sub" x="@Num(t.X + 6)" y="@Num(t.Y + 30)">@Fit(sub, t.Width)</text></g>
+                                }
+                            </g>
+                        }
+                    }
+                </DiagramViewport>
+                <p class="muted small" aria-live="polite">
+                    @result.TileCount tile@(result.TileCount == 1 ? "" : "s") drawn@(result.Folded ? " · smaller siblings are folded into “others” tiles" : "").
+                    Area: @(metric == TreemapMetric.ExtendedQuantity ? "extended quantity (units are not converted)" : "number of parts below").
+                </p>
+            </div>
+            <aside class="vis-side" aria-label="Part details">
+                @if (SelectedNode() is { } s)
+                {
+                    <h4>@(s.Redacted ? "Restricted" : s.Label)</h4>
+                    @if (!s.Redacted) { <p>@s.Sublabel</p> }
+                    <dl class="facts compact">
+                        @if (!s.Redacted) { <dt>State</dt><dd>@(s.Unresolved ? "No released revision" : s.StateLabel)</dd> }
+                        <dt>Quantity</dt><dd>@BomTreemapModel.FormatQty(s.Quantity) @s.Unit</dd>
+                        <dt>Extended quantity</dt><dd>@BomTreemapModel.FormatQty(s.ExtendedQuantity)</dd>
+                        @if (!s.Redacted) { <dt>Parts below</dt><dd>@s.Descendants</dd> }
+                        <dt>Share</dt><dd>@Share(s)</dd>
+                    </dl>
+                    @if (s.Banner is not null) { <p><MarkingChip Text="@s.Banner" /></p> }
+                    @if (s.Redacted) { <p class="muted small">You are not authorized to see these items.</p> }
+                    else
+                    {
+                        <p>
+                            @if (s.Children.Count > 0) { <button type="button" class="secondary" @onclick="() => Drill(s.Path)">Drill into</button> }
+                            <a href="parts/@Uri.EscapeDataString(s.Number!)">Open part</a>
+                        </p>
+                    }
+                }
+                else { <p class="muted">Select a tile to see its details. Enter on an assembly drills into it.</p> }
+            </aside>
+        </div>
+        <Legend Label="Legend" Items="TreemapStyle.Legend(colour)" />
+    }
+</div>
+
+@code {
+    private const double Width = 960, Height = 540;
+    private static readonly IReadOnlyList<ViewOption> views = [new("map", "Treemap"), new("table", "Table")];
+
+    private TmNode root = new() { Path = "", Label = "", Level = 0 };
+    private TmNode focus = new() { Path = "", Label = "", Level = 0 };
+    private TreemapLayoutResult result = new([], 0, false);
+    private TreemapMetric metric = TreemapMetric.ExtendedQuantity;
+    private TreemapColour colour = TreemapColour.State;
+    private bool table, tableChosen, focusFirstAfterRender;
+    private int rowLimit = 200;
+    private string? selected;
+    private Dictionary<string, string> ids = new(StringComparer.Ordinal);
+    private IReadOnlyList<BomLine>? lastRef;
+    private DiagramViewport? frame;
+
+    public const int MaxTiles = 400;
+
+    [Parameter, EditorRequired] public required string RootNumber { get; set; }
+    [Parameter, EditorRequired] public required string RootName { get; set; }
+    [Parameter, EditorRequired] public required IReadOnlyList<BomLine> Lines { get; set; }
+    /// <summary>Raised with the markings of the tiles that are drawn, so the page banner covers exactly what is shown.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(lastRef, Lines)) return;
+        lastRef = Lines;
+        root = BomTreemapModel.Build(RootNumber, RootName, Lines);
+        focus = root;
+        selected = null;
+        await Relayout();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && await Js.IsNarrowAsync() && !tableChosen) { table = true; StateHasChanged(); }
+        if (focusFirstAfterRender && frame is not null)
+        {
+            focusFirstAfterRender = false;
+            await frame.FocusFirstAsync();
+        }
+    }
+
+    private void OnView(string id) { table = id == "table"; tableChosen = true; }
+
+    private async Task Relayout()
+    {
+        result = BomTreemapModel.Layout(focus, Width, Height, metric, MaxTiles);
+        ids = result.Tiles.Select((t, i) => (t.Id, i)).ToDictionary(x => x.Id, x => "t" + x.i.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal);
+        var shown = result.Tiles.Where(t => t.Node?.Markings is not null).Select(t => t.Node!.Markings!).Distinct().ToList();
+        await OnShown.InvokeAsync(shown);
+    }
+
+    private async Task Drill(string path)
+    {
+        var node = BomTreemapModel.Find(root, path);
+        if (node is null || node.Children.Count == 0) return;
+        focus = node;
+        selected = null;
+        focusFirstAfterRender = true;
+        await Relayout();
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" || (e.AltKey && e.Key == "ArrowUp"))
+        {
+            if (focus.Parent is { } parent) { focus = parent; selected = null; focusFirstAfterRender = true; await Relayout(); }
+        }
+    }
+
+    private async Task Activate(TmTile t)
+    {
+        selected = t.Id;
+        if (t.Drillable) await Drill(t.Node!.Path);
+    }
+
+    private IEnumerable<(TmNode Node, bool Last)> Trail()
+    {
+        var chain = new List<TmNode>();
+        for (var n = focus; n is not null; n = n.Parent) chain.Add(n);
+        chain.Reverse();
+        return chain.Select((n, i) => (n, i == chain.Count - 1));
+    }
+
+    private static string Crumb(TmNode n) => n.Path.Length == 0 ? $"{n.Label}{(string.IsNullOrEmpty(n.Sublabel) ? "" : " " + n.Sublabel)}" : n.Redacted ? "Restricted" : n.Label;
+
+    private TmNode? SelectedNode() => selected is null ? null : result.Tiles.FirstOrDefault(t => t.Id == selected)?.Node;
+
+    private string FirstId => result.Tiles.Count > 0 ? Dom(result.Tiles[0]) : "";
+    private string LastId => result.Tiles.Count > 0 ? Dom(result.Tiles[^1]) : "";
+
+    private string Dom(TmTile t) => ids[t.Id];
+
+    private string Share(TmNode n) => (focus.Value(metric) <= 0 ? 0 : n.Value(metric) / focus.Value(metric)).ToString("P1", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Num(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string TileLabel(TmTile t) => t.IsOthers ? $"{t.OthersCount} more" : t.Node!.Redacted ? "Restricted" : t.Node.Label;
+
+    /// <summary>Shortens a label to what fits the tile width (about 6.5 px a character at 12 px).</summary>
+    private static string Fit(string text, double width)
+    {
+        var max = Math.Max((int)((width - 10) / 6.6), 1);
+        return text.Length <= max ? text : max <= 1 ? "…" : string.Concat(text.AsSpan(0, max - 1), "…");
+    }
+
+    private string Describe(TmTile t)
+    {
+        if (t.IsOthers) return $"{t.OthersCount} more smaller part{(t.OthersCount == 1 ? "" : "s")}{(t.OthersHasRestricted ? " and restricted items" : "")} folded together, {(t.Share).ToString("P1", System.Globalization.CultureInfo.InvariantCulture)} of the area";
+        var n = t.Node!;
+        if (n.Redacted) return $"Restricted items, quantity {BomTreemapModel.FormatQty(n.ExtendedQuantity)}. You may not see them.";
+        return $"{n.Label} {n.Sublabel}, {(n.Unresolved ? "no released revision" : n.StateLabel)}, extended quantity {BomTreemapModel.FormatQty(n.ExtendedQuantity)} {n.Unit}, {Share(n)} of this view, {n.Banner}. " +
+               (t.Drillable ? "Press Enter to drill into it." : "Press Enter to open the part.");
+    }
+
+    private string? Tip(TmTile t) => t.IsOthers ? $"{t.OthersCount} more" : t.Node!.Redacted ? "Restricted" : $"{t.Node.Label} · {t.Node.Sublabel} · ext qty {BomTreemapModel.FormatQty(t.Node.ExtendedQuantity)} · {Share(t.Node)}";
+
+    private static string? Href(TmTile t) => t.Node is { Redacted: false, IsLeaf: true, Number: not null } n ? $"parts/{Uri.EscapeDataString(n.Number)}" : null;
+
+    private sealed record Nav(string? Right, string? Left, string? Up, string? Down);
+
+    private Nav Navigation(TmTile t)
+    {
+        var siblings = result.Tiles.Where(x => x.Depth == t.Depth && x.ParentId == t.ParentId).OrderBy(x => x.Y).ThenBy(x => x.X).ToList();
+        var i = siblings.FindIndex(x => x.Id == t.Id);
+        var child = result.Tiles.Where(x => x.ParentId == t.Id).OrderBy(x => x.Y).ThenBy(x => x.X).FirstOrDefault();
+        var parent = t.ParentId is null ? null : result.Tiles.FirstOrDefault(x => x.Id == t.ParentId);
+        return new Nav(i + 1 < siblings.Count ? Dom(siblings[i + 1]) : null, i > 0 ? Dom(siblings[i - 1]) : null, parent is null ? null : Dom(parent), child is null ? null : Dom(child));
+    }
+
+    private static string? Id(DiagramContext ctx, string? id) => id is null ? null : ctx.NodeId(id);
+}

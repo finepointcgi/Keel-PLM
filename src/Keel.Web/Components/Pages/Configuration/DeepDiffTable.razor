@@ -3,7 +3,13 @@
     @(Result.Lines.Count == 0 ? "No differences." : $"{Result.Added} added, {Result.Removed} removed, {Result.Changed} changed")
     · @Result.Unchanged unchanged. @Result.Title: @Result.FromLabel to @Result.ToLabel.
 </p>
-@if (Result.Lines.Count > 0)
+<ViewSwitch Label="Comparison view" Options="DiffViews.Options" Value="@(visual ? "visual" : "table")" ValueChanged='id => visual = id == "visual"' />
+@if (visual)
+{
+    @* UX-3: the same comparison as two panes, with next and previous change. *@
+    <StructureDiffView Model="Model" />
+}
+else if (Result.Lines.Count > 0)
 {
     <div class="table-wrap"><table class="data">
         <caption class="sr-only">Differences</caption>
@@ -29,6 +35,19 @@
 
 @code {
     [Parameter, EditorRequired] public required DeepComparison Result { get; set; }
+
+    private bool visual;
+    private DeepComparison? modelFor;
+    private DiffModel model = new("", "", "", [], 0, 0, 0, 0, "UNCLASSIFIED");
+
+    private DiffModel Model
+    {
+        get
+        {
+            if (!ReferenceEquals(modelFor, Result)) { modelFor = Result; model = StructureDiffModel.FromDeep(Result); }
+            return model;
+        }
+    }
 
     private static string Q(decimal d) => d.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
     private static string Pair(string? a, string? b) => a is null ? b ?? "" : b is null ? a : a == b ? a : $"{a} to {b}";

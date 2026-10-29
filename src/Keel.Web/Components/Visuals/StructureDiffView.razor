@@ -1,0 +1,197 @@
+@* Two-pane structure diff (UX-3, ADR-0029): the "from" side on the left, the "to" side on the right, and between them what happened, as an icon AND a word (Added, Removed,
+   Changed with the numbers, for example "Qty 2 → 3" or "Rev A → B"), never by colour alone. Both panes are rows of ONE scrolling area, so they always scroll together.
+   Summary chips count and filter each kind. Unchanged lines are only a count, because the comparison services do not return them; assemblies that hold changes but did not
+   change themselves appear as "Unchanged assembly" rows that can be collapsed. Restricted lines are placeholders. Keyboard: Up/Down/Home/End between rows, Right/Left expand and
+   collapse, N and P jump to the next and previous change, Enter opens the part. *@
+@inject NavigationManager Nav
+@inject ShellJs Shell
+
+<section class="diff stack" aria-label="Structure differences">
+    <p class="muted" aria-live="polite">@Model.Title</p>
+    <div class="diff-chips" role="group" aria-label="Kinds of change shown">
+        <button type="button" class="chip-toggle diff-added" aria-pressed="@Pressed(showAdded)" @onclick="() => { showAdded = !showAdded; Recompute(); }"><Icon Name="plus" /> Added <span class="count">@Model.Added</span></button>
+        <button type="button" class="chip-toggle diff-removed" aria-pressed="@Pressed(showRemoved)" @onclick="() => { showRemoved = !showRemoved; Recompute(); }"><Icon Name="close" /> Removed <span class="count">@Model.Removed</span></button>
+        <button type="button" class="chip-toggle diff-changed" aria-pressed="@Pressed(showChanged)" @onclick="() => { showChanged = !showChanged; Recompute(); }"><Icon Name="change" /> Changed <span class="count">@Model.Changed</span></button>
+        <button type="button" class="chip-toggle diff-same" aria-pressed="@Pressed(showSame)" @onclick="() => { showSame = !showSame; Recompute(); }"><Icon Name="check" /> Unchanged <span class="count">@Model.Unchanged</span></button>
+    </div>
+    <div class="toolbar">
+        <button type="button" class="secondary" disabled="@(changes.Count == 0)" @onclick="() => Jump(-1)">Previous change</button>
+        <button type="button" class="secondary" disabled="@(changes.Count == 0)" @onclick="() => Jump(1)">Next change</button>
+        <span class="muted small" aria-live="polite">@(changes.Count == 0 ? "No changes to show." : position > 0 ? $"Change {position} of {changes.Count}" : $"{changes.Count} change{(changes.Count == 1 ? "" : "s")} shown")</span>
+    </div>
+
+    @if (rows.Count == 0)
+    {
+        <p class="muted">@(Model.ChangeCount == 0 ? "No differences." : "Nothing matches the chosen kinds.")@(Model.Unchanged > 0 ? $" {Model.Unchanged} unchanged line{(Model.Unchanged == 1 ? "" : "s")} not listed." : "")</p>
+    }
+    else
+    {
+        <div class="diff-scroll" role="treegrid" aria-label="Differences, @Model.LeftTitle and @Model.RightTitle side by side" aria-rowcount="@(rows.Count + 1)">
+            <div class="diff-row diff-head" role="row" aria-rowindex="1">
+                <span role="columnheader">@Model.LeftTitle</span>
+                <span role="columnheader">What changed</span>
+                <span role="columnheader">@Model.RightTitle</span>
+            </div>
+            @for (var i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                var index = i;
+                var kind = r.Kind is { } k ? StructureDiffModel.Kind(k) : "Unchanged";
+                <div id="@RowDom(r)" class="diff-row @RowClass(r) @(r.Redacted ? "restricted" : null)" role="row" aria-rowindex="@(i + 2)" aria-level="@(r.Depth + 1)" @key="r.Id"
+                     aria-expanded="@(r.HasChildren ? (collapsed.Contains(r.Id) ? "false" : "true") : null)" tabindex="@(r.Id == focused || (focused is null && i == 0) ? 0 : -1)"
+                     data-change="@(r.IsChange ? "true" : null)" @onfocus="() => focused = r.Id" @onkeydown="e => OnKey(e, index)" @onkeydown:stopPropagation="true">
+                    <span role="gridcell" class="diff-cell diff-left" data-indent="@Math.Min(r.Depth, 9)">
+                        @if (r.HasChildren)
+                        {
+                            <button type="button" class="twisty" tabindex="-1" aria-label="@((collapsed.Contains(r.Id) ? "Expand " : "Collapse ") + r.Label)" @onclick="() => Toggle(r.Id)">@(collapsed.Contains(r.Id) ? "+" : "−")</button>
+                        }
+                        else { <span class="twisty-gap" aria-hidden="true"></span> }
+                        @Side(r, r.Left, r.Kind != BomChangeKind.Added)
+                    </span>
+                    <span role="gridcell" class="diff-cell diff-mid">
+                        <span class="diff-kind"><Icon Name="@KindIcon(r)" /> <strong>@kind</strong></span>
+                        <span class="diff-summary">@(r.Kind is BomChangeKind.Added or BomChangeKind.Removed ? "" : r.Summary)</span>
+                    </span>
+                    <span role="gridcell" class="diff-cell diff-right">
+                        @Side(r, r.Right, r.Kind != BomChangeKind.Removed)
+                    </span>
+                </div>
+            }
+        </div>
+    }
+    @if (Model.Unchanged > 0)
+    {
+        <p class="muted small">@Model.Unchanged unchanged line@(Model.Unchanged == 1 ? "" : "s") @(Model.Unchanged == 1 ? "is" : "are") not listed: the comparison only returns what differs.</p>
+    }
+</section>
+
+@code {
+    private readonly string uid = "df" + Guid.NewGuid().ToString("N")[..8];
+    private bool showAdded = true, showRemoved = true, showChanged = true, showSame = true;
+    private readonly HashSet<string> collapsed = new(StringComparer.Ordinal);
+    private string? focused;
+    private int position;
+    private List<DiffRow> rows = [];
+    private List<int> changes = [];
+    private DiffModel? lastModel;
+    private Dictionary<string, int> position0 = new(StringComparer.Ordinal);
+
+    [Parameter, EditorRequired] public required DiffModel Model { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(lastModel, Model))
+        {
+            lastModel = Model; collapsed.Clear(); focused = null; position = 0;
+            position0 = Model.Rows.Select((r, i) => (r.Id, i)).GroupBy(x => x.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().i, StringComparer.Ordinal);
+        }
+        Recompute();
+    }
+
+    private static string Pressed(bool on) => on ? "true" : "false";
+
+    private bool Shows(BomChangeKind? kind) => kind switch
+    {
+        BomChangeKind.Added => showAdded,
+        BomChangeKind.Removed => showRemoved,
+        BomChangeKind.Changed => showChanged,
+        _ => showSame,
+    };
+
+    private void Recompute()
+    {
+        var all = Model.Rows;
+        var list = new List<DiffRow>(all.Count);
+        var hideBelow = int.MaxValue;
+        for (var i = 0; i < all.Count; i++)
+        {
+            var r = all[i];
+            if (r.Depth > hideBelow) continue;
+            hideBelow = int.MaxValue;
+            if (r.Kind is null && r.HasChildren)
+            {
+                // An unchanged assembly stays while a change below it is shown.
+                var any = false;
+                for (var j = i + 1; j < all.Count && all[j].Depth > r.Depth && !any; j++) any = all[j].Kind is not null && Shows(all[j].Kind);
+                if (!any) continue;
+            }
+            else if (!Shows(r.Kind)) continue;
+            list.Add(r);
+            if (collapsed.Contains(r.Id)) hideBelow = r.Depth;
+        }
+        rows = list;
+        changes = [.. rows.Select((r, i) => (r, i)).Where(x => x.r.IsChange).Select(x => x.i)];
+    }
+
+    private void Toggle(string id)
+    {
+        if (!collapsed.Add(id)) collapsed.Remove(id);
+        Recompute();
+    }
+
+    private async Task Jump(int step)
+    {
+        if (changes.Count == 0) return;
+        var current = focused is null ? -1 : rows.FindIndex(r => r.Id == focused);
+        int target;
+        if (step > 0) target = changes.FirstOrDefault(c => c > current, changes[0]);
+        else target = changes.LastOrDefault(c => c < current, changes[^1]);
+        position = changes.IndexOf(target) + 1;
+        await FocusRow(target);
+    }
+
+    private async Task FocusRow(int index)
+    {
+        if (index < 0 || index >= rows.Count) return;
+        focused = rows[index].Id;
+        StateHasChanged();
+        await Shell.InvokeVoidAsync("focusSelector", "#" + RowDom(rows[index]));
+    }
+
+    private async Task OnKey(KeyboardEventArgs e, int index)
+    {
+        var r = rows[index];
+        switch (e.Key)
+        {
+            case "ArrowDown": await FocusRow(index + 1); break;
+            case "ArrowUp": await FocusRow(index - 1); break;
+            case "Home": await FocusRow(0); break;
+            case "End": await FocusRow(rows.Count - 1); break;
+            case "ArrowRight" when r.HasChildren && collapsed.Contains(r.Id): Toggle(r.Id); break;
+            case "ArrowRight" when r.HasChildren: await FocusRow(index + 1); break;
+            case "ArrowLeft" when r.HasChildren && !collapsed.Contains(r.Id): Toggle(r.Id); break;
+            case "ArrowLeft" when r.Depth > 0:
+                var parent = rows.Take(index).Select((x, i) => (x, i)).LastOrDefault(x => x.x.Depth < r.Depth);
+                if (parent.x is not null) await FocusRow(parent.i);
+                break;
+            case "n" or "N": await Jump(1); break;
+            case "p" or "P": await Jump(-1); break;
+            case "Enter" when r.Href is not null: Nav.NavigateTo(r.Href); break;
+        }
+    }
+
+    private string RowDom(DiffRow r) => $"{uid}-{position0.GetValueOrDefault(r.Id).ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    private static string RowClass(DiffRow r) => r.Kind switch
+    {
+        BomChangeKind.Added => "is-added",
+        BomChangeKind.Removed => "is-removed",
+        BomChangeKind.Changed => "is-changed",
+        _ => "is-same",
+    };
+
+    private static string KindIcon(DiffRow r) => r.Kind switch { BomChangeKind.Added => "plus", BomChangeKind.Removed => "close", BomChangeKind.Changed => "change", _ => "check" };
+
+    private RenderFragment Side(DiffRow r, string text, bool present) => @<span class="diff-side">
+        @if (!present) { <span class="muted diff-none">none</span> }
+        else
+        {
+            @if (r.Redacted) { <span class="restricted-label">Restricted item</span> }
+            else if (r.Href is { } href) { <a href="@href" tabindex="-1">@r.Label</a> }
+            else { <strong>@r.Label</strong> }
+            @if (!r.Redacted && r.Sublabel is { Length: > 0 }) { <span class="diff-name"> @r.Sublabel</span> }
+            @if (text.Length > 0) { <span class="diff-detail">@text</span> }
+            @if (r.Banner is not null) { <MarkingChip Text="@r.Banner" /> }
+        }
+    </span>;
+}

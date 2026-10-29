@@ -132,6 +132,10 @@
                         @* Impact analysis; the page banner then also covers what the analysis shows. *@
                         <ImpactPanel Number="@d.Number" OnShown="m => impactShown = m" />
                         break;
+                    case "impactmap":
+                        @* UX-3: the impact analysis as a picture; the page banner also covers the items it draws. *@
+                        <ImpactMapPanel Detail="d" OnBanner="b => mapBanner = b" />
+                        break;
                     case "tasks":
                         <ChangeTasksPanel Detail="d" OnUpdated="Apply" />
                         break;
@@ -207,11 +211,11 @@
 @code {
     [Parameter] public required string Number { get; set; }
 
-    private static readonly string[] TabIds = ["overview", "affected", "impact", "tasks", "review", "security", "history", .. AwarenessTabs.Ids];
+    private static readonly string[] TabIds = ["overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", .. AwarenessTabs.Ids];
 
     private static IReadOnlyList<TabInfo> TabsFor(ChangeDetail d) =>
     [
-        new("overview", "Overview"), new("affected", "Affected objects", d.Affected.Count), new("impact", "Impact analysis"),
+        new("overview", "Overview"), new("affected", "Affected objects", d.Affected.Count), new("impact", "Impact analysis"), new("impactmap", "Impact map"),
         .. d.Type == ChangeTypes.Ecn ? new[] { new TabInfo("tasks", "Tasks", d.Tasks.Count) } : [],
         new("review", "Review & release"), new("security", "Security markings"), new("history", "History"),
     ];
@@ -244,10 +248,12 @@
     {
         tab = id;
         impactShown = []; // the impact analysis no longer on screen no longer contributes to the banner
+        mapBanner = null;
     }
 
     private ChangeDetail? detail;
     private IReadOnlyList<Markings> impactShown = [];
+    private string? mapBanner; // banner of the items the impact map draws (UX-3)
     private bool notFound, busy, editing;
     private string? error;
     private string editTitle = "", editDescription = "", editReason = "", editPriority = "Medium", markingsReason = "", reasonCode = "", reasonText = "";
@@ -255,7 +261,7 @@
     private ChangeTransitionView? pending;
     private IReadOnlyList<ChangeReasonCode> reasonCodes = [];
 
-    private string Banner => detail is null ? UiText.Unclassified : Markings.AggregateBanner(detail.Shown.Concat(impactShown));
+    private string Banner => detail is null ? UiText.Unclassified : BannerMerge.Union(Markings.AggregateBanner(detail.Shown.Concat(impactShown)), mapBanner);
 
     private IReadOnlyList<string> priorities = []; // 2.2: administrator data
 
@@ -268,6 +274,7 @@
         var outcome = await Changes.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
         notFound = !outcome.IsOk;
         impactShown = [];
+        mapBanner = null;
         detail = outcome.Value;
         tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
         if (detail is not null && steps.Count == 0) steps = await Lifecycles.StatesAsync($"{detail.Type.ToLowerInvariant()}-default");

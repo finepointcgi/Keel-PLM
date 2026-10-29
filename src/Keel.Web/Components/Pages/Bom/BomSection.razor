@@ -51,8 +51,9 @@
         </label>
         <button type="button" class="secondary" @onclick="() => SetLevels(1)">Collapse all</button>
         <button type="button" class="secondary" @onclick="() => SetLevels(0)">Expand all</button>
-        <label class="inline-check"><input type="radio" name="bom-view" checked="@(!summaryView)" @onchange="() => SetView(false)" /> Tree</label>
+        <label class="inline-check"><input type="radio" name="bom-view" checked="@(!summaryView && !treemapView)" @onchange="() => SetView(false)" /> Tree</label>
         <label class="inline-check"><input type="radio" name="bom-view" checked="@summaryView" @onchange="() => SetView(true)" /> Purchasing summary</label>
+        <label class="inline-check"><input type="radio" name="bom-view" checked="@treemapView" @onchange="SetTreemap" /> Treemap</label>
         @* A plain link, not a script: the cookie-authenticated route streams the CSV and sets Content-Disposition (CSP default-src 'self'). *@
         <a class="button secondary" download data-enhance-nav="false" href="@ExportUrl()">Export CSV</a>
     </div>
@@ -66,7 +67,12 @@
             @if (explosion.UnresolvedCount > 0) { <text> · @explosion.UnresolvedCount without a released revision</text> }
             · @explosion.RootRevision.@explosion.RootIteration, @(explosion.Configuration ?? (spec == BomConfigSpec.Latest ? "latest children" : "latest released children"))
         </p>
-        @if (explosion.Lines.Count > 0)
+        @if (explosion.Lines.Count > 0 && treemapView)
+        {
+            @* UX-3: the same explosion as a treemap, with its own table alternative; the banner follows the tiles drawn. *@
+            <BomTreemapView RootNumber="@explosion.RootNumber" RootName="@explosion.RootName" Lines="explosion.Lines" OnShown="OnTreemapShown" />
+        }
+        else if (explosion.Lines.Count > 0)
         {
             <BomTreeGrid Lines="explosion.Lines" LoadChildren="LoadChildren" OnVisibleChanged="OnVisible" />
         }
@@ -105,7 +111,7 @@
     private IReadOnlyList<BaselineSummary> baselineChoices = [];
     private IReadOnlyList<string> contextIds = [];
     private int levels = 1; // 0 = all
-    private bool summaryView, leavesOnly = true;
+    private bool summaryView, treemapView, leavesOnly = true;
     private BomExplosion? explosion;
     private BomSummary? summary;
     private string? error, loadedFor;
@@ -167,7 +173,7 @@
         }
         else
         {
-            var e = await Bom.ExplodeAsync(subject, Query(levels == 0 ? null : levels), Corr());
+            var e = await Bom.ExplodeAsync(subject, Query(levels == 0 || treemapView ? null : levels), Corr()); // the treemap needs every level
             if (e.IsOk) { explosion = e.Value; rowsShown = e.Value!.Lines.Count; treeMarkings = [.. e.Value.Lines.Where(l => l.Markings is not null).Select(l => l.Markings!).Distinct()]; }
             else error = UiText.Message(e);
         }
@@ -189,7 +195,14 @@
         baselineChoices = found.IsOk ? found.Value!.Items : [];
         contextIds = [.. (await Effectivity.ListContextsAsync(subject, CurrentUser.NewCorrelationId())).Select(c => c.Id)];
     }
-    private async Task SetView(bool toSummary) { summaryView = toSummary; await Reload(); }
+    private async Task SetView(bool toSummary) { summaryView = toSummary; treemapView = false; await Reload(); }
+    private async Task SetTreemap() { summaryView = false; treemapView = true; await Reload(); }
+
+    private async Task OnTreemapShown(IReadOnlyList<Markings> shown)
+    {
+        treeMarkings = shown;
+        await PublishBanner();
+    }
     private async Task SetLeaves(bool value) { leavesOnly = value; await Reload(); }
     private async Task SetLevels(int next) { levels = next; await Reload(); }
 

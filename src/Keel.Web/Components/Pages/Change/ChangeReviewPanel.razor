@@ -9,6 +9,9 @@
     <section class="panel" aria-labelledby="review-heading">
         <h3 id="review-heading">@(Detail.Type == ChangeTypes.Ecr ? "CCB review" : "Review and release")</h3>
         @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @* UX-3: the progress map of the running (or last) review: steps, vote rule, who signed, who is pending. *@
+        @{ var mapInstance = status.Active ?? status.Last; }
+        @if (mapInstance is not null) { <WorkflowMapPanel InstanceId="@mapInstance.Id" Version="@($"{mapInstance.Status}:{mapInstance.Tasks.Count(t => t.Status != "Open")}")" /> }
 
         @if (status.Active is { } active)
         {

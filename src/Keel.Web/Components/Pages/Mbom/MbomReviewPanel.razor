@@ -8,6 +8,9 @@
     <section class="panel" aria-labelledby="mbom-review-heading">
         <h3 id="mbom-review-heading">Release review</h3>
         @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @* UX-3: the progress map of the running (or last) review: steps, vote rule, who signed, who is pending. *@
+        @{ var mapInstance = status.Active ?? status.Last; }
+        @if (mapInstance is not null) { <WorkflowMapPanel InstanceId="@mapInstance.Id" Version="@($"{mapInstance.Status}:{mapInstance.Tasks.Count(t => t.Status != "Open")}")" /> }
 
         @if (status.Active is { } active)
         {

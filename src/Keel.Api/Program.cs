@@ -246,6 +246,7 @@ app.MapChangeEndpoints(); // 1.6 change management
 app.MapConfigurationEndpoints(); // 2.1 baselines and effectivity
 app.MapAdminEndpoints(); // 2.2 administration and classification
 app.MapMbomEndpoints(); // 2.3 EBOM / MBOM and reconciliation
+app.MapVisualEndpoints(); // UX-3 downloads of the relationship pictures
 app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration administration
 app.MapOpenApi("/openapi/{documentName}.json");
 app.MapKeelUi<App>();

@@ -89,7 +89,11 @@ public interface IChangeBindingGuard
 /// <summary>One parent in a where-used result. Redacted rows carry only level, find number, quantity and unit (A4).</summary>
 public sealed record WhereUsedEntry(
     int Level, bool Redacted, int FindNumber, decimal Quantity, string Unit,
-    Guid? ParentMasterId, string? ParentKey, string? ParentName, string? ParentRevision, string? ParentState, string? Banner, Markings? Markings);
+    Guid? ParentMasterId, string? ParentKey, string? ParentName, string? ParentRevision, string? ParentState, string? Banner, Markings? Markings,
+    /// <summary>The part this usage line uses (the affected part at level 1, a readable parent at deeper levels): the edge of the where-used tree. Null when the caller may not read it.</summary>
+    string? UsedKey = null,
+    /// <summary>Applicability of the usage line ("serial 101 and up"); not identifying, so it is also present on redacted rows (CFG-6).</summary>
+    string? Effectivity = null);
 
 public sealed record StructureDelta(string Kind, bool Redacted, string? Key, string? Name, string Summary);
 

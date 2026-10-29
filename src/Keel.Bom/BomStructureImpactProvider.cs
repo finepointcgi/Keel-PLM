@@ -35,7 +35,7 @@ internal sealed class BomStructureImpactProvider(BomService bom, NpgsqlDataSourc
         [
             .. result.Value.Rows.Select(w => new WhereUsedEntry(w.Level, w.Redacted, w.FindNumber, w.Quantity, w.Unit,
                 w.ParentNumber is not null && ids.TryGetValue(w.ParentNumber, out var id) ? id : null,
-                w.ParentNumber, w.ParentName, w.ParentRevision, w.ParentStateLabel ?? w.ParentState, w.Banner, w.Markings)),
+                w.ParentNumber, w.ParentName, w.ParentRevision, w.ParentStateLabel ?? w.ParentState, w.Banner, w.Markings, w.UsedNumber, w.EffectivityText)),
         ];
         return Outcome<IReadOnlyList<WhereUsedEntry>>.Ok(rows);
     }
