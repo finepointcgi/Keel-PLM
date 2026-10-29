@@ -64,12 +64,14 @@ internal static class ImportPlanner
             else problems[i].Add($"The parent {p} was not found.");
         }
         // A chain of new rows that leads back to itself cannot be created.
+        var looped = new List<int>();
         for (var i = 0; i < rows.Count; i++)
         {
             var seen = new HashSet<int> { i };
             for (var cur = parentRow[i]; cur is { } c; cur = parentRow[c])
-                if (!seen.Add(c)) { problems[i].Add("The parents of these rows form a loop."); parentRow[i] = null; break; }
+                if (!seen.Add(c)) { looped.Add(i); break; }
         }
+        foreach (var i in looped) { problems[i].Add("The parents of these rows form a loop."); parentRow[i] = null; }
         // A move is only issued for an existing requirement whose parent differs from its current one.
         var moves = new List<EditOp>();
         for (var i = 0; i < rows.Count; i++)
