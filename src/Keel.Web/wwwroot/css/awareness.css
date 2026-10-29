@@ -10,7 +10,7 @@
 }
 .bell-panel {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; width: 420px; max-width: calc(100vw - 24px); max-height: 70vh; overflow-y: auto;
-  background: var(--c-surface); border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); box-shadow: var(--shadow-2); padding: var(--sp-3);
+  background: var(--c-surface); border: 1px solid var(--c-border-strong); border-radius: var(--radius-3); box-shadow: var(--shadow-2); padding: var(--sp-4); animation: dialog-in var(--dur-2) var(--ease);
 }
 .bell-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .bell-head h2 { font-size: var(--fs-md); margin: 0; }
@@ -29,7 +29,7 @@ button.small { min-height: var(--target); padding: 2px 10px; font-size: var(--fs
 .notif .notif-text.restricted { color: var(--c-muted); font-style: italic; }
 .notif .notif-meta { color: var(--c-muted); font-size: var(--fs-sm); display: inline-flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; }
 .unread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c-accent); }
-.notif.unread { border-left: 3px solid var(--c-accent); padding-left: var(--sp-2); }
+.notif.unread { border-left: 3px solid var(--c-accent); padding-left: var(--sp-2); background: var(--c-accent-bg); border-radius: 0 var(--radius-1) var(--radius-1) 0; }
 .notif-select { margin-top: 6px; }
 .notif-list.compact .notif { padding: 6px 0; }
 .notif-day { font-size: var(--fs-md); margin: var(--sp-4) 0 var(--sp-1); color: var(--c-muted); }

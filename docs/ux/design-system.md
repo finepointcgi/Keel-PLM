@@ -10,6 +10,13 @@ Read with [ADR-0028](../adr/0028-ui-shell-and-workspace.md). New pages follow th
 - Themes: `light`, `dark`, `high-contrast`, `system` on `<html data-theme>`; density on `data-density`. Add a colour only to the token file, in all three theme blocks. Contrast is checked from the file: 4.5:1 text pairs, 3:1 focus and input borders. (T)
 - Components use `var(--…)` and no colour literals. (T)
 
+## Visual language (9.1, [ADR-0046](../adr/0046-visual-language.md))
+- Tokens added: `--c-accent-bg` (selected/hover tint), `--radius-3`, `--lh-tight`, `--fw-medium|semibold|bold`, `--tracking-caps`, `--dur-1|2`, `--ease`. The focus ring is 3 px.
+- Button hierarchy: primary (solid, one per view), `.secondary` (outline), `.danger`, `.link`, `.icon-button`. State badges (`.badge.state-*`) show a dot; KPI counts are `.badge[data-count]` or `.kpi`.
+- Tables: `table.data` has a sticky header inside `.dt-scroll`, zebra and hover from tokens. Cards: `.card > h2` with an icon renders the icon tile.
+- Motion is CSS only (120 to 200 ms) and switched off by `prefers-reduced-motion`.
+- Living style guide: `/tools/style-guide` shows all of it in every theme. Theme scopes `.sg-theme[data-sg-theme]` in `tokens.css` must equal the real theme blocks (unit test).
+
 ## Components (`Components/Shared`, `Components/Layout`)
 | Need | Use |
 |---|---|

@@ -1,12 +1,12 @@
 /* Element defaults: reset, typography, links, forms, focus. Colours come from tokens.css only. */
 *, *::before, *::after { box-sizing: border-box; }
 html { font-family: var(--font); font-size: 100%; -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--c-bg); color: var(--c-text); font-size: var(--fs-md); line-height: var(--lh); }
-h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 var(--sp-3); }
-h1 { font-size: var(--fs-xl); }
+body { margin: 0; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; background: var(--c-bg); color: var(--c-text); font-size: var(--fs-md); line-height: var(--lh); }
+h1, h2, h3, h4 { line-height: var(--lh-tight); margin: 0 0 var(--sp-3); font-weight: var(--fw-bold); letter-spacing: -0.01em; }
+h1 { font-size: var(--fs-xl); letter-spacing: -0.02em; }
 h2 { font-size: var(--fs-lg); }
-h3 { font-size: 1rem; }
-h4 { font-size: var(--fs-md); }
+h3 { font-size: 1rem; font-weight: var(--fw-semibold); }
+h4 { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
 p { margin: 0 0 var(--sp-3); }
 .muted { color: var(--c-muted); }
 .small { font-size: var(--fs-sm); margin: var(--sp-1) 0; }
@@ -16,34 +16,43 @@ kbd { border: 1px solid var(--c-border-strong); border-bottom-width: 2px; border
 a { color: var(--c-link); text-decoration: underline; text-underline-offset: 2px; }
 a:hover { text-decoration-thickness: 2px; }
 
-:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+:focus-visible { outline: var(--focus-ring); outline-offset: 2px; box-shadow: 0 0 0 2px var(--c-surface); }
 :focus:not(:focus-visible) { outline: none; }
-h1[tabindex="-1"]:focus, main:focus, [tabindex="-1"]:focus { outline: none; }
+h1[tabindex="-1"]:focus, main:focus, [tabindex="-1"]:focus, h1[tabindex="-1"]:focus-visible, main:focus-visible, [tabindex="-1"]:focus-visible { outline: none; box-shadow: none; }
 
 input, select, textarea, button { font: inherit; }
 input, select, textarea {
-  min-height: var(--target); padding: 4px 8px; border: 1px solid var(--c-border-strong); border-radius: var(--radius-1);
+  min-height: var(--target); padding: 4px 10px; border: 1px solid var(--c-border-strong); border-radius: var(--radius-1);
   background: var(--c-surface); color: var(--c-text); max-width: 100%;
 }
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--c-text); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--c-focus); }
 input[type="checkbox"], input[type="radio"] { min-height: 0; width: 18px; height: 18px; accent-color: var(--c-accent); }
 input::placeholder, textarea::placeholder { color: var(--c-muted); opacity: 1; }
 input:disabled, select:disabled, textarea:disabled { opacity: 0.65; }
+input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--c-danger); border-width: 2px; }
 
+/* Button hierarchy: primary (solid accent, one per view), secondary (outline), ghost (.link / .icon-button), danger (solid red). */
 button {
   min-height: var(--target); padding: 4px 14px; border-radius: var(--radius-1); border: 1px solid var(--c-accent);
-  background: var(--c-accent); color: var(--c-on-accent); cursor: pointer; font-weight: 600;
+  background: var(--c-accent); color: var(--c-on-accent); cursor: pointer; font-weight: var(--fw-semibold); box-shadow: var(--shadow-1);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  transition: transform var(--dur-1) var(--ease);
 }
-button:hover:not(:disabled) { filter: brightness(1.08); }
-button:disabled { opacity: 0.6; cursor: default; }
-button.secondary, a.button.secondary { background: transparent; color: var(--c-link); border-color: var(--c-border-strong); }
-button.secondary:hover:not(:disabled) { background: var(--c-surface-2); filter: none; }
-button.danger { background: var(--c-danger); border-color: var(--c-danger); color: var(--c-on-accent); }
-:root[data-theme="dark"] button.danger, :root[data-theme="high-contrast"] button.danger { color: #000000; }
-button.link { background: none; border: none; color: var(--c-link); padding: 0 4px; min-height: 24px; font-weight: 400; text-decoration: underline; }
-a.button { display: inline-flex; align-items: center; min-height: var(--target); padding: 4px 14px; border-radius: var(--radius-1); border: 1px solid var(--c-accent); text-decoration: none; font-weight: 600; background: var(--c-accent); color: var(--c-on-accent); }
+button:hover:not(:disabled) { filter: brightness(1.1); }
+button:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+button:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
+button.secondary, a.button.secondary { background: var(--c-surface); color: var(--c-link); border-color: var(--c-border-strong); box-shadow: none; }
+button.secondary:hover:not(:disabled), a.button.secondary:hover { background: var(--c-accent-bg); filter: none; border-color: var(--c-accent); }
+button.danger { background: var(--c-danger); border-color: var(--c-danger); color: var(--c-on-danger); }
+button.link { background: none; border: none; color: var(--c-link); padding: 0 4px; min-height: 24px; font-weight: 400; text-decoration: underline; box-shadow: none; display: inline; }
+a.button { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); min-height: var(--target); padding: 4px 14px; border-radius: var(--radius-1); border: 1px solid var(--c-accent); text-decoration: none; font-weight: var(--fw-semibold); background: var(--c-accent); color: var(--c-on-accent); box-shadow: var(--shadow-1); }
+a.button:hover:not(.secondary) { filter: brightness(1.1); text-decoration: none; }
 a.button.secondary { color: var(--c-link); }
 
 table { border-collapse: collapse; }
+summary { cursor: pointer; }
+::selection { background: var(--c-accent); color: var(--c-on-accent); }
 hr { border: 0; border-top: 1px solid var(--c-border); margin: var(--sp-4) 0; }
 
 .visually-hidden, .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; margin: -1px; padding: 0; border: 0; }

@@ -77,7 +77,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
         Add("alice", "/", "/parts", "/parts?q=bracket", "/parts/new", "/parts/classification", "/documents", "/documents/new", "/changes", "/changes/new/ecr",
             "/baselines", "/baselines/new", "/baselines/compare", "/mboms", "/mboms/generate", "/tasks", "/workflows", "/search?q=" + m.GimbalBracket, "/search?q=bracket&kind=part",
-            "/notifications", "/notifications?tab=unread", "/notifications/preferences", "/watching", "/profile", "/access", "/tdp", "/not-found", "/access-denied");
+            "/notifications", "/notifications?tab=unread", "/notifications/preferences", "/watching", "/profile", "/access", "/tdp", "/tools/style-guide", "/not-found", "/access-denied");
 
         foreach (var tab in new[] { "overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "activity", "comments", "trace" })
             Add("alice", $"/parts/{m.GimbalBracket}?tab={tab}");

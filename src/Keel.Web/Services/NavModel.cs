@@ -37,7 +37,7 @@ public static class NavModel
             groups.Add(new("Configuration", [new("Workflows", "workflows", "workflow"), new("Lifecycles", "admin/lifecycles", "config"), new("Classification", "admin/classification", "folder")]));
             groups.Add(new("Administration", [new("Administration", "admin", "admin", ExactMatch: true), new("Migration", "admin/migration", "migration"), new("Integration", "admin/integration/sinks", "integration")]));
         }
-        var tools = new List<NavItem> { new("Access check", "access", "access"), new("Technical data packages", "tdp", "link") };
+        var tools = new List<NavItem> { new("Access check", "access", "access"), new("Technical data packages", "tdp", "link"), new("Style guide", "tools/style-guide", "theme") };
         if (auditor) tools.Add(new("Audit log", "audit", "audit"));
         groups.Add(new("Tools", tools));
         return groups;

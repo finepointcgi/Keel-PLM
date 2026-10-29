@@ -63,6 +63,8 @@ public sealed partial class ThemeContrastTests
         ("--c-warning", "--c-surface"), ("--c-warning", "--c-bg"), ("--c-warning", "--c-warning-bg"),
         ("--c-danger", "--c-surface"), ("--c-danger", "--c-bg"), ("--c-danger", "--c-danger-bg"),
         ("--c-info", "--c-surface"), ("--c-info", "--c-bg"), ("--c-info", "--c-info-bg"),
+        ("--c-on-danger", "--c-danger"), ("--c-text", "--c-accent-bg"), ("--c-link", "--c-accent-bg"), ("--c-muted", "--c-accent-bg"), ("--c-accent", "--c-accent-bg"),
+        ("--c-success", "--c-surface-2"), ("--c-warning", "--c-surface-2"), ("--c-danger", "--c-surface-2"), ("--c-info", "--c-surface-2"),
     ];
 
     private static readonly (string Fg, string Bg)[] NonTextPairs = [("--c-focus", "--c-bg"), ("--c-focus", "--c-surface"), ("--c-border-strong", "--c-surface"), ("--c-border-strong", "--c-bg")];
@@ -111,6 +113,16 @@ public sealed partial class ThemeContrastTests
         Assert.Equal(ThemeBlock("dark").OrderBy(p => p.Key), ThemeBlock("dark-system").OrderBy(p => p.Key));
     }
 
+    [Theory]
+    [InlineData("light", ":root,\n:root[data-theme=\"light\"]")]
+    [InlineData("dark", ":root[data-theme=\"dark\"] {")]
+    [InlineData("high-contrast", ":root[data-theme=\"high-contrast\"] {")]
+    public void The_style_guide_theme_scopes_copy_the_real_theme_blocks(string theme, string anchor)
+    {
+        var css = Tokens;
+        Assert.Equal(Block(css, anchor).OrderBy(p => p.Key), Block(css, $".sg-theme[data-sg-theme=\"{theme}\"]").OrderBy(p => p.Key));
+    }
+
     [Fact]
     public void The_marking_banner_tones_are_fixed_across_themes_and_readable()
     {
@@ -127,7 +139,7 @@ public sealed partial class ThemeContrastTests
     public void Components_do_not_hardcode_colours_outside_the_tokens()
     {
         // components.css, layout.css and base.css take colours from var(--…); the few intentional literals are the session warning (a fixed yellow notice) and rgba overlays.
-        foreach (var file in new[] { "base.css", "layout.css", "components.css", "awareness.css" })
+        foreach (var file in new[] { "base.css", "layout.css", "components.css", "awareness.css", "styleguide.css" })
         {
             var css = File.ReadAllText(Path.Combine(RepoRoot, "src", "Keel.Web", "wwwroot", "css", file));
             var literals = Regex.Matches(css, @"#[0-9a-fA-F]{3,8}\b").Select(m => m.Value.ToLowerInvariant()).Distinct().Except(["#fde68a", "#b45309", "#1b1f24", "#ffffff", "#000000"]).ToList();

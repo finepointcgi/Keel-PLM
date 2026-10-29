@@ -1,0 +1,199 @@
+@page "/tools/style-guide"
+
+@* The living style guide (increment 9.1, ADR-0046): every design token, the type scale, buttons, chips, tables, forms, banners and states, drawn with the real classes
+   in the theme the reader chose, and the same specimen in all three themes side by side (each .sg-theme container re-declares the tokens of its theme). It shows no
+   product data: everything here is UNCLASSIFIED sample text. The page is part of the axe audit, so a theme that fails contrast fails the build. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Style guide" Crumbs="@crumbs">
+    <p class="muted">The visual language of Keel in one place: tokens, type, controls and states. It follows your chosen theme; the last section shows light, dark and high contrast side by side. Change the theme or density in the user menu.</p>
+    <nav class="sg-toc" aria-label="Sections">
+        @foreach (var (id, label) in Sections)
+        {
+            <a href="@("tools/style-guide#" + id)">@label</a>
+        }
+    </nav>
+
+    <div class="stack">
+        <section class="panel" id="sg-colour" aria-labelledby="sg-colour-h">
+            <h2 id="sg-colour-h">Colour tokens</h2>
+            <p class="muted small">Every colour is a token in tokens.css, declared in all three themes. Text pairs meet 4.5:1 and borders and focus rings 3:1 (checked by a unit test).</p>
+            <ul class="sg-swatches">
+                @foreach (var t in ColourTokens)
+                {
+                    <li><span class="sg-swatch @("sw-" + t)" aria-hidden="true"></span><code>--c-@t</code></li>
+                }
+            </ul>
+        </section>
+
+        <section class="panel" id="sg-type" aria-labelledby="sg-type-h">
+            <h2 id="sg-type-h">Type scale</h2>
+            <p class="muted small">System font stack only (no web fonts, the network is closed). One h1 per page; headings step down one level at a time.</p>
+            <div class="sg-type">
+                <p class="sg-t-2xl">Page title, 1.75 rem</p>
+                <p class="sg-t-xl">Section title, 1.5 rem</p>
+                <p class="sg-t-lg">Card and panel title, 1.0625 rem</p>
+                <p class="sg-t-md">Body text, 0.9375 rem. Engineers read a lot of numbers: 0123456789 stay aligned.</p>
+                <p class="sg-t-sm muted">Secondary and table header text, 0.8125 rem</p>
+                <p class="sg-t-xs muted">Captions and caps labels, 0.75 rem</p>
+                <p><code>P-000123 · Mono for identifiers and payloads</code></p>
+            </div>
+            <h3>Spacing and radius</h3>
+            <div class="sg-space">
+                @foreach (var n in new[] { 1, 2, 3, 4, 5, 6 })
+                {
+                    <span class="sg-step @("sp-" + n)" title="@($"--sp-{n}")"><span class="visually-hidden">@($"Space {n}")</span></span>
+                }
+            </div>
+        </section>
+
+        <section class="panel" id="sg-buttons" aria-labelledby="sg-buttons-h">
+            <h2 id="sg-buttons-h">Buttons</h2>
+            <p class="muted small">One primary action per view. Secondary for alternatives, danger for destructive actions (always behind a confirmation), link for quiet inline actions.</p>
+            <div class="toolbar">
+                <button type="button">Primary</button>
+                <button type="button" class="secondary">Secondary</button>
+                <button type="button" class="danger">Danger</button>
+                <button type="button" disabled>Disabled</button>
+                <button type="button" class="link">Link action</button>
+                <button type="button" class="icon-button bordered"><Icon Name="plus" /> With icon</button>
+                <a class="button" href="tools/style-guide">Link as button</a>
+            </div>
+            <div class="toolbar" role="group" aria-label="Segmented example">
+                <span class="segmented">
+                    <button type="button" aria-pressed="true">Light</button>
+                    <button type="button" aria-pressed="false">Dark</button>
+                    <button type="button" aria-pressed="false">High contrast</button>
+                </span>
+            </div>
+            <p class="small muted">Focus ring: tab to any control above. The ring is 3 px, offset 2 px, and has at least 3:1 contrast against every surface in every theme.</p>
+        </section>
+
+        <section class="panel" id="sg-chips" aria-labelledby="sg-chips-h">
+            <h2 id="sg-chips-h">Chips, badges and counts</h2>
+            <p class="muted small">Marking chips are fixed colours in every theme and are never hidden. State badges use a dot, a colour and the state's name, never colour alone.</p>
+            <div class="toolbar">
+                <MarkingChip Text="UNCLASSIFIED" />
+                <MarkingChip Text="CUI//SP-EXPT · DISTRIBUTION D" />
+            </div>
+            <div class="toolbar">
+                <span class="badge state-inwork">In Work</span>
+                <span class="badge state-underreview">Under Review</span>
+                <span class="badge state-released">Released</span>
+                <span class="badge state-obsolete">Obsolete</span>
+                <span class="badge">Version B.2</span>
+                <span class="badge kind-blocked">Blocked</span>
+            </div>
+            <div class="kpi-row">
+                <div class="kpi"><span class="kpi-value">12</span><span class="kpi-label">Open changes</span></div>
+                <div class="kpi"><span class="kpi-value">3</span><span class="kpi-label">Past due</span></div>
+                <div class="kpi"><span class="kpi-value">48</span><span class="kpi-label">Released this month</span></div>
+            </div>
+        </section>
+
+        <section class="panel" id="sg-table" aria-labelledby="sg-table-h">
+            <h2 id="sg-table-h">Tables</h2>
+            <p class="muted small">Sticky header, row hover, light zebra, tabular numerals. Wide tables scroll inside their own container.</p>
+            <div class="table-wrap">
+                <table class="data">
+                    <caption class="visually-hidden">Sample parts</caption>
+                    <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">State</th><th scope="col">Marking</th></tr></thead>
+                    <tbody>
+                        <tr><td><a href="tools/style-guide">P-000001</a></td><td>Sample assembly</td><td><span class="badge state-inwork">In Work</span></td><td><MarkingChip Text="UNCLASSIFIED" /></td></tr>
+                        <tr><td><a href="tools/style-guide">P-000002</a></td><td>Sample housing</td><td><span class="badge state-released">Released</span></td><td><MarkingChip Text="UNCLASSIFIED" /></td></tr>
+                        <tr><td><a href="tools/style-guide">P-000003</a></td><td>Sample bracket</td><td><span class="badge state-underreview">Under Review</span></td><td><MarkingChip Text="CUI//SP-EXPT" /></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel" id="sg-forms" aria-labelledby="sg-forms-h">
+            <h2 id="sg-forms-h">Forms and messages</h2>
+            <div class="grid-form">
+                <label>Text field<input type="text" value="Sample value" /></label>
+                <label>Select<select><option>First</option><option>Second</option></select></label>
+                <label>Invalid field<input type="text" value="Needs attention" aria-invalid="true" aria-describedby="sg-invalid" /><span id="sg-invalid" class="validation-message">Say what is wrong and how to fix it.</span></label>
+                <label class="checkbox"><input type="checkbox" checked /> Checkbox</label>
+                <label class="wide">Notes<textarea rows="2">Longer text.</textarea></label>
+            </div>
+            <div class="stack">
+                <p class="notice">Notice: neutral information the reader may need.</p>
+                <div class="validation error-box"><strong>Error.</strong> Something blocked this action.</div>
+                <div class="validation warning-box"><strong>Warning.</strong> Check this before you continue.</div>
+            </div>
+        </section>
+
+        <section class="panel" id="sg-banners" aria-labelledby="sg-banners-h">
+            <h2 id="sg-banners-h">Marking banners</h2>
+            <p class="muted small">Banners sit above and below every page, never hide and never change with the theme. Their white text has at least 4.5:1 contrast on both tones.</p>
+            <div class="sg-banner marking-banner tone-unclassified">UNCLASSIFIED</div>
+            <div class="sg-banner marking-banner tone-cui">CUI//SP-EXPT · DISTRIBUTION D</div>
+        </section>
+
+        <section class="panel" id="sg-states" aria-labelledby="sg-states-h">
+            <h2 id="sg-states-h">Empty, loading and feedback states</h2>
+            <div class="cards">
+                <EmptyState Title="Nothing here yet" IconName="inbox">Say why the list is empty and what to do next.</EmptyState>
+                <div class="skeleton" aria-hidden="true"><div class="bar tall w-50"></div><div class="bar w-90"></div><div class="bar w-70"></div><div class="bar w-100"></div></div>
+            </div>
+            <h3>Toasts</h3>
+            <div class="stack">
+                <div class="toast success sg-static"><Icon Name="check" /><div class="body"><span class="title">Saved</span>The change was saved.</div></div>
+                <div class="toast warning sg-static"><Icon Name="warning" /><div class="body"><span class="title">Check this</span>Something needs a second look.</div></div>
+                <div class="toast error sg-static"><Icon Name="error" /><div class="body"><span class="title">Not saved</span>The name is already used.</div></div>
+            </div>
+            <h3>Lifecycle stepper</h3>
+            <ol class="stepper" aria-label="Sample lifecycle">
+                <li class="done"><span class="step"><Icon Name="check" /> In Work</span></li>
+                <li class="current" aria-current="step"><span class="step">Under Review</span></li>
+                <li class="next"><span class="step">Released <span class="note">(next)</span></span></li>
+            </ol>
+        </section>
+
+        <section class="panel" id="sg-themes" aria-labelledby="sg-themes-h">
+            <h2 id="sg-themes-h">All themes side by side</h2>
+            <div class="sg-themes">
+                @foreach (var theme in new[] { ("light", "Light"), ("dark", "Dark"), ("high-contrast", "High contrast") })
+                {
+                    <div class="sg-theme" data-sg-theme="@theme.Item1" role="group" aria-label="@($"{theme.Item2} theme sample")">
+                        <h3>@theme.Item2</h3>
+                        <div class="toolbar">
+                            <button type="button">Primary</button>
+                            <button type="button" class="secondary">Secondary</button>
+                            <button type="button" class="danger">Danger</button>
+                        </div>
+                        <div class="toolbar">
+                            <span class="badge state-inwork">In Work</span>
+                            <span class="badge state-underreview">Under Review</span>
+                            <span class="badge state-released">Released</span>
+                            <span class="badge state-obsolete">Obsolete</span>
+                            <MarkingChip Text="CUI//SP-EXPT" />
+                        </div>
+                        <p class="notice">A notice with <a href="tools/style-guide">a link</a>.</p>
+                        <p class="muted small">Muted secondary text.</p>
+                        <ul class="sg-swatches compact">
+                            @foreach (var t in new[] { "accent", "success", "warning", "danger", "info" })
+                            {
+                                <li><span class="sg-swatch @("sw-" + t)" aria-hidden="true"></span><span>@t</span></li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        </section>
+    </div>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> crumbs = [new("Style guide")];
+
+    private static readonly (string Id, string Label)[] Sections =
+    [
+        ("sg-colour", "Colour"), ("sg-type", "Type"), ("sg-buttons", "Buttons"), ("sg-chips", "Chips"), ("sg-table", "Tables"),
+        ("sg-forms", "Forms"), ("sg-banners", "Banners"), ("sg-states", "States"), ("sg-themes", "Themes"),
+    ];
+
+    private static readonly string[] ColourTokens =
+    [
+        "bg", "surface", "surface-2", "text", "muted", "border", "border-strong", "accent", "accent-bg", "link", "focus",
+        "success", "success-bg", "warning", "warning-bg", "danger", "danger-bg", "info", "info-bg",
+    ];
+}
