@@ -32,6 +32,8 @@ public sealed class IntegrationOptions
 
     /// <summary>Directory under which file-drop sinks write. Mount a volume here; file-drop sinks are refused while it is empty.</summary>
     public string FileDropRoot { get; set; } = "";
+    /// <summary>Default for a sink's <c>maxPendingFiles</c>: committed files waiting unconsumed in its directory before delivery pauses. 0 = unlimited.</summary>
+    public int FileDropMaxPendingFiles { get; set; } = 10_000;
 
     /// <summary>Secret values by name (HMAC secrets). Provide as <c>Keel__Integration__Secrets__{name}</c> in the secrets directory or environment.</summary>
     public Dictionary<string, string> Secrets { get; set; } = new(StringComparer.Ordinal);
@@ -53,9 +55,14 @@ public sealed class IntegrationOptions
     public int TdpMaxParts { get; set; } = 2000;
     public int TdpMaxDocuments { get; set; } = 5000;
 
+    /// <summary>Retention of delivered outbox events (<c>Keel:Integration:Retention</c>); off by default.</summary>
+    public OutboxRetentionOptions Retention { get; set; } = new();
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
+        errors.AddRange(Retention.Validate());
+        if (FileDropMaxPendingFiles is < 0 or > 1_000_000) errors.Add("Keel:Integration:FileDropMaxPendingFiles must be between 0 (unlimited) and 1000000.");
         if (BatchSize is < 1 or > 500) errors.Add("Keel:Integration:BatchSize must be between 1 and 500.");
         if (MaxAttempts is < 1 or > 100) errors.Add("Keel:Integration:MaxAttempts must be between 1 and 100.");
         if (BackoffBase <= TimeSpan.Zero || BackoffMax < BackoffBase) errors.Add("Keel:Integration:BackoffBase must be positive and not above BackoffMax.");

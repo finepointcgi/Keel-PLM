@@ -1,9 +1,7 @@
-using Keel.Audit;
 using Keel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 
 namespace Keel.Notifications;
 
@@ -42,25 +40,15 @@ public static class NotificationsModule
         services.AddHostedService(sp => sp.GetRequiredService<FanOutService>());
         services.AddSingleton<RetentionService>();
         services.AddHostedService(sp => sp.GetRequiredService<RetentionService>());
+        // E-mail channel (ADR-0032): registered always, active only with Keel:Notifications:Email:Enabled.
+        services.AddSingleton(new OnPremHostGuard(options.Email));
+        services.AddSingleton<SmtpSender>(sp => new SmtpSender(options.Email, sp.GetRequiredService<OnPremHostGuard>()));
+        services.AddSingleton<EmailNotificationChannel>();
+        services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<EmailNotificationChannel>());
+        services.AddSingleton<EmailDispatchService>();
+        services.AddHostedService(sp => sp.GetRequiredService<EmailDispatchService>());
+        services.AddSingleton<EmailPreferenceService>();
+        services.AddSingleton<IEmailPreferences>(sp => sp.GetRequiredService<EmailPreferenceService>());
         return services;
     }
-}
-
-/// <summary>
-/// A delivery channel for notifications. In-app is the only channel built (the bell and the notifications page read the table directly). The e-mail channel is
-/// Phase 5: it throws, naming the phase, so nothing can silently pretend to send mail (an on-prem SMTP relay is part of the production operations work).
-/// </summary>
-public interface INotificationChannel
-{
-    string Name { get; }
-
-    Task DeliverAsync(string recipientSub, NotificationKind kind, CancellationToken ct);
-}
-
-public sealed class EmailNotificationChannel : INotificationChannel
-{
-    public string Name => "email";
-
-    public Task DeliverAsync(string recipientSub, NotificationKind kind, CancellationToken ct) =>
-        throw new NotSupportedException("E-mail delivery of notifications needs an on-prem SMTP relay and is delivered in Phase 5. Notifications are in-app only until then.");
 }

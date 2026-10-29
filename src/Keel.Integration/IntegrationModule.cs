@@ -30,6 +30,8 @@ public static class IntegrationModule
         services.AddHostedService(sp => sp.GetRequiredService<DeliveryDispatcher>());
         services.AddSingleton<IDomainEventSink>(sp => new OutboxEventSink(sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<IntegrationOptions>(),
             sp.GetRequiredService<TimeProvider>(), sp.GetService<IBomPublicationSource>()));
+        services.AddSingleton<OutboxRetentionService>();
+        services.AddHostedService(sp => sp.GetRequiredService<OutboxRetentionService>());
         services.AddSingleton<IntegrationAdminService>();
         services.AddSingleton<OutboxQueries>();
         services.AddSingleton<TdpSigner>();

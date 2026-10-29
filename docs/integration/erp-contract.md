@@ -131,6 +131,7 @@ Keel verifies your server certificate against the CA bundle configured for the s
 presents the client certificate configured for the sink.
 
 ### File drop
+The directory is a durable spool: after processing, delete the data file and its manifest (acknowledgement). Keel pauses when too many files wait (ops: integration.md).
 Keel writes each file under a temporary name and renames it, then writes `{file}.manifest.json` (`file`, `sha256`, `sizeBytes`, `writtenAt`, `events[]`). **Process
 only files that have a manifest, and verify the SHA-256.** Formats: one JSON file per event (`keel-{seq}-{eventId}.json`) or one NDJSON file per batch.
 

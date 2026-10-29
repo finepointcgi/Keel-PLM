@@ -35,7 +35,7 @@ outbound calls from the product, and must not weaken the CSP or the cryptography
   used to log somebody out), and the next visit needs a full login.
 - **Audit:** `session.lock` (reason `idle` or `manual`), `session.unlock` (via `step-up`), `session.lock_expired` (the lock grace passed) followed by
   `session.terminated_idle`. Objects are referenced by a hash prefix of the session id, never the id.
-- **Scope of the registry.** One node, or sticky sessions (which Blazor circuits and the Data Protection key ring already require). A restart or a second
+- **Scope of the registry (superseded by ADR-0032: the registry is now database-backed and shared by all replicas; the text below is the original decision).** One node, or sticky sessions (which Blazor circuits and the Data Protection key ring already require). A restart or a second
   replica does not know a session's lock state: it starts active with a fresh idle clock. A database-backed registry (and a cluster-wide lock) is the
   Phase 5 step for multi-replica production; CMP-4 states the limits.
 - **Configuration refuses unsafe values.** `IdleLockMinutes = 0` is refused when `RequireFips` is true or the environment is Production; below one minute

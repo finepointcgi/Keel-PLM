@@ -37,7 +37,7 @@ SCAP/OpenSCAP scans against your environment.
 
 ## Known gaps in this increment
 - The UBI image was not built or scanned in this environment; scan it with the site scanner before accrediting.
-- Idle session lock, upload malware scanning, vault garbage collection and SIEM forwarding are implemented (increment 5.0, compliance-features.md). Still the operator's: ClamAV signature updates, the SIEM, sticky sessions (the lock registry is in memory; database-backed is Phase 5).
+- Idle session lock, upload malware scanning, vault garbage collection and SIEM forwarding are implemented (increment 5.0, compliance-features.md). Still the operator's: ClamAV signature updates, the SIEM, sticky sessions for circuits (the lock registry is database-backed since ADR-0032).
 - Production must set `Keel__Vault__Scanning__Mode` (or `AcknowledgeUnscannedUploads`) and cannot set `Keel__Session__IdleLockMinutes=0`; hosts that start without them are refused.
 - Proxy-to-app hop is unencrypted by default (see above).
 - The compose example's PostgreSQL and proxy images are the tested open-source ones, not RHEL-based FIPS builds.

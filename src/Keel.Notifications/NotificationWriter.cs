@@ -43,10 +43,35 @@ public sealed class NotificationWriter(NotificationOptions options, TimeProvider
             if (pref is { InApp: false } && kind.CanDisable) continue;
             if (request.ActorSub == sub && pref?.NotifyOwn != true) continue; // never tell people about what they just did
             await InsertAsync(conn, tx, sub, kind, request, ct);
+            if (options.Email.Enabled) await EnqueueEmailAsync(conn, tx, sub, kind, ct);
             written.Add(sub);
         }
         foreach (var sub in written) hub.Publish(sub, TimeSpan.FromMilliseconds(options.PublishDelayMilliseconds));
         return written;
+    }
+
+    /// <summary>
+    /// Queues the pointer-only mail ("you have a notification") for a recipient who opted in and did not switch this kind's mail off. At most one mail waits per user, and
+    /// it is held back until the minimum interval since the last one has passed. The queue row holds no kind, object or text: only who.
+    /// </summary>
+    private async Task EnqueueEmailAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string recipient, NotificationKind kind, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow().ToUniversalTime();
+        await using var cmd = new NpgsqlCommand(
+            """
+            INSERT INTO ntf.email_queue (id, recipient_sub, status, created_at, not_before)
+            SELECT @id, @r, 'pending', @now,
+                   GREATEST(@now, COALESCE((SELECT max(sent_at) FROM ntf.email_queue WHERE recipient_sub = @r AND status = 'sent'), '-infinity'::timestamptz) + @interval)
+            WHERE EXISTS (SELECT 1 FROM ntf.preference WHERE user_sub = @r AND email_enabled AND email_address IS NOT NULL)
+              AND COALESCE((SELECT email FROM ntf.kind_preference WHERE user_sub = @r AND kind = @k), true)
+            ON CONFLICT (recipient_sub) WHERE status = 'pending' DO NOTHING
+            """, conn, tx);
+        cmd.Parameters.AddWithValue("id", Guid.CreateVersion7());
+        cmd.Parameters.AddWithValue("r", recipient);
+        cmd.Parameters.AddWithValue("k", kind.Code);
+        cmd.Parameters.AddWithValue("now", now);
+        cmd.Parameters.AddWithValue("interval", TimeSpan.FromMinutes(options.Email.MinIntervalMinutes));
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     private async Task InsertAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string recipient, NotificationKind kind, NotificationRequest request, CancellationToken ct)

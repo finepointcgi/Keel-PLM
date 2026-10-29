@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace Keel.Web.Services;
 
@@ -27,6 +28,13 @@ public sealed class SessionLockOptions
     /// <summary>The browser reports activity at most this often (seconds).</summary>
     public int ActivityThrottleSeconds { get; set; } = 5;
 
+    /// <summary>
+    /// Where the lock state lives: <c>Database</c> (default; shared by all replicas and kept across restarts) or <c>Memory</c> (one node, state lost on restart;
+    /// refused in production). Without a database in the host the memory store is used whatever this says.
+    /// </summary>
+    public string Store { get; set; } = "Database";
+
+    public bool UsesDatabase => string.Equals(Store, "Database", StringComparison.OrdinalIgnoreCase);
     public bool Enabled => IdleLockMinutes > 0;
     public TimeSpan IdleTimeout => TimeSpan.FromMinutes(IdleLockMinutes);
     public TimeSpan Warning => TimeSpan.FromSeconds(WarningSeconds);
@@ -44,6 +52,8 @@ public sealed class SessionLockOptions
         else if (Enabled && WarningSeconds >= IdleLockMinutes * 60) errors.Add("Keel:Session:WarningSeconds must be shorter than the idle timeout.");
         if (LockedTerminateMinutes is <= 0 or > 24 * 60) errors.Add("Keel:Session:LockedTerminateMinutes must be greater than 0 and at most 1440.");
         else if (production && LockedTerminateMinutes < 1) errors.Add("Keel:Session:LockedTerminateMinutes below 1 minute is only for development and tests.");
+        if (!UsesDatabase && !string.Equals(Store, "Memory", StringComparison.OrdinalIgnoreCase)) errors.Add("Keel:Session:Store must be Database or Memory.");
+        else if (!UsesDatabase && production && Enabled) errors.Add("Keel:Session:Store=Memory is refused in production: the lock state would be lost on restart and not shared between replicas.");
         if (ActivityThrottleSeconds is < 1 or > 60) errors.Add("Keel:Session:ActivityThrottleSeconds must be between 1 and 60.");
         return errors;
     }
@@ -76,97 +86,154 @@ public sealed class SessionLockedException() : InvalidOperationException("The se
 /// <summary>
 /// The server-side idle lock of the UI session (3.1.10) and its termination (3.1.11), shared by every circuit and request of one session cookie.
 /// The state is authoritative here: a timer locks the session even when the browser is dead or its script blocked; the browser only reports activity.
-/// Locking is per session id (a claim of the cookie), so a second tab locks and unlocks with the first. The registry is in memory: one node, or
-/// sticky sessions; a DB-backed registry is the Phase 5 step for several replicas (docs/increments/5.0-compliance.md, CMP-4).
+/// Locking is per session id (a claim of the cookie), so a second tab locks and unlocks with the first.
+/// The state lives in an <see cref="ISessionLockStore"/>: PostgreSQL in the application (it survives a restart and is shared by every replica, so any node
+/// may tick, lock and unlock, and each transition is audited once), memory for tests and development. Reads on the request path (<see cref="IsLocked"/>)
+/// come from a cache of the store that every node refreshes each tick, so a lock made on another node is enforced here within about one second;
+/// a session the cache has never seen is looked up in the store until the first load has completed (docs/increments/7.5-platform.md, GAP-B-1).
 /// </summary>
 public sealed class SessionLockRegistry
 {
+    private static readonly TimeSpan ExpiryGrace = TimeSpan.FromMinutes(5);
+
     private readonly SessionLockOptions _options;
     private readonly TimeProvider _clock;
     private readonly IAuditLog? _audit;
     private readonly ILogger<SessionLockRegistry>? _logger;
+    private readonly ISessionLockStore _store;
     private readonly object _gate = new();
-    private readonly Dictionary<string, Entry> _sessions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Entry> _cache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _dirty = new(StringComparer.Ordinal);
+    private volatile bool _loaded;
 
-    public SessionLockRegistry(SessionLockOptions options, TimeProvider clock, IAuditLog? audit = null, ILogger<SessionLockRegistry>? logger = null)
+    public SessionLockRegistry(SessionLockOptions options, TimeProvider clock, IAuditLog? audit = null, ILogger<SessionLockRegistry>? logger = null, ISessionLockStore? store = null)
     {
         _options = options;
         _clock = clock;
         _audit = audit;
         _logger = logger;
+        _store = store ?? new InMemorySessionLockStore();
+        _loaded = !_store.Durable; // a memory store is empty and complete from the start
     }
 
-    private sealed class Entry(ActorSnapshot actor, DateTimeOffset lastActivity, DateTimeOffset absoluteExpiry)
+    private sealed class Entry(SessionLockRow row)
     {
-        public ActorSnapshot Actor { get; } = actor;
-        public DateTimeOffset LastActivity { get; set; } = lastActivity;
-        public DateTimeOffset AbsoluteExpiry { get; set; } = absoluteExpiry;
-        public SessionPhase Phase { get; set; } = SessionPhase.Active;
-        public string? LockReason { get; set; }
-        public DateTimeOffset? LockedAt { get; set; }
+        public string Key { get; } = row.Key;
+        /// <summary>The raw session id, known only after this node saw the session (a circuit or request registered it): listeners compare against it.</summary>
+        public string? SessionId { get; set; }
+        public SessionLockRow Row { get; set; } = row;
     }
 
-    private sealed record Transition(string SessionId, string Action, Entry Entry, (string, string?)[] Details);
+    private sealed record Transition(Entry Entry, string Action, (string, string?)[] Details);
 
     public SessionLockOptions Options => _options;
     public bool Enabled => _options.Enabled;
 
-    /// <summary>Raised (from any thread) with the session id whenever a session's phase changes.</summary>
+    /// <summary>Raised (from any thread) with the session id whenever a session's phase changes, here or (seen on the next tick) on another node.</summary>
     public event Action<string>? Changed;
 
-    /// <summary>A circuit (or the first request) of this session. Idempotent; a new session starts active with the clock at now.</summary>
-    public void Register(string sessionId, ActorSnapshot actor, DateTimeOffset absoluteExpiry)
+    /// <summary>The store key of a session: SHA-256 of the id, hex. The raw id is never stored or logged.</summary>
+    public static string Key(string sessionId) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sessionId)));
+
+    /// <summary>A stable, non-secret reference to a session for audit records (the session id itself stays out of the log).</summary>
+    public static string Reference(string sessionId) => Key(sessionId)[..12];
+
+    /// <summary>Loads the store into the cache once at start-up, before the first request is judged. A failure is logged; lookups then go to the store until a tick succeeds.</summary>
+    public void Load()
     {
-        lock (_gate)
-        {
-            if (_sessions.TryGetValue(sessionId, out var existing)) { existing.AbsoluteExpiry = absoluteExpiry; return; }
-            _sessions[sessionId] = new Entry(actor, _clock.GetUtcNow(), absoluteExpiry);
-        }
+        try { RefreshAsync(CancellationToken.None).GetAwaiter().GetResult(); }
+        catch (Exception e) when (e is not OperationCanceledException) { _logger?.LogError(e, "The session lock store could not be loaded; sessions are looked up one by one until it can."); }
     }
 
-    /// <summary>User activity in the browser. Counts only while the session is active: a locked session is not revived by input.</summary>
-    public bool Touch(string sessionId)
+    /// <summary>A circuit (or the first request) of this session. Idempotent; a new session starts active with the clock at now. Blocks on the store: prefer <see cref="RegisterAsync"/>.</summary>
+    public void Register(string sessionId, ActorSnapshot actor, DateTimeOffset absoluteExpiry) =>
+        RegisterAsync(sessionId, actor, absoluteExpiry).GetAwaiter().GetResult();
+
+    public async Task RegisterAsync(string sessionId, ActorSnapshot actor, DateTimeOffset absoluteExpiry, CancellationToken ct = default)
     {
+        var row = await _store.RegisterAsync(Key(sessionId), actor, _clock.GetUtcNow(), absoluteExpiry, ct);
+        var changed = false;
         lock (_gate)
         {
-            if (!_sessions.TryGetValue(sessionId, out var e) || e.Phase != SessionPhase.Active) return false;
-            e.LastActivity = _clock.GetUtcNow();
+            if (_cache.TryGetValue(row.Key, out var e))
+            {
+                changed = e.Row.Phase != row.Phase;
+                e.Row = Merge(e.Row, row);
+                e.SessionId = sessionId;
+            }
+            else _cache[row.Key] = new Entry(row) { SessionId = sessionId };
+        }
+        if (changed) RaiseChanged(sessionId);
+    }
+
+    /// <summary>The store's row, except that activity reported here and not yet written is newer than the store's clock.</summary>
+    private static SessionLockRow Merge(SessionLockRow local, SessionLockRow stored) =>
+        local.Phase == SessionPhase.Active && stored.Phase == SessionPhase.Active && local.LastActivity > stored.LastActivity ? stored with { LastActivity = local.LastActivity } : stored;
+
+    /// <summary>User activity in the browser. Counts only while the session is active: a locked session is not revived by input. Written to the store on the next tick.</summary>
+    public bool Touch(string sessionId)
+    {
+        var key = Key(sessionId);
+        lock (_gate)
+        {
+            if (!_cache.TryGetValue(key, out var e) || e.Row.Phase != SessionPhase.Active) return false;
+            var now = _clock.GetUtcNow();
+            e.Row = e.Row with { LastActivity = now };
+            _dirty[key] = now;
             return true;
         }
     }
 
     public SessionLockView? Get(string sessionId)
     {
+        var e = Find(sessionId);
+        if (e is null) return null;
+        var row = e.Row;
+        DateTimeOffset? idle = _options.Enabled ? row.LastActivity + _options.IdleTimeout : null;
+        DateTimeOffset? warn = idle is { } d && _options.WarningSeconds > 0 ? d - _options.Warning : null;
+        DateTimeOffset? terminate = row.Phase == SessionPhase.Locked ? row.LockedAt + _options.TerminateAfterLock : null;
+        return new SessionLockView(row.Phase, row.LockReason, row.LastActivity, row.Phase == SessionPhase.Active ? idle : null, row.Phase == SessionPhase.Active ? warn : null,
+            row.LockedAt, terminate, row.AbsoluteExpiry);
+    }
+
+    public bool IsLocked(string sessionId) => Find(sessionId) is { } e && e.Row.Phase != SessionPhase.Active;
+
+    public bool IsTerminated(string sessionId) => Find(sessionId) is { } e && e.Row.Phase == SessionPhase.Terminated;
+
+    /// <summary>The cached entry. Until the first successful load, an unknown session is read from the store, and a store that cannot answer means locked (fail closed).</summary>
+    private Entry? Find(string sessionId)
+    {
+        var key = Key(sessionId);
         lock (_gate)
         {
-            if (!_sessions.TryGetValue(sessionId, out var e)) return null;
-            DateTimeOffset? idle = _options.Enabled ? e.LastActivity + _options.IdleTimeout : null;
-            DateTimeOffset? warn = idle is { } d && _options.WarningSeconds > 0 ? d - _options.Warning : null;
-            DateTimeOffset? terminate = e.Phase == SessionPhase.Locked ? e.LockedAt + _options.TerminateAfterLock : null;
-            return new SessionLockView(e.Phase, e.LockReason, e.LastActivity, e.Phase == SessionPhase.Active ? idle : null, e.Phase == SessionPhase.Active ? warn : null,
-                e.LockedAt, terminate, e.AbsoluteExpiry);
+            if (_cache.TryGetValue(key, out var e)) return e;
+            if (_loaded) return null;
         }
-    }
-
-    public bool IsLocked(string sessionId)
-    {
-        lock (_gate) return _sessions.TryGetValue(sessionId, out var e) && e.Phase != SessionPhase.Active;
-    }
-
-    public bool IsTerminated(string sessionId)
-    {
-        lock (_gate) return _sessions.TryGetValue(sessionId, out var e) && e.Phase == SessionPhase.Terminated;
+        try
+        {
+            var row = _store.FindAsync(key, CancellationToken.None).GetAwaiter().GetResult();
+            return row is null ? null : new Entry(row);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogError(ex, "The session lock store could not be read; treating the session as locked.");
+            var now = _clock.GetUtcNow();
+            return new Entry(new SessionLockRow(key, ActorSnapshot.System, SessionPhase.Locked, "store_unavailable", now, now, now.AddHours(1)));
+        }
     }
 
     /// <summary>The user chose "Lock now".</summary>
     public async Task<bool> LockNowAsync(string sessionId, CancellationToken ct = default)
     {
-        Transition? t;
-        lock (_gate)
+        var key = Key(sessionId);
+        await FlushTouchesAsync(ct);
+        var row = await _store.TryLockAsync(key, "manual", _clock.GetUtcNow(), ct);
+        if (row is null)
         {
-            if (!_sessions.TryGetValue(sessionId, out var e) || e.Phase != SessionPhase.Active) return false;
-            t = Lock(sessionId, e, "manual", _clock.GetUtcNow());
+            await SyncOneAsync(key, sessionId, ct);
+            return false;
         }
+        var t = Apply(row, sessionId, "session.lock", [("reason", "manual")]);
         await PublishAsync([t], ct);
         return true;
     }
@@ -177,50 +244,106 @@ public sealed class SessionLockRegistry
     /// </summary>
     public async Task<bool> UnlockAsync(string sessionId, string via, CancellationToken ct = default)
     {
-        Transition? t;
-        lock (_gate)
+        var key = Key(sessionId);
+        var now = _clock.GetUtcNow();
+        var before = await _store.FindAsync(key, ct);
+        var row = await _store.TryUnlockAsync(key, now, ct);
+        if (row is null)
         {
-            if (!_sessions.TryGetValue(sessionId, out var e) || e.Phase != SessionPhase.Locked) return false;
-            var lockedFor = _clock.GetUtcNow() - e.LockedAt!.Value;
-            e.Phase = SessionPhase.Active;
-            e.LastActivity = _clock.GetUtcNow();
-            e.LockedAt = null;
-            e.LockReason = null;
-            t = new Transition(sessionId, "session.unlock", e, [("via", via), ("lockedSeconds", ((int)lockedFor.TotalSeconds).ToString(CultureInfo.InvariantCulture))]);
+            await SyncOneAsync(key, sessionId, ct);
+            return false;
         }
+        var lockedFor = before?.LockedAt is { } at ? now - at : TimeSpan.Zero;
+        var t = Apply(row, sessionId, "session.unlock", [("via", via), ("lockedSeconds", ((int)lockedFor.TotalSeconds).ToString(CultureInfo.InvariantCulture))]);
         await PublishAsync([t], ct);
         return true;
     }
 
-    /// <summary>Evaluates every session against the clock: idle sessions lock, sessions locked for too long end. Called every second by <see cref="SessionLockService"/>.</summary>
+    /// <summary>
+    /// Evaluates every session against the clock: idle sessions lock, sessions locked for too long end, and the changes other nodes made are picked up.
+    /// Called every second by <see cref="SessionLockService"/> on every node: each transition is one conditional store operation, so it happens, and is audited, once.
+    /// </summary>
     public async Task TickAsync(CancellationToken ct = default)
     {
+        var now = _clock.GetUtcNow();
         var transitions = new List<Transition>();
-        lock (_gate)
+        await FlushTouchesAsync(ct);
+        if (_options.Enabled)
+            foreach (var row in await _store.LockIdleAsync(now - _options.IdleTimeout, now, ct))
+                transitions.Add(Apply(row, null, "session.lock", [("reason", "idle")]));
+        foreach (var row in await _store.TerminateAsync(now - _options.TerminateAfterLock, ct))
         {
-            var now = _clock.GetUtcNow();
-            foreach (var (id, e) in _sessions.ToList())
-            {
-                if (e.Phase == SessionPhase.Active && _options.Enabled && now >= e.LastActivity + _options.IdleTimeout)
-                    transitions.Add(Lock(id, e, "idle", now));
-                else if (e.Phase == SessionPhase.Locked && now >= e.LockedAt!.Value + _options.TerminateAfterLock)
-                {
-                    e.Phase = SessionPhase.Terminated;
-                    transitions.Add(new Transition(id, "session.lock_expired", e, [("lockedSeconds", ((int)(now - e.LockedAt.Value).TotalSeconds).ToString(CultureInfo.InvariantCulture))]));
-                    transitions.Add(new Transition(id, "session.terminated_idle", e, [("reason", "lock_not_released")]));
-                }
-                if (now >= e.AbsoluteExpiry.AddMinutes(5)) _sessions.Remove(id); // the cookie is invalid by then anyway
-            }
+            var lockedFor = row.LockedAt is { } at ? now - at : TimeSpan.Zero;
+            var expired = Apply(row, null, "session.lock_expired", [("lockedSeconds", ((int)lockedFor.TotalSeconds).ToString(CultureInfo.InvariantCulture))]);
+            transitions.Add(expired);
+            transitions.Add(new Transition(expired.Entry, "session.terminated_idle", [("reason", "lock_not_released")]));
         }
+        await _store.PurgeAsync(now - ExpiryGrace, ct); // the cookie is invalid by then anyway
+        await RefreshAsync(ct);
         if (transitions.Count > 0) await PublishAsync(transitions, ct);
     }
 
-    private static Transition Lock(string id, Entry e, string reason, DateTimeOffset now)
+    private async Task FlushTouchesAsync(CancellationToken ct)
     {
-        e.Phase = SessionPhase.Locked;
-        e.LockedAt = now;
-        e.LockReason = reason;
-        return new Transition(id, "session.lock", e, [("reason", reason)]);
+        KeyValuePair<string, DateTimeOffset>[] pending;
+        lock (_gate)
+        {
+            if (_dirty.Count == 0) return;
+            pending = [.. _dirty];
+            _dirty.Clear();
+        }
+        try { await _store.TouchAsync(pending, ct); }
+        catch
+        {
+            lock (_gate) foreach (var (k, v) in pending) if (!_dirty.TryGetValue(k, out var newer) || newer < v) _dirty[k] = v; // try again next tick
+            throw;
+        }
+    }
+
+    /// <summary>Replaces the cache with the store's rows; a phase another node changed raises <see cref="Changed"/> for sessions this node knows.</summary>
+    private async Task RefreshAsync(CancellationToken ct)
+    {
+        var rows = await _store.LoadAllAsync(_clock.GetUtcNow(), ExpiryGrace, ct);
+        var raised = new List<string>();
+        lock (_gate)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var row in rows)
+            {
+                seen.Add(row.Key);
+                if (!_cache.TryGetValue(row.Key, out var e)) { _cache[row.Key] = new Entry(row); continue; }
+                var phaseChanged = e.Row.Phase != row.Phase;
+                e.Row = Merge(e.Row, row);
+                if (phaseChanged && e.SessionId is { } id) raised.Add(id);
+            }
+            foreach (var key in _cache.Keys.Where(k => !seen.Contains(k)).ToList()) _cache.Remove(key);
+            _loaded = true;
+        }
+        foreach (var id in raised) RaiseChanged(id);
+    }
+
+    private async Task SyncOneAsync(string key, string sessionId, CancellationToken ct)
+    {
+        var row = await _store.FindAsync(key, ct);
+        if (row is null) return;
+        var changed = false;
+        lock (_gate)
+        {
+            if (_cache.TryGetValue(key, out var e)) { changed = e.Row.Phase != row.Phase; e.Row = row; e.SessionId ??= sessionId; }
+            else _cache[key] = new Entry(row) { SessionId = sessionId };
+        }
+        if (changed) RaiseChanged(sessionId);
+    }
+
+    private Transition Apply(SessionLockRow row, string? sessionId, string action, (string, string?)[] details)
+    {
+        lock (_gate)
+        {
+            if (!_cache.TryGetValue(row.Key, out var e)) _cache[row.Key] = e = new Entry(row);
+            else e.Row = row;
+            if (sessionId is not null) e.SessionId = sessionId;
+            return new Transition(e, action, details);
+        }
     }
 
     private async Task PublishAsync(IReadOnlyList<Transition> transitions, CancellationToken ct)
@@ -233,7 +356,7 @@ public sealed class SessionLockRegistry
                 {
                     await _audit.AppendAsync(new AuditEntry
                     {
-                        Actor = t.Entry.Actor, Action = t.Action, Outcome = AuditOutcome.Success, ObjectType = "session", ObjectId = Reference(t.SessionId),
+                        Actor = t.Entry.Row.Actor, Action = t.Action, Outcome = AuditOutcome.Success, ObjectType = "session", ObjectId = t.Entry.Key[..12],
                         Details = AuditDetails.Of(t.Details),
                     }, ct);
                 }
@@ -243,13 +366,15 @@ public sealed class SessionLockRegistry
                     _logger?.LogError(e, "Could not audit {Action}", t.Action);
                 }
             }
-            try { Changed?.Invoke(t.SessionId); }
-            catch (Exception e) { _logger?.LogError(e, "A session lock listener failed"); }
+            if (t.Entry.SessionId is { } id) RaiseChanged(id);
         }
     }
 
-    /// <summary>A stable, non-secret reference to a session for audit records (the session id itself stays out of the log).</summary>
-    public static string Reference(string sessionId) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sessionId)))[..12];
+    private void RaiseChanged(string sessionId)
+    {
+        try { Changed?.Invoke(sessionId); }
+        catch (Exception e) { _logger?.LogError(e, "A session lock listener failed"); }
+    }
 }
 
 /// <summary>Drives <see cref="SessionLockRegistry.TickAsync"/> once a second, independent of any circuit: the lock happens even when nobody is connected.</summary>
@@ -306,7 +431,7 @@ public sealed class SessionLockCoordinator : IDisposable
         _sessionId = SessionId(user);
         if (_sessionId is null) return;
         var subject = SubjectClaims.FromPrincipal(user);
-        _registry.Register(_sessionId, subject is null ? ActorSnapshot.System : ActorSnapshot.From(subject), AbsoluteExpiry ?? DateTimeOffset.UtcNow.AddHours(8));
+        await _registry.RegisterAsync(_sessionId, subject is null ? ActorSnapshot.System : ActorSnapshot.From(subject), AbsoluteExpiry ?? DateTimeOffset.UtcNow.AddHours(8));
         _registry.Changed += OnRegistryChanged;
         _subscribed = true;
         // A circuit that connects to a session that is already locked (reload, second tab, restart of the browser) starts locked.
@@ -356,7 +481,13 @@ public static class SessionLockSetup
         var errors = options.Validate(production);
         if (errors.Count > 0) throw new InvalidOperationException("Invalid session configuration: " + string.Join(" ", errors));
         services.AddSingleton(options);
-        services.AddSingleton(sp => new SessionLockRegistry(options, sp.GetRequiredService<TimeProvider>(), sp.GetService<IAuditLog>(), sp.GetService<ILogger<SessionLockRegistry>>()));
+        services.AddSingleton<ISessionLockStore>(sp => options.UsesDatabase && sp.GetService<NpgsqlDataSource>() is { } ds ? new PostgresSessionLockStore(ds) : new InMemorySessionLockStore());
+        services.AddSingleton(sp =>
+        {
+            var registry = new SessionLockRegistry(options, sp.GetRequiredService<TimeProvider>(), sp.GetService<IAuditLog>(), sp.GetService<ILogger<SessionLockRegistry>>(), sp.GetRequiredService<ISessionLockStore>());
+            registry.Load(); // the persisted state is in the cache before the first request is judged
+            return registry;
+        });
         if (options.Enabled) services.AddHostedService<SessionLockService>();
         services.AddScoped<SessionLockCoordinator>();
         return services;

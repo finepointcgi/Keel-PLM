@@ -42,4 +42,15 @@ who may read the export record. A refusal never names objects the exporter canno
 Back up the TDP signing key like the audit checkpoint key; keep retired public keys in `TdpTrustedPublicKeyPaths` so old packages stay verifiable.
 
 ## Retention
-The outbox and delivery tables grow. They are immutable by design (the outbox) and retention is Phase 5; size the database accordingly and do not delete rows by hand.
+The outbox stays immutable except for one audited path. Set `Keel__Integration__Retention__RetentionDays` (0 = off, the default; 7 or more) and the hosted job removes
+**delivered** events and their delivery rows once they are older than that. It never removes an event that has a pending, failed, withheld or dead delivery, one the notification
+fan-out has not passed, or (unless `IncludeUnroutedEvents=true`) one that never had a delivery row. Other settings: `IntervalHours` (6), `BatchSize` (1000), `MaxBatchesPerRun` (100),
+`DryRun` (records what would go). Each batch is one transaction with its audit event `integration.outbox_retention` (counts and dates) and a row in `integration.retention_run`;
+if the audit cannot be written nothing is deleted. Direct `DELETE` is refused for every role (database guard triggers); do not delete rows by hand. Receivers that backfill with the
+pull API must do so inside the retention window. If the fan-out is disabled on every node its cursor stalls and retention deletes nothing: check `ntf.fanout_cursor`.
+
+## File-drop spool and message brokers
+A broker sink is deferred (ADR-0032); the file-drop sink is the on-premises alternative. Contract for the receiver: read only files that have a `.manifest.json`, verify the SHA-256, process,
+then **delete the data file and its manifest** (that is the acknowledgement). Files are named by sequence number; a retry rewrites the same name, so deduplicate on event ids. A sink stops writing when
+`maxPendingFiles` committed files are waiting (sink setting, default `Keel__Integration__FileDropMaxPendingFiles` = 10000, 0 = unlimited): its deliveries are deferred (no attempt counted, no dead
+letter, last error "spool directory holds ... files") and resume when the receiver catches up. Alert on `keel_integration_spool_files{sink}`. Stale `*.tmp` files left by a crash are removed after an hour.

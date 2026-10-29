@@ -22,6 +22,9 @@ public sealed class NotificationOptions
     /// <summary>The bell refreshes this long after a notification is written, so the writing transaction has committed by then.</summary>
     public int PublishDelayMilliseconds { get; set; } = 400;
 
+    /// <summary>The optional e-mail channel (<c>Keel:Notifications:Email</c>); off by default.</summary>
+    public EmailOptions Email { get; set; } = new();
+
     public TimeSpan DedupeWindow => TimeSpan.FromMinutes(DedupeWindowMinutes);
 
     public IReadOnlyList<string> Validate()
@@ -37,6 +40,7 @@ public sealed class NotificationOptions
         if (MaxCommentsPerObject is < 1 or > 100_000) errors.Add("Keel:Notifications:MaxCommentsPerObject must be between 1 and 100000.");
         if (CommentsPerMinutePerUser is < 1 or > 600) errors.Add("Keel:Notifications:CommentsPerMinutePerUser must be between 1 and 600.");
         if (PublishDelayMilliseconds is < 0 or > 10_000) errors.Add("Keel:Notifications:PublishDelayMilliseconds must be between 0 and 10000.");
+        errors.AddRange(Email.Validate());
         return errors;
     }
 }

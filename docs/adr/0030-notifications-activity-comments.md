@@ -71,7 +71,7 @@ notifies only if the person is still eligible when the comment is written. Menti
 thread; watchers at level "all" hear plain comments. The suggestion list follows the trailing `@token` of the text (no caret tracking).
 
 ### 8. Out of scope
-E-mail and other channels: `INotificationChannel` exists, the e-mail channel throws `NotSupportedException` naming Phase 5. Push to other nodes (a broker) is not built; the poll covers it.
+E-mail and other channels: delivered by ADR-0032 (pointer-only e-mail over an on-premises relay; the Phase-5 stub is gone). Push to other nodes (a broker) is not built; the poll covers it.
 A notification digest, per-object mute and edit of comments are not built.
 
 ## Consequences

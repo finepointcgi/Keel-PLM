@@ -157,15 +157,15 @@ public sealed class NotificationCenter(NpgsqlDataSource dataSource, ObjectAccess
             cmd.Parameters.AddWithValue("u", subject.Id);
             if (await cmd.ExecuteScalarAsync(ct) is bool b) autoWatch = b;
         }
-        var chosen = new Dictionary<string, (bool InApp, bool Own)>(StringComparer.Ordinal);
-        await using (var cmd = new NpgsqlCommand("SELECT kind, in_app, notify_own FROM ntf.kind_preference WHERE user_sub = @u", conn))
+        var chosen = new Dictionary<string, (bool InApp, bool Own, bool Email)>(StringComparer.Ordinal);
+        await using (var cmd = new NpgsqlCommand("SELECT kind, in_app, notify_own, email FROM ntf.kind_preference WHERE user_sub = @u", conn))
         {
             cmd.Parameters.AddWithValue("u", subject.Id);
             await using var r = await cmd.ExecuteReaderAsync(ct);
-            while (await r.ReadAsync(ct)) chosen[r.GetString(0)] = (r.GetBoolean(1), r.GetBoolean(2));
+            while (await r.ReadAsync(ct)) chosen[r.GetString(0)] = (r.GetBoolean(1), r.GetBoolean(2), r.GetBoolean(3));
         }
         var kinds = NotificationKinds.All.Select(k => chosen.TryGetValue(k.Code, out var c)
-            ? new KindPreference(k, c.InApp || !k.CanDisable, c.Own)
+            ? new KindPreference(k, c.InApp || !k.CanDisable, c.Own, c.Email)
             : new KindPreference(k, true, false)).ToList();
         return new NotificationPreferences(autoWatch, kinds);
     }
@@ -177,10 +177,15 @@ public sealed class NotificationCenter(NpgsqlDataSource dataSource, ObjectAccess
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         if (inApp && !notifyOwn)
         {
-            await using var del = new NpgsqlCommand("DELETE FROM ntf.kind_preference WHERE user_sub = @u AND kind = @k", conn);
+            // Back to the defaults: the row goes, unless it still carries the user's e-mail choice for this kind.
+            await using var del = new NpgsqlCommand("DELETE FROM ntf.kind_preference WHERE user_sub = @u AND kind = @k AND email", conn);
             del.Parameters.AddWithValue("u", subject.Id);
             del.Parameters.AddWithValue("k", kind);
             await del.ExecuteNonQueryAsync(ct);
+            await using var keep = new NpgsqlCommand("UPDATE ntf.kind_preference SET in_app = true, notify_own = false WHERE user_sub = @u AND kind = @k", conn);
+            keep.Parameters.AddWithValue("u", subject.Id);
+            keep.Parameters.AddWithValue("k", kind);
+            await keep.ExecuteNonQueryAsync(ct);
             return true;
         }
         await using var cmd = new NpgsqlCommand(
