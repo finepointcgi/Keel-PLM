@@ -155,7 +155,14 @@ public sealed class SessionLockTests(E2EFixture fx)
             // Only this test's user: the idle-lock test's session on the same host can still lock itself while this test runs.
             static bool IsAudrey(Keel.Audit.AuditRecord e) => e.Payload.Contains("\"name\":\"audrey\"", StringComparison.Ordinal);
             var trail = (await SessionEventsAsync()).Skip(eventsBefore).Where(IsAudrey).Select(e => e.Action).ToList();
-            Assert.Equal(["session.lock", "session.lock_expired", "session.terminated_idle"], trail.Where(a => a is "session.lock" or "session.lock_expired" or "session.terminated_idle"));
+            // The lock state is shared through the database, so another host's idle audrey session (an earlier test) can end during this test: it adds its own
+            // expiry pair, never a second manual lock. This session's trail is the lock, then an expiry, then the termination, in that order.
+            var ends = trail.Where(a => a is "session.lock" or "session.lock_expired" or "session.terminated_idle").ToList();
+            Assert.Single(ends, a => a == "session.lock");
+            var lockAt = ends.IndexOf("session.lock");
+            var expiredAt = ends.IndexOf("session.lock_expired", lockAt);
+            Assert.True(expiredAt > lockAt, "the lock is followed by its expiry");
+            Assert.True(ends.IndexOf("session.terminated_idle", expiredAt) > expiredAt, "the expiry is followed by the termination");
             var manual = (await SessionEventsAsync()).Skip(eventsBefore).Where(IsAudrey).First(e => e.Action == "session.lock");
             Assert.Contains("manual", manual.Payload, StringComparison.Ordinal);
         });
