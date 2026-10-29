@@ -2,8 +2,10 @@
 @inject CurrentUser Users
 @inject ChangeService Changes
 @inject IReferenceData Refs
+@inject LifecycleSteps Lifecycles
+@inject ToastService Toasts
 
-<PageFrame Banner="@Banner" Title="@(detail is null ? "Change" : ChangeUi.TypeName(detail.Type))">
+<PageFrame Banner="@Banner" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
     @if (notFound)
     {
         <p class="error" role="alert">@Number was not found, or you are not authorized to see it.</p>
@@ -11,18 +13,7 @@
     else if (detail is { } d)
     {
         <article class="stack">
-            <header class="part-header">
-                <div>
-                    <h2>@d.Number · @d.Title</h2>
-                    <p class="muted">Requested by @d.RequesterName on @UiText.Utc(d.CreatedAt) UTC · priority @d.Priority@(d.ChangeClass is null ? "" : $" · Class {d.ChangeClass}")</p>
-                </div>
-                <div class="badges">
-                    <span class="badge">@d.Type</span>
-                    @if (d.ChangeClass is not null) { <span class="badge">Class @d.ChangeClass</span> }
-                    <span class="badge @ChangeUi.StateClass(d.State)">@d.StateLabel</span>
-                    @if (d.IsLocked) { <span class="badge">Locked</span> }
-                </div>
-            </header>
+            <ViewTracker Kind="@ObjectKinds.Change" Number="@d.Number" />
 
             @if (error is not null) { <p class="error" role="alert">@error</p> }
             @foreach (var n in d.Notices) { <p class="notice" role="status">@n</p> }
@@ -31,6 +22,11 @@
                 <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p>
             }
 
+            <TabSet Tabs="@TabsFor(d)" Active="@tab" ActiveChanged="OnTabChanged" Label="Change sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
             <section class="panel" aria-labelledby="summary-heading">
                 <h3 id="summary-heading">Summary</h3>
                 @if (editing)
@@ -124,18 +120,24 @@
                 }
             </section>
 
-            <AffectedPanel Detail="d" OnUpdated="Apply" />
+                        </div>
+                        break;
+                    case "affected":
+                        <AffectedPanel Detail="d" OnUpdated="Apply" />
+                        break;
+                    case "impact":
 
-            @* Increment 1.6: impact analysis; the page banner then also covers what the analysis shows. *@
-            <ImpactPanel Number="@d.Number" OnShown="m => impactShown = m" />
 
-            @if (d.Type == ChangeTypes.Ecn)
-            {
-                <ChangeTasksPanel Detail="d" OnUpdated="Apply" />
-            }
-
-            <ChangeReviewPanel Detail="d" OnChanged="Reload" />
-
+                        @* Impact analysis; the page banner then also covers what the analysis shows. *@
+                        <ImpactPanel Number="@d.Number" OnShown="m => impactShown = m" />
+                        break;
+                    case "tasks":
+                        <ChangeTasksPanel Detail="d" OnUpdated="Apply" />
+                        break;
+                    case "review":
+                        <ChangeReviewPanel Detail="d" OnChanged="Reload" />
+                        break;
+                    case "security":
             <section class="panel" aria-labelledby="markings-heading">
                 <h3 id="markings-heading">Security markings</h3>
                 @if (editMarkings is null)
@@ -170,7 +172,8 @@
                     </div>
                 }
             </section>
-
+                        break;
+                    case "history":
             <section class="panel" aria-labelledby="history-heading">
                 <h3 id="history-heading">History</h3>
                 <div class="table-wrap"><table class="data">
@@ -183,12 +186,56 @@
                     </tbody>
                 </table></div>
             </section>
+                        break;
+                }
+            </TabSet>
         </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the change" />
     }
 </PageFrame>
 
 @code {
     [Parameter] public required string Number { get; set; }
+
+    private static readonly string[] TabIds = ["overview", "affected", "impact", "tasks", "review", "security", "history"];
+
+    private static IReadOnlyList<TabInfo> TabsFor(ChangeDetail d) =>
+    [
+        new("overview", "Overview"), new("affected", "Affected objects", d.Affected.Count), new("impact", "Impact analysis"),
+        .. d.Type == ChangeTypes.Ecn ? new[] { new TabInfo("tasks", "Tasks", d.Tasks.Count) } : [],
+        new("review", "Review & release"), new("security", "Security markings"), new("history", "History"),
+    ];
+
+    private string tab = "overview";
+    private IReadOnlyList<LifecycleState> steps = [];
+    private string PageTitle => detail is null ? "Change" : $"{detail.Number} · {detail.Title}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Changes", "changes"), new(detail?.Number ?? Number)];
+
+    private RenderFragment HeaderFragment(ChangeDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Banner"
+              Subtitle="@($"{ChangeUi.TypeName(d.Type)} · requested by {d.RequesterName} on {UiText.Utc(d.CreatedAt)} UTC · priority {d.Priority}")">
+        <Badges>
+            <span class="badge">@d.Type</span>
+            @if (d.ChangeClass is not null) { <span class="badge">Class @d.ChangeClass</span> }
+            <span class="badge @ChangeUi.StateClass(d.State)">@d.StateLabel</span>
+            @if (d.IsLocked) { <span class="badge">Locked</span> }
+            <FavoriteButton Kind="@ObjectKinds.Change" Number="@d.Number" />
+        </Badges>
+        <Steps>
+            @if (steps.Count > 0)
+            {
+                <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Change lifecycle" />
+            }
+        </Steps>
+    </ObjectHeader>;
+
+    private void OnTabChanged(string id)
+    {
+        tab = id;
+        impactShown = []; // the impact analysis no longer on screen no longer contributes to the banner
+    }
 
     private ChangeDetail? detail;
     private IReadOnlyList<Markings> impactShown = [];
@@ -213,6 +260,8 @@
         notFound = !outcome.IsOk;
         impactShown = [];
         detail = outcome.Value;
+        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
+        if (detail is not null && steps.Count == 0) steps = await Lifecycles.StatesAsync($"{detail.Type.ToLowerInvariant()}-default");
     }
 
     private Task Apply(ChangeDetail updated)
@@ -231,20 +280,20 @@
         editing = true;
     }
 
-    private async Task<bool> Run(Func<Subject, Task<Outcome<ChangeDetail>>> op)
+    private async Task<bool> Run(Func<Subject, Task<Outcome<ChangeDetail>>> op, string? success = null)
     {
         busy = true;
         error = null;
         var outcome = await op(await Users.GetAsync());
         busy = false;
-        if (outcome.IsOk) { detail = outcome.Value; return true; }
+        if (outcome.IsOk) { detail = outcome.Value; if (success is not null) Toasts.Success(success); return true; }
         error = ChangeUi.Message(outcome);
         return false;
     }
 
     private async Task SaveEdit()
     {
-        if (await Run(s => Changes.UpdateAsync(s, Number, new UpdateChangeCommand(editTitle, editDescription, editPriority, editReason), CurrentUser.NewCorrelationId()))) editing = false;
+        if (await Run(s => Changes.UpdateAsync(s, Number, new UpdateChangeCommand(editTitle, editDescription, editPriority, editReason), CurrentUser.NewCorrelationId()), "Changes saved.")) editing = false;
     }
 
     private Task Classify(ChangeEventArgs e)
@@ -263,7 +312,7 @@
     private async Task ConfirmTransition()
     {
         var target = pending!.To;
-        if (await Run(s => Changes.TransitionAsync(s, Number, target, reasonCode == "" ? null : reasonCode, reasonText, CurrentUser.NewCorrelationId()))) pending = null;
+        if (await Run(s => Changes.TransitionAsync(s, Number, target, reasonCode == "" ? null : reasonCode, reasonText, CurrentUser.NewCorrelationId()), "State changed.")) pending = null;
     }
 
     private async Task Convert(string targetType)

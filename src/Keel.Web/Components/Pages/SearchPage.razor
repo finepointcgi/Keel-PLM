@@ -1,0 +1,179 @@
+@page "/search"
+@inject CurrentUser Users
+@inject IGlobalSearch Search
+@inject WorkspaceService Workspace
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+@* All results of a search, one tab per kind. Every list comes from the module services (access filter in SQL) and every count is a count of what the signed-in user may
+   read. The banner covers the rows of the tab on screen. Saved searches are private to the user (only the text and a scope are stored). *@
+<PageFrame Banner="@(Active is { } a && results.TryGetValue(a, out var shown) ? shown.Banner : UiText.Unclassified)" Title="@(Text.Length > 0 ? $"Search: {Text}" : "Search")" Crumbs="@Crumbs">
+    <form class="toolbar" role="search" @onsubmit="SubmitAsync">
+        <input aria-label="Search all" placeholder="Search parts, documents, changes, baselines and manufacturing BOMs (prefixes: p: d: c: ecn: b: mb:)" class="grow" @bind="draft" />
+        <button type="submit">Search</button>
+    </form>
+
+    @if (Text.Length == 0)
+    {
+        <EmptyState Title="Search everything you can access" IconName="search">Type a number or a name above. Use <kbd>Ctrl</kbd> + <kbd>K</kbd> from any page to search without leaving it.</EmptyState>
+    }
+    else if (loading)
+    {
+        <Skeleton Lines="6" Label="Searching" />
+    }
+    else
+    {
+        <TabSet Tabs="TabList" Active="@(Active ?? "")" ActiveChanged="SelectTabAsync" Label="Result types">
+            @if (Active is { } kind && results.TryGetValue(kind, out var r))
+            {
+                <p class="muted" aria-live="polite">@r.Total result@(r.Total == 1 ? "" : "s") you can access in @ObjectKinds.Label(kind).ToLowerInvariant()s</p>
+                @if (r.Hits.Count == 0)
+                {
+                    <EmptyState Title="No results" IconName="@kind">Nothing you can access matches “@Text” here. Check the spelling or try a shorter search.</EmptyState>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data">
+                            <caption class="visually-hidden">@ObjectKinds.Label(kind)s matching the search</caption>
+                            <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
+                            <tbody>
+                                @foreach (var h in r.Hits)
+                                {
+                                    <tr><td><a href="@h.Href">@h.Number</a></td><td>@h.Name</td><td>@h.StateLabel</td><td><MarkingChip Text="@h.Banner" /></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <Pager Total="r.Total" Offset="offset" PageSize="PageSize" OnPage="PageAsync" />
+                }
+            }
+        </TabSet>
+
+        <section class="panel" aria-labelledby="save-heading">
+            <h3 id="save-heading">Save this search</h3>
+            <form class="toolbar" @onsubmit="SaveAsync">
+                <label>Name <input maxlength="80" @bind="saveName" /></label>
+                <button type="submit" class="secondary">Save search</button>
+            </form>
+            <p class="small muted">Only you can see your saved searches. The text may contain sensitive terms, so it is never shared and never written to the audit log (only a fingerprint is).</p>
+        </section>
+    }
+
+    @if (saved.Count > 0)
+    {
+        <section class="panel" aria-labelledby="saved-heading">
+            <h3 id="saved-heading">My saved searches</h3>
+            <ul class="plain">
+                @foreach (var s in saved)
+                {
+                    var item = s;
+                    <li>
+                        <a href="@SavedHref(item)">@item.Name</a> <span class="muted small">(@item.Scope: @item.Query)</span>
+                        <button type="button" class="secondary" aria-label="@($"Delete saved search {item.Name}")" @onclick="() => { pendingDelete = item; confirmDelete = true; }">Delete</button>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+
+    <ConfirmDialog @bind-Open="confirmDelete" Title="Delete this saved search?" Destructive="true" ConfirmText="Delete"
+                   OnConfirm="_ => DeleteAsync()">
+        <p>“@pendingDelete?.Name” is removed from your saved searches. Searching again is not affected.</p>
+    </ConfirmDialog>
+</PageFrame>
+
+@code {
+    private const int PageSize = 25;
+
+    [SupplyParameterFromQuery(Name = "q")] public string? Query { get; set; }
+    [SupplyParameterFromQuery(Name = "kind")] public string? KindParam { get; set; }
+
+    private string draft = "", saveName = "";
+    private bool loading;
+    private int offset;
+    private string? active;
+    private ParsedQuery parsed = ParsedQuery.Parse("");
+    private readonly Dictionary<string, KindResults> results = [];
+    private IReadOnlyList<SavedSearch> saved = [];
+    private SavedSearch? pendingDelete;
+    private bool confirmDelete;
+    private CancellationTokenSource? cts;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Search")];
+
+    private string Text => parsed.Text;
+    private string? Active => active;
+    private IReadOnlyList<TabInfo> TabList => parsed.Kinds.Select(k => new TabInfo(k, ObjectKinds.Label(k) + "s", results.TryGetValue(k, out var r) ? (int)Math.Min(r.Total, int.MaxValue) : null)).ToList();
+
+    private string SavedHref(SavedSearch s) => $"search?q={Uri.EscapeDataString(s.Query)}" + (s.Scope == "all" ? "" : $"&kind={Uri.EscapeDataString(s.Scope)}");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        draft = Query ?? "";
+        parsed = ParsedQuery.Parse(Query);
+        active = KindParam is { } k && parsed.Kinds.Contains(k) ? k : parsed.Kinds[0];
+        await LoadSavedAsync();
+        if (parsed.Text.Length == 0) { results.Clear(); return; }
+        loading = true;
+        cts?.Cancel();
+        cts = new CancellationTokenSource();
+        results.Clear();
+        offset = 0;
+        try
+        {
+            var all = await Task.WhenAll(parsed.Kinds.Select(kind => Search.SearchKindAsync(kind, parsed.Text, PageSize, 0, cts.Token)));
+            foreach (var r in all) results[r.Kind] = r;
+        }
+        catch (OperationCanceledException) { }
+        loading = false;
+    }
+
+    private async Task LoadSavedAsync()
+    {
+        try { saved = await Workspace.ListSavedSearchesAsync(await Users.GetAsync()); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { saved = []; }
+    }
+
+    private void SubmitAsync() => Nav.NavigateTo("search?q=" + Uri.EscapeDataString(draft.Trim()));
+
+    private async Task SelectTabAsync(string kind)
+    {
+        active = kind;
+        offset = 0;
+        // Typing a prefix or choosing a tab never needs a reload: counts of the other tabs are already known.
+        await Task.CompletedTask;
+    }
+
+    private async Task PageAsync(int newOffset)
+    {
+        if (active is null) return;
+        offset = newOffset;
+        results[active] = await Search.SearchKindAsync(active, parsed.Text, PageSize, offset, CancellationToken.None);
+    }
+
+    private async Task SaveAsync()
+    {
+        var name = string.IsNullOrWhiteSpace(saveName) ? Query?.Trim() ?? "" : saveName;
+        var scope = parsed.Kinds.Count == 1 ? parsed.Kinds[0] : "all";
+        var result = await Workspace.SaveSearchAsync(await Users.GetAsync(), name, scope, Query ?? "", null, CurrentUser.NewCorrelationId());
+        switch (result)
+        {
+            case SaveSearchResult.Saved: Toasts.Success("Search saved."); break;
+            case SaveSearchResult.Replaced: Toasts.Success("Saved search updated."); break;
+            case SaveSearchResult.LimitReached: Toasts.Warning($"You can keep up to {WorkspaceLimits.SavedSearches} saved searches. Delete one to save another."); break;
+            default: Toasts.Error("Give the search a name of up to 80 characters."); break;
+        }
+        saveName = "";
+        await LoadSavedAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (pendingDelete is not { } s) return;
+        await Workspace.DeleteSavedSearchAsync(await Users.GetAsync(), s.Id, CurrentUser.NewCorrelationId());
+        pendingDelete = null;
+        Toasts.Info("Saved search deleted.");
+        await LoadSavedAsync();
+    }
+}

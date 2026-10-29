@@ -1,0 +1,80 @@
+@* One dashboard card that lists objects. It loads on its own (a skeleton shows meanwhile), fails on its own (the other cards are unaffected), and reports the aggregate
+   marking banner of exactly the objects it shows, so the page banner covers what is on the screen. *@
+
+<section class="card" aria-labelledby="@HeadingId">
+    <h2 id="@HeadingId"><Icon Name="@IconName" /> @Title</h2>
+    @if (loading)
+    {
+        <Skeleton Lines="4" Label="@($"Loading {Title.ToLowerInvariant()}")" />
+    }
+    else if (error is not null)
+    {
+        <p class="error" role="alert">@error</p>
+    }
+    else if (result is null || result.Items.Count == 0)
+    {
+        <EmptyState Title="@EmptyTitle" IconName="@IconName">@EmptyText</EmptyState>
+    }
+    else
+    {
+        <ul class="items">
+            @foreach (var item in result.Items)
+            {
+                var i = item;
+                <li>
+                    <span class="main">
+                        <a href="@i.Href">@i.Number · @i.Name</a>
+                        <span class="sub">@ObjectKinds.Label(i.Kind) · @i.StateLabel@(ShowDate ? " · " + UiText.Utc(i.At) : "")</span>
+                    </span>
+                    <MarkingChip Text="@i.Banner" />
+                    @if (Removable)
+                    {
+                        <button type="button" class="secondary" aria-label="@($"Remove {i.Number} from favorites")" @onclick="() => OnRemove.InvokeAsync(i)">Remove</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string Id { get; set; }
+    [Parameter, EditorRequired] public required string Title { get; set; }
+    [Parameter] public string IconName { get; set; } = "inbox";
+    [Parameter, EditorRequired] public required Func<Task<CardResult<ResolvedItem>>> Load { get; set; }
+    [Parameter] public string EmptyTitle { get; set; } = "Nothing here yet";
+    [Parameter] public string EmptyText { get; set; } = "";
+    [Parameter] public bool ShowDate { get; set; }
+    /// <summary>Favorites can be removed from the card; the page that owns the favorites does it and then asks the card to reload.</summary>
+    [Parameter] public bool Removable { get; set; }
+    [Parameter] public EventCallback<ResolvedItem> OnRemove { get; set; }
+    /// <summary>The aggregate banner of the objects shown (null while loading or failed).</summary>
+    [Parameter] public EventCallback<(string Id, string? Banner)> OnBanner { get; set; }
+
+    private bool loading = true;
+    private string? error;
+    private CardResult<ResolvedItem>? result;
+
+    private string HeadingId => "card-" + Id;
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        loading = true;
+        try
+        {
+            result = await Load();
+            error = null;
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            result = null;
+            error = "This list could not be loaded. The rest of the page is not affected.";
+        }
+        loading = false;
+        await OnBanner.InvokeAsync((Id, result?.Banner));
+    }
+
+    public Task ReloadCardAsync() => InvokeAsync(ReloadAsync);
+}

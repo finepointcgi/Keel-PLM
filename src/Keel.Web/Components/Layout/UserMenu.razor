@@ -1,0 +1,116 @@
+@* The user menu: who is signed in, "My access", the theme and density switchers, lock the session, sign out. A disclosure: the button opens it, Escape or a click
+   elsewhere closes it, and focus returns to the button. The choices are saved for the user (server side) and applied at once. *@
+@implements IAsyncDisposable
+@using Keel.Workspace
+@inject ShellState Shell
+@inject ShellJs Js
+@inject IServiceProvider Services
+
+<div class="user-menu" @ref="root">
+    <button type="button" class="icon-button bordered" id="user-menu-button" aria-haspopup="true" aria-expanded="@(open ? "true" : "false")" aria-controls="user-menu-panel" @onclick="ToggleAsync">
+        <Icon Name="user" />
+        <span class="label">@DisplayName</span>
+        <Icon Name="chevron-down" />
+    </button>
+    @if (open)
+    {
+        <div class="user-menu-panel" id="user-menu-panel" role="group" aria-label="User menu">
+            <h2>@DisplayName</h2>
+            <a class="menu-item" href="profile" @onclick="Close"><Icon Name="access" /> My access</a>
+            <div class="group" role="group" aria-labelledby="theme-label">
+                <span class="label" id="theme-label">Theme</span>
+                <div class="segmented">
+                    @foreach (var (value, text) in Themes)
+                    {
+                        var v = value;
+                        <button type="button" aria-pressed="@(Shell.Preferences.Theme == v ? "true" : "false")" data-theme-choice="@v" @onclick="() => Shell.SetThemeAsync(v)">@text</button>
+                    }
+                </div>
+            </div>
+            <div class="group" role="group" aria-labelledby="density-label">
+                <span class="label" id="density-label">Density</span>
+                <div class="segmented">
+                    @foreach (var (value, text) in Densities)
+                    {
+                        var v = value;
+                        <button type="button" aria-pressed="@(Shell.Preferences.Density == v ? "true" : "false")" data-density-choice="@v" @onclick="() => Shell.SetDensityAsync(v)">@text</button>
+                    }
+                </div>
+            </div>
+            <div class="group">
+                @if (Lock is { Enabled: true, View: { Phase: SessionPhase.Active } })
+                {
+                    <button type="button" class="menu-item" data-action="lock-from-menu" @onclick="LockAsync"><Icon Name="lock" /> Lock session now</button>
+                }
+                <button type="submit" class="menu-item" form="signout-form" data-action="sign-out-menu"><Icon Name="logout" /> Sign out</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly (string, string)[] Themes = [(ThemeNames.System, "System"), (ThemeNames.Light, "Light"), (ThemeNames.Dark, "Dark"), (ThemeNames.HighContrast, "High contrast")];
+    private static readonly (string, string)[] Densities = [(DensityNames.Comfortable, "Comfortable"), (DensityNames.Compact, "Compact")];
+
+    private SessionLockCoordinator? Lock => Services.GetService<SessionLockCoordinator>();
+
+    private ElementReference root;
+    private DotNetObjectReference<UserMenu>? self;
+    private bool open, watching;
+
+    [Parameter, EditorRequired] public required string DisplayName { get; set; }
+
+    protected override void OnInitialized() => Shell.Changed += OnShellChanged;
+
+    private void OnShellChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task ToggleAsync()
+    {
+        if (open) { await CloseAsync(refocus: true); return; }
+        open = true;
+        StateHasChanged();
+        if (!watching)
+        {
+            watching = true;
+            self = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("watchDismiss", root, self);
+        }
+    }
+
+    private void Close() => open = false;
+
+    private async Task CloseAsync(bool refocus)
+    {
+        open = false;
+        if (watching)
+        {
+            watching = false;
+            await Js.InvokeVoidAsync("stopWatchDismiss", root);
+        }
+        if (refocus) await Js.InvokeVoidAsync("focusSelector", "#user-menu-button");
+    }
+
+    [JSInvokable] public async Task Dismiss(string reason)
+    {
+        var wasOpen = open && reason == "escape";
+        await InvokeAsync(async () =>
+        {
+            await CloseAsync(refocus: false);
+            StateHasChanged();
+        });
+        if (wasOpen) await Js.InvokeVoidAsync("focusSelector", "#user-menu-button");
+    }
+
+    private async Task LockAsync()
+    {
+        await CloseAsync(refocus: false);
+        if (Lock is { } coordinator) await coordinator.LockNowAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Shell.Changed -= OnShellChanged;
+        if (watching) await Js.InvokeVoidAsync("stopWatchDismiss", root);
+        self?.Dispose();
+    }
+}

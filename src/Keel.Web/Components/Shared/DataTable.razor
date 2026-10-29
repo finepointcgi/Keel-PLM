@@ -1,0 +1,253 @@
+@* The shared list table (ADR-0028): sortable headers (aria-sort), a column chooser, a density toggle, a sticky header, arrow-key row navigation, and loading, error and
+   empty states. Layout choices (hidden columns, density, sort) are saved per user per TableId. Paging and filtering stay on the server in the page that owns the
+   service call: sorting is in the page too when the service supports it (ServerSortKey + OnServerSort), otherwise the table sorts the rows of the current page, and the
+   header says so in its tooltip. A wide table scrolls inside its own container, never the page. *@
+@typeparam TItem
+@using Keel.Workspace
+@inject CurrentUser Users
+@inject IPreferenceStore Workspace
+@inject ShellState Shell
+@inject ShellJs Js
+@implements IAsyncDisposable
+
+<div class="dt" data-table="@TableId" data-density="@Density">
+    <div class="dt-controls">
+        <div class="left">@Toolbar</div>
+        <div class="right dt-popover-anchor" @ref="chooserRoot">
+            <button type="button" class="secondary icon-button bordered" aria-pressed="@(Density == "compact" ? "true" : "false")" @onclick="ToggleDensityAsync" data-action="density">
+                <Icon Name="density" /> <span>@(Density == "compact" ? "Comfortable rows" : "Compact rows")</span>
+            </button>
+            <button type="button" class="secondary icon-button bordered" aria-expanded="@(chooserOpen ? "true" : "false")" aria-controls="@(TableId)-columns" @onclick="ToggleChooser" data-action="columns">
+                <Icon Name="columns" /> <span>Columns</span>
+            </button>
+            @if (chooserOpen)
+            {
+                <div class="dt-popover" id="@(TableId)-columns" role="group" aria-label="Choose columns">
+                    @foreach (var c in Columns.Where(c => !c.Required))
+                    {
+                        var key = c.Key;
+                        <label><input type="checkbox" checked="@(!hidden.Contains(key))" @onchange="e => SetVisibleAsync(key, (bool)e.Value!)" /> @c.Title</label>
+                    }
+                    <button type="button" class="secondary" @onclick="ResetColumnsAsync">Reset columns</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Loading)
+    {
+        <Skeleton Lines="6" Label="Loading the list" />
+    }
+    else if (Error is not null)
+    {
+        <p class="error" role="alert">@Error</p>
+    }
+    else if (Items is null || Items.Count == 0)
+    {
+        @Empty
+    }
+    else
+    {
+        var shown = Shown.ToList();
+        var rows = Sorted();
+        <div class="dt-scroll" tabindex="-1">
+            <table class="data">
+                <caption class="visually-hidden">@Caption</caption>
+                <thead>
+                    <tr>
+                        @foreach (var c in shown)
+                        {
+                            <th scope="col" class="@c.CssClass" aria-sort="@(c.Sortable ? SortState(c) : null)">
+                                @if (c.Sortable)
+                                {
+                                    var col = c;
+                                    <button type="button" class="sort" title="@SortTitle(c)" @onclick="() => SortByAsync(col)">
+                                        @c.Title <Icon Name="@SortIcon(c)" />
+                                    </button>
+                                }
+                                else { @c.Title }
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody @onkeydown="OnRowKey">
+                    @for (var i = 0; i < rows.Count; i++)
+                    {
+                        var item = rows[i];
+                        var index = i;
+                        <tr id="@RowId(i)" tabindex="@(i == active ? 0 : -1)" class="@RowClass?.Invoke(item)" @onfocus="() => active = index">
+                            @foreach (var c in shown)
+                            {
+                                <td class="@c.CssClass">
+                                    @if (c.Cell is not null) { @c.Cell(item) } else { @c.Text?.Invoke(item) }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private ElementReference chooserRoot;
+    private DotNetObjectReference<DataTable<TItem>>? self;
+    private bool chooserOpen, watching;
+    private HashSet<string> hidden = [];
+    private string? density, sortKey;
+    private bool sortDescending;
+    private int active;
+
+    /// <summary>Stable id of this table in the user's saved layouts (lowercase letters, digits, '.' and '-').</summary>
+    [Parameter, EditorRequired] public required string TableId { get; set; }
+    [Parameter] public IReadOnlyList<TItem>? Items { get; set; }
+    [Parameter, EditorRequired] public required IReadOnlyList<DataColumn<TItem>> Columns { get; set; }
+    /// <summary>Accessible name of the table.</summary>
+    [Parameter] public string Caption { get; set; } = "Results";
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public RenderFragment? Empty { get; set; }
+    /// <summary>Filter controls shown on the left above the table.</summary>
+    [Parameter] public RenderFragment? Toolbar { get; set; }
+    [Parameter] public Func<TItem, string?>? RowClass { get; set; }
+    /// <summary>Raised when a column with a ServerSortKey is chosen: the page re-queries with that order.</summary>
+    [Parameter] public EventCallback<(string Key, bool Descending)> OnServerSort { get; set; }
+
+    private string Density => density ?? Shell.Preferences.Density;
+    private IEnumerable<DataColumn<TItem>> Shown => Columns.Where(c => c.Required || !hidden.Contains(c.Key));
+    private string RowId(int i) => $"dt-{TableId}-row-{i}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        hidden = Columns.Where(c => c.DefaultHidden && !c.Required).Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+        try
+        {
+            var prefs = await Workspace.GetTablePreferencesAsync(await Users.GetAsync(), TableId);
+            if (prefs.HiddenColumns.Count > 0 || prefs.Density is not null || prefs.SortColumn is not null)
+            {
+                hidden = prefs.HiddenColumns.Where(k => Columns.Any(c => c.Key == k && !c.Required)).ToHashSet(StringComparer.Ordinal);
+                density = prefs.Density;
+                sortKey = prefs.SortColumn;
+                sortDescending = prefs.SortDescending;
+            }
+        }
+        catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException)
+        {
+            // a layout that cannot be read is not worth a failed page: the defaults apply
+        }
+    }
+
+    private IReadOnlyList<TItem> Sorted()
+    {
+        var items = Items ?? [];
+        var col = Columns.FirstOrDefault(c => c.Key == sortKey);
+        if (col?.SortValue is null) return items;
+        var keyed = items.Select((item, i) => (item, i, key: col.SortValue(item))).ToList();
+        keyed.Sort((a, b) =>
+        {
+            var c = (a.key, b.key) switch
+            {
+                (null, null) => 0,
+                (null, _) => 1,
+                (_, null) => -1,
+                (string x, string y) => string.Compare(x, y, StringComparison.OrdinalIgnoreCase),
+                var (x, y) => x!.CompareTo(y),
+            };
+            if (sortDescending && a.key is not null && b.key is not null) c = -c;
+            return c != 0 ? c : a.i.CompareTo(b.i);
+        });
+        return keyed.Select(k => k.item).ToList();
+    }
+
+    private string SortState(DataColumn<TItem> c) => c.Key != sortKey ? "none" : sortDescending ? "descending" : "ascending";
+
+    private string SortIcon(DataColumn<TItem> c) => c.Key != sortKey ? "sort" : sortDescending ? "sort-desc" : "sort-asc";
+
+    private static string SortTitle(DataColumn<TItem> c) => c.ServerSortKey is not null ? $"Sort by {c.Title}" : $"Sort the rows of this page by {c.Title}";
+
+    private async Task SortByAsync(DataColumn<TItem> c)
+    {
+        sortDescending = sortKey == c.Key && !sortDescending;
+        sortKey = c.Key;
+        active = 0;
+        if (c.ServerSortKey is not null && OnServerSort.HasDelegate) await OnServerSort.InvokeAsync((c.ServerSortKey, sortDescending));
+        await SaveAsync();
+    }
+
+    private async Task ToggleDensityAsync()
+    {
+        density = Density == "compact" ? "comfortable" : "compact";
+        await SaveAsync();
+    }
+
+    private async Task SetVisibleAsync(string key, bool visible)
+    {
+        if (visible) hidden.Remove(key); else hidden.Add(key);
+        await SaveAsync();
+    }
+
+    private async Task ResetColumnsAsync()
+    {
+        hidden = Columns.Where(c => c.DefaultHidden && !c.Required).Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+        await SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        try { await Workspace.SetTablePreferencesAsync(await Users.GetAsync(), TableId, new TablePreferences(hidden.ToList(), density, sortKey, sortDescending)); }
+        catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException) { /* a layout that cannot be saved is not worth an error */ }
+    }
+
+    private async Task ToggleChooser()
+    {
+        chooserOpen = !chooserOpen;
+        if (chooserOpen && !watching)
+        {
+            watching = true;
+            self = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("watchDismiss", chooserRoot, self);
+        }
+        else if (!chooserOpen) await StopWatchingAsync();
+    }
+
+    [JSInvokable] public Task Dismiss(string reason)
+    {
+        chooserOpen = false;
+        watching = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StopWatchingAsync()
+    {
+        if (!watching) return;
+        watching = false;
+        await Js.InvokeVoidAsync("stopWatchDismiss", chooserRoot);
+    }
+
+    private async Task OnRowKey(KeyboardEventArgs e)
+    {
+        var count = Items?.Count ?? 0;
+        if (count == 0) return;
+        var next = e.Key switch
+        {
+            "ArrowDown" => Math.Min(active + 1, count - 1),
+            "ArrowUp" => Math.Max(active - 1, 0),
+            "Home" => 0,
+            "End" => count - 1,
+            _ => -1,
+        };
+        if (next >= 0)
+        {
+            active = next;
+            await Js.InvokeVoidAsync("focusSelector", "#" + RowId(next));
+        }
+        else if (e.Key == "Enter") await Js.InvokeVoidAsync("clickFirstLink", "#" + RowId(active));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopWatchingAsync();
+        self?.Dispose();
+    }
+}

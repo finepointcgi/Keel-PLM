@@ -59,8 +59,9 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
         await page.GotoAsync(host + "/");
         await SubmitKeycloakAsync(page, user);
         await page.WaitForURLAsync(url => url.StartsWith(host, StringComparison.Ordinal));
-        await Expect(page.Locator("nav[aria-label='Main']")).ToBeVisibleAsync();
-        // The shell is rendered by the Blazor circuit, so a visible nav means the circuit is live.
+        await Expect(page.Locator("nav[aria-label='Main']")).ToBeAttachedAsync();
+        await Expect(page.Locator("main#main")).ToBeVisibleAsync();
+        // The shell is rendered by the Blazor circuit, so the navigation in the page means the circuit is live (at phone width it is a drawer, not visible).
         up.SignedInAt = DateTimeOffset.UtcNow;
         return up;
     }
@@ -90,6 +91,14 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
 
     public static async Task ClickAsync(IPage page, string name, bool exact = true) =>
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = name, Exact = exact }).ClickAsync();
+
+    /// <summary>Opens a tab of an object page (Overview, Structure, Documents, Changes, Review &amp; release, ...) and waits until it is selected.</summary>
+    public static async Task OpenTabAsync(IPage page, string name)
+    {
+        var tab = page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = name });
+        await tab.ClickAsync();
+        await Expect(tab).ToHaveAttributeAsync("aria-selected", "true");
+    }
 
     public static ILocator TopBanner(IPage page) => page.Locator("[data-position='top']");
     public static ILocator BottomBanner(IPage page) => page.Locator("[data-position='bottom']");
@@ -191,3 +200,4 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
     [GeneratedRegex(@"^Signed\.")]
     private static partial Regex SignedMessage();
 }
+

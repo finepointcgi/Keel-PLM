@@ -19,6 +19,7 @@
     <Project Path="src/Keel.Viewer/Keel.Viewer.csproj" />
     <Project Path="src/Keel.Web/Keel.Web.csproj" />
     <Project Path="src/Keel.Workflow/Keel.Workflow.csproj" />
+    <Project Path="src/Keel.Workspace/Keel.Workspace.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Keel.E2E/Keel.E2E.csproj" />

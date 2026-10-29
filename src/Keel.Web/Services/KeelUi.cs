@@ -60,6 +60,14 @@ public static class KeelUi
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, SessionRevalidatingStateProvider>();
         services.AddScoped<CurrentUser>();
+        // UX-1 (ADR-0028): shell state, feedback, search and the Home dashboard reads.
+        services.AddScoped<ToastService>();
+        services.AddScoped<ShellJs>();
+        services.AddScoped<LifecycleSteps>();
+        services.AddScoped<ShellState>();
+        services.AddScoped<PaletteState>();
+        services.AddScoped<WorkspaceReads>();
+        services.AddScoped<IGlobalSearch, GlobalSearchService>();
         services.AddSingleton(options);
 
         auth.AddCookie(CookieScheme, o =>

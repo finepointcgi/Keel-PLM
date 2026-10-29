@@ -1,0 +1,278 @@
+@* The command palette (Ctrl/Cmd+K, or "/" when not typing): search across parts, documents, changes, baselines and manufacturing BOMs, jump to places, and run a few
+   commands. A modal dialog: role=dialog + aria-modal, focus trapped, Escape closes. The input is a combobox over a listbox (aria-activedescendant), so it is fully
+   keyboard-operable: Up/Down move, Enter opens, Ctrl/Cmd+Enter opens in a new tab. Results come only from IGlobalSearch (the module services: access filter in SQL), are
+   debounced, and a newer keystroke cancels the older request. Typed prefixes narrow the search: p: d: c: ecn: ecr: pr: b: mb: *@
+@implements IAsyncDisposable
+@inject IGlobalSearch Search
+@inject CurrentUser Users
+@inject PaletteState State
+@inject ShellState Shell
+@inject ShellJs Js
+@inject NavigationManager Nav
+@inject IServiceProvider Services
+
+@if (State.IsOpen)
+{
+    <div class="dialog-backdrop" @onclick="Close">
+        <div @ref="dialog" class="dialog" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1" data-palette @onclick:stopPropagation="true" @onkeydown="OnDialogKey">
+            <div class="palette-input">
+                <Icon Name="search" />
+                <input @ref="input" type="text" role="combobox" aria-label="Search or run a command" aria-autocomplete="list" aria-expanded="true" aria-controls="palette-list"
+                       aria-activedescendant="@(entries.Count > 0 ? OptionId(selected) : null)" autocomplete="off" spellcheck="false" placeholder="Search parts, documents, changes… or type a command"
+                       @oninput="OnInput" @onkeydown="OnInputKey" data-palette-input />
+            </div>
+            <ul id="palette-list" class="palette-list" role="listbox" aria-label="Results">
+                @for (var i = 0; i < entries.Count; i++)
+                {
+                    var e = entries[i];
+                    var index = i;
+                    @if (i == 0 || entries[i - 1].Group != e.Group)
+                    {
+                        <li role="presentation" class="group-label">@e.Group</li>
+                    }
+                    <li id="@OptionId(i)" role="option" class="palette-item" aria-selected="@(i == selected ? "true" : "false")" data-kind="@e.Kind" data-href="@e.Href"
+                        @onclick="args => ActivateAsync(index, args.CtrlKey || args.MetaKey)" @onmousemove="args => HoverAsync(index, args)">
+                        <Icon Name="@e.Icon" />
+                        <span class="main">
+                            <span class="name">@e.Label</span>
+                            @if (e.Sub is not null) { <span class="kind">@e.Sub</span> }
+                        </span>
+                        @if (e.StateLabel is not null) { <span class="badge">@e.StateLabel</span> }
+                        @if (e.Banner is not null) { <MarkingChip Text="@e.Banner" /> }
+                    </li>
+                }
+            </ul>
+            @if (error is not null)
+            {
+                <p class="palette-empty" data-palette-error>@error</p>
+            }
+            else if (entries.Count == 0)
+            {
+                <p class="palette-empty">@(loading ? "Searching…" : "Nothing found. Try a part number, a name, or a prefix such as p: or ecn:.")</p>
+            }
+            <div class="visually-hidden" aria-live="polite">@Announcement</div>
+            <div class="palette-foot" aria-hidden="true">
+                <span><kbd>↑</kbd> <kbd>↓</kbd> to move</span>
+                <span><kbd>Enter</kbd> to open</span>
+                <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> in a new tab</span>
+                <span><kbd>Esc</kbd> to close</span>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private sealed record Entry(string Group, string Label, string? Sub, string Icon, string? Href, string? ActionId, string? Banner, string? StateLabel, string Kind);
+
+    private ElementReference dialog, input;
+    private DotNetObjectReference<CommandPalette>? self;
+    private CancellationTokenSource? cts;
+    private string query = "";
+    private string? error;
+    private bool loading, wasOpen, shortcutsOn;
+    private int selected;
+    private List<Entry> entries = [];
+    private IReadOnlyList<SearchHit> hits = [];
+    private IReadOnlyList<SearchHit> recents = [];
+    private IReadOnlyList<PaletteAction> actions = [];
+
+    /// <summary>How long typing must pause before a search is sent.</summary>
+    [Parameter] public int DebounceMs { get; set; } = 200;
+    /// <summary>The most results per kind.</summary>
+    [Parameter] public int PerKindLimit { get; set; } = 5;
+
+    private string OptionId(int i) => "palette-option-" + i;
+
+    private string Announcement => loading ? "Searching" : query.Length == 0 ? "" : $"{entries.Count} results";
+
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            self = DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("registerShortcuts", self);
+            shortcutsOn = true;
+        }
+        if (State.IsOpen && !wasOpen)
+        {
+            wasOpen = true;
+            (lastX, lastY) = (-1, -1);
+            query = "";
+            hits = [];
+            error = null;
+            await LoadActionsAsync();
+            Rebuild();
+            StateHasChanged();
+            await Js.InvokeVoidAsync("trapFocus", dialog, "[data-palette-input]");
+            _ = LoadRecentsAsync();
+        }
+        else if (!State.IsOpen && wasOpen)
+        {
+            wasOpen = false;
+            cts?.Cancel();
+            await Js.InvokeVoidAsync("releaseTrap", dialog, true);
+        }
+        if (State.IsOpen && entries.Count > 0) await Js.InvokeVoidAsync("scrollSelectedIntoView", "#palette-list");
+    }
+
+    [JSInvokable] public Task OpenPalette()
+    {
+        State.Open();
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadActionsAsync()
+    {
+        try
+        {
+            var me = await Users.GetAsync();
+            actions = PaletteActions.For(me.Roles, Services.GetService<SessionLockCoordinator>() is { Enabled: true });
+        }
+        catch (InvalidOperationException)
+        {
+            actions = []; // a locked session offers nothing
+        }
+    }
+
+    private async Task LoadRecentsAsync()
+    {
+        try
+        {
+            recents = await Search.RecentAsync(5, CancellationToken.None);
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            recents = [];
+        }
+        if (query.Length == 0) await InvokeAsync(() => { Rebuild(); StateHasChanged(); });
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        error = null;
+        cts?.Cancel();
+        cts?.Dispose();
+        var mine = cts = new CancellationTokenSource();
+        var parsed = ParsedQuery.Parse(query);
+        if (parsed.Text.Length < ParsedQuery.MinLength)
+        {
+            hits = [];
+            loading = false;
+            Rebuild();
+            return;
+        }
+        loading = true;
+        Rebuild();
+        try
+        {
+            await Task.Delay(DebounceMs, mine.Token);
+            var found = await Search.SearchAsync(query, PerKindLimit, mine.Token);
+            if (mine.IsCancellationRequested) return;
+            hits = found;
+        }
+        catch (OperationCanceledException)
+        {
+            return; // a newer keystroke took over
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            hits = [];
+            error = "Search is not available right now.";
+        }
+        if (mine.IsCancellationRequested) return;
+        loading = false;
+        Rebuild();
+    }
+
+    private void Rebuild()
+    {
+        var list = new List<Entry>();
+        var parsed = ParsedQuery.Parse(query);
+        if (query.Length == 0)
+        {
+            list.AddRange(recents.Select(HitEntry("Recent")));
+        }
+        else
+        {
+            list.AddRange(hits.Select(h => HitEntry(ObjectKinds.Label(h.Kind) + "s")(h)));
+        }
+        // Places and commands: all of them when nothing is typed, otherwise those that match (not when a typed prefix narrows to one kind of object).
+        if (query.Length == 0 || parsed.Kinds.Count == ObjectKinds.All.Length)
+            list.AddRange(PaletteActions.Filter(actions, query.Trim()).Select(a => new Entry(a.Group, a.Label, null, a.Icon, a.Href, a.Id, null, null, "action")));
+        if (parsed.Text.Length >= ParsedQuery.MinLength)
+            list.Add(new Entry("Search", $"See all results for “{query.Trim()}”", null, "search", "search?q=" + Uri.EscapeDataString(query.Trim()), null, null, null, "all"));
+        entries = list;
+        selected = Math.Min(selected, Math.Max(0, list.Count - 1));
+        if (list.Count == 0) selected = 0;
+    }
+
+    private static Func<SearchHit, Entry> HitEntry(string group) =>
+        h => new Entry(group, $"{h.Number} · {h.Name}", ObjectKinds.Label(h.Kind), h.Kind, h.Href, null, h.Banner, h.StateLabel, h.Kind);
+
+    private double lastX = -1, lastY = -1;
+
+    // Only a real pointer movement selects an entry: a list that appears under a resting mouse must not steal the keyboard selection.
+    private void HoverAsync(int index, MouseEventArgs args)
+    {
+        var first = lastX < 0;
+        var moved = args.ClientX != lastX || args.ClientY != lastY;
+        (lastX, lastY) = (args.ClientX, args.ClientY);
+        if (!first && moved) selected = index;
+    }
+
+    private async Task OnInputKey(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown" when entries.Count > 0: selected = (selected + 1) % entries.Count; break;
+            case "ArrowUp" when entries.Count > 0: selected = (selected - 1 + entries.Count) % entries.Count; break;
+            case "Enter" when entries.Count > 0: await ActivateAsync(selected, e.CtrlKey || e.MetaKey); break;
+        }
+    }
+
+    private Task OnDialogKey(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : Task.CompletedTask;
+
+    private async Task ActivateAsync(int index, bool newTab)
+    {
+        if (index < 0 || index >= entries.Count) return;
+        var entry = entries[index];
+        if (entry.Href is not null)
+        {
+            if (newTab) await Js.InvokeVoidAsync("openInNewTab", Nav.ToAbsoluteUri(entry.Href).ToString());
+            else
+            {
+                await Close();
+                Nav.NavigateTo(entry.Href);
+            }
+            return;
+        }
+        await Close();
+        switch (entry.ActionId)
+        {
+            case PaletteActions.ToggleTheme: await Shell.ToggleThemeAsync(); break;
+            case PaletteActions.LockNow when Services.GetService<SessionLockCoordinator>() is { } lockCoordinator: await lockCoordinator.LockNowAsync(); break;
+            case PaletteActions.SignOut: await Js.InvokeVoidAsync("submitForm", "#signout-form"); break;
+        }
+    }
+
+    private Task Close()
+    {
+        cts?.Cancel();
+        State.Close();
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        State.Changed -= OnStateChanged;
+        cts?.Cancel();
+        cts?.Dispose();
+        if (shortcutsOn) await Js.InvokeVoidAsync("unregisterShortcuts");
+        self?.Dispose();
+    }
+}

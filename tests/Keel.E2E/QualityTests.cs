@@ -68,9 +68,11 @@ public sealed class QualityTests(E2EFixture fx)
             }
             // The BOM tree really rendered (expand all), and the impact panel ran, so the heaviest components are covered.
             await session.GotoAsync(alice, "/parts/" + m.TopAssembly);
+            await BrowserSession.OpenTabAsync(page, "Structure");
             await BrowserSession.ClickAsync(page, "Expand all");
             await Expect(page.Locator(".bom-grid .bom-row").Nth(5)).ToBeVisibleAsync();
             await session.GotoAsync(alice, "/changes/" + m.EcnDraftInWork);
+            await BrowserSession.OpenTabAsync(page, "Impact analysis");
             await BrowserSession.ClickAsync(page, "Run impact analysis");
             await Expect(page.Locator("section[aria-labelledby='impact-heading']")).ToContainTextAsync("place");
 
@@ -93,7 +95,7 @@ public sealed class QualityTests(E2EFixture fx)
                 var focus = await page.EvaluateAsync<string>("() => { const e = document.activeElement; return e ? ((e.closest('nav') ? 'nav:' : '') + (e.innerText || e.getAttribute('aria-label') || e.tagName).trim()) : ''; }");
                 reached.Add(focus);
             }
-            foreach (var link in new[] { "Parts", "Documents", "Changes", "My tasks", "Access check", "My access" })
+            foreach (var link in new[] { "Home", "Parts", "Documents", "Changes", "My tasks", "Access check" })
                 Assert.Contains("nav:" + link, reached);
             Assert.Contains("Create part", reached);
             // Enter on the focused primary button submits (the empty form is refused by the browser, which is the point: it is operable).
@@ -114,7 +116,10 @@ public sealed class QualityTests(E2EFixture fx)
                 await session.GotoAsync(alice, path);
                 await alice.Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
                 if (path.StartsWith("/parts/P", StringComparison.Ordinal) && path.EndsWith(m.TopAssembly, StringComparison.Ordinal))
+                {
+                    await BrowserSession.OpenTabAsync(alice.Page, "Structure");
                     await Expect(alice.Page.GetByRole(AriaRole.Treegrid)).ToBeVisibleAsync();
+                }
                 var (scrollWidth, bodyWidth, innerWidth) = await alice.Page.EvaluateAsync<int[]>(
                     "() => [document.documentElement.scrollWidth, document.body.scrollWidth, window.innerWidth]") is [var a, var b, var c] ? (a, b, c) : default;
                 var wide = await alice.Page.EvaluateAsync<string[]>(

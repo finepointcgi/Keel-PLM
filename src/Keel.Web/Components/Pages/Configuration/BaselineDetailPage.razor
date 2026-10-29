@@ -2,8 +2,11 @@
 @inject CurrentUser Users
 @inject BaselineService Baselines
 @inject BomService Bom
+@inject LifecycleSteps Lifecycles
+@inject ToastService Toasts
+@inject NavigationManager Nav
 
-<PageFrame Banner="@BannerMerge.Union(Banner(), tdpBanner)" Title="@($"Baseline {Number}")">
+<PageFrame Banner="@BannerMerge.Union(Banner(), tdpBanner)" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
     @if (notFound)
     {
         <p class="error" role="alert">Baseline @Number was not found, or you are not authorized to see it.</p>
@@ -13,24 +16,17 @@
     {
         var s = detail.Summary;
         <article class="stack">
-            <header class="part-header">
-                <div>
-                    <h2>@s.Number · @s.Name</h2>
-                    <p class="muted">
-                        @s.Type baseline@(s.Milestone is null ? "" : $" · milestone {s.Milestone}") · created @UiText.Utc(s.CreatedAt) by @s.CreatedBy
-                        · <a href="baselines">All baselines</a>
-                    </p>
-                </div>
-                <div class="badges">
-                    <span class="badge @ConfigurationText.StateClass(s.State)">@s.StateLabel</span>
-                    <MarkingChip Text="@s.Banner" />
-                </div>
-            </header>
+            <ViewTracker Kind="@ObjectKinds.Baseline" Number="@s.Number" />
 
             @if (notices.Count > 0) { <ul class="notice" role="status">@foreach (var n in notices) { <li>@n</li> }</ul> }
             @if (error is not null) { <p class="error" role="alert">@error</p> }
             @if (detail.Notices.Count > 0) { <ul class="notice" role="status">@foreach (var n in detail.Notices) { <li>@n</li> }</ul> }
 
+            <TabSet Tabs="Tabs" Active="@tab" ActiveChanged="OnTabChanged" Label="Baseline sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
             <dl class="facts">
                 <dt>Root part</dt>
                 <dd>@if (s.RootNumber is not null) { <a href="parts/@Uri.EscapeDataString(s.RootNumber)">@s.RootNumber</a> <text>@s.RootName · @s.RootVersion</text> } else { <span class="restricted-label">Restricted item</span> }</dd>
@@ -87,7 +83,18 @@
                     }
                 </section>
             }
-            <BaselineReviewPanel Detail="detail" OnChanged="Load" />
+                        </div>
+                        break;
+                    case "review":
+                        <div class="stack">
+                            <BaselineReviewPanel Detail="detail" OnChanged="Load" />
+                            @* 4.0: Technical Data Package of this baseline (ADR-0025) *@
+                            <TdpExportPanel ObjectType="baseline" Number="@detail.Summary.Number" OnBanner="b => tdpBanner = b" />
+                        </div>
+                        break;
+                    case "items":
+                        <div class="stack">
+
 
             <section class="panel stack" aria-labelledby="items-heading">
                 <div class="bom-heading">
@@ -148,14 +155,47 @@
                     </table></div>
                 </section>
             }
-        @* 4.0: Technical Data Package of this baseline (ADR-0025) *@
-        <TdpExportPanel ObjectType="baseline" Number="@detail.Summary.Number" OnBanner="b => tdpBanner = b" />
+                        </div>
+                        break;
+                }
+            </TabSet>
         </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the baseline" />
     }
 </PageFrame>
 
 @code {
     [Parameter] public required string Number { get; set; }
+
+    private static readonly string[] TabIds = ["overview", "review", "items"];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("review", "Review & release"), new("items", "Items")];
+    private string tab = "overview";
+    private IReadOnlyList<LifecycleState> steps = [];
+    private string PageTitle => detail is null ? $"Baseline {Number}" : $"{detail.Summary.Number} · {detail.Summary.Name}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Baselines", "baselines"), new(detail?.Summary.Number ?? Number)];
+
+    private RenderFragment HeaderFragment(BaselineDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Summary.Banner"
+              Subtitle="@($"{d.Summary.Type} baseline{(d.Summary.Milestone is null ? "" : $" · milestone {d.Summary.Milestone}")} · created {UiText.Utc(d.Summary.CreatedAt)} by {d.Summary.CreatedBy}")">
+        <Badges>
+            <span class="badge @ConfigurationText.StateClass(d.Summary.State)">@d.Summary.StateLabel</span>
+            <FavoriteButton Kind="@ObjectKinds.Baseline" Number="@d.Summary.Number" />
+        </Badges>
+        <Steps>
+            @if (steps.Count > 0)
+            {
+                <Stepper States="steps" Current="@d.Summary.State" Label="Baseline lifecycle" />
+            }
+        </Steps>
+    </ObjectHeader>;
+
+    private void OnTabChanged(string id)
+    {
+        tab = id;
+        tdpBanner = null; // the Technical Data Package preview is gone with its tab
+    }
 
     private BaselineDetail? detail;
     private BomExplosion? items;
@@ -178,6 +218,8 @@
         var outcome = await Baselines.GetAsync(subject, Number, CurrentUser.NewCorrelationId());
         notFound = !outcome.IsOk;
         detail = outcome.Value;
+        tab = TabSet.FromUri(Nav.Uri, TabIds, tab);
+        if (detail is not null && steps.Count == 0) steps = await Lifecycles.StatesAsync("baseline-default");
         if (detail is null) return;
         (editName, editPurpose, editMilestone) = (detail.Summary.Name, detail.Purpose, detail.Summary.Milestone ?? "");
         var siblings = await Baselines.SearchAsync(subject, new BaselineSearch(RootNumber: detail.Summary.RootNumber, Limit: 100), CurrentUser.NewCorrelationId());
@@ -225,7 +267,7 @@
         busy = false;
         if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
         notices.Clear();
-        notices.Add(done);
+        Toasts.Success(done);
         reason = "";
         await Load();
     }

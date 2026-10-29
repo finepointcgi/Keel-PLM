@@ -184,7 +184,7 @@ public sealed class ViewerHttpTests(PostgresFixture pg)
 
         // Every route outside the viewer: exactly the global policy.
         foreach (var path in new[] { "/health/live", "/health/ready", "/api/v1/me", "/api/v1/documents", $"/api/v1/documents/{number}", $"/downloads/documents/{number}/files/{fileId}",
-                     "/_content/Keel.Web/app.css", "/_content/Keel.Web/bom.css", "/does-not-exist", "/viewerx/anything" })
+                     "/_content/Keel.Web/css/tokens.css", "/_content/Keel.Web/bom.css", "/does-not-exist", "/viewerx/anything" })
         {
             var res = await alice.GetAsync(path);
             Assert.True(res.Headers.TryGetValues("Content-Security-Policy", out var values), path);

@@ -356,7 +356,7 @@ public sealed class WorkflowServiceTests(PostgresFixture pg)
 
         var invalid = await env.Flow.UploadTemplateAsync(Ada, """{ "id": "x", "name": "X", "objectType": "part", "start": "a", "nodes": [ { "id": "a", "type": "Condition" } ] }""", null);
         Assert.Equal(OutcomeKind.Invalid, invalid.Kind);
-        Assert.Contains(invalid.Errors, e => e.Contains("Phase 2", StringComparison.Ordinal));
+        Assert.Contains(invalid.Errors, e => e.Contains("not supported yet", StringComparison.Ordinal));
         var unknownType = await env.Flow.UploadTemplateAsync(Ada, PoolTemplate.Replace("\"part\"", "\"drawing\"", StringComparison.Ordinal), null);
         Assert.Contains("No workflow can run on objects of type 'drawing'", unknownType.Errors[0], StringComparison.Ordinal);
 

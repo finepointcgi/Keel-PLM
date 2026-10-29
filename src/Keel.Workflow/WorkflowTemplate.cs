@@ -211,7 +211,7 @@ public static partial class TemplateParser
 
     private static NodeDef? Unsupported(string id, string type, List<string> errors)
     {
-        errors.Add($"Node '{id}': node type '{type}' is not supported until Phase 2 (ADR-0006).");
+        errors.Add($"Node '{id}': node type '{type}' is not supported yet.");
         return null;
     }
 

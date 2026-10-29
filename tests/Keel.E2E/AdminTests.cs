@@ -79,6 +79,7 @@ public sealed class AdminTests(E2EFixture fx)
             await ap.WaitForURLAsync(new System.Text.RegularExpressions.Regex(@"/parts/P-\d+$"));
             var part = ap.Url[(ap.Url.LastIndexOf('/') + 1)..];
             await BrowserSession.ClickAsync(ap, "Check out");
+            await BrowserSession.OpenTabAsync(ap, "Classification");
             var panel = Section(ap, "Classification");
             await Expect(panel).ToContainTextAsync("Not classified");
             await panel.GetByText("Classify this part").ClickAsync();

@@ -1,10 +1,17 @@
+@using Keel.Workspace
+@inject WorkspaceService Workspace
 <!DOCTYPE html>
-<html lang="en">
+@* The page shell is rendered by the server for every document load: the user's stored theme and density go into <html> here, so the first paint already has them
+   (no inline script, CSP-safe). "system" has no explicit attribute rule: tokens.css follows prefers-color-scheme for it. *@
+<html lang="en" data-theme="@prefs.Theme" data-density="@prefs.Density">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link rel="stylesheet" href="_content/Keel.Web/app.css" />
+    <link rel="stylesheet" href="_content/Keel.Web/css/tokens.css" />
+    <link rel="stylesheet" href="_content/Keel.Web/css/base.css" />
+    <link rel="stylesheet" href="_content/Keel.Web/css/layout.css" />
+    <link rel="stylesheet" href="_content/Keel.Web/css/components.css" />
     <link rel="stylesheet" href="_content/Keel.Web/bom.css" />
     <HeadOutlet @rendermode="Mode" />
 </head>
@@ -18,4 +25,18 @@
 @code {
     // ADR-0014: interactive server without prerendering, so each page loads (and is audited) exactly once.
     private static readonly IComponentRenderMode Mode = new InteractiveServerRenderMode(prerender: false);
+
+    private UserPreferences prefs = UserPreferences.Default;
+
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The signed-in user's own preference by the subject of the session cookie (a person who is not signed in gets the defaults).
+        if (HttpContext?.User.FindFirst("sub")?.Value is { Length: > 0 } sub)
+        {
+            try { prefs = await Workspace.GetPreferencesForShellAsync(sub); }
+            catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException) { /* defaults: a damaged preference never blocks the shell */ }
+        }
+    }
 }

@@ -1,0 +1,20 @@
+@* Records that the user opened an object (recently viewed: one row per object, the newest 50, repeats within a minute ignored). Renders nothing. A page includes it only
+   once the object has been loaded for the user, so a number the user could not read is never recorded. *@
+@inject CurrentUser Users
+@inject WorkspaceService Workspace
+
+@code {
+    private string? recorded;
+
+    [Parameter, EditorRequired] public required string Kind { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Kind + "|" + Number;
+        if (key == recorded) return;
+        recorded = key;
+        try { await Workspace.RecordViewAsync(await Users.GetAsync(), Kind, Number); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { /* a missing "recent" entry is not worth an error */ }
+    }
+}

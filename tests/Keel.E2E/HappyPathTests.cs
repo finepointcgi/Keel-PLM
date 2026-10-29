@@ -33,8 +33,8 @@ public sealed partial class HappyPathTests(E2EFixture fx)
             // ---- 1. an ITAR part with an attribute (the default markings of the form are ITAR USML XI(d), program ORCA)
             var partName = $"E2E bracket {suffix}";
             var part = await CreatePartAsync(session, alice, partName, "Component", material: "7075-T6");
-            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = partName, Level = 2 })).ToBeVisibleAsync();
-            await Expect(BrowserSession.TopBanner(page)).ToHaveTextAsync("CUI//EXPT · ITAR · DISTRIBUTION D");
+            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = partName, Level = 1 })).ToBeVisibleAsync();
+            await Expect(BrowserSession.TopBanner(page)).ToHaveTextAsync("CUI//EXPT · ITAR USML XI(d) · DISTRIBUTION D · PROGRAM ORCA");
             await Expect(page.Locator("dl.facts").First).ToContainTextAsync("7075-T6");
             await BrowserSession.AssertBannersAsync(page);
 
@@ -52,6 +52,7 @@ public sealed partial class HappyPathTests(E2EFixture fx)
             await session.GotoAsync(alice, "/parts/" + part);
             await BrowserSession.ClickAsync(page, "Check out");
             await Expect(page.GetByText("You have this part checked out")).ToBeVisibleAsync();
+            await BrowserSession.OpenTabAsync(page, "Documents");
             await BrowserSession.FillAsync(page.GetByLabel("Document number"), document);
             await BrowserSession.ClickAsync(page, "Add link");
             await Expect(page.GetByLabel("Document number")).ToHaveValueAsync("");
@@ -65,6 +66,7 @@ public sealed partial class HappyPathTests(E2EFixture fx)
             var assembly = await CreatePartAsync(session, alice, assemblyName, "Assembly", material: "Assembly");
             await BrowserSession.ClickAsync(page, "Check out");
             await Expect(page.GetByText("You have this part checked out")).ToBeVisibleAsync();
+            await BrowserSession.OpenTabAsync(page, "Structure");
             await AddBomLineAsync(page, part, "2");
             await AddBomLineAsync(page, m.OpenFastener, "8");
             await BrowserSession.FillAsync(page.GetByLabel("Check-in comment"), "Structure");
@@ -75,6 +77,7 @@ public sealed partial class HappyPathTests(E2EFixture fx)
 
             // ---- 4. submit the part for review (reviewer ada, approver bob)
             await session.GotoAsync(alice, "/parts/" + part);
+            await BrowserSession.OpenTabAsync(page, "Review & release");
             await BrowserSession.ClickAsync(page, "Submit for review");
             await BrowserSession.ChooseParticipantsAsync(page, new() { ["Technical reviewer"] = "ada", ["Approvers"] = "bob" });
             await BrowserSession.ClickAsync(page, "Start review");
@@ -93,18 +96,21 @@ public sealed partial class HappyPathTests(E2EFixture fx)
 
             await session.GotoAsync(alice, "/parts/" + part);
             await Expect(page.Locator(".badges")).ToContainTextAsync("Released");
+            await BrowserSession.OpenTabAsync(page, "Review & release");
             await Expect(page.Locator("ul.signatures")).ToContainTextAsync("Signed by Ada Admin (ada)");
             await Expect(page.Locator("ul.signatures")).ToContainTextAsync("Signed by Bob Approver (bob)");
 
             // ---- 7. an ECN that revises the released part, with the impact panel
+            await BrowserSession.OpenTabAsync(page, "Changes");
             await page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Request change" }).ClickAsync();
             await BrowserSession.FillAsync(page.GetByLabel("Title *"), $"Thicker wall {suffix}");
             await BrowserSession.FillAsync(page.GetByLabel("Description"), "Increase wall thickness after a vibration test.");
             await BrowserSession.ClickAsync(page, "Create change notice");
             await page.WaitForURLAsync(ChangeUrl());
             var ecn = page.Url[(page.Url.LastIndexOf('/') + 1)..];
-            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = ecn, Level = 2 })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = ecn, Level = 1 })).ToBeVisibleAsync();
             await Expect(page.Locator(".badges")).ToContainTextAsync("Class II");
+            await BrowserSession.OpenTabAsync(page, "Impact analysis");
             await BrowserSession.ClickAsync(page, "Run impact analysis");
             var impact = page.Locator("section[aria-labelledby='impact-heading']");
             await Expect(impact.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = assembly })).ToBeVisibleAsync();
@@ -116,7 +122,9 @@ public sealed partial class HappyPathTests(E2EFixture fx)
             // revision B is in work; alice edits and checks it in
             await session.GotoAsync(alice, "/parts/" + part);
             await Expect(page.Locator(".badges")).ToContainTextAsync("In Work");
+            await BrowserSession.OpenTabAsync(page, "Changes");
             await Expect(page.GetByText($"Revision B was created by change notice {ecn}")).ToBeVisibleAsync();
+            await BrowserSession.OpenTabAsync(page, "Overview");
             await BrowserSession.ClickAsync(page, "Check out");
             await BrowserSession.FillAsync(page.GetByLabel("Description"), "Wall thickness increased from 2 mm to 3 mm.");
             await BrowserSession.FillAsync(page.GetByLabel("Check-in comment"), "Thicker wall");
@@ -125,6 +133,7 @@ public sealed partial class HappyPathTests(E2EFixture fx)
 
             // submit, review, approve: the notice releases B and obsoletes A in one step
             await session.GotoAsync(alice, "/changes/" + ecn);
+            await BrowserSession.OpenTabAsync(page, "Review & release");
             await BrowserSession.ClickAsync(page, "Submit for review");
             await BrowserSession.ChooseParticipantsAsync(page, new() { ["Technical reviewer"] = "ada", ["Approvers"] = "bob" });
             await BrowserSession.ClickAsync(page, "Start review");

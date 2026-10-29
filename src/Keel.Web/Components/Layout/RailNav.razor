@@ -1,0 +1,27 @@
+@* The grouped navigation rail. Icons come from the SVG sprite; when the rail is collapsed the labels are visually hidden (still read by assistive technology) and the
+   native tooltip (title) names each icon. The links shown depend on the user's roles (see NavModel); pages and services check the role again. *@
+<nav id="main-nav" class="rail" aria-label="Main">
+    @foreach (var group in Groups)
+    {
+        <div class="rail-group" role="group" aria-label="@group.Title">
+            <span class="rail-heading" aria-hidden="true">@group.Title</span>
+            @foreach (var item in group.Items)
+            {
+                <NavLink class="rail-link" href="@item.Href" Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)" title="@item.Label">
+                    <Icon Name="@item.Icon" />
+                    <span class="rail-label">@item.Label</span>
+                </NavLink>
+            }
+        </div>
+    }
+    <button type="button" class="icon-button collapse-toggle" aria-pressed="@(Collapsed ? "true" : "false")" title="@(Collapsed ? "Expand navigation" : "Collapse navigation")" data-action="collapse-nav" @onclick="() => OnToggle.InvokeAsync(!Collapsed)">
+        <Icon Name="@(Collapsed ? "chevron-right" : "chevron-left")" />
+        <span class="rail-label">@(Collapsed ? "Expand navigation" : "Collapse navigation")</span>
+    </button>
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<NavGroup> Groups { get; set; }
+    [Parameter] public bool Collapsed { get; set; }
+    [Parameter] public EventCallback<bool> OnToggle { get; set; }
+}

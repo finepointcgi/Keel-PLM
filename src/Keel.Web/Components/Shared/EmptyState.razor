@@ -1,0 +1,20 @@
+@* Nothing to show yet: say why and what to do next. Used by every list page and card. *@
+<div class="empty">
+    <Icon Name="@IconName" />
+    <h3>@Title</h3>
+    @if (ChildContent is not null) { <p>@ChildContent</p> }
+    @if (!string.IsNullOrEmpty(ActionHref))
+    {
+        <a class="button" href="@ActionHref">@ActionText</a>
+    }
+    @Action
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required string Title { get; set; }
+    [Parameter] public string IconName { get; set; } = "inbox";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? ActionHref { get; set; }
+    [Parameter] public string ActionText { get; set; } = "";
+    [Parameter] public RenderFragment? Action { get; set; }
+}

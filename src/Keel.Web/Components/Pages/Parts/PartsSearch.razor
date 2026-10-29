@@ -2,7 +2,7 @@
 @inject CurrentUser Users
 @inject PartService Parts
 
-<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Parts">
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Parts" Crumbs="@Crumbs">
     <form class="toolbar" role="search" @onsubmit="() => Search(0)">
         <input aria-label="Search parts" placeholder="Number or name" class="grow" @bind="query" />
         <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
@@ -22,26 +22,19 @@
     @if (result is not null)
     {
         <p class="muted">@result.Total part@(result.Total == 1 ? "" : "s") you can access</p>
-        <div class="table-wrap"><table class="data">
-            <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
-            <tbody>
-                @foreach (var p in result.Items)
-                {
-                    <tr>
-                        <td><a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a></td>
-                        <td>@p.Name</td>
-                        <td>@p.PartType</td>
-                        <td>@p.Revision.@p.Iteration</td>
-                        <td>@p.State</td>
-                        <td><MarkingChip Text="@p.Banner" /></td>
-                    </tr>
-                }
-            </tbody>
-        </table></div>
-        <div class="toolbar">
-            <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Search(Math.Max(0, offset - PageSize))">Previous</button>
-            <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Search(offset + PageSize)">Next</button>
-        </div>
+        <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="Parts">
+            <Empty>
+                <EmptyState Title="@(query.Length > 0 || state != "" ? "No parts match" : "No parts yet")" IconName="part"
+                            ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="New part">
+                    @(query.Length > 0 || state != "" ? "Try a different number or name, or choose Any state." : "Create the first part to start building products.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading parts" />
     }
 </PageFrame>
 
@@ -51,6 +44,18 @@
     private string state = "";
     private int offset;
     private PartSearchResult? result;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Parts")];
+
+    private static readonly IReadOnlyList<DataColumn<PartSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Number", Required = true, SortValue = p => p.Number, Cell = p => @<a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a> },
+        new() { Key = "name", Title = "Name", SortValue = p => p.Name, Text = p => p.Name },
+        new() { Key = "type", Title = "Type", SortValue = p => p.PartType, Text = p => p.PartType },
+        new() { Key = "version", Title = "Version", Text = p => $"{p.Revision}.{p.Iteration}" },
+        new() { Key = "state", Title = "State", SortValue = p => p.State, Text = p => StateText.Label(p.State) },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = p => @<MarkingChip Text="@p.Banner" /> },
+    ];
 
     protected override Task OnInitializedAsync() => Search(0);
 

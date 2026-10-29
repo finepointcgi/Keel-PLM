@@ -1,0 +1,34 @@
+@* Shortcuts to create things. Shown only to people whose roles allow creating (the pages and services check the role again). *@
+@inject CurrentUser Users
+
+<section class="card" aria-labelledby="card-quick">
+    <h2 id="card-quick"><Icon Name="plus" /> Quick actions</h2>
+    <div class="quick-actions">
+        @if (canCreate)
+        {
+            <a class="button" href="parts/new">New part</a>
+            <a class="button secondary" href="documents/new">New document</a>
+            <a class="button secondary" href="@ChangeUi.NewHref("ECR")">New change request</a>
+        }
+        <a class="button secondary" href="parts">Browse parts</a>
+        <a class="button secondary" href="access">Check my access</a>
+    </div>
+    <p class="small muted">Press <kbd>Ctrl</kbd> + <kbd>K</kbd> anywhere to search or jump.</p>
+</section>
+
+@code {
+    private bool canCreate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var me = await Users.GetAsync();
+            canCreate = me.Roles.Contains(Roles.Author) || me.Roles.Contains(Roles.Admin);
+        }
+        catch (InvalidOperationException)
+        {
+            canCreate = false;
+        }
+    }
+}

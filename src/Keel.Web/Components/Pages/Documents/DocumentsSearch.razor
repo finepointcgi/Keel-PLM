@@ -4,7 +4,7 @@
 @inject DocumentService Docs
 @inject IReferenceData Refs
 
-<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Documents">
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Documents" Crumbs="@Crumbs">
     <form class="toolbar" role="search" @onsubmit="() => Search(0)">
         <input aria-label="Search documents" placeholder="Number or name" class="grow" @bind="query" />
         <select aria-label="Document type" @bind="type" @bind:after="() => Search(0)">
@@ -27,26 +27,18 @@
     @if (result is not null)
     {
         <p class="muted">@result.Total document@(result.Total == 1 ? "" : "s") you can access</p>
-        <div class="table-wrap"><table class="data">
-            <thead><tr><th scope="col">Number</th><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Version</th><th scope="col">State</th><th scope="col">Markings</th></tr></thead>
-            <tbody>
-                @foreach (var d in result.Items)
-                {
-                    <tr>
-                        <td><a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a></td>
-                        <td>@d.Name</td>
-                        <td>@d.DocumentType</td>
-                        <td>@d.Revision.@d.Iteration</td>
-                        <td>@d.State</td>
-                        <td><MarkingChip Text="@d.Banner" /></td>
-                    </tr>
-                }
-            </tbody>
-        </table></div>
-        <div class="toolbar">
-            <button type="button" class="secondary" disabled="@(offset == 0)" @onclick="() => Search(Math.Max(0, offset - PageSize))">Previous</button>
-            <button type="button" class="secondary" disabled="@(offset + PageSize >= result.Total)" @onclick="() => Search(offset + PageSize)">Next</button>
-        </div>
+        <DataTable TItem="DocumentSummary" TableId="documents" Items="result.Items" Columns="Columns" Caption="Documents">
+            <Empty>
+                <EmptyState Title="@(Filtered ? "No documents match" : "No documents yet")" IconName="document" ActionHref="@(Filtered ? null : "documents/new")" ActionText="New document">
+                    @(Filtered ? "Try a different number or name, or clear the filters." : "Upload the first drawing or specification to get started.")
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+    else
+    {
+        <Skeleton Lines="6" Label="Loading documents" />
     }
 </PageFrame>
 
@@ -55,6 +47,19 @@
     private string query = "", type = "", state = "";
     private int offset;
     private DocumentSearchResult? result;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Documents")];
+    private bool Filtered => query.Length > 0 || type != "" || state != "";
+
+    private static readonly IReadOnlyList<DataColumn<DocumentSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Number", Required = true, SortValue = d => d.Number, Cell = d => @<a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a> },
+        new() { Key = "name", Title = "Name", SortValue = d => d.Name, Text = d => d.Name },
+        new() { Key = "type", Title = "Type", SortValue = d => d.DocumentType, Text = d => d.DocumentType },
+        new() { Key = "version", Title = "Version", Text = d => $"{d.Revision}.{d.Iteration}" },
+        new() { Key = "state", Title = "State", SortValue = d => d.State, Text = d => StateText.Label(d.State) },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = d => @<MarkingChip Text="@d.Banner" /> },
+    ];
 
     private IReadOnlyList<string> docTypes = []; // 2.2: administrator data
 

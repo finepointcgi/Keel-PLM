@@ -1,81 +1,110 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@implements IAsyncDisposable
 @inject SessionLockCoordinator Lock
 @inject NavigationManager Nav
+@inject ShellState Shell
+@inject ShellJs Js
+@inject PaletteState Palette
+@inject AuthenticationStateProvider Auth
 
-<div class="app">
+@* The app shell (ADR-0028): skip link, marking banners, top bar (search, session, user menu), grouped navigation rail, main landmark. The idle lock (ADR-0026)
+   is unchanged: while the session is locked this renders the lock panel INSTEAD of the page, with no navigation, no search and no page data in the DOM. *@
+<div class="app @(Shell.Preferences.NavCollapsed ? "rail-collapsed" : null) @(railOpen ? "rail-open" : null)">
+    <a class="skip-link" href="#main" @onclick="SkipToMainAsync" @onclick:preventDefault>Skip to main content</a>
     <SectionOutlet SectionName="@PageFrame.TopBanner" />
     <header class="topbar">
-        <span class="brand">Keel PLM</span>
         @if (!locked)
         {
-            <nav aria-label="Main">
-                <NavLink href="parts" Match="NavLinkMatch.Prefix">Parts</NavLink>
-                <NavLink href="documents" Match="NavLinkMatch.Prefix">Documents</NavLink>
-                <NavLink href="changes" Match="NavLinkMatch.Prefix">Changes</NavLink>
-                <NavLink href="baselines" Match="NavLinkMatch.Prefix">Baselines</NavLink>
-                <NavLink href="mboms" Match="NavLinkMatch.Prefix">Manufacturing BOMs</NavLink>
-                <NavLink href="tasks" Match="NavLinkMatch.Prefix">My tasks</NavLink>
-                <AuthorizeView Policy="@Policies.Admin">
-                    <NavLink href="workflows" Match="NavLinkMatch.Prefix">Workflows</NavLink>
-                    <NavLink href="admin/migration" Match="NavLinkMatch.Prefix">Migration</NavLink>
-                    <NavLink href="admin" Match="NavLinkMatch.Prefix">Administration</NavLink>
-                </AuthorizeView>
-                <NavLink href="access">Access check</NavLink>
-                <AuthorizeView Policy="@Policies.Auditor">
-                    <NavLink href="audit">Audit log</NavLink>
-                </AuthorizeView>
-                <NavLink href="profile">My access</NavLink>
-            </nav>
+            <button type="button" class="icon-button menu-button" aria-label="Menu" aria-expanded="@(railOpen ? "true" : "false")" aria-controls="main-nav" @onclick="ToggleRail"><Icon Name="menu" /></button>
+        }
+        <a class="brand" href=""><Icon Name="part" /><span class="brand-text">Keel PLM</span></a>
+        @if (!locked)
+        {
+            <button type="button" class="search-trigger" aria-label="Search or jump to" aria-keyshortcuts="Control+K Meta+K" data-action="open-palette" @onclick="Palette.Open">
+                <Icon Name="search" />
+                <span class="label">Search or jump to…</span>
+                <kbd>Ctrl K</kbd>
+            </button>
+        }
+        <span class="grow"></span>
+        @if (!locked)
+        {
+            <SessionStatus />
+            <UserMenu DisplayName="@displayName" />
         }
         else
         {
-            <span class="grow"></span>
+            <button type="submit" class="secondary" form="signout-form">Sign out</button>
         }
-        <AuthorizeView>
-            <Authorized>
-                <span class="user">
-                    @if (!locked)
-                    {
-                        @(context.User.FindFirst("name")?.Value ?? context.User.Identity?.Name)
-                        <SessionStatus />
-                    }
-                    <form method="post" action="account/logout" class="inline">
-                        <AntiforgeryToken />
-                        <button type="submit" class="link">Sign out</button>
-                    </form>
-                </span>
-            </Authorized>
-        </AuthorizeView>
     </header>
-    <main>
-        @if (locked)
+    <form id="signout-form" method="post" action="account/logout" class="inline">
+        <AntiforgeryToken />
+    </form>
+    <div class="shell @(locked ? "no-rail" : null)">
+        @if (!locked)
         {
-            @* The page is not rendered while the session is locked: its components are disposed, so no data of it is left in the DOM (ADR-0026). *@
-            <LockedPanel View="Lock.View" />
+            <RailNav Groups="groups" Collapsed="Shell.Preferences.NavCollapsed" OnToggle="Shell.SetNavCollapsedAsync" />
+            @if (railOpen)
+            {
+                <button type="button" class="rail-backdrop" aria-label="Close menu" tabindex="-1" @onclick="CloseRail"></button>
+            }
         }
-        else
-        {
-            @Body
-        }
-    </main>
+        <main id="main" tabindex="-1">
+            @if (locked)
+            {
+                @* The page is not rendered while the session is locked: its components are disposed, so no data of it is left in the DOM (ADR-0026). *@
+                <LockedPanel View="Lock.View" />
+            }
+            else
+            {
+                @Body
+            }
+        </main>
+    </div>
     <SectionOutlet SectionName="@PageFrame.BottomBanner" />
 </div>
 <SessionActivity />
+<ToastContainer />
+@if (!locked)
+{
+    <CommandPalette />
+}
 
 <div id="blazor-error-ui" role="alert">
     Something went wrong. <a href="." class="reload">Reload</a>
 </div>
 
 @code {
-    private bool locked;
+    private bool locked, railOpen;
+    private string displayName = "";
+    private IReadOnlyList<NavGroup> groups = [];
 
     protected override async Task OnInitializedAsync()
     {
         await Lock.InitializeAsync();
         locked = Lock.IsLocked;
         Lock.Changed += OnLockChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        Shell.Changed += OnShellChanged;
+        var user = (await Auth.GetAuthenticationStateAsync()).User;
+        displayName = user.FindFirst("name")?.Value ?? user.Identity?.Name ?? "Account";
+        groups = NavModel.For(NavModel.RolesOf(user));
+        if (!locked) await Shell.LoadAsync();
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The first response already carries the stored theme; this only catches a change made in another tab since.
+        if (firstRender && !locked) await Js.InvokeVoidAsync("applyPreferences", Shell.Preferences.Theme, Shell.Preferences.Density);
+    }
+
+    private void OnShellChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => _ = InvokeAsync(() =>
+    {
+        railOpen = false;
+        StateHasChanged();
+    });
 
     private void OnLockChanged() => _ = InvokeAsync(() =>
     {
@@ -86,8 +115,21 @@
             return;
         }
         locked = Lock.IsLocked;
+        railOpen = false;
         StateHasChanged();
     });
 
-    public void Dispose() => Lock.Changed -= OnLockChanged;
+    private void ToggleRail() => railOpen = !railOpen;
+
+    private void CloseRail() => railOpen = false;
+
+    private Task SkipToMainAsync() => Js.InvokeVoidAsync("focusSelector", "#main").AsTask();
+
+    public ValueTask DisposeAsync()
+    {
+        Lock.Changed -= OnLockChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+        Shell.Changed -= OnShellChanged;
+        return ValueTask.CompletedTask;
+    }
 }

@@ -65,7 +65,7 @@ public sealed partial class ChangeService
         if (!ChangeActions.All.Contains(cmd.Action)) return Invalid($"Action must be one of: {string.Join(", ", ChangeActions.All)}.");
         if (change.Type == ChangeTypes.Pr && cmd.Action != ChangeActions.None) return Invalid("A problem report only references objects; use the action 'none'.");
         var gateway = GatewayFor(cmd.ObjectType);
-        if (gateway is null) return Invalid($"Objects of type '{cmd.ObjectType}' cannot be changed yet. Parts only in Phase 1; documents arrive in Phase 2.");
+        if (gateway is null) return Invalid($"Objects of type '{cmd.ObjectType}' cannot be changed through a change notice yet. Only parts can be for now.");
         if (string.IsNullOrWhiteSpace(cmd.Key)) return Invalid("Name the object to add.");
 
         // Locks the master row: object edits, review and other changes touching it queue behind this transaction.

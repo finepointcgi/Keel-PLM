@@ -1,0 +1,168 @@
+/* Keel design tokens (ADR-0028, docs/ux/design-system.md). Colour, spacing, radius, elevation, type, focus and density live here and nowhere else:
+   components use only var(--…). Three themes (light, dark, high-contrast) and "system", which follows prefers-color-scheme.
+   The server renders data-theme / data-density on <html> from the user's stored preference (no inline script, CSP-safe).
+   A unit test (ThemeContrastTests) reads this file and checks every text/background pair of every theme against WCAG 2.1 AA (4.5:1 text, 3:1 non-text):
+   keep the three theme blocks in the exact "--name: #rrggbb;" form it parses. The dark block appears twice (explicit and system); a test checks they are identical. */
+
+:root,
+:root[data-theme="light"],
+:root[data-theme="system"] {
+  color-scheme: light;
+  --c-bg: #f4f6f9;
+  --c-surface: #ffffff;
+  --c-surface-2: #eef1f5;
+  --c-text: #1a2028;
+  --c-muted: #4d5766;
+  --c-border: #cfd6df;
+  --c-border-strong: #7a8594;
+  --c-accent: #1d4ed8;
+  --c-on-accent: #ffffff;
+  --c-link: #1a47c2;
+  --c-focus: #1d4ed8;
+  --c-success: #0f6b3a;
+  --c-warning: #8a5300;
+  --c-danger: #b3261e;
+  --c-info: #0b5cad;
+  --c-success-bg: #e3f4ea;
+  --c-warning-bg: #fff1d6;
+  --c-danger-bg: #fde7e5;
+  --c-info-bg: #e3effc;
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.08);
+  --shadow-2: 0 8px 28px rgba(16, 24, 40, 0.22);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-bg: #101419;
+  --c-surface: #181d24;
+  --c-surface-2: #212831;
+  --c-text: #e8ecf1;
+  --c-muted: #a7b2c0;
+  --c-border: #323b46;
+  --c-border-strong: #6b7685;
+  --c-accent: #6f9bff;
+  --c-on-accent: #0a1020;
+  --c-link: #8db4ff;
+  --c-focus: #8db4ff;
+  --c-success: #5fd08f;
+  --c-warning: #f0b95a;
+  --c-danger: #ff8a80;
+  --c-info: #7cb8ff;
+  --c-success-bg: #12301f;
+  --c-warning-bg: #3a2a0c;
+  --c-danger-bg: #3d1614;
+  --c-info-bg: #12283f;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="high-contrast"]):not([data-theme="dark"]) {
+    color-scheme: dark;
+    --c-bg: #101419;
+    --c-surface: #181d24;
+    --c-surface-2: #212831;
+    --c-text: #e8ecf1;
+    --c-muted: #a7b2c0;
+    --c-border: #323b46;
+    --c-border-strong: #6b7685;
+    --c-accent: #6f9bff;
+    --c-on-accent: #0a1020;
+    --c-link: #8db4ff;
+    --c-focus: #8db4ff;
+    --c-success: #5fd08f;
+    --c-warning: #f0b95a;
+    --c-danger: #ff8a80;
+    --c-info: #7cb8ff;
+    --c-success-bg: #12301f;
+    --c-warning-bg: #3a2a0c;
+    --c-danger-bg: #3d1614;
+    --c-info-bg: #12283f;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme="high-contrast"] {
+  color-scheme: dark;
+  --c-bg: #000000;
+  --c-surface: #000000;
+  --c-surface-2: #0d0d0d;
+  --c-text: #ffffff;
+  --c-muted: #e0e0e0;
+  --c-border: #ffffff;
+  --c-border-strong: #ffffff;
+  --c-accent: #ffd60a;
+  --c-on-accent: #000000;
+  --c-link: #7fdbff;
+  --c-focus: #ffd60a;
+  --c-success: #5dff9a;
+  --c-warning: #ffd60a;
+  --c-danger: #ff9a94;
+  --c-info: #7fdbff;
+  --c-success-bg: #001a0a;
+  --c-warning-bg: #2a2200;
+  --c-danger-bg: #2a0806;
+  --c-info-bg: #001a29;
+  --shadow-1: none;
+  --shadow-2: 0 0 0 2px #ffffff;
+}
+
+/* Marking banner tones carry meaning (green = unclassified, purple = CUI): they are identical in every theme and are not themeable. */
+:root {
+  --banner-unclassified: #007a33;
+  --banner-cui: #502b85;
+  --banner-text: #ffffff;
+  --banner-h: 26px;
+}
+
+/* Everything below is theme-independent. */
+:root {
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.9375rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --lh: 1.45;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --radius-1: 4px;
+  --radius-2: 8px;
+  --radius-pill: 999px;
+
+  --target: 32px;          /* minimum height of an interactive control (WCAG 2.2 target size is 24 px) */
+  --row-pad-y: 8px;        /* table row padding: density */
+  --row-pad-x: 12px;
+  --rail-w: 236px;
+  --rail-w-collapsed: 56px;
+  --content-max: 1280px;
+  --focus-ring: 2px solid var(--c-focus);
+
+  /* Legacy names still used by bom.css and older components; they follow the active theme. */
+  --bg: var(--c-bg);
+  --surface: var(--c-surface);
+  --text: var(--c-text);
+  --muted: var(--c-muted);
+  --border: var(--c-border);
+  --accent: var(--c-accent);
+  --permit: var(--c-success);
+  --deny: var(--c-danger);
+}
+
+:root[data-density="compact"] {
+  --target: 28px;
+  --row-pad-y: 3px;
+  --row-pad-x: 8px;
+  --fs-md: 0.875rem;
+  --sp-4: 12px;
+}

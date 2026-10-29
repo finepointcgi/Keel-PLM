@@ -1,0 +1,31 @@
+@* The lifecycle of an object as a sequence of steps, from the data-defined lifecycle: the current state is highlighted (and exposed as aria-current="step"),
+   earlier states are marked done, a locked state shows that content cannot be edited in it, and the states the user can move to now are dashed. Order is the
+   lifecycle's own sort order. Purely presentational: moving between states is done by the page's actions, which the services authorize. *@
+<ol class="stepper" aria-label="@Label">
+    @foreach (var s in States.OrderBy(s => s.SortOrder))
+    {
+        var current = s.State == Current;
+        var done = !current && currentOrder is { } order && s.SortOrder < order;
+        var next = !current && Reachable?.Contains(s.State) == true;
+        <li class="@(current ? "current" : done ? "done" : next ? "next" : null)" data-state="@s.State" aria-current="@(current ? "step" : null)">
+            <span class="step">
+                @if (done) { <Icon Name="check" /> }
+                @if (s.IsLocked) { <Icon Name="lock" /> }
+                @s.Label
+                @if (current) { <span class="visually-hidden">(current state)</span> }
+                @if (s.IsLocked) { <span class="visually-hidden">(locked: content cannot be edited)</span> }
+                @if (next) { <span class="note">(next)</span> }
+            </span>
+        </li>
+    }
+</ol>
+
+@code {
+    private int? currentOrder => States.FirstOrDefault(s => s.State == Current)?.SortOrder;
+
+    [Parameter, EditorRequired] public required IReadOnlyList<LifecycleState> States { get; set; }
+    [Parameter, EditorRequired] public required string Current { get; set; }
+    /// <summary>States the current user can move to from the current state right now.</summary>
+    [Parameter] public IReadOnlySet<string>? Reachable { get; set; }
+    [Parameter] public string Label { get; set; } = "Lifecycle";
+}

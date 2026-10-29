@@ -53,7 +53,7 @@ public sealed partial class NumberingAdminService(AdminRunner run)
             var errors = new List<string>();
             if (!PrefixPattern().IsMatch(prefix)) errors.Add("The prefix must start with a capital letter or digit and use capitals, digits and . _ - (at most 16 characters).");
             if (width is < 4 or > 12) errors.Add("The width must be between 4 and 12 digits.");
-            if (prefix != current.Prefix && !current.PrefixEditable) errors.Add($"The {objectType} prefix is fixed: the database format check of the change tables requires '{current.Prefix}' (ADR-0019).");
+            if (prefix != current.Prefix && !current.PrefixEditable) errors.Add($"The {objectType} prefix is fixed: the database format check of the change tables requires '{current.Prefix}'.");
             if (current.NextValue.ToString(CultureInfo.InvariantCulture).Length > width) errors.Add($"The next value {current.NextValue} needs more than {width} digits.");
             if (errors.Count > 0) return Step<NumberingInfo>.Invalid(errors);
             var clash = await ExistsAsync(conn, tx, objectType, Format(prefix, width, current.NextValue), ct);
