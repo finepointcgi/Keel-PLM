@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\src\Keel.Workspace\Keel.Workspace.csproj" />
     <ProjectReference Include="..\..\src\Keel.Notifications\Keel.Notifications.csproj" />
     <ProjectReference Include="..\..\src\Keel.Sourcing\Keel.Sourcing.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Compliance\Keel.Compliance.csproj" />
     <ProjectReference Include="..\..\src\Keel.Web\Keel.Web.csproj" />
     <ProjectReference Include="..\..\src\Keel.Cad\Keel.Cad.csproj" />
     <ProjectReference Include="..\..\src\Keel.CadAgent\Keel.CadAgent.csproj" />
