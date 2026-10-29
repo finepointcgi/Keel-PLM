@@ -1,0 +1,138 @@
+@page "/output/bom"
+@inject CurrentUser Users
+@inject BomExchangeService Exchange
+@inject NavigationManager Nav
+
+@* Excel and CSV exchange of bills of materials: export of the resolved structure, and import of changes as a reviewable proposal (ADR-0044). *@
+<PageFrame Banner="UNCLASSIFIED" Title="Bill of materials in Excel" Crumbs="@Crumbs">
+    <p class="muted">Export the structure of a part or manufacturing BOM as a workbook or CSV, with the markings on the file and on every line. Import changes from the template: the file becomes a proposal you review first, and nothing changes until you apply it.</p>
+
+    <section class="panel stack" aria-labelledby="export-heading">
+        <h2 id="export-heading">Export</h2>
+        <form method="get" action="ui/output/bom-export" class="stack" data-testid="bom-export-form">
+            <fieldset class="grid-form">
+                <legend>Which structure</legend>
+                <label>Kind
+                    <select name="kind"><option value="ebom">Engineering BOM (a part)</option><option value="mbom">Manufacturing BOM (an MBOM number)</option></select>
+                </label>
+                <label>Number * <input name="number" maxlength="64" required /></label>
+                <label>Revisions
+                    <select name="spec"><option value="released">Latest released</option><option value="latest">Latest</option><option value="effectivity">As designed for one unit (needs a date)</option></select>
+                </label>
+                <label>Date for unit effectivity <input name="date" type="date" /></label>
+                <label>Variant (optional) <input name="variant" maxlength="80" /></label>
+                <label>Depth (optional) <input name="depth" type="number" min="1" max="10" /></label>
+                <label>Format
+                    <select name="format"><option value="xlsx">Excel workbook (.xlsx)</option><option value="csv">CSV</option></select>
+                </label>
+            </fieldset>
+            <div class="toolbar"><button type="submit">Download</button></div>
+        </form>
+    </section>
+
+    <section class="panel stack" aria-labelledby="import-heading">
+        <h2 id="import-heading">Import changes</h2>
+        <p><a href="ui/output/bom-template" download data-testid="bom-template">Download the template workbook</a></p>
+        <label>Workbook or CSV (up to 5 MB) <InputFile OnChange="Pick" accept=".xlsx,.csv" data-testid="bom-import-file" /></label>
+        @if (error is not null) { <ul class="error" role="alert" data-testid="bom-import-error">@foreach (var e in errors) { <li>@e</li> }</ul> }
+        <div class="toolbar"><button type="button" @onclick="Check" disabled="@(busy || file is null)" data-testid="bom-import-check">@(busy ? "Reading…" : "Check the file")</button></div>
+    </section>
+
+    @if (proposal is { } p)
+    {
+        <section class="panel stack" aria-labelledby="proposal-heading" data-testid="bom-proposal">
+            <h2 id="proposal-heading">Proposal @p.Number</h2>
+            <p>
+                <span class="badge" data-testid="bom-proposal-status">@Label(p.Status)</span>
+                @p.Summary.Rows row@(p.Summary.Rows == 1 ? "" : "s"): @p.Summary.Adds to add, @p.Summary.Updates to change, @p.Summary.Removes to remove.
+                @if (p.Summary.ErrorRows > 0) { <strong> @p.Summary.ErrorRows row@(p.Summary.ErrorRows == 1 ? " has" : "s have") errors.</strong> }
+            </p>
+            @foreach (var e in p.Errors) { <p class="error" role="alert">@e</p> }
+            @if (p.Result is not null) { <p class="muted">Result: @p.Result</p> }
+            <div class="table-wrap"><table class="data">
+                <caption class="sr-only">Rows of the proposal</caption>
+                <thead><tr><th scope="col">Row</th><th scope="col">Action</th><th scope="col">Parent</th><th scope="col">Child</th><th scope="col">Quantity</th><th scope="col">Find number</th><th scope="col">Problems</th></tr></thead>
+                <tbody>
+                @foreach (var r in p.Rows)
+                {
+                    <tr class="@(r.Errors.Count > 0 ? "row-error" : "")">
+                        <td>@r.Row</td><td>@r.Action</td><td>@r.Parent</td><td>@r.Child</td><td>@r.Quantity</td><td>@r.FindNumber</td>
+                        <td>@if (r.Errors.Count == 0) { <span class="muted">None</span> } else { <ul>@foreach (var x in r.Errors) { <li>@x</li> } </ul> }</td>
+                    </tr>
+                }
+                </tbody>
+            </table></div>
+            @if (applyError is not null) { <p class="error" role="alert">@applyError</p> }
+            @if (p.Status == "draft")
+            {
+                <div class="toolbar">
+                    <button type="button" @onclick="Apply" disabled="@(!p.CanApply || busy)" data-testid="bom-import-apply">Apply the changes</button>
+                    <button type="button" class="secondary" @onclick="Discard" disabled="@busy">Discard</button>
+                </div>
+                @if (!p.CanApply) { <p class="muted">Fix the workbook and check it again. A proposal with errors cannot be applied.</p> }
+            }
+        </section>
+    }
+
+    <h2>Your proposals</h2>
+    @if (recent is null || recent.Count == 0) { <p class="muted">No proposals yet.</p> }
+    else
+    {
+        <ul>@foreach (var r in recent) { <li><a href="output/bom?proposal=@r.Number">@r.Number</a> · @r.FileName · @Label(r.Status) · @UiText.Utc(r.CreatedAt)</li> }</ul>
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Bill of materials in Excel")];
+    [SupplyParameterFromQuery(Name = "proposal")] public string? ProposalNumber { get; set; }
+    private IBrowserFile? file;
+    private ImportProposal? proposal;
+    private IReadOnlyList<ImportProposal>? recent;
+    private IReadOnlyList<string> errors = [];
+    private string? error, applyError;
+    private bool busy;
+
+    private static string Label(string s) => s switch { "draft" => "Draft", "applied" => "Applied", "discarded" => "Discarded", _ => s };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var who = await Users.GetAsync();
+        if (ProposalNumber is { Length: > 0 } n && (await Exchange.GetProposalAsync(who, n)) is { IsOk: true } got) proposal = got.Value;
+        recent = await Exchange.ListProposalsAsync(who);
+    }
+
+    private void Pick(InputFileChangeEventArgs e) => file = e.File;
+
+    private async Task Check()
+    {
+        error = null; errors = []; applyError = null; busy = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await using (var s = file!.OpenReadStream(5 * 1024 * 1024)) await s.CopyToAsync(ms);
+            var r = await Exchange.CreateProposalAsync(await Users.GetAsync(), file.Name, ms.ToArray(), CurrentUser.NewCorrelationId());
+            if (r.IsOk) { proposal = r.Value; recent = await Exchange.ListProposalsAsync(await Users.GetAsync()); }
+            else { errors = r.Kind == OutcomeKind.Invalid ? r.Errors : [OutputText.Message(r)]; error = "x"; }
+        }
+        catch (IOException e) { errors = [e.Message]; error = "x"; }
+        finally { busy = false; }
+    }
+
+    private async Task Apply()
+    {
+        applyError = null; busy = true;
+        try
+        {
+            var r = await Exchange.ApplyAsync(await Users.GetAsync(), proposal!.Number, CurrentUser.NewCorrelationId());
+            if (r.Value is not null) proposal = r.Value;
+            if (!r.IsOk) applyError = OutputText.Message(r);
+        }
+        finally { busy = false; }
+    }
+
+    private async Task Discard()
+    {
+        var r = await Exchange.DiscardAsync(await Users.GetAsync(), proposal!.Number, CurrentUser.NewCorrelationId());
+        if (r.IsOk) proposal = r.Value; else applyError = OutputText.Message(r);
+    }
+}

@@ -34,6 +34,7 @@ public static class VaultReferences
         new("plm", "document_checkout_file", "sha256", "files of working copies not yet checked in"),
         new("src", "response_file", "sha256", "files a supplier uploaded with a response in the supplier portal (immutable rows)"),
         new("rec", "archive", "package_sha256", "WORM-style archive packages (8.6): immutable rows, never garbage"),
+        new("rpt", "artifact", "sha256", "generated release package PDFs (8.9): immutable rows, content addressed"),
     ];
 
     /// <summary>Hash columns that do not name vault objects, or name content without keeping it alive.</summary>

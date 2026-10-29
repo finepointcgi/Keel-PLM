@@ -158,6 +158,7 @@ builder.Services.AddSingleton<Keel.Web.Services.ComplianceRollupService>(); // 8
 builder.Services.AddKeelComplianceOpenApi();
 Keel.Requirements.RequirementsModule.AddKeelRequirements(builder.Services, builder.Configuration); // 8.3 requirements and traceability
 builder.Services.AddKeelRequirementsOpenApi();
+builder.Services.AddKeelReportsHost(); // 8.9 release packages, BOM exchange, mass change, report builder
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))
@@ -282,6 +283,7 @@ app.MapRecordsEndpoints(); // 8.6 records management
 app.MapQualityEndpoints(); // 8.1 quality records
 app.MapProductComplianceEndpoints(); // 8.5 substances, regulatory lists, declarations, roll-up and exports
 app.MapRequirementEndpoints(); // 8.3 requirements and traceability
+app.MapReportsEndpoints(); // 8.9 output and bulk work
 app.MapOpenApi("/openapi/{documentName}.json");
 if (demo) app.MapKeelDemo(); // 9.0 demo sign-in page; never mapped unless demo mode was proven above
 app.MapKeelUi<App>();

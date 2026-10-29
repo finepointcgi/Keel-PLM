@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Keel.Core\Keel.Core.csproj" />
+    <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
+    <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="PDFsharp" />
+    <!-- Overrides PDFsharp's vulnerable transitive 8.0.1 (see Directory.Packages.props). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Keel.UnitTests" />
+    <InternalsVisibleTo Include="Keel.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The same DejaVu Sans faces Keel.Documents embeds (Bitstream Vera license): the package PDF needs no system fonts. -->
+    <EmbeddedResource Include="..\Keel.Documents\Marking\Fonts\DejaVuSans.ttf" LogicalName="Keel.Documents.Fonts.DejaVuSans.ttf" />
+    <EmbeddedResource Include="..\Keel.Documents\Marking\Fonts\DejaVuSans-Bold.ttf" LogicalName="Keel.Documents.Fonts.DejaVuSans-Bold.ttf" />
+  </ItemGroup>
+</Project>

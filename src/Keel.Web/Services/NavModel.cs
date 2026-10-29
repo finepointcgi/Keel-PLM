@@ -26,6 +26,7 @@ public static class NavModel
             new("Change", [new("Changes", "changes", "change")]),
             new("Quality", [new("Nonconformance reports", "quality/ncrs", "ncr"), new("Corrective actions", "quality/capas", "capa"), new("Deviations and waivers", "quality/deviations", "deviation")]),
             new("Sourcing", [new("Suppliers", "suppliers", "folder"), new("Supplier requests", "requests", "inbox")]),
+            new("Output", [new("Reports", "output/reports", "audit"), new("Release packages", "output/packages", "document"), new("BOM in Excel", "output/bom", "document"), new("Mass change", "output/mass", "tasks")]),
         };
         // 8.6 records management: records managers, administrators and auditors (the pages and services check the role again)
         if (roles.Contains(Roles.RecordsManager) || admin || auditor)
