@@ -11,8 +11,10 @@ public static class ObjectKinds
     public const string Baseline = "baseline";
     public const string Mbom = "mbom";
     public const string Supplier = "supplier";
+    /// <summary>8.5 compliance: a substance of the substance master (found by search and the palette; not a pointer a user can favorite or watch).</summary>
+    public const string Substance = "substance";
 
-    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier];
+    public static readonly ImmutableArray<string> All = [Part, Document, Change, Baseline, Mbom, Supplier, Substance];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind);
 
@@ -25,6 +27,7 @@ public static class ObjectKinds
         Baseline => "baselines/" + Uri.EscapeDataString(number),
         Mbom => "mboms/" + Uri.EscapeDataString(number),
         Supplier => "suppliers/" + Uri.EscapeDataString(number),
+        Substance => "compliance/substances/" + Uri.EscapeDataString(number),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown object kind."),
     };
 
@@ -36,6 +39,7 @@ public static class ObjectKinds
         Baseline => "Baseline",
         Mbom => "Manufacturing BOM",
         Supplier => "Supplier",
+        Substance => "Substance",
         _ => kind,
     };
 }

@@ -41,9 +41,9 @@ public sealed class RegulatoryCatalogService(NpgsqlDataSource dataSource, IAudit
     private static SubstanceView ReadSubstance(NpgsqlDataReader r, int o = 0) =>
         new(r.GetGuid(o), r.GetString(o + 1), r.GetString(o + 2), r.GetString(o + 3), ComplianceStore.Str(r, o + 4), ComplianceStore.Str(r, o + 5), r.GetInt32(o + 6));
 
-    public async Task<Outcome<SubstancePage>> SearchSubstancesAsync(Subject subject, SubstanceSearch q, string? correlationId, CancellationToken ct = default)
+    public async Task<Outcome<SubstanceResults>> SearchSubstancesAsync(Subject subject, SubstanceSearch q, string? correlationId, CancellationToken ct = default)
     {
-        if (!CanRead(subject)) return await NeedRead<SubstancePage>(subject, "compliance.substance_search", "substance", null, correlationId, ct);
+        if (!CanRead(subject)) return await NeedRead<SubstanceResults>(subject, "compliance.substance_search", "substance", null, correlationId, ct);
         var where = new List<string>();
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         await using var cmd = new NpgsqlCommand { Connection = conn };
@@ -72,7 +72,7 @@ public sealed class RegulatoryCatalogService(NpgsqlDataSource dataSource, IAudit
             foreach (NpgsqlParameter p in cmd.Parameters) if (p.ParameterName is "like" or "mineral") count.Parameters.AddWithValue(p.ParameterName, p.Value!);
             total = (int)(long)(await count.ExecuteScalarAsync(ct))!;
         }
-        return Outcome<SubstancePage>.Ok(new SubstancePage(items, total));
+        return Outcome<SubstanceResults>.Ok(new SubstanceResults(items, total));
     }
 
     public async Task<Outcome<SubstanceDetail>> GetSubstanceAsync(Subject subject, string numberOrCas, string? correlationId, CancellationToken ct = default)

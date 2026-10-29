@@ -1,0 +1,199 @@
+@page "/compliance/lists/{Code}/versions/{Version:int}"
+@inject CurrentUser Users
+@inject RegulatoryCatalogService Catalog
+@inject NavigationManager Nav
+
+<PageFrame Banner="@UiText.Unclassified" Title="@Title" Crumbs="@Crumbs">
+    <ComplianceNav />
+    @if (notFound)
+    {
+        <p class="error" role="alert">This version does not exist.</p>
+    }
+    else if (detail is not null)
+    {
+        var v = detail.Version;
+        <p>
+            <span class="badge @ComplianceUi.VersionClass(v.Status)">@VersionStates.Label(v.Status)</span>
+            Effective from @ComplianceUi.Date(v.EffectiveFrom) · @ListKinds.Label(detail.Kind)@(v.PublishedAt is { } at ? $" · published {UiText.Utc(at)}" : "")
+            @if (!string.IsNullOrEmpty(v.SourceNote)) { <span class="muted"> · @v.SourceNote</span> }
+        </p>
+        @if (v.Status == VersionStates.Published || v.Status == VersionStates.Superseded)
+        {
+            <p class="muted small">A published version never changes. A different threshold is a new version with its own effective date.</p>
+        }
+
+        @if (detail.DiffToPrevious is { } diff)
+        {
+            <section class="panel" aria-labelledby="diff-heading">
+                <h2 id="diff-heading">Changes compared with the version before it</h2>
+                @if (diff.IsEmpty) { <p class="muted">No substance or threshold differs.</p> }
+                else
+                {
+                    <ul class="plain" aria-label="Changes">
+                        @foreach (var a in diff.Added) { <li><span class="badge state-approved">Added</span> @a</li> }
+                        @foreach (var r in diff.Removed) { <li><span class="badge state-obsolete">Removed</span> @r</li> }
+                        @foreach (var c in diff.Changed) { <li><span class="badge state-underreview">Changed</span> @c</li> }
+                    </ul>
+                }
+            </section>
+        }
+
+        <section class="panel" aria-labelledby="entries-heading">
+            <h2 id="entries-heading">Substances (@detail.Entries.Count)</h2>
+            <div class="table-wrap">
+                <table class="data">
+                    <caption class="visually-hidden">Substances of version @v.Version with their thresholds</caption>
+                    <thead><tr><th scope="col">CAS number</th><th scope="col">Substance</th><th scope="col">Threshold (mass percent)</th><th scope="col">Note</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in detail.Entries)
+                        {
+                            <tr>
+                                <th scope="row">@e.CasNumber</th>
+                                <td><a href="@ComplianceUi.SubstanceHref(e.SubstanceNumber)">@e.SubstanceName</a>@(e.Mineral is null ? "" : $" ({Minerals.Label(e.Mineral)})")</td>
+                                <td>@(e.ThresholdPct == 0 ? "Any amount" : ComplianceUi.Num(e.ThresholdPct) + " %")</td>
+                                <td>@e.Note</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        @if (detail.Kind != ListKinds.Conflict)
+        {
+            <section class="panel" aria-labelledby="exemptions-heading">
+                <h2 id="exemptions-heading">Exemptions (@detail.Exemptions.Count)</h2>
+                @if (detail.Exemptions.Count == 0) { <p class="muted">This version has no exemptions.</p> }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data">
+                            <caption class="visually-hidden">Exemptions of version @v.Version</caption>
+                            <thead><tr><th scope="col">Code</th><th scope="col">Description</th><th scope="col">Applies to</th><th scope="col">Expires</th></tr></thead>
+                            <tbody>
+                                @foreach (var x in detail.Exemptions)
+                                {
+                                    <tr><th scope="row">@x.Code</th><td>@x.Description</td><td>@(x.CasNumber ?? "Any substance of the list")</td><td>@(x.ExpiresOn is { } e ? ComplianceUi.Date(e) : "No end")</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        }
+
+        <Keel.Web.Components.Pages.Sourcing.SourcingReviewPanel ObjectType="reg_list_version" Key="@($"{Code}-{Version}")" Noun="list version"
+            CanSubmit="@(v.Status == VersionStates.Draft && v.Entries > 0)" SubmitHint="Publishing needs the signatures of the approvers you choose." OnChanged="Load" />
+
+        <AuthorizeView Roles="@Roles.Admin" Context="admin">
+            @if (v.Status == VersionStates.Draft)
+            {
+                <EditForm Model="this" OnSubmit="Save" FormName="edit-reg-version" class="panel stack">
+                    <h2>Edit the draft</h2>
+                    <p class="muted small">One substance per line: CAS number; threshold in mass percent (0 means any amount); optional note. Every CAS number must be in the substance master.</p>
+                    @if (error is not null) { <p class="error" role="alert">@error</p> }
+                    @if (saved) { <p role="status">The draft was saved.</p> }
+                    <div class="grid-form">
+                        <label>Effective from * <InputDate @bind-Value="effective" /></label>
+                        <label class="wide">Source <InputText @bind-Value="note" maxlength="500" /></label>
+                        <label class="wide">Substances <InputTextArea @bind-Value="entriesText" rows="12" /></label>
+                        @if (detail.Kind != ListKinds.Conflict)
+                        {
+                            <label class="wide">Exemptions (one per line: code; description; CAS number or empty; expiry date yyyy-MM-dd or empty) <InputTextArea @bind-Value="exemptionsText" rows="6" /></label>
+                        }
+                    </div>
+                    <div class="toolbar">
+                        <button type="submit" disabled="@busy">Save the draft</button>
+                        <button type="button" class="secondary" disabled="@busy" @onclick="Discard">Discard the draft</button>
+                    </div>
+                </EditForm>
+            }
+        </AuthorizeView>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+    [Parameter] public int Version { get; set; }
+    private RegVersionDetail? detail;
+    private bool notFound, busy, saved;
+    private string? error, note;
+    private string entriesText = "", exemptionsText = "";
+    private DateTime? effective;
+
+    private string Title => detail is null ? "List version" : $"{detail.ListName}, version {Version}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Compliance", "compliance"), new("Regulatory lists", "compliance/lists"), new(detail?.ListName ?? Code, ComplianceUi.ListHref(Code)), new($"Version {Version}")];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Catalog.GetVersionAsync(await Users.GetAsync(), Code, Version, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is null) return;
+        effective = detail.Version.EffectiveFrom.ToDateTime(TimeOnly.MinValue);
+        note = detail.Version.SourceNote;
+        entriesText = string.Join('\n', detail.Entries.Select(e => $"{e.CasNumber}; {ComplianceUi.Num(e.ThresholdPct)}{(string.IsNullOrEmpty(e.Note) ? "" : "; " + e.Note)}"));
+        exemptionsText = string.Join('\n', detail.Exemptions.Select(x => $"{x.Code}; {x.Description}; {x.CasNumber}; {ComplianceUi.Date(x.ExpiresOn)}"));
+    }
+
+    private static List<RegEntryInput>? ParseEntries(string text, out string? problem)
+    {
+        problem = null;
+        var list = new List<RegEntryInput>();
+        foreach (var raw in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var bits = raw.Split(';', 3, StringSplitOptions.TrimEntries);
+            if (bits.Length < 2 || !decimal.TryParse(bits[1], System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var threshold))
+            {
+                problem = $"'{raw}' is not a substance line. Write: CAS number; threshold; note.";
+                return null;
+            }
+            list.Add(new RegEntryInput(bits[0], threshold, bits.Length == 3 && bits[2].Length > 0 ? bits[2] : null));
+        }
+        return list;
+    }
+
+    private static List<RegExemptionInput>? ParseExemptions(string text, out string? problem)
+    {
+        problem = null;
+        var list = new List<RegExemptionInput>();
+        foreach (var raw in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var bits = raw.Split(';', 4, StringSplitOptions.TrimEntries);
+            DateOnly? expires = null;
+            if (bits.Length < 2 || (bits.Length == 4 && bits[3].Length > 0 && !DateOnly.TryParseExact(bits[3], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ))
+            {
+                problem = $"'{raw}' is not an exemption line. Write: code; description; CAS number; expiry date (yyyy-MM-dd).";
+                return null;
+            }
+            if (bits.Length == 4 && bits[3].Length > 0) expires = DateOnly.ParseExact(bits[3], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            list.Add(new RegExemptionInput(bits[0], bits[1], bits.Length >= 3 && bits[2].Length > 0 ? bits[2] : null, expires));
+        }
+        return list;
+    }
+
+    private async Task Save()
+    {
+        error = null; saved = false;
+        var entries = ParseEntries(entriesText, out var p1);
+        var exemptions = detail!.Kind == ListKinds.Conflict ? [] : ParseExemptions(exemptionsText, out p1);
+        if (entries is null || exemptions is null) { error = p1; return; }
+        busy = true;
+        var outcome = await Catalog.SaveDraftAsync(await Users.GetAsync(), Code, Version, DateOnly.FromDateTime(effective ?? DateTime.UtcNow.Date), note, entries, exemptions, detail.Version.Revision, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        saved = true;
+        await Load();
+    }
+
+    private async Task Discard()
+    {
+        busy = true; error = null;
+        var outcome = await Catalog.DiscardDraftAsync(await Users.GetAsync(), Code, Version, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        Nav.NavigateTo(ComplianceUi.ListHref(Code));
+    }
+}

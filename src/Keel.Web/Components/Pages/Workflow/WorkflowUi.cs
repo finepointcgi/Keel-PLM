@@ -60,8 +60,16 @@ public static class WorkflowText
         "baseline" => $"baselines/{Uri.EscapeDataString(key)}", // 2.1: baselines established by signatures
         "supplier" => $"suppliers/{Uri.EscapeDataString(key)}", // 8.2: supplier approval
         "source_entry" => $"sourcing/entries/{Uri.EscapeDataString(key)}", // 8.2: approved list entries
+        "reg_list_version" => TryListVersionHref(key), // 8.5: regulatory list versions (key is "{list code}-{version}")
         _ => null,
     };
+
+    private static string? TryListVersionHref(string key)
+    {
+        var dash = key.LastIndexOf('-');
+        return dash > 0 && int.TryParse(key.AsSpan(dash + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v)
+            ? $"compliance/lists/{Uri.EscapeDataString(key[..dash])}/versions/{v}" : null;
+    }
 
     public static string Utc(DateTimeOffset t) => t.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " UTC";
 }

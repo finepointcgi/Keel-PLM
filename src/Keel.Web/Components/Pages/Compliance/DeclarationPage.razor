@@ -1,0 +1,175 @@
+@page "/compliance/declarations/{Number}"
+@inject CurrentUser Users
+@inject DeclarationService Declarations
+
+<PageFrame Banner="@(detail?.PartBanner ?? UiText.Unclassified)" Title="@(detail is null ? "Declaration" : $"Declaration {detail.Summary.Number}")" Crumbs="@Crumbs">
+    <ComplianceNav />
+    @if (notFound)
+    {
+        <p class="error" role="alert">@UiText.Message(Outcome<bool>.NotFound())</p>
+    }
+    else if (detail is not null)
+    {
+        var s = detail.Summary;
+        <p>
+            <span class="badge @ComplianceUi.StatusClass(s.Status)">@s.StatusLabel</span>
+            <span class="muted">@ComplianceUi.Countdown(s)</span>
+        </p>
+        <dl class="facts">
+            <dt>Part</dt><dd><a href="@ComplianceUi.PartHref(s.PartNumber)">@s.PartNumber</a>@(s.RevisionScope is null ? " (every revision)" : $" (revision {s.RevisionScope})")</dd>
+            <dt>Source</dt><dd>@DeclarationSources.Label(s.Source)</dd>
+            @if (s.SupplierRef is not null) { <dt>Supplier</dt><dd><a href="@($"suppliers/{Uri.EscapeDataString(s.SupplierRef)}")">@s.SupplierRef</a></dd> }
+            @if (s.MpnRef is not null) { <dt>Manufacturer part</dt><dd>@s.MpnRef</dd> }
+            <dt>Declared on</dt><dd>@ComplianceUi.Date(s.DeclaredOn)</dd>
+            <dt>Valid until</dt><dd>@ComplianceUi.Date(s.ExpiresOn)</dd>
+            @if (detail.ItemMassMg is { } mass) { <dt>Mass of the item</dt><dd>@ComplianceUi.Num(mass) mg</dd> }
+            @if (detail.VerifiedAt is { } at) { <dt>Verified</dt><dd>@UiText.Utc(at) by @detail.VerifiedBy</dd> }
+            @if (!string.IsNullOrEmpty(detail.Note)) { <dt>Note</dt><dd>@detail.Note</dd> }
+            @if (!string.IsNullOrEmpty(detail.WithdrawnReason)) { <dt>Withdrawn because</dt><dd>@detail.WithdrawnReason</dd> }
+        </dl>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+        <section class="panel" aria-labelledby="eval-heading">
+            <h2 id="eval-heading">Against the regulations in force</h2>
+            <ul class="plain" aria-label="Result per regulation">
+                @foreach (var e in s.Evaluations)
+                {
+                    <li>
+                        @e.ListName, version @e.ListVersion: <span class="badge @ComplianceUi.ResultClass(e.Result)">@EvaluationResults.Label(e.Result)</span>
+                        <ul class="plain" aria-label="What was found for @e.ListName">
+                            @foreach (var f in detail.Findings.Where(f => f.ListCode == e.ListCode && f.Reason != FindingReasons.ConflictFree)) { <li class="muted small">@ComplianceUi.FindingText(f)</li> }
+                        </ul>
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section class="panel" aria-labelledby="composition-heading">
+            <h2 id="composition-heading">Composition</h2>
+            <div class="table-wrap">
+                <table class="data">
+                    <caption class="visually-hidden">Composition declared</caption>
+                    <thead><tr><th scope="col">Line</th><th scope="col">Substance or material</th><th scope="col">Amount</th><th scope="col">Exemption</th><th scope="col">Conflict-free</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in detail.Lines)
+                        {
+                            <tr>
+                                <th scope="row">@l.Ordinal</th>
+                                <td>@(l.SubstanceName is not null ? $"{l.SubstanceName} ({l.CasNumber})" : $"{l.MaterialName} ({l.MaterialCode})")</td>
+                                <td>@(l.Percent is { } p ? ComplianceUi.Num(p) + " %" : ComplianceUi.Num(l.MassMg ?? 0) + " mg")</td>
+                                <td>@l.ExemptionCode</td>
+                                <td>@(l.ConflictFree is null ? "" : l.ConflictFree.Value ? "Yes" : "No")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel" aria-labelledby="documents-heading">
+            <h2 id="documents-heading">Supporting documents</h2>
+            @if (detail.Documents.Count == 0) { <p class="muted">No document is linked.</p> }
+            else
+            {
+                <ul class="plain" aria-label="Linked documents">
+                    @foreach (var d in detail.Documents)
+                    {
+                        <li>
+                            @if (d.DocumentNumber is { } dn)
+                            {
+                                <a href="@($"documents/{Uri.EscapeDataString(dn)}")">@dn</a>
+                                @if (canModify) { <button type="button" class="link" aria-label="Remove the link to @dn" @onclick="() => Unlink(dn)">Remove</button> }
+                            }
+                            else { <span class="muted">A restricted document</span> }
+                        </li>
+                    }
+                </ul>
+            }
+            @if (canModify && s.Status != DeclarationStatuses.Withdrawn)
+            {
+                <form class="toolbar" @onsubmit="Link">
+                    <label>Document number <input @bind="documentNumber" placeholder="D-000001" /></label>
+                    <button type="submit" class="secondary" disabled="@busy">Link the document</button>
+                </form>
+            }
+        </section>
+
+        @if (canModify && s.Status != DeclarationStatuses.Withdrawn)
+        {
+            <section class="panel stack" aria-labelledby="actions-heading">
+                <h2 id="actions-heading">Actions</h2>
+                <div class="toolbar">
+                    @if (canVerify && detail.VerifiedAt is null && s.Status != DeclarationStatuses.Expired)
+                    {
+                        <button type="button" disabled="@busy" @onclick="Verify">Verify the declaration</button>
+                    }
+                    <button type="button" class="secondary" @onclick="() => editing = !editing">@(editing ? "Close the editor" : "Edit the declaration")</button>
+                </div>
+                <form class="toolbar" @onsubmit="Withdraw">
+                    <label class="grow">Reason for withdrawing <input @bind="withdrawReason" maxlength="500" /></label>
+                    <button type="submit" class="secondary" disabled="@busy">Withdraw the declaration</button>
+                </form>
+            </section>
+            @if (editing)
+            {
+                <DeclarationForm Existing="detail" OnSaved="Saved" />
+            }
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Number { get; set; } = "";
+    private DeclarationDetail? detail;
+    private bool notFound, busy, editing, canModify, canVerify;
+    private string? error;
+    private string documentNumber = "", withdrawReason = "";
+
+    private IReadOnlyList<Crumb> Crumbs => [new("Compliance", "compliance"), new("Declarations", "compliance/declarations"), new(Number)];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var outcome = await Declarations.GetAsync(subject, Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is null) return;
+        var view = await Declarations.GetForPartAsync(subject, detail.Summary.PartNumber, CurrentUser.NewCorrelationId());
+        (canModify, canVerify) = view.IsOk ? (view.Value!.CanModify, view.Value.CanVerify) : (false, false);
+    }
+
+    private async Task Run(Func<Subject, Task<Outcome<DeclarationDetail>>> action)
+    {
+        busy = true; error = null;
+        var outcome = await action(await Users.GetAsync());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await Load();
+    }
+
+    private Task Verify() => Run(s => Declarations.VerifyAsync(s, Number, CurrentUser.NewCorrelationId()));
+
+    private Task Withdraw() => Run(async s =>
+    {
+        var o = await Declarations.WithdrawAsync(s, Number, withdrawReason, CurrentUser.NewCorrelationId());
+        if (o.IsOk) withdrawReason = "";
+        return o;
+    });
+
+    private Task Link() => Run(async s =>
+    {
+        var o = await Declarations.LinkDocumentAsync(s, Number, documentNumber, CurrentUser.NewCorrelationId());
+        if (o.IsOk) documentNumber = "";
+        return o;
+    });
+
+    private Task Unlink(string document) => Run(s => Declarations.UnlinkDocumentAsync(s, Number, document, CurrentUser.NewCorrelationId()));
+
+    private async Task Saved(string number)
+    {
+        editing = false;
+        await Load();
+    }
+}

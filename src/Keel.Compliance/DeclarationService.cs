@@ -425,7 +425,7 @@ public sealed class DeclarationService(
             AccessPolicy.Evaluate(subject, part.Markings, PlmAction.Modify).Permitted, AccessPolicy.Evaluate(subject, part.Markings, PlmAction.Sign).Permitted));
     }
 
-    public async Task<Outcome<DeclarationPage>> SearchAsync(Subject subject, DeclarationSearch q, string? correlationId, CancellationToken ct = default)
+    public async Task<Outcome<DeclarationResults>> SearchAsync(Subject subject, DeclarationSearch q, string? correlationId, CancellationToken ct = default)
     {
         var filter = AccessPolicy.BuildReadFilter(subject, "m");
         var where = new List<string> { filter.Sql };
@@ -453,7 +453,7 @@ public sealed class DeclarationService(
         await using var tx = await conn.BeginTransactionAsync(ct);
         await audit.AppendAsync(tx, ComplianceStore.Entry(subject, "compliance.declaration_search", AuditOutcome.Success, "declaration", null, correlationId, ("results", items.Count.ToString(CultureInfo.InvariantCulture))), ct);
         await tx.CommitAsync(ct);
-        return Outcome<DeclarationPage>.Ok(new DeclarationPage(items, total, banner));
+        return Outcome<DeclarationResults>.Ok(new DeclarationResults(items, total, banner));
     }
 
     /// <summary>Counts for the dashboard: declarations by status and those expiring within 60 days, over the parts the caller may read. Nothing is counted for a part the caller cannot read.</summary>

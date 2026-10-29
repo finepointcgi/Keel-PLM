@@ -116,7 +116,7 @@ public static class Minerals
 public sealed record SubstanceView(Guid Id, string Number, string CasNumber, string Name, string? EcNumber, string? Mineral, int Revision);
 public sealed record SubstanceInput(string CasNumber, string Name, string? EcNumber = null, string? Mineral = null);
 public sealed record SubstanceSearch(string? Text = null, string? Mineral = null, int Limit = 50, int Offset = 0, SortSpec? Sort = null);
-public sealed record SubstancePage(IReadOnlyList<SubstanceView> Items, int Total);
+public sealed record SubstanceResults(IReadOnlyList<SubstanceView> Items, int Total);
 /// <summary>A substance on an active list version: its list, the version and the threshold.</summary>
 public sealed record SubstanceListUse(string ListCode, string ListName, int Version, decimal ThresholdPct);
 public sealed record SubstanceDetail(SubstanceView Substance, IReadOnlyList<SubstanceListUse> Lists, IReadOnlyList<string> Materials);
@@ -181,7 +181,7 @@ public sealed record DeclarationDetail(
     IReadOnlyList<DeclarationLineView> Lines, IReadOnlyList<DocumentLinkView> Documents, IReadOnlyList<FindingView> Findings, string PartBanner);
 
 public sealed record DeclarationSearch(string? PartNumber = null, string? Status = null, string? Source = null, string? SupplierRef = null, int Limit = 50, int Offset = 0, SortSpec? Sort = null);
-public sealed record DeclarationPage(IReadOnlyList<DeclarationSummary> Items, int Total, string PageBanner);
+public sealed record DeclarationResults(IReadOnlyList<DeclarationSummary> Items, int Total, string PageBanner);
 
 /// <summary>One thing an evaluation found: a substance line above its threshold, an exemption in use, or a conflict status that is not known.</summary>
 public sealed record FindingView(

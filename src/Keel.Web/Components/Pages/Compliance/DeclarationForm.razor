@@ -1,0 +1,126 @@
+@inject CurrentUser Users
+@inject DeclarationService Declarations
+
+@* Creates a declaration of a part, or edits one (a changed declaration has to be verified again). The composition is a list of lines: a substance by CAS number or a
+   material by code, an amount as mass percent or as mass in milligrams, an exemption code and, for conflict minerals, whether the mineral is conflict-free. *@
+<EditForm Model="this" OnSubmit="Save" FormName="@FormId" class="panel stack">
+    <h3>@(Existing is null ? "Add a declaration" : "Edit the declaration")</h3>
+    @if (Existing is not null) { <p class="muted small">Saving clears the verification: an approver has to verify the changed declaration again.</p> }
+    @if (errors.Count > 0)
+    {
+        <ul class="error" role="alert" aria-label="Problems with the declaration">@foreach (var e in errors) { <li>@e</li> }</ul>
+    }
+    <div class="grid-form">
+        <label>
+            Source
+            <InputSelect @bind-Value="source">
+                <option value="internal">Made by us</option>
+                <option value="supplier">Provided by a supplier</option>
+            </InputSelect>
+        </label>
+        <label>Supplier number @(source == "supplier" ? "*" : "") <InputText @bind-Value="supplierRef" maxlength="60" placeholder="SUP-000001" /></label>
+        <label>Manufacturer part number <InputText @bind-Value="mpnRef" maxlength="80" /></label>
+        <label>Only for revision <InputText @bind-Value="scope" maxlength="3" placeholder="all revisions" /></label>
+        <label>Declared on * <InputDate @bind-Value="declaredOn" /></label>
+        <label>Valid until * <InputDate @bind-Value="expiresOn" /></label>
+        <label>Mass of the item (mg), needed for amounts given as mass <InputNumber @bind-Value="itemMass" /></label>
+        <label class="wide">Note <InputText @bind-Value="note" maxlength="500" /></label>
+    </div>
+
+    <fieldset class="stack">
+        <legend>Composition</legend>
+        @for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            var n = i + 1;
+            <div class="grid-form">
+                <label>
+                    Line @n is a
+                    <InputSelect @bind-Value="line.Kind"><option value="substance">Substance</option><option value="material">Material</option></InputSelect>
+                </label>
+                <label>@(line.Kind == "substance" ? "CAS number" : "Material code") <InputText @bind-Value="line.Code" maxlength="40" /></label>
+                <label>Amount <InputNumber @bind-Value="line.Amount" /></label>
+                <label>
+                    Given as
+                    <InputSelect @bind-Value="line.Unit"><option value="percent">Mass percent</option><option value="mg">Milligrams</option></InputSelect>
+                </label>
+                <label>Exemption code <InputText @bind-Value="line.Exemption" maxlength="30" placeholder="7(a)" /></label>
+                <label>
+                    Conflict-free
+                    <InputSelect @bind-Value="line.Conflict"><option value="unknown">Not stated</option><option value="yes">Yes</option><option value="no">No</option></InputSelect>
+                </label>
+                <div class="toolbar"><button type="button" class="secondary" aria-label="Remove line @n" disabled="@(lines.Count == 1)" @onclick="() => lines.Remove(line)">Remove line</button></div>
+            </div>
+        }
+        <div class="toolbar"><button type="button" class="secondary" @onclick="AddLine">Add a line</button></div>
+    </fieldset>
+    <div class="toolbar"><button type="submit" disabled="@busy">@(Existing is null ? "Add the declaration" : "Save the declaration")</button></div>
+</EditForm>
+
+@code {
+    private sealed class LineEdit
+    {
+        public string Kind { get; set; } = "substance";
+        public string Code { get; set; } = "";
+        public decimal? Amount { get; set; }
+        public string Unit { get; set; } = "percent";
+        public string Exemption { get; set; } = "";
+        public string Conflict { get; set; } = "unknown";
+    }
+
+    /// <summary>The part a new declaration is for (create), or null when <see cref="Existing"/> is edited.</summary>
+    [Parameter] public string? PartNumber { get; set; }
+    [Parameter] public DeclarationDetail? Existing { get; set; }
+    /// <summary>The declaration number after a successful save.</summary>
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private string FormId => Existing is null ? "add-declaration" : "edit-declaration";
+    private readonly List<LineEdit> lines = [new()];
+    private List<string> errors = [];
+    private string source = "internal", supplierRef = "", mpnRef = "", scope = "", note = "";
+    private DateTime? declaredOn = DateTime.UtcNow.Date, expiresOn = DateTime.UtcNow.Date.AddYears(1);
+    private decimal? itemMass;
+    private bool busy, loaded;
+
+    protected override void OnParametersSet()
+    {
+        if (loaded || Existing is null) return;
+        loaded = true;
+        var d = Existing;
+        (source, supplierRef, mpnRef, scope, note) = (d.Summary.Source, d.Summary.SupplierRef ?? "", d.Summary.MpnRef ?? "", d.Summary.RevisionScope ?? "", d.Note ?? "");
+        declaredOn = d.Summary.DeclaredOn.ToDateTime(TimeOnly.MinValue);
+        expiresOn = d.Summary.ExpiresOn.ToDateTime(TimeOnly.MinValue);
+        itemMass = d.ItemMassMg;
+        lines.Clear();
+        foreach (var l in d.Lines)
+            lines.Add(new LineEdit
+            {
+                Kind = l.MaterialCode is not null ? "material" : "substance", Code = l.CasNumber ?? l.MaterialCode ?? "", Amount = l.Percent ?? l.MassMg, Unit = l.Percent is null ? "mg" : "percent",
+                Exemption = l.ExemptionCode ?? "", Conflict = l.ConflictFree is null ? "unknown" : l.ConflictFree.Value ? "yes" : "no",
+            });
+        if (lines.Count == 0) lines.Add(new());
+    }
+
+    private void AddLine() => lines.Add(new());
+
+    private async Task Save()
+    {
+        errors = [];
+        if (declaredOn is null || expiresOn is null) { errors.Add("Give the dates the declaration was made and is valid until."); return; }
+        var input = new DeclarationInput(
+            string.IsNullOrWhiteSpace(scope) ? null : scope, source, string.IsNullOrWhiteSpace(supplierRef) ? null : supplierRef, string.IsNullOrWhiteSpace(mpnRef) ? null : mpnRef, itemMass,
+            DateOnly.FromDateTime(declaredOn.Value), DateOnly.FromDateTime(expiresOn.Value),
+            [.. lines.Select(l => new DeclarationLineInput(
+                l.Kind == "substance" ? l.Code : null, l.Kind == "material" ? l.Code : null, l.Unit == "percent" ? l.Amount : null, l.Unit == "mg" ? l.Amount : null,
+                string.IsNullOrWhiteSpace(l.Exemption) ? null : l.Exemption, l.Conflict == "unknown" ? null : l.Conflict == "yes"))],
+            string.IsNullOrWhiteSpace(note) ? null : note);
+        busy = true;
+        var subject = await Users.GetAsync();
+        var outcome = Existing is null
+            ? await Declarations.CreateAsync(subject, new CreateDeclarationCommand(PartNumber!, input), CurrentUser.NewCorrelationId())
+            : await Declarations.UpdateAsync(subject, Existing.Summary.Number, input, Existing.Revision, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { errors = outcome.Kind == OutcomeKind.Invalid ? [.. outcome.Errors] : [UiText.Message(outcome)]; return; }
+        await OnSaved.InvokeAsync(outcome.Value!.Summary.Number);
+    }
+}

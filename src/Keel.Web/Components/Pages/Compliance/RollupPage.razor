@@ -1,0 +1,193 @@
+@page "/compliance"
+@inject CurrentUser Users
+@inject ComplianceRollupService Rollup
+@inject RegulatoryCatalogService Catalog
+
+<PageFrame Banner="@(report?.Banner ?? UiText.Unclassified)" Title="Compliance roll-up" Crumbs="@Crumbs">
+    <ComplianceNav />
+    <p class="muted">Whether an assembly meets each regulation, from the declarations of the parts in its structure. A part with no current declaration is a gap, never assumed compliant. Parts you may not read are not part of the result and are not counted.</p>
+    <form class="toolbar" role="search" @onsubmit="Run">
+        <label>
+            Bill of materials
+            <select @bind="mode">
+                <option value="ebom">Engineering BOM (part number)</option>
+                <option value="mbom">Manufacturing BOM (MBOM number)</option>
+            </select>
+        </label>
+        <label class="grow">Number <input @bind="number" placeholder="@(mode == "ebom" ? "P-000001" : "MB-000001")" /></label>
+        <label>As of <input type="date" @bind="asOf" /></label>
+        <button type="submit">Assess compliance</button>
+    </form>
+    @if (lists.Count > 0)
+    {
+        <details class="panel">
+            <summary>Choose list versions (the default is the version in force on the date)</summary>
+            <div class="grid-form">
+                @foreach (var l in lists)
+                {
+                    <label>
+                        @l.Name
+                        <select aria-label="Version of @l.Name" @bind="pins[l.Code]">
+                            <option value="0">In force on the date</option>
+                            @foreach (var v in l.Versions) { <option value="@v">Version @v</option> }
+                        </select>
+                    </label>
+                }
+            </div>
+        </details>
+    }
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (report is not null)
+    {
+        <section class="panel" aria-labelledby="rollup-summary">
+            <h2 id="rollup-summary">@report.Number · @report.Name</h2>
+            <p class="muted small">Assessed as of @ComplianceUi.Date(report.AsOf). @report.Lines.Count(l => l.Required) purchased part@(report.Lines.Count(l => l.Required) == 1 ? "" : "s") in the structure you can read.</p>
+            @if (report.Summaries.Count == 0) { <p class="muted">No regulatory list is in force.</p> }
+            <div class="cards">
+                @foreach (var s in report.Summaries)
+                {
+                    <section class="card" aria-label="@s.Name">
+                        <h3>@s.Name <span class="muted small">version @s.Version</span></h3>
+                        <p><span class="badge @ComplianceUi.AssemblyClass(s.Standing)">@s.StandingLabel</span></p>
+                        <ul class="plain" aria-label="Counts for @s.Name">
+                            <li>@s.Compliant compliant</li>
+                            <li>@s.Exempt compliant using an exemption</li>
+                            <li>@s.NonCompliant non-compliant</li>
+                            <li>@(s.Gaps + s.Expired) without a current declaration</li>
+                            @if (s.Unverified > 0) { <li>@s.Unverified with conflict status unknown</li> }
+                        </ul>
+                        <p class="small"><button type="button" class="link" @onclick="() => ShowCauses(s.Code)">Which parts cause this</button></p>
+                    </section>
+                }
+            </div>
+            <p class="small">
+                Export:
+                <a href="@ComplianceUi.ExportHref(report.Mode, report.Number, "cmrt")" download>Conflict minerals (CSV)</a> ·
+                <a href="@ComplianceUi.ExportHref(report.Mode, report.Number, "ipc1752")" download>Material declaration (XML)</a>
+            </p>
+        </section>
+
+        @if (report.Summaries.FirstOrDefault(s => s.Code == causeCode) is { } c)
+        {
+            <section class="panel" aria-labelledby="causes-heading">
+                <h2 id="causes-heading">Why @c.Name reads @c.StandingLabel.ToLowerInvariant()</h2>
+                @if (c.Causes.Count == 0) { <p class="muted">Every purchased part has a current declaration that meets this regulation.</p> }
+                else
+                {
+                    <ul class="plain" aria-label="Parts that cause the result">
+                        @foreach (var cause in c.Causes)
+                        {
+                            <li>
+                                <a href="@ComplianceUi.PartHref(cause.Number)">@cause.Number</a> @cause.Name (line @(cause.Path))
+                                <span class="badge @ComplianceUi.StandingClass(cause.Standing)">@cause.StandingLabel</span>
+                                <ul class="plain" aria-label="What was found for @cause.Number">
+                                    @foreach (var f in cause.Findings) { <li class="muted small">@ComplianceUi.FindingText(f) <a href="@ComplianceUi.DeclarationHref(f.DeclarationNumber)">@f.DeclarationNumber</a></li> }
+                                </ul>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
+
+        <section class="panel stack" aria-labelledby="structure-heading">
+            <h2 id="structure-heading">Structure</h2>
+            <div class="toolbar">
+                <ViewSwitch Label="Structure view" Options="views" Value="@view" ValueChanged="v => view = v" />
+                @if (view == "table")
+                {
+                    <label class="inline"><input type="checkbox" @bind="problemsOnly" /> Only parts that need attention</label>
+                }
+            </div>
+            @if (view == "map")
+            {
+                <ComplianceTreemapView Report="report" Regulation="@causeCode" />
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <caption class="visually-hidden">Parts of the structure and their standing for each regulation</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Line</th><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Quantity</th><th scope="col">Declarations</th>
+                                @foreach (var r in report.Regulations) { <th scope="col">@r.Name</th> }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in Rows)
+                            {
+                                <tr>
+                                    <td>@(l.Path.Length == 0 ? "Top" : l.Path)</td>
+                                    <th scope="row"><a href="@ComplianceUi.PartHref(l.Number)">@l.Number</a></th>
+                                    <td>@l.Name</td>
+                                    <td>@ComplianceUi.Num(l.Quantity) @l.Unit</td>
+                                    <td>@foreach (var d in l.Declarations) { <a href="@ComplianceUi.DeclarationHref(d)">@d</a>@(" ") }</td>
+                                    @foreach (var r in report.Regulations)
+                                    {
+                                        var st = l.Standings[r.Code];
+                                        <td><span class="badge @ComplianceUi.StandingClass(st.Standing)">@Standings.Label(st.Standing)</span></td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</PageFrame>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mode")] public string? ModeParam { get; set; }
+    [SupplyParameterFromQuery(Name = "number")] public string? NumberParam { get; set; }
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Compliance")];
+    private static readonly IReadOnlyList<ViewOption> views = [new("table", "Table"), new("map", "Treemap")];
+    private sealed record ListChoice(string Code, string Name, IReadOnlyList<int> Versions);
+
+    private string mode = "ebom", number = "", view = "table", causeCode = "";
+    private DateTime? asOf;
+    private bool problemsOnly;
+    private string? error;
+    private ComplianceReport? report;
+    private List<ListChoice> lists = [];
+    private readonly Dictionary<string, int> pins = new(StringComparer.Ordinal);
+    private string? lastQuery;
+
+    private IEnumerable<ReportLine> Rows => report!.Lines.Where(l => !problemsOnly || (l.Required && l.Standings.Values.Any(s => s.Standing is not (Standings.Compliant or Standings.Exempt))));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var subject = await Users.GetAsync();
+        var all = await Catalog.ListsAsync(subject, null);
+        if (!all.IsOk) return;
+        foreach (var l in all.Value!.Where(l => l.Active))
+        {
+            var detail = await Catalog.GetListAsync(subject, l.Code, null);
+            lists.Add(new ListChoice(l.Code, l.Name, detail.IsOk ? [.. detail.Value!.Versions.Where(v => v.Status is VersionStates.Published or VersionStates.Superseded).Select(v => v.Version).Order()] : []));
+            pins[l.Code] = 0;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NumberParam)) return;
+        var q = $"{ModeParam}|{NumberParam}";
+        if (q == lastQuery) return;
+        lastQuery = q;
+        (mode, number) = (ModeParam is "mbom" ? "mbom" : "ebom", NumberParam);
+        await Run();
+    }
+
+    private async Task Run()
+    {
+        error = null;
+        var chosen = pins.Where(p => p.Value > 0).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+        var outcome = await Rollup.ReportAsync(await Users.GetAsync(), mode, number, chosen.Count == 0 ? null : chosen, asOf is null ? null : DateOnly.FromDateTime(asOf.Value), CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { error = UiText.Message(outcome); report = null; return; }
+        report = outcome.Value;
+        if (report!.Summaries.All(s => s.Code != causeCode)) causeCode = report.Summaries.OrderBy(s => s.Standing == Standings.AssemblyNonCompliant ? 0 : s.Standing == Standings.AssemblyIncomplete ? 1 : 2).FirstOrDefault()?.Code ?? "";
+    }
+
+    private void ShowCauses(string code) => causeCode = code;
+}

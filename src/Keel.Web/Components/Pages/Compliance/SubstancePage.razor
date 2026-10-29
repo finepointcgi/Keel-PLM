@@ -1,0 +1,83 @@
+@page "/compliance/substances/{Number}"
+@inject CurrentUser Users
+@inject RegulatoryCatalogService Catalog
+
+<PageFrame Banner="@UiText.Unclassified" Title="@(detail is null ? "Substance" : $"{detail.Substance.Number} · {detail.Substance.Name}")" Crumbs="@Crumbs">
+    <ComplianceNav />
+    @if (notFound)
+    {
+        <p class="error" role="alert">This substance does not exist.</p>
+    }
+    else if (detail is not null)
+    {
+        var s = detail.Substance;
+        <dl class="facts">
+            <dt>CAS number</dt><dd>@s.CasNumber</dd>
+            @if (s.EcNumber is not null) { <dt>EC number</dt><dd>@s.EcNumber</dd> }
+            @if (s.Mineral is not null) { <dt>Conflict mineral</dt><dd>@Minerals.Label(s.Mineral)</dd> }
+        </dl>
+        <section class="panel" aria-labelledby="lists-heading">
+            <h2 id="lists-heading">On the regulatory lists in force</h2>
+            @if (detail.Lists.Count == 0) { <p class="muted">No list in force names this substance.</p> }
+            else
+            {
+                <ul class="plain" aria-label="Lists naming this substance">
+                    @foreach (var l in detail.Lists)
+                    {
+                        <li><a href="@ComplianceUi.VersionHref(l.ListCode, l.Version)">@l.ListName, version @l.Version</a>: @(l.ThresholdPct == 0 ? "any amount" : "above " + ComplianceUi.Num(l.ThresholdPct) + " % by mass")</li>
+                    }
+                </ul>
+            }
+        </section>
+        <section class="panel" aria-labelledby="materials-heading">
+            <h2 id="materials-heading">In materials</h2>
+            @if (detail.Materials.Count == 0) { <p class="muted">No material contains this substance.</p> }
+            else { <p>@string.Join(", ", detail.Materials)</p> }
+        </section>
+        <AuthorizeView Roles="@Roles.Admin" Context="admin">
+            <EditForm Model="this" OnSubmit="Save" FormName="edit-substance" class="panel stack">
+                <h2>Edit the substance</h2>
+                @if (error is not null) { <p class="error" role="alert">@error</p> }
+                <div class="grid-form">
+                    <label>CAS number * <InputText @bind-Value="cas" maxlength="12" required /></label>
+                    <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+                    <label>EC number <InputText @bind-Value="ec" maxlength="9" /></label>
+                    <label>
+                        Conflict mineral
+                        <InputSelect @bind-Value="mineral"><option value="">None</option>@foreach (var m in Minerals.All) { <option value="@m">@Minerals.Label(m)</option> }</InputSelect>
+                    </label>
+                </div>
+                <div class="toolbar"><button type="submit" disabled="@busy">Save</button></div>
+            </EditForm>
+        </AuthorizeView>
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public string Number { get; set; } = "";
+    private SubstanceDetail? detail;
+    private bool notFound, busy;
+    private string? error;
+    private string cas = "", name = "", ec = "", mineral = "";
+    private IReadOnlyList<Crumb> Crumbs => [new("Compliance", "compliance"), new("Substances", "compliance/substances"), new(detail?.Substance.Number ?? Number)];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Catalog.GetSubstanceAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        if (detail is null) return;
+        (cas, name, ec, mineral) = (detail.Substance.CasNumber, detail.Substance.Name, detail.Substance.EcNumber ?? "", detail.Substance.Mineral ?? "");
+    }
+
+    private async Task Save()
+    {
+        busy = true; error = null;
+        var outcome = await Catalog.UpdateSubstanceAsync(await Users.GetAsync(), detail!.Substance.Number, new SubstanceInput(cas, name, string.IsNullOrWhiteSpace(ec) ? null : ec, mineral == "" ? null : mineral), detail.Substance.Revision, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        await Load();
+    }
+}

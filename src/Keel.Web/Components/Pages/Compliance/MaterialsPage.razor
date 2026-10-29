@@ -1,0 +1,114 @@
+@page "/compliance/materials"
+@inject CurrentUser Users
+@inject RegulatoryCatalogService Catalog
+
+<PageFrame Banner="@UiText.Unclassified" Title="Materials" Crumbs="@Crumbs">
+    <ComplianceNav />
+    <p class="muted">Materials are data: each has a typical composition by substance. A declaration can name a material instead of listing its substances, and the substances are worked out from the composition here.</p>
+    <form class="toolbar" role="search" @onsubmit="Load">
+        <input aria-label="Search materials" placeholder="Code or name" class="grow" @bind="text" />
+        <button type="submit">Search</button>
+    </form>
+    @if (materials is not null)
+    {
+        @if (materials.Count == 0)
+        {
+            <EmptyState Title="No materials" IconName="folder">An administrator adds the materials that declarations can name.</EmptyState>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <caption class="visually-hidden">Materials and their composition</caption>
+                    <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Composition</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var m in materials)
+                        {
+                            <tr>
+                                <th scope="row">@m.Code</th>
+                                <td>@m.Name</td>
+                                <td>@(m.Composition.Count == 0 ? "No substances listed" : string.Join(", ", m.Composition.Select(c => $"{c.SubstanceName} {ComplianceUi.Num(c.FractionPct)} %")))</td>
+                                <td>@(m.Active ? "Active" : "Retired")</td>
+                                <td><AuthorizeView Roles="@Roles.Admin" Context="admin"><button type="button" class="link" aria-label="Edit @m.Code" @onclick="() => Edit(m)">Edit</button></AuthorizeView></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+    <AuthorizeView Roles="@Roles.Admin" Context="admin">
+        <EditForm Model="this" OnSubmit="SaveMaterial" FormName="save-material" class="panel stack">
+            <h2>@(editing is null ? "Add a material" : $"Edit {editing.Code}")</h2>
+            <p class="muted small">Composition: one substance per line, CAS number; share in mass percent. The shares may add up to less than 100 percent (the rest is not specified).</p>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <div class="grid-form">
+                <label>Code * <InputText @bind-Value="code" maxlength="40" placeholder="AL6061-T6" required disabled="@(editing is not null)" /></label>
+                <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+                <label class="wide">Description <InputText @bind-Value="description" maxlength="1000" /></label>
+                <label class="wide">Composition <InputTextArea @bind-Value="compositionText" rows="5" /></label>
+                <label class="inline"><InputCheckbox @bind-Value="active" /> Active (can be named in declarations)</label>
+            </div>
+            <div class="toolbar">
+                <button type="submit" disabled="@busy">Save the material</button>
+                @if (editing is not null) { <button type="button" class="secondary" @onclick="Cancel">Cancel</button> }
+            </div>
+        </EditForm>
+    </AuthorizeView>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Compliance", "compliance"), new("Materials")];
+    private IReadOnlyList<MaterialView>? materials;
+    private MaterialView? editing;
+    private string text = "", code = "", name = "", description = "", compositionText = "";
+    private bool active = true, busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Catalog.ListMaterialsAsync(await Users.GetAsync(), text, CurrentUser.NewCorrelationId());
+        materials = outcome.Value ?? [];
+    }
+
+    private void Edit(MaterialView m)
+    {
+        editing = m;
+        (code, name, description, active) = (m.Code, m.Name, m.Description ?? "", m.Active);
+        compositionText = string.Join('\n', m.Composition.Select(c => $"{c.CasNumber}; {ComplianceUi.Num(c.FractionPct)}"));
+    }
+
+    private void Cancel()
+    {
+        editing = null;
+        (code, name, description, compositionText, active) = ("", "", "", "", true);
+    }
+
+    private async Task SaveMaterial()
+    {
+        error = null;
+        var composition = new List<MaterialComponentInput>();
+        foreach (var raw in compositionText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var bits = raw.Split(';', 2, StringSplitOptions.TrimEntries);
+            if (bits.Length != 2 || !decimal.TryParse(bits[1], System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var pct))
+            {
+                error = $"'{raw}' is not a composition line. Write: CAS number; percent.";
+                return;
+            }
+            composition.Add(new MaterialComponentInput(bits[0], pct));
+        }
+        busy = true;
+        var input = new MaterialInput(code, name, string.IsNullOrWhiteSpace(description) ? null : description, composition, active);
+        var subject = await Users.GetAsync();
+        var outcome = editing is null
+            ? await Catalog.CreateMaterialAsync(subject, input, CurrentUser.NewCorrelationId())
+            : await Catalog.UpdateMaterialAsync(subject, editing.Code, input, editing.Revision, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        Cancel();
+        await Load();
+    }
+}
