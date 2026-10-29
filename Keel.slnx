@@ -14,6 +14,7 @@
     <Project Path="src/Keel.Notifications/Keel.Notifications.csproj" />
     <Project Path="src/Keel.Parts/Keel.Parts.csproj" />
     <Project Path="src/Keel.Security/Keel.Security.csproj" />
+    <Project Path="src/Keel.SbomTool/Keel.SbomTool.csproj" />
     <Project Path="src/Keel.VaultTool/Keel.VaultTool.csproj" />
     <Project Path="src/Keel.Seed/Keel.Seed.csproj" />
     <Project Path="src/Keel.Siem/Keel.Siem.csproj" />

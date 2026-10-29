@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Verifies an offline bundle end to end without a network and without starting Keel:
 #   - the bundle verifies, and every kind of tampering is detected before anything would be loaded or run,
+#   - the licence and source part is complete: corresponding source archives of every LGPL/GPL component (occt-import-js and OpenCascade) with their
+#     SHA-256, a CycloneDX SBOM, THIRD-PARTY-NOTICES.md with the written offer and the legal review recorded as pending, licence texts; and each way of
+#     breaking that (missing, altered or unlisted archive, edited manifest or SBOM, missing notices) is refused,
 #   - install.sh --no-start prepares a compose installation (images loaded, secrets, .env, validated compose config),
 #   - install.sh and upgrade.sh refuse unsafe invocations (missing certificates, no backup confirmation, downgrade).
 #
@@ -60,6 +63,52 @@ mv "$B/SHA256SUMS.sig" "$WORK/sig.saved"
 check "a missing signature is refused"                   fail "$B/verify.sh"
 mv "$WORK/sig.saved" "$B/SHA256SUMS.sig"
 check "bundle verifies again after restoring"            pass "$B/verify.sh"
+
+# --- licences and corresponding source (ADR-0033): the keel-sbom checker runs on the extracted bundle ---
+SBOMTOOL=$WORK/keel-sbom-tool
+dotnet build src/Keel.SbomTool -c Release -o "$SBOMTOOL" --nologo -v q >/dev/null 2>&1 || { echo "cannot build src/Keel.SbomTool (dotnet is required for the licence checks)" >&2; exit 2; }
+licence() { dotnet "$SBOMTOOL/keel-sbom.dll" verify --bundle "$B"; }
+check "BUILD-INFO records the licence and source part"    pass grep -q '^compliance sources/' "$B/BUILD-INFO"
+check "BUILD-INFO records the legal review as pending"    pass grep -q '^legal-review pending' "$B/BUILD-INFO"
+check "licence and source checks pass"                    pass licence
+check "an LGPL source archive is present (occt-import-js)" pass test -s "$B/sources/occt-import-js-0.0.23.tar.gz"
+check "the OpenCascade source archive is present"         pass test -s "$B/sources/occt-d2abb6d8.tar.gz"
+check "the notices claim no counsel sign-off"             fail grep -qiE 'approved by counsel|legal sign-off (obtained|granted)|legally approved' "$B/THIRD-PARTY-NOTICES.md"
+SRC=$B/sources/occt-import-js-0.0.23.tar.gz
+cp "$SRC" "$WORK/saved"; printf 'x' >> "$SRC"
+check "a modified source archive is refused (licence check)" fail licence
+check "a modified source archive is refused (bundle signature)" fail "$B/verify.sh"
+cp "$WORK/saved" "$SRC"
+mv "$SRC" "$WORK/archive.saved"
+check "a missing source archive is refused"               fail licence
+mv "$WORK/archive.saved" "$SRC"
+echo extra > "$B/sources/extra-source.tar.gz"
+check "an unlisted file in sources/ is refused"           fail licence
+rm "$B/sources/extra-source.tar.gz"
+cp "$B/sources/SOURCES.txt" "$WORK/saved"; sed '/occt-d2abb6d8/s/^./0/' "$B/sources/SOURCES.txt" > "$WORK/edited" && cp "$WORK/edited" "$B/sources/SOURCES.txt"
+check "an edited source manifest is refused"              fail licence
+sed 's/^os-sources: .*/os-sources: INCLUDED (3 files under sources\/os\/)/' "$WORK/saved" > "$B/sources/SOURCES.txt"
+check "a claim of OS package sources without them is refused" fail licence
+grep -v '^os-sources:' "$WORK/saved" > "$B/sources/SOURCES.txt"
+check "a manifest that does not state the OS sources is refused" fail licence
+cp "$WORK/saved" "$B/sources/SOURCES.txt"
+cp "$B/sbom/keel-plm.cdx.json" "$WORK/saved"; sed 's/"source-distribution"/"other"/' "$WORK/saved" > "$B/sbom/keel-plm.cdx.json"
+check "an SBOM without the source references is refused"  fail licence
+printf '{ not json' > "$B/sbom/keel-plm.cdx.json"
+check "a damaged SBOM is refused"                         fail licence
+cp "$WORK/saved" "$B/sbom/keel-plm.cdx.json"
+cp "$B/THIRD-PARTY-NOTICES.md" "$WORK/saved"; sed 's/Written offer/Statement/' "$WORK/saved" > "$B/THIRD-PARTY-NOTICES.md"
+check "notices without the written offer are refused"     fail licence
+sed 's/pending/done/g' "$WORK/saved" > "$B/THIRD-PARTY-NOTICES.md"
+check "notices that do not record the review as pending are refused" fail licence
+rm "$B/THIRD-PARTY-NOTICES.md"
+check "missing notices are refused"                       fail licence
+cp "$WORK/saved" "$B/THIRD-PARTY-NOTICES.md"
+mv "$B/licenses/opencascade-LGPL-2.1.txt" "$WORK/license.saved"
+check "a missing licence text is refused"                 fail licence
+mv "$WORK/license.saved" "$B/licenses/opencascade-LGPL-2.1.txt"
+check "licence and source checks pass after restoring"    pass licence
+check "bundle verifies after the licence checks"          pass "$B/verify.sh"
 
 # --- install preparation (no network, nothing started) ---
 printf 'synthetic-oidc-secret' > "$WORK/oidc.secret"

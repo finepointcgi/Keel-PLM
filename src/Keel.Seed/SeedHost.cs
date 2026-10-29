@@ -93,6 +93,7 @@ public sealed class SeedHost : IAsyncDisposable
         services.AddSingleton<DocumentService>();
         BomModule.AddKeelBom(services);
         services.AddSingleton<IWorkflowObjectGateway, PartWorkflowGateway>();
+        services.AddSingleton<IWorkflowObjectGateway, DocumentWorkflowGateway>();
         services.AddSingleton<IChangeObjectGateway, PartChangeGateway>();
         services.AddSingleton<ILinkedDocumentProvider, LinkedDocumentProvider>();
         ChangeModule.AddKeelChange(services);

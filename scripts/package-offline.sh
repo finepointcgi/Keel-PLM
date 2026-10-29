@@ -3,11 +3,17 @@
 # Runs on a connected build machine; the result is carried into the air gap. Nothing here is needed on the target.
 #
 #   scripts/package-offline.sh [--version 1.7.0] [--image REF] [--out DIR] [--pull] [--no-sbom] [--no-third-party]
+#                              [--sources-cache DIR] [--os-sources-dir DIR] [--no-compliance]
 #
 #   --image REF         package an image that already exists locally instead of building the Dockerfile (used by CI that builds
 #                       elsewhere, and for bundle verification on machines that cannot build the UBI image)
 #   --pull              pull missing third-party images (otherwise they must already be present locally)
 #   --no-third-party    leave out postgres/vault/proxy archives (sites that bring their own)
+#   --sources-cache DIR   cache of the LGPL source archives (default ~/.keel-release-sources); missing archives are fetched once and verified by SHA-256
+#   --os-sources-dir DIR  source archives of the operating system packages of the images, shipped under sources/os/ (without it the bundle records
+#                         that they are NOT included)
+#   --no-compliance     leave out sources/, the keel-plm SBOM and THIRD-PARTY-NOTICES.md. Such a bundle is incomplete: BUILD-INFO says so and
+#                       scripts/verify-offline.sh fails it. For local trials only.
 #
 # Signing: an ECDSA P-256 key pair is generated PER RELEASE under $KEEL_SIGNING_DIR (default ~/.keel-release-signing/<version>)
 # unless KEEL_SIGNING_KEY points at an existing private key. The public key ships in the bundle; announce its fingerprint
@@ -16,7 +22,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION=1.7.0 IMAGE="" OUT=deploy/offline/out PULL=false SBOM=true THIRD_PARTY=true
+VERSION=1.7.0 IMAGE="" OUT=deploy/offline/out PULL=false SBOM=true THIRD_PARTY=true COMPLIANCE=true SOURCES_CACHE="" OS_SOURCES=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --version) VERSION=$2; shift 2 ;;
@@ -25,7 +31,10 @@ while [[ $# -gt 0 ]]; do
     --pull) PULL=true; shift ;;
     --no-sbom) SBOM=false; shift ;;
     --no-third-party) THIRD_PARTY=false; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    --sources-cache) SOURCES_CACHE=$2; shift 2 ;;
+    --os-sources-dir) OS_SOURCES=$2; shift 2 ;;
+    --no-compliance) COMPLIANCE=false; shift ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -119,6 +128,17 @@ if $SBOM; then
   fi
 fi
 
+# 5b. licences and corresponding source of the copyleft components, SBOM of everything delivered, notices -------------------------------
+COMPLIANCE_NOTES="NOT included (built with --no-compliance): no sources/, no keel-plm SBOM, no THIRD-PARTY-NOTICES.md"
+if $COMPLIANCE; then
+  log "adding sources, the keel-plm SBOM and THIRD-PARTY-NOTICES.md"
+  comp=(--stage "$STAGE" --version "$VERSION")
+  [[ -n "$SOURCES_CACHE" ]] && comp+=(--sources-cache "$SOURCES_CACHE")
+  [[ -n "$OS_SOURCES" ]] && comp+=(--os-sources-dir "$OS_SOURCES")
+  scripts/offline-compliance.sh "${comp[@]}"
+  COMPLIANCE_NOTES="sources/ (LGPL archives verified against pins), sbom/keel-plm.cdx.json, THIRD-PARTY-NOTICES.md, licenses/; $(grep '^os-sources:' "$STAGE/sources/SOURCES.txt" | cut -c1-60)"
+fi
+
 # 6. scripts, version, build info -----------------------------------------------------------------------------------------
 cp deploy/offline/{lib.sh,verify.sh,install.sh,upgrade.sh} "$STAGE/"
 chmod +x "$STAGE"/*.sh "$STAGE"/compose/prod-example/*.sh "$STAGE"/compose/prod-example/initdb/*.sh
@@ -129,6 +149,8 @@ echo "$VERSION" > "$STAGE/VERSION"
   echo "built-at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "app-image $APP_REF $(docker image inspect "$APP_REF" --format '{{.Id}}')"
   echo "sbom $SBOM_NOTES"
+  echo "compliance $COMPLIANCE_NOTES"
+  echo "legal-review pending (docs/third-party/legal-review.md): nothing in this bundle claims counsel sign-off"
   echo "helm $(helm version --short)"
   echo "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown)"
 } > "$STAGE/BUILD-INFO"

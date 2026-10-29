@@ -34,8 +34,17 @@ public static class WorkflowEndpoints
         any.MapGet("/parts/{number}/workflow", async (string number, HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
             (await svc.StatusForObjectAsync(SubjectFactory.Require(ctx), "part", number, CorrelationId.Get(ctx), ct)).ToHttp());
 
+        // ---- documents are submitted and tracked the same way (7.6, ADR-0033)
+        any.MapPost("/documents/{number}/review", async (string number, StartReviewRequest req, HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
+            (await svc.StartAsync(SubjectFactory.Require(ctx),
+                new StartReviewCommand("document", number, req.Participants ?? [], req.TemplateId, req.Comment), CorrelationId.Get(ctx), ct))
+                .ToHttp(i => Results.Created($"/api/v1/workflows/{i.Id}", i)));
+
+        any.MapGet("/documents/{number}/workflow", async (string number, HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
+            (await svc.StatusForObjectAsync(SubjectFactory.Require(ctx), "document", number, CorrelationId.Get(ctx), ct)).ToHttp());
+
         // ---- tasks
-        any.MapGet("/tasks", async Task<Microsoft.AspNetCore.Http.HttpResults.Results<Microsoft.AspNetCore.Http.HttpResults.Ok<MyTasks>, Microsoft.AspNetCore.Http.HttpResults.ValidationProblem>> (string? sort, string? dir, HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
+        any.MapGet("/tasks",async Task<Microsoft.AspNetCore.Http.HttpResults.Results<Microsoft.AspNetCore.Http.HttpResults.Ok<MyTasks>, Microsoft.AspNetCore.Http.HttpResults.ValidationProblem>> (string? sort, string? dir, HttpContext ctx, WorkflowService svc, CancellationToken ct) =>
             !WorkflowService.SortKeys.TryResolve(sort, dir, out var spec, out var error) ? OutcomeResults.BadSort(error!)
             : TypedResults.Ok(await svc.MyTasksAsync(SubjectFactory.Require(ctx), spec, CorrelationId.Get(ctx), ct)));
 

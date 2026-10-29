@@ -1,0 +1,170 @@
+@inject CurrentUser Users
+@inject WorkflowService Flow
+
+@* Review status, "Submit for review" and release history for one document (increment 7.6, ADR-0033). Self-contained so the document page only hosts it. *@
+@if (status is not null)
+{
+    <section class="panel" aria-labelledby="review-heading">
+        <h3 id="review-heading">Review and release</h3>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @* UX-3: the progress map of the running (or last) review: steps, vote rule, who signed, who is pending. *@
+        @{ var mapInstance = status.Active ?? status.Last; }
+        @if (mapInstance is not null) { <WorkflowMapPanel InstanceId="@mapInstance.Id" Version="@($"{mapInstance.Status}:{mapInstance.Tasks.Count(t => t.Status != "Open")}")" /> }
+
+        @if (status.Active is { } active)
+        {
+            <p>
+                <span class="badge state-underreview">Review in progress</span>
+                Started by @active.StartedBy on @WorkflowText.Utc(active.StartedAt) ·
+                <a href="workflows/@active.Id">Workflow details</a>
+            </p>
+            <ul class="plain">
+                @foreach (var t in active.Tasks.Where(t => t.Status == "Open"))
+                {
+                    <li>@t.Name: waiting for @(t.AssigneeName ?? WorkflowText.Role(t.RequiredRole))@(t.Overdue ? " (overdue)" : "")</li>
+                }
+            </ul>
+            @if (active.CanCancel)
+            {
+                <div class="toolbar">
+                    <input aria-label="Reason for cancelling" placeholder="Reason for cancelling (required)" class="grow" @bind="cancelReason" />
+                    <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
+                </div>
+            }
+        }
+        else
+        {
+            @if (status.Last is { } last)
+            {
+                <p>
+                    <span class="badge @(last.Status == InstanceStatus.Approved ? "state-released" : null)">Last review: @WorkflowText.Status(last.Status)</span>
+                    @(last.CompletedAt is { } done ? WorkflowText.Utc(done) : "") ·
+                    <a href="workflows/@last.Id">Workflow details</a>
+                </p>
+                @if (last.Status == InstanceStatus.Rejected)
+                {
+                    <ul class="plain" aria-label="Rejection reasons">
+                        @foreach (var r in last.Rejections)
+                        {
+                            <li>Rejected by @r.By (@r.Username): @r.Comment</li>
+                        }
+                    </ul>
+                }
+                else if (last.Status == InstanceStatus.Cancelled)
+                {
+                    <p class="muted">@last.CompletionNote</p>
+                }
+            }
+            else
+            {
+                <p class="muted">This document has not been submitted for review.</p>
+            }
+
+            @if (CanStart && !starting)
+            {
+                <button type="button" disabled="@busy" @onclick="BeginStart">Submit for review</button>
+            }
+            else if (!CanStart && Latest && State == "InWork")
+            {
+                <p class="muted small">@(CheckedOut ? "Check in or undo the check-out before submitting for review." : !HasPrimary ? "Add a primary file before submitting the document for review." : "You may not submit this document for review.")</p>
+            }
+        }
+
+        @if (starting && template is not null)
+        {
+            <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" />
+        }
+
+        @if (status.Releases.Count > 0)
+        {
+            <h4>Release history</h4>
+            @foreach (var rel in status.Releases)
+            {
+                <div class="release">
+                    <p><strong>Revision @rel.Revision (@rel.IterationLabel)</strong> released @WorkflowText.Utc(rel.ReleasedAt) · <a href="workflows/@rel.InstanceId">Workflow details</a></p>
+                    <ul class="plain signatures">
+                        @foreach (var s in rel.Signatures)
+                        {
+                            <li>@s.Manifestation@(string.IsNullOrEmpty(s.Comment) ? "" : $": {s.Comment}")</li>
+                        }
+                    </ul>
+                </div>
+            }
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>Lifecycle state key of the revision shown.</summary>
+    [Parameter, EditorRequired] public required string State { get; set; }
+    [Parameter] public bool Latest { get; set; }
+    [Parameter] public bool CheckedOut { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    /// <summary>Whether the version shown has a primary file (a document is reviewed for its content, A24).</summary>
+    [Parameter] public bool HasPrimary { get; set; } = true;
+    /// <summary>Raised after the review started or was cancelled, so the host page can reload the document.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private ObjectWorkflowStatus? status;
+    private TemplateView? template;
+    private bool starting, busy;
+    private string? error, startError;
+    private string cancelReason = "";
+
+    private bool CanStart => Latest && State == "InWork" && !CheckedOut && CanModify && HasPrimary;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var outcome = await Flow.StatusForObjectAsync(await Users.GetAsync(), "document", Number, CurrentUser.NewCorrelationId());
+        status = outcome.IsOk ? outcome.Value : null;
+    }
+
+    private async Task BeginStart()
+    {
+        error = startError = null;
+        var templates = await Flow.ListTemplatesAsync(await Users.GetAsync(), activeOnly: true, CurrentUser.NewCorrelationId());
+        template = templates.FirstOrDefault(t => t.ObjectType == "document");
+        if (template is null) { error = "No workflow template is available for documents. Ask an administrator to upload one."; return; }
+        starting = true;
+    }
+
+    private Task EndStart()
+    {
+        starting = false;
+        return Task.CompletedTask;
+    }
+
+    private async Task<IReadOnlyList<DirectoryUserView>> SearchUsers(SlotView slot, string text)
+    {
+        var outcome = await Flow.SearchUsersAsync(await Users.GetAsync(), text, slot.Role, "document", Number, 25, CurrentUser.NewCorrelationId());
+        return outcome.IsOk ? outcome.Value! : [];
+    }
+
+    private async Task Start(StartSelection selection)
+    {
+        busy = true;
+        startError = null;
+        var outcome = await Flow.StartAsync(await Users.GetAsync(),
+            new StartReviewCommand("document", Number, selection.Participants, selection.TemplateId, selection.Comment), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { startError = WorkflowText.Message(outcome); return; }
+        starting = false;
+        await OnChanged.InvokeAsync();
+        await Load();
+    }
+
+    private async Task Cancel()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Flow.CancelAsync(await Users.GetAsync(), status!.Active!.Id, cancelReason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = WorkflowText.Message(outcome); return; }
+        cancelReason = "";
+        await OnChanged.InvokeAsync();
+        await Load();
+    }
+}

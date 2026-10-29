@@ -92,8 +92,9 @@ public sealed class DocumentApiTests(PostgresFixture pg)
         Assert.Equal(1, (await Json(del)).GetProperty("checkout").GetProperty("files").GetArrayLength());
         Assert.Equal(HttpStatusCode.OK, (await alice.PostAsync("/api/v1/documents/D-000001/undo-checkout", null)).StatusCode);
 
+        // 7.6: review is entered through the workflow engine; the manual state endpoint refuses.
         var state = await alice.PostAsJsonAsync("/api/v1/documents/D-000001/state", new { toState = "UnderReview" });
-        Assert.Equal("UnderReview", (await Json(state)).GetProperty("revision").GetProperty("state").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, state.StatusCode);
 
         var search = await alice.GetFromJsonAsync<JsonElement>("/api/v1/documents?q=housing&type=Drawing");
         Assert.Equal(1, search.GetProperty("total").GetInt64());
@@ -179,6 +180,48 @@ public sealed class DocumentApiTests(PostgresFixture pg)
         var workingId = working.GetProperty("workingLinks")[0].GetProperty("linkId").GetString();
         var removed = await alice.DeleteAsync($"/api/v1/parts/P-000001/working-copy/documents/{workingId}");
         Assert.Equal(0, (await Json(removed)).GetProperty("workingLinks").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Documents_are_reviewed_signed_and_released_over_http_with_the_part_workflow_contract()
+    {
+        await using var api = await ApiFactory.CreateAsync(pg);
+        var alice = api.ClientFor(Alice);
+        var rita = ApiFactory.Token(sub: "u-rita", roles: ["plm-viewer", "plm-author"]);
+        var bob = ApiFactory.Token(sub: "u-bob", roles: ["plm-viewer", "plm-approver"]);
+        foreach (var t in new[] { rita, bob }) Assert.Equal(HttpStatusCode.OK, (await api.ClientFor(t).GetAsync("/api/v1/tasks")).StatusCode);
+
+        var bare = await alice.PostAsync("/api/v1/documents", Form(Metadata("No file yet"), null));
+        Assert.Equal(HttpStatusCode.Created, bare.StatusCode);
+        var noFile = await alice.PostAsJsonAsync("/api/v1/documents/D-000001/review", new { participants = new { reviewer = new[] { "rita" }, approvers = new[] { "bob" } } });
+        Assert.Equal(HttpStatusCode.Conflict, noFile.StatusCode);
+        Assert.Contains("primary file", await noFile.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        Assert.Equal(HttpStatusCode.Created, (await alice.PostAsync("/api/v1/documents", Form(Metadata("Housing specification", "Specification"), ("housing.txt", Encoding.UTF8.GetBytes("housing " + Guid.NewGuid()), "text/plain")))).StatusCode);
+        var lena = api.ClientFor(Lena);
+        Assert.Equal(HttpStatusCode.NotFound, (await lena.GetAsync("/api/v1/documents/D-000002/workflow")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await lena.PostAsJsonAsync("/api/v1/documents/D-000002/review", new { participants = new { reviewer = new[] { "rita" }, approvers = new[] { "bob" } } })).StatusCode);
+
+        var started = await alice.PostAsJsonAsync("/api/v1/documents/D-000002/review", new { participants = new { reviewer = new[] { "rita" }, approvers = new[] { "bob" } }, comment = "Please review" });
+        Assert.Equal(HttpStatusCode.Created, started.StatusCode);
+        var instance = await Json(started);
+        Assert.Equal("document", instance.GetProperty("target").GetProperty("objectType").GetString());
+        Assert.Equal("UnderReview", (await alice.GetFromJsonAsync<JsonElement>("/api/v1/documents/D-000002")).GetProperty("revision").GetProperty("state").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, (await alice.PostAsync("/api/v1/documents/D-000002/checkout", null)).StatusCode);
+
+        var ritaClient = api.ClientFor(rita);
+        var task = (await ritaClient.GetFromJsonAsync<JsonElement>("/api/v1/tasks")).GetProperty("items")[0];
+        Assert.Equal("D-000002", task.GetProperty("target").GetProperty("key").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await ritaClient.PostAsJsonAsync($"/api/v1/tasks/{task.GetProperty("id").GetGuid()}/sign", new { reasonCode = "Reviewed" })).StatusCode);
+        var bobClient = api.ClientFor(bob);
+        var approval = (await bobClient.GetFromJsonAsync<JsonElement>("/api/v1/tasks")).GetProperty("items")[0];
+        Assert.Equal(HttpStatusCode.OK, (await bobClient.PostAsJsonAsync($"/api/v1/tasks/{approval.GetProperty("id").GetGuid()}/sign", new { reasonCode = "Approved" })).StatusCode);
+
+        var released = await alice.GetFromJsonAsync<JsonElement>("/api/v1/documents/D-000002");
+        Assert.Equal("Released", released.GetProperty("revision").GetProperty("stateLabel").GetString());
+        var history = await alice.GetFromJsonAsync<JsonElement>("/api/v1/documents/D-000002/workflow");
+        Assert.Equal(2, history.GetProperty("releases")[0].GetProperty("signatures").GetArrayLength());
+        Assert.Equal(HttpStatusCode.Conflict, (await alice.PostAsJsonAsync("/api/v1/documents/D-000002/state", new { toState = "InWork" })).StatusCode);
     }
 
     [Fact]

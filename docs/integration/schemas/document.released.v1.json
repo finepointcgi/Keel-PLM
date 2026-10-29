@@ -33,7 +33,10 @@
     },
     "via": {
       "type": "string",
-      "const": "admin"
+      "enum": [
+        "admin",
+        "workflow"
+      ]
     },
     "files": {
       "type": "array",

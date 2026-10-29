@@ -10,7 +10,10 @@ keel-offline-<version>/
   images.env                  the pins (deploy/images.env)
   chart/keel-<version>.tgz    Helm chart
   compose/                    compose.prod-example.yaml and prod-example/ (Caddyfile, nginx.conf, gen-*.sh, initdb, env.example)
-  sbom/                       CycloneDX JSON (see "SBOMs")
+  sbom/                       CycloneDX JSON (see "SBOMs"), including keel-plm.cdx.json (everything delivered)
+  sources/                    corresponding source of the LGPL components + SOURCES.txt (see "Licences and source")
+  licenses/                   licence texts of the viewer files and the embedded font
+  THIRD-PARTY-NOTICES.md      notices, written offer, licence texts
   docs/                       docs/ops/*.md
   signing/release-public.pem  public key of this release
   SHA256SUMS, SHA256SUMS.sig  manifest of every file and its detached ECDSA P-256 / SHA-256 signature
@@ -33,6 +36,21 @@ fingerprint (SHA-256 of the DER public key, printed at the end of the build) thr
 **SBOMs.** `sbom/keel-api.cdx.json` and `keel-audit.cdx.json` come from the CycloneDX .NET tool (6.3.1, installed into a temp
 tool path). Image SBOMs (OS packages of the UBI base, `rpm` database) are generated with `syft` when it is installed on the build
 machine; otherwise they are not generated, `BUILD-INFO` says so, and the site scanner works from the archives. `docker sbom` is not used.
+
+## Licences and source
+`scripts/offline-compliance.sh` (called by `package-offline.sh`) adds the licence and source part (ADR-0033, [third-party/legal-review.md](../third-party/legal-review.md)):
+- `sources/`: the occt-import-js source (tag 0.0.23), the OpenCascade Technology source at the commit that tag pins, and the npm package the shipped
+  viewer files came from. Pinned by SHA-256 in `deploy/offline/third-party-sources.json`; a missing archive is fetched once into
+  `~/.keel-release-sources` (or `--sources-cache`; pre-fill it to build with no network); a hash mismatch stops the build.
+- `sbom/keel-plm.cdx.json`: CycloneDX 1.5, generated offline by `src/Keel.SbomTool` from the NuGet restore results of the shipped projects, the viewer
+  tool's `package-lock.json`, the vendored viewer files (hashes recomputed from disk), the embedded fonts and the pinned images. `--strict` fails the build
+  for a component without a licence or a copyleft component without a source archive.
+- `THIRD-PARTY-NOTICES.md`: licences, written offer (draft wording), how to replace the LGPL files, licence texts. **Legal review is pending**; the bundle
+  never claims sign-off.
+- Operating system packages of the images are **not** covered unless `--os-sources-dir DIR` supplies their source archives (copied to `sources/os/` with a
+  `SHA256SUMS`); `sources/SOURCES.txt` states which case applies. `--no-compliance` leaves the whole part out (BUILD-INFO says so; `verify-offline.sh` fails it).
+
+`scripts/verify-offline.sh` checks all of it and refuses a missing, altered or unlisted archive, an edited manifest or SBOM, missing notices or licence texts.
 
 ## Transfer and scan
 1. Copy the `.tar`, `.tar.sha256` and (separately announced) fingerprint to approved removable media or the site's transfer guard.
