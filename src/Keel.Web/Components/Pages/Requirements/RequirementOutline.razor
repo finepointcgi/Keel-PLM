@@ -1,0 +1,202 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject ToastService Toasts
+
+@* The requirements of one revision in outline order. A requirement the signed-in user may not read is a placeholder with its place in the outline and nothing else. Editing is one
+   form (add, change); every change is one new iteration of the specification and the service decides everything (ADR-0038). *@
+<section class="panel stack" aria-labelledby="req-outline-heading">
+    <div class="bom-heading">
+        <h3 id="req-outline-heading">Requirements of version @Detail.Displayed.Revision.@Set.Iteration</h3>
+        @if (CanEdit) { <button type="button" disabled="@busy" @onclick="BeginAdd">Add requirement</button> }
+    </div>
+    @if (!Detail.Editable)
+    {
+        <p class="muted small">@(Detail.Displayed.IsLatest ? $"This revision is {Detail.Displayed.StateLabel}; it cannot be edited." : "An earlier revision cannot be edited.")@(Detail.Displayed.State == "Released" && Detail.CanModify ? " Revise the specification on the Review tab to change it." : "")</p>
+    }
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    <div class="toolbar">
+        <input aria-label="Filter requirements" placeholder="Filter by key, title or text" class="grow" @bind="filter" @bind:event="oninput" />
+        <p class="muted small" aria-live="polite">@Visible().Count() of @Set.Rows.Count(r => !r.Redacted) readable@(Set.Rows.Any(r => r.Redacted) ? " · restricted items are shown as placeholders" : "")</p>
+    </div>
+    @if (Set.Rows.Count == 0) { <p class="muted">No requirements yet.@(CanEdit ? " Add the first one, or import a file on the Import and export tab." : "")</p> }
+    else
+    {
+        <div class="table-wrap"><table class="data">
+            <caption class="sr-only">Requirements in outline order</caption>
+            <thead><tr><th scope="col">No.</th><th scope="col">Key</th><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Priority</th><th scope="col">Method</th><th scope="col">Status</th><th scope="col">Marking</th><th scope="col">Actions</th></tr></thead>
+            <tbody>
+            @foreach (var r in Visible())
+            {
+                if (r.Redacted)
+                {
+                    <tr class="restricted"><td class="req-outline-number">@r.Outline</td><td colspan="8"><span class="restricted-label">Restricted requirement</span></td></tr>
+                    continue;
+                }
+                <tr class="@(selected == r.Key ? "req-selected" : null)">
+                    <td class="req-outline-number">@r.Outline</td>
+                    <td>@r.Key</td>
+                    <td><span class="req-title d@(Math.Min(r.Depth, 9))">@r.Title</span></td>
+                    <td>@ReqTypes.Label(r.Type!)</td>
+                    <td>@ReqPriorities.Label(r.Priority!)</td>
+                    <td>@VerificationMethods.Label(r.Method!)</td>
+                    <td><span class="badge @RequirementUiText.StatusClass(r.Status!)">@ReqStatuses.Label(r.Status!)</span></td>
+                    <td><MarkingChip Text="@r.Banner" /></td>
+                    <td>
+                        <div class="req-actions">
+                            <button type="button" class="secondary" aria-pressed="@(selected == r.Key ? "true" : "false")" @onclick="() => Select(r.Key!)">@(selected == r.Key ? "Hide" : "Details") <span class="sr-only">of @r.Key</span></button>
+                            @if (CanEdit && MayChange(r))
+                            {
+                                <button type="button" class="secondary" disabled="@busy" @onclick="() => BeginEdit(r)">Edit <span class="sr-only">@r.Key</span></button>
+                                <button type="button" class="secondary" disabled="@busy" @onclick="() => BeginAdd(r.Key)">Add child <span class="sr-only">of @r.Key</span></button>
+                                <button type="button" class="secondary" disabled="@busy" @onclick="() => MoveAsync(r, up: true)">Move up <span class="sr-only">@r.Key</span></button>
+                                <button type="button" class="secondary" disabled="@busy" @onclick="() => MoveAsync(r, up: false)">Move down <span class="sr-only">@r.Key</span></button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</section>
+
+@if (selected is not null && Set.Rows.FirstOrDefault(r => !r.Redacted && r.Key == selected) is { } sel)
+{
+    <section class="panel stack" aria-labelledby="req-detail-heading">
+        <h3 id="req-detail-heading">@sel.Key · @sel.Title</h3>
+        <dl class="facts">
+            <dt>Requirement</dt><dd><p class="req-text">@sel.Text</p></dd>
+            <dt>Rationale</dt><dd><p class="req-text">@(string.IsNullOrEmpty(sel.Rationale) ? "None given." : sel.Rationale)</p></dd>
+            <dt>Verification method</dt><dd>@VerificationMethods.Label(sel.Method!)</dd>
+            <dt>Marking</dt><dd><MarkingChip Text="@sel.Banner" /></dd>
+        </dl>
+        <RequirementLinksPanel Detail="Detail" Requirement="sel" OnChanged="OnChanged" OnBanner="b => linkBanner = b" />
+    </section>
+}
+
+@if (mode is not Mode.None)
+{
+    <section class="panel stack" aria-labelledby="req-form-heading">
+        <h3 id="req-form-heading">@(mode == Mode.Add ? (parentKey is null ? "New requirement" : $"New requirement below {parentKey}") : $"Change {editKey}")</h3>
+        <EditForm Model="form" OnSubmit="SaveAsync" FormName="requirement-form" class="stack">
+            <div class="grid-form">
+                <label class="wide">Title * <InputText @bind-Value="form.Title" maxlength="200" required /></label>
+                <label class="wide">Requirement text * <InputTextArea @bind-Value="form.Text" rows="4" maxlength="8000" required /></label>
+                <label>Type <InputSelect @bind-Value="form.Type">@foreach (var t in ReqTypes.All) { <option value="@t">@ReqTypes.Label(t)</option> }</InputSelect></label>
+                <label>Priority <InputSelect @bind-Value="form.Priority">@foreach (var t in ReqPriorities.All) { <option value="@t">@ReqPriorities.Label(t)</option> }</InputSelect></label>
+                <label>Verification method <InputSelect @bind-Value="form.Method">@foreach (var t in VerificationMethods.All) { <option value="@t">@VerificationMethods.Label(t)</option> }</InputSelect></label>
+                <label>Status <InputSelect @bind-Value="form.Status">@foreach (var t in ReqStatuses.All) { <option value="@t">@ReqStatuses.Label(t)</option> }</InputSelect></label>
+                <label class="wide">Rationale <InputTextArea @bind-Value="form.Rationale" rows="2" maxlength="4000" /></label>
+                <label class="inline-check wide"><InputCheckbox @bind-Value="form.Stricter" /> Mark this requirement more strictly than the specification</label>
+            </div>
+            @if (form.Stricter)
+            {
+                <fieldset class="grid-form"><legend>Markings of this requirement</legend><MarkingsFields Value="form.Markings" /></fieldset>
+                <label class="inline-check"><InputCheckbox @bind-Value="form.Raise" /> Raise these markings to cover the specification's if they do not</label>
+            }
+            @if (formErrors is not null) { <ul class="error" role="alert">@foreach (var e in formErrors) { <li>@e</li> }</ul> }
+            <div class="toolbar">
+                <button type="submit" disabled="@busy">Save</button>
+                <button type="button" class="secondary" @onclick="Cancel">Cancel</button>
+            </div>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private enum Mode { None, Add, Edit }
+
+    private sealed class FormModel
+    {
+        public string Title { get; set; } = "";
+        public string Text { get; set; } = "";
+        public string Type { get; set; } = "functional";
+        public string Priority { get; set; } = "medium";
+        public string Method { get; set; } = "test";
+        public string Status { get; set; } = ReqStatuses.Draft;
+        public string Rationale { get; set; } = "";
+        public bool Stricter { get; set; }
+        public bool Raise { get; set; }
+        public MarkingsInput Markings { get; set; } = new();
+    }
+
+    [Parameter, EditorRequired] public required SpecDetail Detail { get; set; }
+    [Parameter, EditorRequired] public required RequirementSet Set { get; set; }
+    /// <summary>An edit saved or a link changed: the page reloads the specification.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+    /// <summary>The banner of the links shown for the selected requirement, so the page banner covers their other ends.</summary>
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private Mode mode;
+    private FormModel form = new();
+    private string? selected, parentKey, editKey, error, filter = "";
+    private string? linkBanner;
+    private IReadOnlyList<string>? formErrors;
+    private bool busy;
+
+    private bool CanEdit => Detail.Editable && Detail.CanModify;
+    private static bool MayChange(RequirementRow r) => r.Key is not null;
+
+    private IEnumerable<RequirementRow> Visible()
+    {
+        if (string.IsNullOrWhiteSpace(filter)) return Set.Rows;
+        var f = filter.Trim();
+        return Set.Rows.Where(r => !r.Redacted && ((r.Key ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) || (r.Title ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) || (r.Text ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    protected override async Task OnParametersSetAsync() => await OnBanner.InvokeAsync(linkBanner);
+
+    private void Select(string key) => selected = selected == key ? null : key;
+
+    private void BeginAdd() => BeginAdd(null);
+
+    private void BeginAdd(string? parent)
+    {
+        (mode, parentKey, editKey, form, formErrors) = (Mode.Add, parent, null, new FormModel(), null);
+    }
+
+    private void BeginEdit(RequirementRow r)
+    {
+        mode = Mode.Edit; editKey = r.Key; parentKey = null; formErrors = null;
+        form = new FormModel { Title = r.Title!, Text = r.Text!, Type = r.Type!, Priority = r.Priority!, Method = r.Method!, Status = r.Status!, Rationale = r.Rationale ?? "", Markings = MarkingsInput.From(r.Markings!) };
+    }
+
+    private void Cancel() => (mode, formErrors) = (Mode.None, null);
+
+    private async Task SaveAsync()
+    {
+        Markings? markings = null;
+        if (form.Stricter)
+        {
+            var m = form.Markings.Effective().ToMarkings();
+            if (!m.IsSuccess) { formErrors = m.Errors; return; }
+            markings = m.Value;
+        }
+        var input = new RequirementInput(form.Title, form.Text, form.Type, form.Priority, form.Method, form.Rationale, form.Status, parentKey, null, markings, form.Raise);
+        var op = mode == Mode.Add ? new EditOp("add", null, input) : new EditOp("update", editKey, input);
+        busy = true;
+        formErrors = null;
+        var outcome = await Requirements.EditAsync(await Users.GetAsync(), Set.SpecNumber, new EditCommand(Set.Iteration, null, [op]), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { formErrors = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? outcome.Errors : [UiText.Message(outcome)]; return; }
+        Toasts.Success(mode == Mode.Add ? $"Added {outcome.Value!.CreatedKeys.FirstOrDefault()}." : $"Saved {editKey}.");
+        if (outcome.Value!.SuspectLinks > 0) Toasts.Success($"{RequirementUiText.Count(outcome.Value.SuspectLinks, "link", "links")} now need review.");
+        mode = Mode.None;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task MoveAsync(RequirementRow r, bool up)
+    {
+        var sibs = Set.Rows.Where(x => !x.Redacted && x.ParentKey == r.ParentKey && x.Depth == r.Depth).ToList();
+        var i = sibs.FindIndex(x => x.Key == r.Key);
+        string? before;
+        if (up) { if (i <= 0) return; before = sibs[i - 1].Key; }
+        else { if (i < 0 || i >= sibs.Count - 1) return; before = i + 2 < sibs.Count ? sibs[i + 2].Key : null; }
+        busy = true;
+        error = null;
+        var outcome = await Requirements.EditAsync(await Users.GetAsync(), Set.SpecNumber, new EditCommand(Set.Iteration, null, [new EditOp("move", r.Key, new RequirementInput("", "", "", "", "", ParentKey: r.ParentKey, BeforeKey: before))]), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        await OnChanged.InvokeAsync();
+    }
+}

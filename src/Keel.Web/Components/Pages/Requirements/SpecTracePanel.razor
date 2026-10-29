@@ -1,0 +1,158 @@
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject VisualsJs Js
+@inject ToastService Toasts
+
+@* The traceability views of one revision (ADR-0038, ADR-0029): a matrix of one link type, the graph of requirements, parts, documents and changes (with its table alternative), and the
+   suspect links waiting for review. Built from one trace the service computed under the caller's access; a restricted end is a placeholder, a restricted requirement is not drawn. *@
+<section class="panel stack" aria-labelledby="req-trace-heading">
+    <h3 id="req-trace-heading">Traceability</h3>
+    <div class="toolbar vis-filters">
+        <ViewSwitch Label="Traceability view" Options="views" Value="@view" ValueChanged="OnView" />
+        @if (view == "matrix")
+        {
+            <label class="inline">Relation
+                <select aria-label="Relation shown in the matrix" @bind="linkType" @bind:after="Rebuild">
+                    @foreach (var t in types) { <option value="@t.Code">@t.Label</option> }
+                </select>
+            </label>
+        }
+        @if (view is "map" or "table")
+        {
+            <label class="inline">Show
+                <select aria-label="Requirements shown" @bind="focus" @bind:after="Rebuild">
+                    <option value="">All requirements</option>
+                    @foreach (var r in trace?.Rows.Where(r => !r.Redacted) ?? []) { <option value="@r.Key">@r.Key · @r.Title</option> }
+                </select>
+            </label>
+        }
+        <button type="button" class="secondary" disabled="@busy" @onclick="LoadAsync">Refresh</button>
+    </div>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (busy && trace is null) { <Skeleton Lines="4" Label="Loading the traceability" /> }
+    @if (trace is not null)
+    {
+        @switch (view)
+        {
+            case "matrix":
+                @if (matrix is not null)
+                {
+                    <p class="muted small" aria-live="polite">@RequirementUiText.Count(matrix.Rows.Count, "requirement", "requirements") by @RequirementUiText.Count(matrix.Columns.Count, "linked object", "linked objects")@(matrix.ColumnsTruncated ? " (the most linked ones; use the table view for the rest)" : "")</p>
+                    @if (matrix.Columns.Count == 0) { <p class="muted">Nothing is linked with “@matrix.LinkLabel” yet.</p> }
+                    else
+                    {
+                        <div class="table-wrap"><table class="data matrix">
+                            <caption class="sr-only">Traceability matrix: requirements and the objects linked by “@matrix.LinkLabel”</caption>
+                            <thead><tr><th scope="col">Requirement</th>@foreach (var c in matrix.Columns) { <th scope="col">@if (c.Href is not null) { <a href="@c.Href">@c.Label</a> } else { @c.Label }</th> }</tr></thead>
+                            <tbody>
+                            @foreach (var r in matrix.Rows)
+                            {
+                                <tr>
+                                    <th scope="row">@r.Key · @r.Title</th>
+                                    @foreach (var c in matrix.Columns)
+                                    {
+                                        var cell = matrix.Cells.FirstOrDefault(x => x.RowKey == r.Key && x.ColumnId == c.Id);
+                                        <td class="@(cell is null ? null : cell.Suspect ? "cell-yes cell-suspect" : "cell-yes")">@(cell is null ? "" : cell.Suspect ? "Linked, suspect" : "Linked")</td>
+                                    }
+                                </tr>
+                            }
+                            </tbody>
+                        </table></div>
+                    }
+                }
+                break;
+            case "map":
+            case "table":
+                @if (graph is not null)
+                {
+                    <p class="muted small" aria-live="polite">@RequirementUiText.Count(graph.Nodes.Count, "item", "items") shown. Dotted requirements have a suspect link or a failed verification. Items you may not see are drawn as restricted items.</p>
+                    <ImpactGraphView Graph="graph" ShowTable="@(view == "table")" MapLabel="Traceability graph" LegendItems="TraceGraphBuilder.Legend" />
+                }
+                break;
+            default:
+                var suspect = trace.Links.Where(l => !l.Redacted && l.Suspect).ToList();
+                <p class="muted small" aria-live="polite">@RequirementUiText.Count(suspect.Count, "suspect link", "suspect links")</p>
+                @if (suspect.Count == 0) { <p>No link needs review.</p> }
+                else
+                {
+                    <div class="table-wrap"><table class="data">
+                        <caption class="sr-only">Suspect links</caption>
+                        <thead><tr><th scope="col">Requirement</th><th scope="col">Relation</th><th scope="col">Linked to</th><th scope="col">Why</th><th scope="col">Actions</th></tr></thead>
+                        <tbody>
+                        @foreach (var l in suspect)
+                        {
+                            <tr>
+                                <td>@l.SourceKey · @(trace.Rows.FirstOrDefault(r => r.Key == l.SourceKey)?.Title)</td>
+                                <td>@l.Label</td>
+                                <td><a href="@RequirementUiText.ObjectHref(l.TargetKind, l.TargetNumber!)">@l.TargetNumber@(l.TargetKey is null ? "" : " " + l.TargetKey)</a> @(": " + l.TargetName)</td>
+                                <td>@SuspectReasons.Label(l.SuspectReason)</td>
+                                <td>@if (Detail.CanModify) { <button type="button" class="secondary" disabled="@busy" @onclick="() => ReviewAsync(l.Id)">Mark reviewed <span class="sr-only">@l.SourceKey to @l.TargetNumber</span></button> }</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table></div>
+                }
+                break;
+        }
+    }
+</section>
+
+@code {
+    private static readonly IReadOnlyList<ViewOption> views = [new("matrix", "Matrix"), new("map", "Graph"), new("table", "Graph as a table"), new("suspect", "Suspect links")];
+    private SpecTrace? trace;
+    private TraceMatrix? matrix;
+    private ImpactGraph? graph;
+    private IReadOnlyList<LinkTypeInfo> types = [];
+    private string view = "matrix", linkType = "allocated-to", focus = "";
+    private bool busy, viewChosen;
+    private string? error;
+
+    [Parameter, EditorRequired] public required SpecDetail Detail { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        types = await Requirements.ListLinkTypesAsync(true);
+        if (types.Count > 0 && types.All(t => t.Code != linkType)) linkType = types[0].Code;
+        // Phone width: the table first; the person can still switch to the picture.
+        if (await Js.IsNarrowAsync() && !viewChosen) view = "table";
+        await LoadAsync();
+    }
+
+    private void OnView(string id) { view = id; viewChosen = true; Rebuild(); }
+
+    private async Task LoadAsync()
+    {
+        busy = true; error = null;
+        StateHasChanged();
+        var outcome = await Requirements.GetTraceAsync(await Users.GetAsync(), Detail.Summary.Number, Detail.Displayed.IsLatest ? null : Detail.Displayed.Revision, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) trace = outcome.Value;
+        else { trace = null; error = UiText.Message(outcome); }
+        await RebuildAsync();
+        StateHasChanged();
+    }
+
+    private void Rebuild() => _ = RebuildAsync().ContinueWith(_ => InvokeAsync(StateHasChanged), TaskScheduler.Default);
+
+    private async Task RebuildAsync()
+    {
+        if (trace is null) { await OnBanner.InvokeAsync(null); return; }
+        matrix = view == "matrix" && types.FirstOrDefault(t => t.Code == linkType) is { } t ? TraceMatrixBuilder.Build(trace, t) : null;
+        graph = view is "map" or "table" ? TraceGraphBuilder.Build(trace, focus.Length == 0 ? null : new HashSet<string>(StringComparer.Ordinal) { focus }) : null;
+        await OnBanner.InvokeAsync(view == "matrix" ? matrix?.Banner : view is "map" or "table" ? graph?.Banner : trace.Banner);
+    }
+
+    private async Task ReviewAsync(Guid id)
+    {
+        busy = true; error = null;
+        var outcome = await Requirements.ReviewLinkAsync(await Users.GetAsync(), Detail.Summary.Number, id, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        Toasts.Success("Link reviewed.");
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+}

@@ -58,6 +58,7 @@ public static class WorkflowText
         "document" => $"documents/{Uri.EscapeDataString(key)}", // 7.6: documents are reviewed through the same engine
         "ecr" or "ecn" => $"changes/{Uri.EscapeDataString(key)}", // 1.6: change requests and change notices
         "baseline" => $"baselines/{Uri.EscapeDataString(key)}", // 2.1: baselines established by signatures
+        "reqspec" => $"requirements/{Uri.EscapeDataString(key)}", // 8.3: requirement specifications released by signatures
         "supplier" => $"suppliers/{Uri.EscapeDataString(key)}", // 8.2: supplier approval
         "source_entry" => $"sourcing/entries/{Uri.EscapeDataString(key)}", // 8.2: approved list entries
         _ => null,

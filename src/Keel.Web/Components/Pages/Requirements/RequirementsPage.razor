@@ -1,0 +1,83 @@
+@page "/requirements"
+@inject CurrentUser Users
+@inject RequirementService Requirements
+
+@* Requirement specifications the signed-in user may read. The count of requirements is the count the user may read; the page banner is the aggregate of the rows shown (ADR-0014, ADR-0038). *@
+<PageFrame Banner="@(page?.PageBanner ?? UiText.Unclassified)" Title="Requirements" Crumbs="@Crumbs">
+    <form class="toolbar" @onsubmit="() => Search(0)" aria-label="Search requirement specifications">
+        <input aria-label="Search text" placeholder="Number, name or product" class="grow" @bind="text" />
+        <select aria-label="State" @bind="state">
+            <option value="">Any state</option>
+            <option value="InWork">In Work</option>
+            <option value="UnderReview">Under Review</option>
+            <option value="Released">Released</option>
+            <option value="Obsolete">Obsolete</option>
+        </select>
+        <button type="submit">Search</button>
+        <AuthorizeView Policy="@Policies.AnyPlmRole"><a class="button" href="requirements/new">New specification</a></AuthorizeView>
+    </form>
+
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    @if (page is not null)
+    {
+        <p class="muted" aria-live="polite">@(page.Total == 0 ? "No specifications match." : RequirementUiText.Count(page.Total, "specification", "specifications"))</p>
+        <DataTable TItem="SpecSummary" TableId="requirements" Items="page.Items" Columns="Columns" Caption="Requirement specifications" OnServerSort="OnSort" ServerSort="sort">
+            <Empty>
+                <EmptyState Title="No specifications match" IconName="requirement" ActionHref="requirements/new" ActionText="New specification">
+                    A specification is a controlled set of requirements for a program or product. Create one, or change the search.
+                </EmptyState>
+            </Empty>
+        </DataTable>
+        <Pager Total="page.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
+    }
+</PageFrame>
+
+@code {
+    private const int PageSize = 50;
+    private int offset;
+    private SpecPage? page;
+    [SupplyParameterFromQuery(Name = "q")] public string? QueryText { get; set; }
+    [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
+    [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    private SortSpec? sort;
+    private bool sortLoaded;
+    private string text = "", state = "";
+    private string? error;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Requirements")];
+
+    private static readonly IReadOnlyList<DataColumn<SpecSummary>> Columns =
+    [
+        new() { Key = "number", Title = "Specification", Required = true, ServerSortKey = "number", Cell = s => @<a href="@RequirementUiText.Href(s.Number)">@s.Number</a> },
+        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = s => s.Name },
+        new() { Key = "product", Title = "Product", ServerSortKey = "product", Text = s => s.Product ?? "" },
+        new() { Key = "version", Title = "Version", Text = s => $"{s.Revision}.{s.Iteration}" },
+        new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = s => @<span class="badge @RequirementUiText.StateClass(s.State)">@s.StateLabel</span> },
+        new() { Key = "count", Title = "Requirements", Text = s => s.RequirementCount.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = s => @<MarkingChip Text="@s.Banner" /> },
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _ = RequirementService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (QueryText is { Length: > 0 } && text.Length == 0) text = QueryText;
+        if (sortLoaded && requested == sort) return;
+        (sort, sortLoaded) = (requested, true);
+        await Search(0);
+    }
+
+    private async Task OnSort((string Key, bool Descending) s)
+    {
+        sort = new SortSpec(s.Key, s.Descending);
+        await Search(0);
+    }
+
+    private async Task Search(int newOffset)
+    {
+        error = null;
+        offset = newOffset;
+        var outcome = await Requirements.SearchAsync(await Users.GetAsync(), new SpecSearch(text, state == "" ? null : state, Limit: PageSize, Offset: offset, Sort: sort), CurrentUser.NewCorrelationId());
+        if (outcome.IsOk) page = outcome.Value;
+        else error = UiText.Message(outcome);
+    }
+}

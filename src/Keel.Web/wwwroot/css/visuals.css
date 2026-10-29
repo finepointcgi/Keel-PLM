@@ -45,6 +45,10 @@
 .vis-k-document .vis-shape { fill: var(--c-surface-2); }
 .vis-k-mbom .vis-shape { fill: var(--c-warning-bg); stroke: var(--c-warning); stroke-width: 2; }
 .vis-k-conflict .vis-shape { fill: var(--c-danger-bg); stroke: var(--c-danger); stroke-width: 2.5; }
+.vis-k-requirement .vis-shape { fill: var(--c-info-bg); stroke: var(--c-accent); stroke-width: 2.5; }
+.vis-k-tracepart .vis-shape { fill: var(--c-info-bg); stroke: var(--c-info); stroke-width: 2; }
+.vis-k-tracedocument .vis-shape { fill: var(--c-surface-2); }
+.vis-k-tracechange .vis-shape { fill: var(--c-surface); stroke: var(--c-accent); stroke-width: 2; }
 .vis-k-restricted .vis-shape { fill: var(--c-surface-2); stroke: var(--c-muted); stroke-dasharray: 5 3; }
 .vis-k-more .vis-shape { fill: var(--c-surface); stroke-dasharray: 5 3; }
 .vis-legend { border: 1px solid var(--c-border); border-radius: var(--radius-2); background: var(--c-surface); padding: var(--sp-2) var(--sp-3); }

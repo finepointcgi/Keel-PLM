@@ -1,0 +1,170 @@
+@page "/requirements/{Number}"
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject LifecycleSteps Lifecycles
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+@* One requirement specification (ADR-0038): header, requirements in outline order with their links, the traceability matrix and graph, verification, coverage, import and export, release review, markings.
+   The page banner is the aggregate of the specification and everything any panel displays (ADR-0014). *@
+<PageFrame Banner="@BannerMerge.Union(detail?.Summary.Banner ?? UiText.Unclassified, outlineBanner, linkBanner, traceBanner, verifyBanner, coverageBanner, exchangeBanner, timelineBanner)" Title="@PageTitle" Crumbs="@Crumbs" Header="@(detail is not null ? HeaderFragment(detail) : null)">
+    @if (notFound)
+    {
+        <p class="error" role="alert">The specification @Number was not found, or you are not authorized to see it.</p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        var s = d.Summary;
+        <article class="stack">
+            <ViewTracker Kind="@ObjectKinds.ReqSpec" Number="@s.Number" />
+            <CommentCount Kind="@ObjectKinds.ReqSpec" Number="@s.Number" OnCount="c => commentCount = c" />
+
+            @if (d.Revisions.Count > 1)
+            {
+                <nav class="toolbar" aria-label="Revisions">
+                    @foreach (var r in d.Revisions)
+                    {
+                        <a href="@($"{RequirementUiText.Href(s.Number)}{(r.IsLatest ? "" : $"?revision={r.Revision}")}")" aria-current="@(r.Id == d.Displayed.Id ? "page" : null)">Rev @r.Revision (@r.StateLabel)</a>
+                    }
+                </nav>
+            }
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            @if (!d.CanModify) { <p class="muted">Read only: @string.Join(" ", d.ModifyDeniedReasons.Select(UiText.Reason))</p> }
+
+            <TabSet Tabs="@AwarenessTabs.Append(Tabs, commentCount)" Active="@tab" ActiveChanged="OnTabChanged" Label="Specification sections">
+                @switch (tab)
+                {
+                    case "overview":
+                        <div class="stack">
+                            <dl class="facts">
+                                <dt>Product or program</dt><dd>@(s.Product ?? "Not stated")</dd>
+                                <dt>Description</dt><dd><p class="req-text">@(string.IsNullOrEmpty(d.Description) ? "None." : d.Description)</p></dd>
+                                <dt>Requirements you can read</dt><dd>@s.RequirementCount</dd>
+                                <dt>Last saved</dt><dd>@UiText.Utc(d.IterationAt) by @d.IterationBy@(string.IsNullOrEmpty(d.IterationComment) ? "" : $" · {d.IterationComment}")</dd>
+                            </dl>
+                            @if (d.CanModify && d.Displayed.IsLatest && d.Displayed.State is "InWork" or "Released")
+                            {
+                                <section class="panel stack" aria-labelledby="spec-retire-heading">
+                                    <h3 id="spec-retire-heading">Retire</h3>
+                                    <div class="toolbar">
+                                        <input aria-label="Reason to make the specification obsolete" placeholder="Reason (required)" class="grow" @bind="obsoleteReason" />
+                                        <button type="button" class="secondary" disabled="@busy" @onclick="ObsoleteAsync">Make obsolete</button>
+                                    </div>
+                                </section>
+                            }
+                        </div>
+                        break;
+                    case "requirements":
+                        @if (set is not null) { <RequirementOutline Detail="d" Set="set" OnChanged="Reload" OnBanner="b => { linkBanner = b; outlineBanner = set.Banner; }" /> }
+                        break;
+                    case "trace":
+                        <SpecTracePanel Detail="d" OnChanged="Reload" OnBanner="b => traceBanner = b" />
+                        break;
+                    case "verification":
+                        @if (set is not null) { <VerificationPanel Detail="d" Set="set" OnChanged="Reload" OnBanner="b => verifyBanner = b" /> }
+                        break;
+                    case "coverage":
+                        <CoveragePanel Detail="d" OnBanner="b => coverageBanner = b" />
+                        break;
+                    case "exchange":
+                        <ExchangePanel Detail="d" OnChanged="Reload" OnBanner="b => exchangeBanner = b" />
+                        break;
+                    case "review":
+                        <SpecReviewPanel Detail="d" OnChanged="Reload" />
+                        break;
+                    case "timeline":
+                        <TimelinePanel ObjectType="reqspec" Key="@s.Number" Version="@($"{d.Displayed.Revision}.{d.Displayed.LatestIteration}.{d.Displayed.State}")" OnShown="m => timelineBanner = m.Count == 0 ? null : Markings.AggregateBanner(m)" />
+                        break;
+                    case "security":
+                        <SpecMarkingsPanel Detail="d" OnChanged="Reload" />
+                        break;
+                    case "activity":
+                        <ActivityFeed Kind="@ObjectKinds.ReqSpec" Number="@s.Number" />
+                        break;
+                    case "comments":
+                        <CommentThread Kind="@ObjectKinds.ReqSpec" Number="@s.Number" OnCount="c => commentCount = c" />
+                        break;
+                }
+            </TabSet>
+        </article>
+    }
+    else if (!notFound)
+    {
+        <Skeleton Lines="6" Label="Loading the specification" />
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public required string Number { get; set; }
+    [SupplyParameterFromQuery(Name = "revision")] public string? Revision { get; set; }
+
+    private string? seenUri; // the address the tab was last taken from (GAP-A-4)
+
+    private static readonly string[] TabIds = ["overview", "requirements", "trace", "verification", "coverage", "exchange", "review", "timeline", "security", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs =
+    [
+        new("overview", "Overview"), new("requirements", "Requirements"), new("trace", "Trace"), new("verification", "Verification"), new("coverage", "Coverage"),
+        new("exchange", "Import and export"), new("review", "Review & release"), new("timeline", "Timeline"), new("security", "Security markings"),
+    ];
+    private string tab = "overview";
+    private int? commentCount;
+    private IReadOnlyList<LifecycleState> steps = [];
+    private SpecDetail? detail;
+    private RequirementSet? set;
+    private bool notFound, busy;
+    private string? error;
+    private string obsoleteReason = "";
+    private string? outlineBanner, linkBanner, traceBanner, verifyBanner, coverageBanner, exchangeBanner, timelineBanner;
+
+    private string PageTitle => detail is null ? "Requirement specification" : $"{detail.Summary.Number} · {detail.Summary.Name}";
+    private IReadOnlyList<Crumb> Crumbs => [new("Requirements", "requirements"), new(detail?.Summary.Number ?? Number)];
+
+    private RenderFragment HeaderFragment(SpecDetail d) => @<ObjectHeader Title="@PageTitle" Banner="@d.Summary.Banner" Subtitle="@(d.Summary.Product is null ? "Requirement specification" : $"Requirement specification for {d.Summary.Product}")">
+        <Badges>
+            <span class="badge">Version @d.Displayed.Revision.@d.Displayed.LatestIteration</span>
+            <span class="badge @RequirementUiText.StateClass(d.Displayed.State)">@d.Displayed.StateLabel</span>
+            <FavoriteButton Kind="@ObjectKinds.ReqSpec" Number="@d.Summary.Number" />
+            <WatchButton Kind="@ObjectKinds.ReqSpec" Number="@d.Summary.Number" />
+        </Badges>
+        <Steps>
+            @if (steps.Count > 0) { <Stepper States="steps" Current="@d.Displayed.State" Reachable="@(new HashSet<string>())" Label="Specification lifecycle" /> }
+        </Steps>
+    </ObjectHeader>;
+
+    private void OnTabChanged(string id)
+    {
+        tab = id;
+        // Panels of a tab that is no longer shown no longer contribute to the banner.
+        outlineBanner = linkBanner = traceBanner = verifyBanner = coverageBanner = exchangeBanner = timelineBanner = null;
+    }
+
+    private static string Corr() => CurrentUser.NewCorrelationId();
+
+    protected override async Task OnParametersSetAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        var subject = await Users.GetAsync();
+        var outcome = await Requirements.GetAsync(subject, Number, Revision, Corr());
+        if (!outcome.IsOk) { notFound = outcome.Kind == OutcomeKind.NotFound; error = notFound ? null : UiText.Message(outcome); detail = null; return; }
+        notFound = false;
+        detail = outcome.Value;
+        tab = TabSet.OnNavigation(Nav.Uri, ref seenUri, TabIds, tab);
+        if (steps.Count == 0) steps = await Lifecycles.StatesAsync("reqspec-default");
+        var rows = await Requirements.GetRequirementsAsync(subject, Number, Revision, Corr());
+        set = rows.IsOk ? rows.Value : null;
+        outlineBanner = tab == "requirements" ? set?.Banner : null;
+    }
+
+    private async Task ObsoleteAsync()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Requirements.ObsoleteAsync(await Users.GetAsync(), Number, obsoleteReason, Corr());
+        busy = false;
+        if (!outcome.IsOk) error = outcome.Kind is OutcomeKind.Invalid or OutcomeKind.Conflict ? string.Join(" ", outcome.Errors) : UiText.Message(outcome);
+        else { obsoleteReason = ""; Toasts.Success("The specification is obsolete."); }
+        await Reload();
+    }
+}

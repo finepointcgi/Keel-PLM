@@ -150,6 +150,9 @@
                         <DocumentReviewPanel Number="@d.Number" State="@d.Revision.State" Latest="@d.Revision.IsLatest" CheckedOut="@(d.Checkout is not null)"
                                              CanModify="@d.Permissions.CanModify" HasPrimary="@d.Iteration.Files.Any(f => f.Role == FileRoles.Primary)" OnChanged="Reload" />
                         break;
+                    case "trace":
+                        <Keel.Web.Components.Pages.Requirements.ObjectTracePanel Kind="document" Key="@d.Number" OnBanner="b => traceBanner = b" />
+                        break;
                     case "timeline":
                         @* UX-3: the life of the document; the page banner also covers the other objects its entries name. *@
                         <TimelinePanel ObjectType="document" Key="@d.Number" Version="@($"{d.Revision.Revision}.{d.Iteration.Iteration}.{d.Revision.State}")"
@@ -250,11 +253,12 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "usedby", "cad", "history", "review", "timeline", "security", .. AwarenessTabs.Ids];
-    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("usedby", "Used by"), new("cad", "CAD"), new("history", "History"), new("review", "Review & release"), new("timeline", "Timeline"), new("security", "Security markings")];
-    private string PageBanner => BannerMerge.Union(doc?.Banner ?? UiText.Unclassified, timelineBanner, tab == "cad" ? cadBanner : null);
+    private static readonly string[] TabIds = ["overview", "usedby", "cad", "history", "review", "timeline", "security", "trace", .. AwarenessTabs.Ids];
+    private static readonly IReadOnlyList<TabInfo> Tabs = [new("overview", "Overview"), new("usedby", "Used by"), new("cad", "CAD"), new("history", "History"), new("review", "Review & release"), new("timeline", "Timeline"), new("security", "Security markings"), new("trace", "Trace")];
+    private string PageBanner => BannerMerge.Union(doc?.Banner ?? UiText.Unclassified, timelineBanner, tab == "cad" ? cadBanner : null, tab == "trace" ? traceBanner : null);
     private string? cadBanner; // banner of the CAD documents the CAD tab names (ADR-0035)
     private string? timelineBanner; // banner of the objects the timeline entries name (UX-3)
+    private string? traceBanner; // banner of the requirements the Trace tab names (8.3)
 
     private DocumentDetail? doc;
     private DocumentPartLinks? parts;

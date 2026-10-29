@@ -1,0 +1,49 @@
+@page "/requirements/new"
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject NavigationManager Nav
+
+@* A blank form shows no controlled data; the markings being entered appear on the created specification. *@
+<PageFrame Banner="@UiText.Unclassified" Title="New requirement specification" Crumbs="@Crumbs">
+    <EditForm Model="this" OnSubmit="Create" FormName="new-requirement-spec" class="stack">
+        <fieldset class="grid-form">
+            <legend>Specification</legend>
+            <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+            <label>Product or program <InputText @bind-Value="product" maxlength="120" /></label>
+            <label class="wide">Description <InputTextArea @bind-Value="description" rows="3" maxlength="4000" /></label>
+        </fieldset>
+        <fieldset class="grid-form">
+            <legend>Security markings</legend>
+            <MarkingsFields Value="markings" />
+        </fieldset>
+        <p class="muted small">Every requirement is at least as restrictive as the specification and can carry stricter markings of its own.</p>
+        @if (errors is not null)
+        {
+            <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
+        }
+        <div class="toolbar">
+            <button type="submit" disabled="@busy">Create specification</button>
+            <a class="button secondary" href="requirements">Cancel</a>
+        </div>
+    </EditForm>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Requirements", "requirements"), new("New")];
+    private string name = "", product = "", description = "";
+    private readonly MarkingsInput markings = new();
+    private IReadOnlyList<string>? errors;
+    private bool busy;
+
+    private async Task Create()
+    {
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = m.Errors; return; }
+        busy = true;
+        errors = null;
+        var outcome = await Requirements.CreateAsync(await Users.GetAsync(), new CreateSpecCommand(name, product, description, m.Value), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome.IsOk) Nav.NavigateTo(RequirementUiText.Href(outcome.Value!.Summary.Number));
+        else errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+    }
+}

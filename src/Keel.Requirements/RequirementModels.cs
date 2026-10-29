@@ -160,7 +160,7 @@ public sealed record CoverageRow(
 public sealed record CoverageSummary(
     int Total, int InScope, int Allocated, int Unallocated, int Verified, int Waived, int Failed, int Stale, int NotVerified, int Planned, int SuspectLinks, int Gaps);
 
-public sealed record CoverageReport(
+public sealed record SpecCoverage(
     string SpecNumber, string Revision, int Iteration, string? Baseline, CoverageSummary Summary, IReadOnlyList<CoverageRow> Rows, string Banner);
 
 public sealed record MatrixColumn(string Id, string Kind, string Label, string? Href);

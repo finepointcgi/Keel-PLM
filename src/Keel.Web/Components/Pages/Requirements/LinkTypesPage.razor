@@ -1,0 +1,62 @@
+@page "/admin/requirement-link-types"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject RequirementService Requirements
+@inject ToastService Toasts
+
+<PageFrame Banner="@UiText.Unclassified" Title="Requirement link types" Crumbs="@Crumbs">
+    <AdminNav />
+    <p class="muted small">Link types say how a requirement relates to another requirement, a part, a document or a change. The system types cannot be retired. A type with the coverage role allocation counts toward allocation coverage; verification counts toward the planned verification. Types are retired, never deleted, so existing links stay valid.</p>
+    @if (error is not null) { <p class="error" role="alert">@error</p> }
+    <div class="table-wrap"><table class="data">
+        <caption class="sr-only">Link types</caption>
+        <thead><tr><th scope="col">Code</th><th scope="col">Label</th><th scope="col">Reverse label</th><th scope="col">Points at</th><th scope="col">Coverage role</th><th scope="col">State</th><th scope="col">Actions</th></tr></thead>
+        <tbody>
+        @foreach (var t in types)
+        {
+            <tr>
+                <td>@t.Code@(t.IsSystem ? " (system)" : "")</td><td>@t.Label</td><td>@t.ReverseLabel</td><td>@t.TargetKind</td><td>@t.CoverageRole</td><td>@(t.IsActive ? "Active" : "Retired")</td>
+                <td><button type="button" class="secondary" @onclick="() => Edit(t)">Edit <span class="sr-only">@t.Code</span></button></td>
+            </tr>
+        }
+        </tbody>
+    </table></div>
+    <form class="grid-form" @onsubmit="SaveAsync" aria-label="Save a link type">
+        <label>Code * <input @bind="code" maxlength="40" required readonly="@(editing)" /></label>
+        <label>Label * <input @bind="label" maxlength="60" required /></label>
+        <label>Reverse label * <input @bind="reverse" maxlength="60" required /></label>
+        <label>Points at
+            <select @bind="target" disabled="@(editing)">@foreach (var k in LinkTargetKinds.All) { <option value="@k">@k</option> }</select>
+        </label>
+        <label>Coverage role
+            <select @bind="role" disabled="@(editing && current?.IsSystem == true)">@foreach (var k in CoverageRoles.All) { <option value="@k">@k</option> }</select>
+        </label>
+        <label class="inline-check"><input type="checkbox" @bind="active" disabled="@(current?.IsSystem == true)" /> Active</label>
+        <label class="wide">Reason (needed to retire or restore) <input @bind="reason" maxlength="1000" /></label>
+        <div class="actions"><button type="submit" disabled="@busy">Save link type</button></div>
+    </form>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Administration", "admin"), new("Requirement link types")];
+    private IReadOnlyList<LinkTypeInfo> types = [];
+    private LinkTypeInfo? current;
+    private string code = "", label = "", reverse = "", target = "part", role = "none", reason = "";
+    private bool active = true, busy, editing;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => types = await Requirements.ListLinkTypesAsync(true);
+
+    private void Edit(LinkTypeInfo t) => (current, editing, code, label, reverse, target, role, active, reason) = (t, true, t.Code, t.Label, t.ReverseLabel, t.TargetKind, t.CoverageRole, t.IsActive, "");
+
+    private async Task SaveAsync()
+    {
+        busy = true; error = null;
+        var outcome = await Requirements.SaveLinkTypeAsync(await Users.GetAsync(), new SaveLinkTypeCommand(code, label, reverse, target, role, active, current?.SortOrder ?? 100, reason), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind is OutcomeKind.Invalid ? string.Join(" ", outcome.Errors) : UiText.Message(outcome); return; }
+        Toasts.Success("Link type saved.");
+        (current, editing, code, label, reverse, reason, active) = (null, false, "", "", "", "", true);
+        types = await Requirements.ListLinkTypesAsync(true);
+    }
+}

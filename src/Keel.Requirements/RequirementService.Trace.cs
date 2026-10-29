@@ -67,15 +67,15 @@ public sealed partial class RequirementService
     /// Coverage of a revision (or, with <paramref name="baseline"/>, coverage within a baseline: an allocation counts when its part is in the baseline). Everything is counted over what the
     /// caller can read: a restricted requirement, or a link to a restricted part or document, is not counted, so no number reveals one.
     /// </summary>
-    public Task<Outcome<CoverageReport>> GetCoverageAsync(Subject subject, string number, string? revision, string? baseline, string? correlationId, CancellationToken ct = default) =>
-        ReadAsync<CoverageReport>(subject, number, revision, "requirement.coverage", correlationId, async (conn, tx, head) =>
+    public Task<Outcome<SpecCoverage>> GetCoverageAsync(Subject subject, string number, string? revision, string? baseline, string? correlationId, CancellationToken ct = default) =>
+        ReadAsync<SpecCoverage>(subject, number, revision, "requirement.coverage", correlationId, async (conn, tx, head) =>
         {
             HashSet<string>? inBaseline = null;
             if (!string.IsNullOrWhiteSpace(baseline))
             {
-                if (baselines is null) return (Outcome<CoverageReport>.Invalid(["Coverage by baseline is not available."]), []);
+                if (baselines is null) return (Outcome<SpecCoverage>.Invalid(["Coverage by baseline is not available."]), []);
                 var parts = await baselines.ReadablePartsAsync(subject, baseline.Trim(), correlationId, ct);
-                if (!parts.IsOk) return (Outcome<CoverageReport>.Invalid([$"Baseline '{baseline}' was not found, or you are not authorized to see it."]), []);
+                if (!parts.IsOk) return (Outcome<SpecCoverage>.Invalid([$"Baseline '{baseline}' was not found, or you are not authorized to see it."]), []);
                 inBaseline = parts.Value!.Select(p => p.Number).ToHashSet(StringComparer.Ordinal);
             }
             var trace = await BuildTraceAsync(conn, tx, subject, head, ct);
@@ -91,7 +91,7 @@ public sealed partial class RequirementService
             }
             var summary = RequirementRules.Summarize(rows);
             var banner = Markings.AggregateBanner(rows.Select(r => r.Markings).Append(head.Markings));
-            return (Outcome<CoverageReport>.Ok(new CoverageReport(head.Number, head.Revision, head.Iteration, inBaseline is null ? null : baseline!.Trim(), summary, rows, banner)),
+            return (Outcome<SpecCoverage>.Ok(new SpecCoverage(head.Number, head.Revision, head.Iteration, inBaseline is null ? null : baseline!.Trim(), summary, rows, banner)),
                 [("revision", head.Label), ("requirements", Fmt(rows.Count)), ("gaps", Fmt(summary.Gaps)), ("baseline", inBaseline is null ? null : baseline!.Trim())]);
         }, ct);
 

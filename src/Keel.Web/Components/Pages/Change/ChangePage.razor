@@ -136,6 +136,9 @@
                         @* UX-3: the impact analysis as a picture; the page banner also covers the items it draws. *@
                         <ImpactMapPanel Detail="d" OnBanner="b => mapBanner = b" />
                         break;
+                    case "trace":
+                        <Keel.Web.Components.Pages.Requirements.ObjectTracePanel Kind="change" Key="@d.Number" OnBanner="b => traceBanner = b" />
+                        break;
                     case "tasks":
                         <ChangeTasksPanel Detail="d" OnUpdated="Apply" />
                         break;
@@ -213,13 +216,13 @@
 
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
-    private static readonly string[] TabIds = ["overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", .. AwarenessTabs.Ids];
+    private static readonly string[] TabIds = ["overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", "trace", .. AwarenessTabs.Ids];
 
     private static IReadOnlyList<TabInfo> TabsFor(ChangeDetail d) =>
     [
         new("overview", "Overview"), new("affected", "Affected objects", d.Affected.Count), new("impact", "Impact analysis"), new("impactmap", "Impact map"),
         .. d.Type == ChangeTypes.Ecn ? new[] { new TabInfo("tasks", "Tasks", d.Tasks.Count) } : [],
-        new("review", "Review & release"), new("security", "Security markings"), new("history", "History"),
+        new("review", "Review & release"), new("security", "Security markings"), new("history", "History"), new("trace", "Trace"),
     ];
 
     private string tab = "overview";
@@ -255,6 +258,7 @@
 
     private ChangeDetail? detail;
     private IReadOnlyList<Markings> impactShown = [];
+    private string? traceBanner; // banner of the requirements the Trace tab names (8.3)
     private string? mapBanner; // banner of the items the impact map draws (UX-3)
     private bool notFound, busy, editing;
     private string? error;
@@ -263,7 +267,7 @@
     private ChangeTransitionView? pending;
     private IReadOnlyList<ChangeReasonCode> reasonCodes = [];
 
-    private string Banner => detail is null ? UiText.Unclassified : BannerMerge.Union(Markings.AggregateBanner(detail.Shown.Concat(impactShown)), mapBanner);
+    private string Banner => detail is null ? UiText.Unclassified : BannerMerge.Union(Markings.AggregateBanner(detail.Shown.Concat(impactShown)), mapBanner, tab == "trace" ? traceBanner : null);
 
     private IReadOnlyList<string> priorities = []; // 2.2: administrator data
 
