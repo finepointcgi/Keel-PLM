@@ -4,6 +4,7 @@ using Keel.Audit;
 using Keel.Core;
 using Keel.Parts;
 using Keel.Security;
+using Keel.Web.Services.Demo;
 using Keel.Web.Services.Visuals;
 using Keel.Workflow;
 using Microsoft.AspNetCore.Authentication;
@@ -54,7 +55,7 @@ public static class KeelUi
     private const string StepUpFailure = "keel.step_up_refused";
 
     /// <summary>Registers the Blazor UI and its server-side OIDC sign-in (ADR-0014). Call after AddAuthentication().</summary>
-    public static AuthenticationBuilder AddKeelUi(this AuthenticationBuilder auth, KeelUiOptions options, bool secureCookies)
+    public static AuthenticationBuilder AddKeelUi(this AuthenticationBuilder auth, KeelUiOptions options, bool secureCookies, bool demo = false)
     {
         var services = auth.Services;
         services.AddRazorComponents().AddInteractiveServerComponents();
@@ -95,6 +96,10 @@ public static class KeelUi
                 }
             };
         });
+
+        // Demo mode (ADR-0045) swaps the remote identity provider for a local sign-in page under the same scheme name; it is off unless the host proved both
+        // ASPNETCORE_ENVIRONMENT=Demo and Keel:Demo:Enabled=true (DemoMode.IsEnabled). Production never reaches this branch.
+        if (demo) return auth.AddKeelDemo();
 
         auth.AddOpenIdConnect(OidcScheme, o =>
         {
