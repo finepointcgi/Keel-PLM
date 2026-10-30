@@ -191,8 +191,8 @@ internal sealed class ProgramMaintenanceService(ProgramMaintenance maintenance, 
 public static class ProgramModule
 {
     /// <summary>The service wired by hand (tests and tools); the host uses <see cref="AddKeelPrograms"/>.</summary>
-    public static ProgramService Create(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IEnumerable<IObjectAccess> objects, INotificationSink? notifications = null, IDomainEventSink? events = null) =>
-        new(dataSource, audit, clock, objects.Append(new ProgramObjectAccess(dataSource)), notifications, events);
+    public static ProgramService Create(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IEnumerable<IObjectAccess> objects, INotificationSink? notifications = null, IDomainEventSink? events = null, IProgramMaterialSource? materials = null) =>
+        new(dataSource, audit, clock, objects.Append(new ProgramObjectAccess(dataSource)), notifications, events, materials);
 
     public static IWorkflowObjectGateway CreateGateway(IAuditLog audit, ProgramService service) => new ProgramGateway(audit, service);
 
@@ -212,7 +212,7 @@ public static class ProgramModule
         services.AddSingleton<IObjectAccess>(sp => new ProgramObjectAccess(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddSingleton<IObjectAccess>(sp => new GateObjectAccess(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddSingleton(sp => new ProgramService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(),
-            sp.GetServices<IObjectAccess>(), sp.GetService<INotificationSink>(), sp.GetService<IDomainEventSink>()));
+            sp.GetServices<IObjectAccess>(), sp.GetService<INotificationSink>(), sp.GetService<IDomainEventSink>(), sp.GetService<IProgramMaterialSource>()));
         services.AddSingleton<IWorkflowObjectGateway>(sp => new ProgramGateway(sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<ProgramService>()));
         services.AddSingleton<ITimelineSource>(sp => new ProgramTimelineSource(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddSingleton(sp => new ProgramMaintenance(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ProgramOptions>(), sp.GetService<INotificationSink>()));

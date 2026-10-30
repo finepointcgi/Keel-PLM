@@ -182,3 +182,31 @@
 .prg-grid { display: grid; gap: var(--space-3, 12px); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .prg-meter { display: block; width: 100%; height: 10px; }
 .table-wrap td.num, .table-wrap th.num { text-align: right; }
+
+/* ---- resources and cost (ADR-0049): cost curves and the weekly load picture. Tokens only; every series also has a line style and a marker shape, every load band a pattern or outline. */
+.cost-chart { display: block; width: 100%; height: auto; max-height: 420px; background: var(--c-surface); border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); }
+.cost-grid { stroke: var(--c-border); stroke-width: 1; }
+.cost-status { stroke: var(--c-accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.cost-line { stroke-width: 2.5; stroke-linejoin: round; }
+.cost-line-budget { stroke: var(--c-text); stroke-dasharray: 8 5; }
+.cost-line-actual { stroke: var(--c-accent); stroke-width: 3.5; }
+.cost-line-eac { stroke: var(--c-danger); stroke-dasharray: 2 4; stroke-linecap: round; }
+.cost-mark-budget { fill: var(--c-surface); stroke: var(--c-text); stroke-width: 1.5; }
+.cost-mark-actual { fill: var(--c-accent); stroke: var(--c-surface); stroke-width: 1; }
+.cost-mark-eac { fill: var(--c-danger); stroke: var(--c-surface); stroke-width: 1; }
+.vis-k-cost-budget .vis-shape { fill: none; stroke: var(--c-text); stroke-width: 2.5; stroke-dasharray: 8 5; }
+.vis-k-cost-actual .vis-shape { fill: none; stroke: var(--c-accent); stroke-width: 3.5; }
+.vis-k-cost-eac .vis-shape { fill: none; stroke: var(--c-danger); stroke-width: 2.5; stroke-dasharray: 2 4; stroke-linecap: round; }
+.load-cell { stroke: var(--c-border); stroke-width: 1; }
+.load-none { fill: var(--c-surface); }
+.load-low { fill: var(--c-accent-bg); stroke: var(--c-accent); }
+.load-high { fill: var(--c-accent); stroke: var(--c-accent); }
+.load-over { fill: var(--c-danger-bg); stroke: var(--c-danger); stroke-width: 2.5; }
+.vis-k-load-none .vis-shape { fill: var(--c-surface); stroke: var(--c-border-strong); stroke-width: 1.5; }
+.vis-k-load-low .vis-shape { fill: var(--c-accent-bg); stroke: var(--c-accent); stroke-width: 1.5; }
+.vis-k-load-high .vis-shape { fill: var(--c-accent); stroke: var(--c-accent); stroke-width: 1.5; }
+.vis-k-load-over .vis-shape { fill: var(--c-danger-bg); stroke: var(--c-danger); stroke-width: 3; }
+.load-row:focus-visible .load-cell { stroke-width: 2; }
+.cost-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--sp-3); margin: 0; padding: 0; list-style: none; }
+.cost-tile { border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); padding: var(--sp-3); background: var(--c-surface); }
+.cost-tile strong { display: block; font-size: var(--fs-lg, 1.25rem); font-variant-numeric: tabular-nums; }

@@ -17,6 +17,7 @@ public static class UiText
         ["sourcing.foreign_supplier_itar_part"] = "A foreign supplier is never selected for, or sent data about, an ITAR-marked part.",
         ["portal.not_linked"] = "Your account is not linked to a supplier.",
         ["portal.no_clearance_profile"] = "The supplier has no clearance profile, so no data may be released to it.",
+        ["cost.role_required"] = "Rates, budgets and costs need the program cost permission (the role plm-program-cost).",
         ["stepup.required"] = "Signing needs a fresh sign-in. You will be asked to sign in again.",
     };
 

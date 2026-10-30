@@ -224,6 +224,14 @@ public static partial class ActivityCatalog
         R("program.gate_checklist_add", "edit", "{actor} added a gate review criterion", null, F("gate", "Gate review"), F("required", "Required")),
         R("program.gate_checklist_remove", "edit", "{actor} removed a gate review criterion", null, F("gate", "Gate review")),
         R("program.gate_check", "edit", "{actor} updated a gate review criterion", null, F("gate", "Gate review"), F("status", "Status")),
+        // resources (9.5): hours and assignments only; money events (rates, budget, actual costs, material lines) are not in the feed, see Hidden
+        R("program.pool_add", "change", "{actor} added a resource pool", null, F("pool", "Pool"), F("markings", "Markings")),
+        R("program.role_add", "change", "{actor} added a resource role", null, F("role", "Role"), F("pool", "Pool")),
+        R("program.resource_add", "change", "{actor} added a resource", null, F("resource", "Resource"), F("role", "Role"), F("capacity", "Hours per day")),
+        R("program.resource_update", "edit", "{actor} changed a resource", null, F("resource", "Resource"), F("role", "Role"), F("capacity", "Hours per day"), F("active", "Active")),
+        R("program.assignment_add", "link", "{actor} assigned a resource to a task", null, F("assignment", "Assignment"), F("item", "Item"), F("resource", "Resource"), F("hours", "Total hours")),
+        R("program.assignment_update", "change", "{actor} changed an assignment", null, F("assignment", "Assignment"), F("hours", "Total hours")),
+        R("program.assignment_remove", "link", "{actor} removed an assignment", null, F("assignment", "Assignment")),
         R("program.milestone_due", "state", "A milestone is due soon", null, F("key", "Item")),
         R("program.milestone_overdue", "state", "A milestone is overdue", null, F("key", "Item")),
         R("gate.submit", "review", "{actor} submitted the gate review", null, F("submission", "Submission")),
@@ -385,6 +393,10 @@ public static partial class ActivityCatalog
         ["program.dashboard"] = "{actor} viewed the program dashboard",
         ["program.deliverables"] = "{actor} viewed the deliverables",
         ["program.my_work"] = "{actor} viewed their program work",
+        ["program.resources"] = "{actor} viewed the resources",
+        ["program.load"] = "{actor} viewed the resource load",
+        ["program.cost"] = "{actor} viewed the program cost",
+        ["program.cost_export"] = "{actor} exported the resources and cost",
         ["program.gate_read"] = "{actor} viewed the gate review",
         ["ncr.read"] = "{actor} viewed the report",
         ["ncr.search"] = "{actor} found the report in a search",
@@ -434,6 +446,8 @@ public static partial class ActivityCatalog
         "compliance.material_read", "compliance.list_create", "compliance.list_read", "compliance.list_draft_create", "compliance.list_draft_save", "compliance.list_draft_discard",
         "compliance.list_submit", "compliance.list_publish", "compliance.list_review_cancel",
         "requirement.link_type_save", "requirement.sweep",
+        // Program cost (9.5): rates, budgets, actual costs and material lines are money, which the activity feed of a program (read by every member) must not carry; an auditor reads them in the audit log.
+        "program.role_rate_set", "program.budget_set", "program.actual_add", "program.material_add", "program.material_remove",
         // Refusal reason codes that happen to look like actions (they are written into the details of a denial, never as an event's action).
         "comment.not_author_or_admin", "workflow.cancel_not_starter_or_admin",
     }.Concat(Keel.Core.EventTypes.All).ToFrozenSet(StringComparer.Ordinal); // the event types of the ERP contract are outbox events, not audit actions

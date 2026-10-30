@@ -40,6 +40,10 @@
       {
         "name": "plm-records",
         "description": "Records management: retention schedules, legal holds, disposition and archives. Grants no access to any object by itself; what the holder can see is still decided by the viewer role and the security markings."
+      },
+      {
+        "name": "plm-program-cost",
+        "description": "Program cost data: hourly rates, budgets, actual costs and cost totals of a program. Grants no access to any object by itself; the holder still sees only programs and rows their security markings allow."
       }
     ]
   },
@@ -340,7 +344,8 @@
       ],
       "realmRoles": [
         "plm-viewer",
-        "plm-author"
+        "plm-author",
+        "plm-program-cost"
       ],
       "id": "d0f8df8c-51d0-5241-8c4f-f39864b95d21"
     },

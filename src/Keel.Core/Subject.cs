@@ -49,6 +49,11 @@ public static class Roles
     /// <c>PlmAction</c>: it opens the records pages and API only; what the holder may SEE of the objects is still decided by the viewer role and the markings.
     /// </summary>
     public const string RecordsManager = "plm-records";
+    /// <summary>
+    /// Program cost data (9.5, ADR-0049): hourly rates, budgets, actual costs and every money total of a program. Deliberately not in <see cref="All"/> and not granted any
+    /// <c>PlmAction</c>: it is an additional gate on top of the markings. Without it a program member still sees resources, assignments, hours and over-allocation, but no rate and no amount.
+    /// </summary>
+    public const string ProgramCost = "plm-program-cost";
 
     /// <summary>The roles of people. <see cref="Integration"/> is a service role and is not part of this set.</summary>
     public static readonly ImmutableArray<string> All = [Viewer, Author, Approver, Admin, Auditor];
