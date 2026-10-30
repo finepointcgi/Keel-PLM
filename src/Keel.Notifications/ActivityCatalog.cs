@@ -106,6 +106,9 @@ public static partial class ActivityCatalog
         R("document.transition", "state", "{actor} moved the document from {from} to {to}", "{actor} changed the state of the document", Revision, From, To),
         R("document.set_state", "state", "{actor} set the state from {from} to {to} (administrator override)", "{actor} set the state (administrator override)", Revision, From, To, Reason),
         R("document.markings_change", "markings", "{actor} changed the security markings", null, Before, After, Reason),
+        // 9.5 redline review. The sentences name no other document: an event written on both documents of a comparison must not tell a reader of one the number of the other.
+        R("document.redline_comment", "review", "{actor} commented on change {change} of a redline", "{actor} commented on a redline", F("change", "Change")),
+        R("document.redline_resolve", "review", "{actor} marked a redline comment thread {state}", "{actor} updated a redline comment thread", F("state", "State")),
         R("document.quarantine", "state", "{actor} quarantined a file", null, F("file", "File"), Reason),
         R("document.quarantine_release", "state", "{actor} released a file from quarantine", null, F("file", "File"), Reason),
         // changes
@@ -313,6 +316,9 @@ public static partial class ActivityCatalog
         ["document.model_history"] = "{actor} viewed the version history",
         ["document.model_compare"] = "{actor} compared two versions",
         ["document.versions_download"] = "{actor} downloaded versions as a ZIP",
+        ["document.compare_versions"] = "{actor} listed the versions of the document to compare",
+        ["document.compare"] = "{actor} compared the document with another version or document",
+        ["document.redline_export"] = "{actor} exported a redline report",
         ["document.read_part_links"] = "{actor} viewed the part links",
         ["change.read"] = "{actor} viewed the change",
         ["change.search"] = "{actor} found the change in a search",

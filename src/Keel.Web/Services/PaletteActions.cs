@@ -27,6 +27,7 @@ public static class PaletteActions
             new("go:tasks", "Go to My tasks", "Go to", "tasks", "tasks", "inbox review sign approve"),
             new("go:parts", "Go to Parts", "Go to", "part", "parts", "components assemblies"),
             new("go:documents", "Go to Documents", "Go to", "document", "documents", "drawings specifications"),
+            new("go:compare", "Compare documents", "Go to", "document", "compare", "redline diff compare revisions versions changes review"),
             new("go:mboms", "Go to Manufacturing BOMs", "Go to", "mbom", "mboms", "mbom plant"),
             new("go:baselines", "Go to Baselines", "Go to", "baseline", "baselines", "configuration"),
             new("go:changes", "Go to Changes", "Go to", "change", "changes", "ecn ecr problem report"),

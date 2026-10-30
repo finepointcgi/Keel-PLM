@@ -1,0 +1,377 @@
+@page "/compare"
+@using Keel.Documents
+@using Keel.Documents.Compare
+@implements IAsyncDisposable
+@inject CurrentUser Users
+@inject DocumentService Docs
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ToastService Toasts
+
+@* Cross-document compare and redline (increment 9.5, ADR-0053). Any two versions of a document, or of two documents: a word-level redline for text, Markdown, DOCX, XLSX and PDF
+   text, and a plain facts-and-hash comparison for everything else. The banner is the aggregate of BOTH documents. *@
+<PageFrame Banner="@PageBanner" Title="Compare documents" Crumbs="@Crumbs">
+    <div class="stack">
+        <form class="panel stack" aria-labelledby="pick-heading" @onsubmit="GoAsync" @onsubmit:preventDefault data-testid="compare-picker">
+            <h2 id="pick-heading">Choose what to compare</h2>
+            <p class="muted">Compare any two versions of one document, or any two documents. A text, Markdown, Word, Excel or PDF file is compared word by word; other files are compared by size, checksum and facts.</p>
+            <div class="grid-form">
+                <fieldset class="stack">
+                    <legend>Left (the base)</legend>
+                    <label>Document number <input data-testid="left-number" @bind="leftNumber" @bind:after="() => leftList = null" autocomplete="off" /></label>
+                    <div class="toolbar">
+                        <button type="button" class="secondary" disabled="@busy" @onclick="() => FindAsync(true)" data-testid="left-find">Find versions of left</button>
+                        @if (leftList is not null)
+                        {
+                            <label>Version of left <select data-testid="left-version" @bind="leftSel">@foreach (var v in leftList.Versions) { <option value="@v.IterationId">@VersionText(v)</option> }</select></label>
+                        }
+                    </div>
+                </fieldset>
+                <fieldset class="stack">
+                    <legend>Right (the changed one)</legend>
+                    <label>Document number <input data-testid="right-number" @bind="rightNumber" @bind:after="() => rightList = null" autocomplete="off" /></label>
+                    <div class="toolbar">
+                        <button type="button" class="secondary" disabled="@busy" @onclick="() => FindAsync(false)" data-testid="right-find">Find versions of right</button>
+                        @if (rightList is not null)
+                        {
+                            <label>Version of right <select data-testid="right-version" @bind="rightSel">@foreach (var v in rightList.Versions) { <option value="@v.IterationId">@VersionText(v)</option> }</select></label>
+                        }
+                    </div>
+                </fieldset>
+            </div>
+            @if (pickError is not null) { <p class="error" role="alert">@pickError</p> }
+            <div class="toolbar"><button type="submit" disabled="@(busy || leftList is null || rightList is null)" data-testid="compare-go">Compare</button>
+                @if (leftList is null || rightList is null) { <span class="muted small">Find the versions of both sides first.</span> }</div>
+        </form>
+
+        @if (loading) { <Skeleton Lines="6" Label="Comparing the documents" /> }
+        else if (problem is not null) { <p class="error" role="alert" data-testid="compare-problem">@problem</p> }
+        else if (cmp is not null) { @Result(cmp) }
+    </div>
+</PageFrame>
+
+@code {
+    [SupplyParameterFromQuery(Name = "left")] public string? Left { get; set; }
+    [SupplyParameterFromQuery(Name = "right")] public string? Right { get; set; }
+    [SupplyParameterFromQuery(Name = "leftVersion")] public Guid? LeftVersion { get; set; }
+    [SupplyParameterFromQuery(Name = "rightVersion")] public Guid? RightVersion { get; set; }
+
+    private DocumentComparison? cmp;
+    private CompareVersionList? leftList, rightList;
+    private string leftNumber = "", rightNumber = "";
+    private Guid leftSel, rightSel;
+    private bool busy, loading;
+    private string? problem, pickError, error, seen;
+    private string mode = "inline";
+    private int current = -1;
+    private string newBody = "";
+    private readonly Dictionary<Guid, string> replies = [];
+    private IJSObjectReference? module;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Documents", "documents"), new("Compare")];
+
+    private string PageBanner => cmp?.Banner ?? BannerMerge.Union(leftList?.Banner, rightList?.Banner);
+
+    private static string VersionText(CompareVersionOption v) => $"{v.Label} · {v.State}{(v.IsLatest ? " · latest" : "")} · {v.FileName}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Left}|{Right}|{LeftVersion}|{RightVersion}";
+        if (key == seen) return;
+        seen = key;
+        leftNumber = Left ?? leftNumber;
+        rightNumber = Right ?? rightNumber;
+        cmp = null;
+        problem = null;
+        current = -1;
+        if (!string.IsNullOrWhiteSpace(Left)) await FindAsync(true, LeftVersion);
+        if (!string.IsNullOrWhiteSpace(Right)) await FindAsync(false, RightVersion);
+        if (!string.IsNullOrWhiteSpace(Left) && !string.IsNullOrWhiteSpace(Right)) await LoadAsync();
+    }
+
+    private async Task FindAsync(bool isLeft, Guid? preselect = null)
+    {
+        busy = true;
+        pickError = null;
+        var number = (isLeft ? leftNumber : rightNumber).Trim();
+        var outcome = string.IsNullOrEmpty(number) ? null : await Docs.ListCompareVersionsAsync(await Users.GetAsync(), number, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (outcome is null) { pickError = "Enter a document number."; return; }
+        if (!outcome.IsOk) { pickError = outcome.Kind == OutcomeKind.NotFound ? $"Document {number} was not found, or you are not authorized to see it." : UiText.Message(outcome); if (isLeft) leftList = null; else rightList = null; return; }
+        var list = outcome.Value!;
+        if (list.Versions.Count == 0) { pickError = $"{list.Number} has no version with a file to compare."; return; }
+        var pick = preselect is { } p && list.Versions.Any(v => v.IterationId == p) ? p : list.Versions[^1].IterationId;
+        if (isLeft) { leftList = list; leftSel = pick; }
+        else { rightList = list; rightSel = pick; }
+        // Two versions of one document: the base defaults to the previous version, the changed side to the latest.
+        if (preselect is null && leftList is not null && rightList is not null && leftList.Number == rightList.Number && leftList.Versions.Count > 1 && leftSel == rightSel)
+            leftSel = leftList.Versions[^2].IterationId;
+    }
+
+    private Task GoAsync()
+    {
+        if (leftList is null || rightList is null) return Task.CompletedTask;
+        if (leftSel == rightSel) { pickError = "Choose two different versions to compare."; return Task.CompletedTask; }
+        Nav.NavigateTo(RedlineUi.PageUrl(leftList.Number, leftSel, rightList.Number, rightSel));
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadAsync(bool refresh = false)
+    {
+        // A refresh after a comment keeps the redline on screen (no skeleton), so the reader keeps their place.
+        loading = !refresh;
+        problem = null;
+        if (!refresh) StateHasChanged();
+        var outcome = await Docs.CompareDocumentsAsync(await Users.GetAsync(), new CompareRef(Left!, LeftVersion), new CompareRef(Right!, RightVersion), CurrentUser.NewCorrelationId());
+        loading = false;
+        if (outcome.IsOk) cmp = outcome.Value;
+        else
+        {
+            cmp = null;
+            problem = outcome.Kind == OutcomeKind.NotFound ? "One of the documents was not found, or you are not authorized to see both of them." : UiText.Message(outcome);
+        }
+    }
+
+    // ---------------------------------------------------------------- change navigation
+
+    private int ChangeCount => cmp?.Diff?.Changes.Count ?? 0;
+
+    private string Status => ChangeCount == 0 ? "No changes" : current < 0 ? $"{ChangeCount} change{(ChangeCount == 1 ? "" : "s")}" : $"Change {current + 1} of {ChangeCount}";
+
+    private async Task StepAsync(int delta)
+    {
+        if (ChangeCount == 0) return;
+        current = current < 0 ? (delta > 0 ? 0 : ChangeCount - 1) : (current + delta + ChangeCount) % ChangeCount;
+        await ShowAsync();
+    }
+
+    private async Task SelectAsync(int index)
+    {
+        current = index;
+        await ShowAsync();
+    }
+
+    private async Task ShowAsync()
+    {
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Keel.Web/Components/Pages/Documents/ComparePage.razor.js");
+            var n = current + 1;
+            await module.InvokeVoidAsync("showChange", mode == "inline" ? new[] { $"rl-inline-{n}-d", $"rl-inline-{n}-i" } : new[] { $"rl-side-{n}-r", $"rl-side-{n}-l" });
+        }
+        catch (JSException) { /* scrolling is a convenience: the status line and the highlight still show where we are */ }
+        catch (InvalidOperationException) { /* circuit closing */ }
+    }
+
+    private async Task OnKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.CtrlKey || e.AltKey || e.MetaKey) return;
+        if (e.Key is "n" or "j") await StepAsync(1);
+        else if (e.Key is "p" or "k") await StepAsync(-1);
+    }
+
+    private async Task SetModeAsync(string m)
+    {
+        mode = m;
+        if (current >= 0) { StateHasChanged(); await Task.Yield(); await ShowAsync(); }
+    }
+
+        // ---------------------------------------------------------------- comments
+
+    private async Task PostAsync(Guid? replyTo, string body, int change)
+    {
+        busy = true;
+        error = null;
+        var c = cmp!;
+        var outcome = await Docs.AddRedlineCommentAsync(await Users.GetAsync(), new CompareRef(c.Left.Number, c.Left.IterationId), new CompareRef(c.Right.Number, c.Right.IterationId), change, body, replyTo, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = outcome.Kind == OutcomeKind.NotFound ? "The documents are no longer available to you." : UiText.Message(outcome); return; }
+        if (replyTo is { } id) replies.Remove(id); else newBody = "";
+        Toasts.Success(replyTo is null ? "Comment added." : "Reply added.");
+        await LoadAsync(refresh: true);
+    }
+
+    private string ReplyText(Guid key) => replies.TryGetValue(key, out var v) ? v : "";
+
+    private Task PostReplyAsync(Guid key, int change) => PostAsync(key, ReplyText(key), change);
+
+    private void SetReply(Guid key, ChangeEventArgs e) => replies[key] = e.Value?.ToString() ?? "";
+
+    private async Task ResolveAsync(Guid thread, bool resolved)
+    {
+        busy = true;
+        error = null;
+        var outcome = await Docs.SetRedlineThreadResolvedAsync(await Users.GetAsync(), thread, resolved, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        Toasts.Success(resolved ? "Thread resolved." : "Thread reopened.");
+        await LoadAsync(refresh: true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            try { await module.DisposeAsync(); }
+            catch (Exception e) when (e is JSDisconnectedException or InvalidOperationException) { /* circuit already gone */ }
+        }
+    }
+
+    // ---------------------------------------------------------------- rendering
+
+    private static string KindText(string kind) => kind switch { "insert" => "Insertion", "delete" => "Deletion", _ => "Replacement" };
+
+    private RenderFragment Result(DocumentComparison c) => @<div class="stack" data-testid="compare-result">
+        <section class="panel stack" aria-labelledby="rl-heading">
+            <h2 id="rl-heading">@c.Left.Number @c.Left.Label against @c.Right.Number @c.Right.Label</h2>
+            @if (c.SameDocument) { <p class="muted">Two versions of @c.Left.Number, @c.Left.Name.</p> }
+            else { <p class="muted">Left: @c.Left.Number, @c.Left.Name. Right: @c.Right.Number, @c.Right.Name.</p> }
+            <div class="table-wrap"><table class="data" data-testid="compare-facts">
+                <caption class="sr-only">Facts of the two versions</caption>
+                <thead><tr><th scope="col">Fact</th><th scope="col">Left (base)</th><th scope="col">Right (changed)</th><th scope="col">Same?</th></tr></thead>
+                <tbody>
+                @foreach (var r in c.Metadata)
+                {
+                    <tr><th scope="row">@r.Field</th><td class="@(r.Field == "SHA-256" ? "mono" : null)">@r.Left</td><td class="@(r.Field == "SHA-256" ? "mono" : null)">@r.Right</td><td>@(r.Same ? "Same" : "Different")</td></tr>
+                }
+                </tbody>
+            </table></div>
+        </section>
+
+        @if (c.Mode == CompareModes.Identical)
+        {
+            <p class="notice" role="status" data-testid="compare-identical"><strong>The two files are byte-for-byte identical.</strong> There is nothing to redline.</p>
+        }
+        else if (c.Mode == CompareModes.Metadata)
+        {
+            <p class="notice" role="status" data-testid="compare-not-comparable"><strong>@c.NotComparableReason</strong></p>
+            <p>The files @(c.SameBytes ? "have the same bytes" : "have different bytes"): the checksums above @(c.SameBytes ? "match" : "do not match").</p>
+            <a class="button secondary" href="@RedlineUi.ReportUrl(c.Left.Number, c.Left.IterationId, c.Right.Number, c.Right.IterationId, "pdf")" download>Export report (PDF)</a>
+        }
+        else if (c.Diff is { } d)
+        {
+            <section class="panel stack" aria-labelledby="sum-heading" data-testid="compare-summary">
+                <h3 id="sum-heading">Summary</h3>
+                <dl class="facts">
+                    <dt>Changes</dt><dd data-testid="count-changes">@d.Counts.Changes</dd>
+                    <dt>Inserted words</dt><dd data-testid="count-inserted">@d.Counts.InsertedWords</dd>
+                    <dt>Deleted words</dt><dd data-testid="count-deleted">@d.Counts.DeletedWords</dd>
+                    <dt>Unchanged words</dt><dd>@d.Counts.UnchangedWords</dd>
+                    <dt>Similarity</dt><dd>@((d.Counts.Similarity * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)) %</dd>
+                    <dt>Comment threads</dt><dd>@c.OpenThreads open of @c.Threads.Count</dd>
+                </dl>
+                @if (d.Coarse) { <p class="notice">Some passages were too different to align word by word and are shown as replaced as a whole.</p> }
+                @if (!d.HasChanges) { <p class="notice" role="status"><strong>The text is the same.</strong> The files differ in bytes but not in words.</p> }
+                <p class="small muted">Differences in spacing and line breaks are not changes. @FormatNote(c)</p>
+            </section>
+
+            <section class="panel stack" aria-labelledby="view-heading">
+                <h3 id="view-heading">Redline</h3>
+                <div class="toolbar" role="toolbar" aria-label="Redline controls">
+                    <fieldset class="inline-fieldset">
+                        <legend class="sr-only">View</legend>
+                        <label><input type="radio" name="rl-mode" checked="@(mode == "inline")" @onchange='() => SetModeAsync("inline")' data-testid="mode-inline" /> Inline</label>
+                        <label><input type="radio" name="rl-mode" checked="@(mode == "side")" @onchange='() => SetModeAsync("side")' data-testid="mode-side" /> Side by side</label>
+                    </fieldset>
+                    <button type="button" class="secondary" disabled="@(ChangeCount == 0)" @onclick="() => StepAsync(-1)" data-testid="prev-change">Previous change</button>
+                    <button type="button" class="secondary" disabled="@(ChangeCount == 0)" @onclick="() => StepAsync(1)" data-testid="next-change">Next change</button>
+                    <span class="badge" role="status" aria-live="polite" data-testid="change-status">@Status</span>
+                    <a class="button secondary" href="@RedlineUi.ReportUrl(c.Left.Number, c.Left.IterationId, c.Right.Number, c.Right.IterationId, "pdf")" download data-testid="export-pdf">Export PDF</a>
+                    <a class="button secondary" href="@RedlineUi.ReportUrl(c.Left.Number, c.Left.IterationId, c.Right.Number, c.Right.IterationId, "html")" download data-testid="export-html">Export HTML</a>
+                </div>
+                <p class="small muted" id="rl-help"><ins class="rl-ins"><span aria-hidden="true" class="rl-mark">[+</span>Inserted text<span aria-hidden="true" class="rl-mark">+]</span></ins> is underlined and set between [+ and +]. <del class="rl-del"><span aria-hidden="true" class="rl-mark">[&#8722;</span>Deleted text<span aria-hidden="true" class="rl-mark">&#8722;]</span></del> is struck through and set between [&#8722; and &#8722;]. With the redline focused, press N for the next change and P for the previous one.</p>
+                @if (mode == "inline")
+                {
+                    <div class="rl-body" tabindex="0" role="region" aria-label="Redline text" aria-describedby="rl-help" @onkeydown="OnKeyAsync" data-testid="redline-inline">@foreach (var s in d.Segments) { <RedlineSegment Segment="s" Where="inline" Current="current" /> }</div>
+                }
+                else
+                {
+                    <div class="rl-columns">
+                        <div class="rl-body" tabindex="0" role="region" aria-label="@($"Left: {c.Left.Number} {c.Left.Label}, with deletions marked")" aria-describedby="rl-help" @onkeydown="OnKeyAsync" data-testid="redline-left">@foreach (var s in d.Segments.Where(s => s.Op != DiffOp.Insert)) { <RedlineSegment Segment="s" Where="side" Side="l" Current="current" /> }</div>
+                        <div class="rl-body" tabindex="0" role="region" aria-label="@($"Right: {c.Right.Number} {c.Right.Label}, with insertions marked")" aria-describedby="rl-help" @onkeydown="OnKeyAsync" data-testid="redline-right">@foreach (var s in d.Segments.Where(s => s.Op != DiffOp.Delete)) { <RedlineSegment Segment="s" Where="side" Side="r" Current="current" /> }</div>
+                    </div>
+                }
+            </section>
+
+            @if (d.Changes.Count > 0)
+            {
+                <section class="panel stack" aria-labelledby="chg-heading">
+                    <h3 id="chg-heading">Changes</h3>
+                    <div class="table-wrap"><table class="data" data-testid="change-table">
+                        <caption class="sr-only">List of changes. Select a number to jump to the change.</caption>
+                        <thead><tr><th scope="col">No.</th><th scope="col">Kind</th><th scope="col">Removed</th><th scope="col">Added</th><th scope="col">Comments</th></tr></thead>
+                        <tbody>
+                        @foreach (var ch in d.Changes.Take(MaxListed))
+                        {
+                            var ts = c.Threads.Where(t => !t.Detached && t.ChangeIndex == ch.Index).ToList();
+                            <tr aria-current="@(ch.Index == current ? "true" : null)">
+                                <th scope="row"><button type="button" class="link" @onclick="() => SelectAsync(ch.Index)" aria-label="@($"Go to change {ch.Index + 1}")">@(ch.Index + 1)</button></th>
+                                <td>@KindText(ch.Kind)</td><td>@ch.DeletedPreview</td><td>@ch.InsertedPreview</td>
+                                <td>@(ts.Count == 0 ? "None" : $"{ts.Count(t => !t.Resolved)} open, {ts.Count(t => t.Resolved)} resolved")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table></div>
+                    @if (d.Changes.Count > MaxListed) { <p class="muted small">The first @MaxListed of @d.Changes.Count changes are listed here; step through the redline for the rest.</p> }
+                </section>
+
+                <section class="panel stack" aria-labelledby="com-heading" data-testid="comments">
+                    <h3 id="com-heading">Review comments</h3>
+                    <p class="muted small">Comments belong to this pair of versions and to the change they are written on. Anyone who can read and download both documents sees them. They are part of the document review: open ones show on the document's Review &amp; release tab.</p>
+                    @if (error is not null) { <p class="error" role="alert">@error</p> }
+                    @if (current >= 0 && c.CanComment)
+                    {
+                        <form class="stack" @onsubmit="() => PostAsync(null, newBody, current)" @onsubmit:preventDefault>
+                            <label>Comment on change @(current + 1) <textarea rows="3" maxlength="@DocumentService.MaxRedlineCommentLength" @bind="newBody" @bind:event="oninput" data-testid="comment-body"></textarea></label>
+                            <div class="toolbar"><button type="submit" disabled="@(busy || string.IsNullOrWhiteSpace(newBody))" data-testid="comment-add">Add comment</button></div>
+                        </form>
+                    }
+                    else if (c.CanComment) { <p class="muted">Select a change (Next change, or a number in the list) to comment on it.</p> }
+                    else { <p class="muted">Your roles let you read comments but not write them.</p> }
+
+                    @if (c.Threads.Count == 0) { <p class="muted" data-testid="no-threads">No comments yet.</p> }
+                    @foreach (var t in c.Threads.OrderBy(t => t.ChangeIndex).ThenBy(t => t.At))
+                    {
+                        <article class="rl-thread @(t.Resolved ? "rl-resolved" : null)" aria-labelledby="@($"th-{t.Id:N}")" data-testid="thread" data-resolved="@(t.Resolved ? "true" : "false")">
+                            <h4 id="@($"th-{t.Id:N}")">
+                                @if (t.Detached) { <span>Comment on a change that is no longer present</span> }
+                                else { <button type="button" class="link" @onclick="() => SelectAsync(t.ChangeIndex)">Change @(t.ChangeIndex + 1)</button> <span class="muted">(@KindText(t.ChangeKind))</span> }
+                                <span class="badge">@(t.Resolved ? "Resolved" : "Open")</span>
+                            </h4>
+                            <p><strong>@t.AuthorName</strong> <span class="muted">@UiText.Utc(t.At)</span></p>
+                            <p class="rl-text">@t.Body</p>
+                            @foreach (var r in t.Replies)
+                            {
+                                <div class="rl-reply"><p><strong>@r.AuthorName</strong> <span class="muted">@UiText.Utc(r.At)</span></p><p class="rl-text">@r.Body</p></div>
+                            }
+                            @if (t.Resolved) { <p class="muted small">Resolved by @t.ResolvedByName, @(t.ResolvedAt is { } at ? UiText.Utc(at) : "").</p> }
+                            @if (c.CanComment && !t.Resolved && !t.Detached)
+                            {
+                                var key = t.Id;
+                                <form class="toolbar" @onsubmit="() => PostReplyAsync(key, t.ChangeIndex)" @onsubmit:preventDefault>
+                                    <input class="grow" aria-label="@($"Reply to the comment on change {t.ChangeIndex + 1}")" maxlength="@DocumentService.MaxRedlineCommentLength" value="@ReplyText(key)" @oninput="e => SetReply(key, e)" />
+                                    <button type="submit" class="secondary" disabled="@busy">Reply</button>
+                                </form>
+                            }
+                            @if (t.CanResolve)
+                            {
+                                var key = t.Id;
+                                <div class="toolbar">
+                                    @if (t.Resolved) { <button type="button" class="secondary" disabled="@busy" @onclick="() => ResolveAsync(key, false)">Reopen thread</button> }
+                                    else { <button type="button" class="secondary" disabled="@busy" @onclick="() => ResolveAsync(key, true)" data-testid="resolve">Resolve thread</button> }
+                                </div>
+                            }
+                        </article>
+                    }
+                </section>
+            }
+        }
+    </div>;
+
+    private const int MaxListed = 300;
+
+    private static string FormatNote(DocumentComparison c) =>
+        c.Left.Format == c.Right.Format ? $"Both files were read as {FormatName(c.Left.Format)}." : $"The left file was read as {FormatName(c.Left.Format)} and the right as {FormatName(c.Right.Format)}.";
+
+    private static string FormatName(string f) => f switch { "docx" => "a Word document", "xlsx" => "an Excel workbook", "pdf" => "PDF text", "markdown" => "Markdown", _ => "plain text" };
+}

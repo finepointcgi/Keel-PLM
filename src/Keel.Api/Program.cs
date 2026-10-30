@@ -270,6 +270,7 @@ app.MapDocumentEndpoints();
 app.MapComplianceEndpoints(); // 5.0 compliance: scan coverage, rescan, vault GC reports
 app.MapViewerEndpoints(); // 6.0 file viewer
 app.MapModelVersionEndpoints(); // 9.1 model versions: history, compare, restore, versions ZIP, mesh stream
+app.MapRedlineEndpoints(); // 9.5 cross-document compare and redline review
 app.MapBomEndpoints(); // 1.4 BOM
 app.MapWorkflowEndpoints();
 app.MapChangeEndpoints(); // 1.6 change management

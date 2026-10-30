@@ -210,6 +210,44 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                 await GoAsync(session, alice, "/cad/bom-proposals", "cad-proposals-list");
                 await GoAsync(session, alice, "/cad/bom-proposals/" + proposal, "cad-proposal-review");
 
+                // ---- compare and redline (9.5)
+                await TryAsync("redline", async () =>
+                {
+                    var rd = await RedlineData.EnsureAsync(fx);
+                    await GoAsync(session, alice, $"/documents/{rd.Spec}?tab=compare", "documents-compare-tab");
+                    await GoAsync(session, alice, "/compare", "documents-compare-picker", async p =>
+                    {
+                        await p.GetByTestId("left-number").FillAsync(rd.Spec);
+                        await p.GetByTestId("left-find").ClickAsync();
+                        await p.GetByTestId("right-number").FillAsync(rd.Other);
+                        await p.GetByTestId("right-find").ClickAsync();
+                        await p.GetByTestId("right-version").WaitForAsync();
+                    });
+                    await GoAsync(session, alice, rd.SpecPage, "documents-redline-inline", async p =>
+                    {
+                        await p.GetByTestId("compare-result").WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+                        await p.GetByTestId("next-change").ClickAsync();
+                        await p.GetByTestId("next-change").ClickAsync();
+                    });
+                    await TryAsync("redline-side", async () =>
+                    {
+                        await ap.GetByTestId("mode-side").CheckAsync();
+                        await ShotAsync(ap, "documents-redline-side-by-side");
+                        await ap.GetByTestId("mode-inline").CheckAsync();
+                    });
+                    await TryAsync("redline-comments", async () =>
+                    {
+                        await ap.GetByTestId("comment-body").FillAsync("Is a 6 mm plate really needed?");
+                        await ap.GetByTestId("comment-add").ClickAsync();
+                        await ap.GetByTestId("thread").First.WaitForAsync();
+                        await ap.GetByTestId("comments").ScrollIntoViewIfNeededAsync();
+                        await ShotAsync(ap, "documents-redline-comments");
+                    });
+                    await GoAsync(session, alice, $"/documents/{rd.Spec}?tab=review", "documents-redline-review-hint");
+                    await GoAsync(session, alice, $"/compare?left={rd.ModelA}&right={rd.ModelB}", "documents-compare-not-comparable", async p =>
+                        await p.GetByTestId("compare-not-comparable").WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 }));
+                });
+
                 // ---- baselines
                 await GoAsync(session, alice, "/baselines", "baselines-list");
                 await GoAsync(session, alice, "/baselines/" + (m.Extras?.DesignBaseline ?? "BL-000001"), "baselines-detail");

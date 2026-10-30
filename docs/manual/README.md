@@ -14,7 +14,7 @@ This manual is written from the user's point of view, with task-oriented steps. 
 | 2 | [Navigating Keel](02-navigating.md) | The rail, the command palette, search, themes, density, phones, session lock |
 | 3 | [Parts](03-parts.md) | Find, create, check out and in, lifecycle moves, markings |
 | 4 | [BOMs, variants and manufacturing BOMs](04-boms-variants-mbom.md) | Structure, where-used, structure diff, 150% BOM and variants, MBOM and reconciliation |
-| 5 | [Documents and the vault](05-documents-and-vault.md) | Documents, viewer, marked downloads, links, model versions |
+| 5 | [Documents and the vault](05-documents-and-vault.md) | Documents, viewer, marked downloads, links, model versions, compare and redline |
 | 6 | [Lifecycles, workflow and e-signatures](06-lifecycles-workflow-signatures.md) | Submitting for review, tasks, signing with step-up |
 | 7 | [Change management](07-change-management.md) | PR, ECR, ECN, impact analysis, release |
 | 8 | [Baselines and effectivity](08-baselines-effectivity.md) | Freezing a configuration, serial and lot applicability |
@@ -119,6 +119,7 @@ Stated in the chapter where it matters; collected here.
 | **NCR** | Nonconformance report |
 | **Outbox** | Events written with the business change and delivered to ERP sinks |
 | **Palette** | The `Ctrl+K` search and command box |
+| **Redline** | A word-by-word comparison of two document versions with insertions and deletions marked, and review comments on each change |
 | **Reconciliation** | Comparing an MBOM with its EBOM |
 | **Redacted placeholder** | A BOM or where-used line you may not read: shows only quantity and find number |
 | **Revision** | A formal, change-controlled version (A, B...) that carries the lifecycle state |

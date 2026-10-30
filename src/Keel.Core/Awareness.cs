@@ -175,6 +175,8 @@ public static class NotificationKindCodes
     public const string WatchedEstablished = "watched_established";
     public const string CommentAdded = "comment_added";
     public const string CommentMention = "comment_mention";
+    /// <summary>9.5 redline review: a reviewer commented on a changed range of a comparison of two document versions (or replied to a thread). Pointer is the right-hand document; the reference id is the review.</summary>
+    public const string RedlineComment = "redline_comment";
     /// <summary>Quality (8.1): a corrective or containment action was assigned to the person.</summary>
     public const string QualityActionAssigned = "quality_action_assigned";
     /// <summary>Quality (8.1): an action the person owns is past its due date.</summary>

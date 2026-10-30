@@ -77,15 +77,17 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
         Add("alice", "/", "/parts", "/parts?q=bracket", "/parts/new", "/parts/classification", "/documents", "/documents/new", "/changes", "/changes/new/ecr",
             "/baselines", "/baselines/new", "/baselines/compare", "/mboms", "/mboms/generate", "/tasks", "/workflows", "/search?q=" + m.GimbalBracket, "/search?q=bracket&kind=part",
-            "/notifications", "/notifications?tab=unread", "/notifications/preferences", "/watching", "/profile", "/access", "/tdp", "/tools/style-guide", "/not-found", "/access-denied");
+            "/notifications", "/notifications?tab=unread", "/notifications/preferences", "/watching", "/profile", "/access", "/tdp", "/tools/style-guide", "/compare", "/not-found", "/access-denied");
 
         foreach (var tab in new[] { "overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "activity", "comments", "trace" })
             Add("alice", $"/parts/{m.GimbalBracket}?tab={tab}");
         Add("alice", $"/parts/{m.TopAssembly}?tab=structure", $"/parts/{m.TopAssembly}?tab=timeline", $"/parts/{m.GimbalBracket}/where-used", $"/parts/{m.TopAssembly}/where-used",
             $"/parts/{m.GimbalBracket}/compare", "/parts/P-000005/compare-units", $"/parts/{m.AvionicsAssemblyUnderReview}?tab=review", $"/parts/{m.OpenFastener}");
 
-        foreach (var tab in new[] { "overview", "usedby", "history", "timeline", "security", "activity", "comments", "trace" })
+        foreach (var tab in new[] { "overview", "usedby", "compare", "history", "timeline", "security", "activity", "comments", "trace" })
             Add("alice", $"/documents/{m.SystemSpecification}?tab={tab}");
+        // Cross-document compare and redline (ADR-0053): a text comparison of two versions of a specification.
+        Add("alice", RedlineData.EnsureAsync(fx).GetAwaiter().GetResult().SpecPage);
         // Model versions (ADR-0046): the Versions tab of the two seeded models.
         if (m.Models is { } models) Add("alice", $"/documents/{models.BracketModel}?tab=versions", $"/documents/{models.PlateModel}?tab=versions");
         // CAD integration (ADR-0035): the CAD tab of a document, the proposals list and the review page.

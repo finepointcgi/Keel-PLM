@@ -1,5 +1,6 @@
 @inject CurrentUser Users
 @inject WorkflowService Flow
+@inject Keel.Documents.DocumentService Docs
 
 @* Review status, "Submit for review" and release history for one document (increment 7.6, ADR-0033). Self-contained so the document page only hosts it. *@
 @if (status is not null)
@@ -75,6 +76,19 @@
             <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" />
         }
 
+        @* 9.5: reviewers' comments on a redline of this document flow into its review. Counts and links only (the review page shows the documents under their own banner). *@
+        @if (redlines.Count > 0)
+        {
+            <h4>Redline review comments</h4>
+            <p data-testid="redline-hint">@redlines.Sum(r => r.OpenThreads) open comment thread@(redlines.Sum(r => r.OpenThreads) == 1 ? "" : "s") on redlines of this document. Open ones are for the reviewers and the author to resolve; they do not block the review.</p>
+            <ul class="plain">
+                @foreach (var r in redlines)
+                {
+                    <li><a href="compare/review/@r.ReviewId.ToString("D")">Redline review started by @r.CreatedByName, @WorkflowText.Utc(r.CreatedAt)</a>: @r.OpenThreads open of @r.TotalThreads</li>
+                }
+            </ul>
+        }
+
         @if (status.Releases.Count > 0)
         {
             <h4>Release history</h4>
@@ -107,6 +121,7 @@
     [Parameter] public EventCallback OnChanged { get; set; }
 
     private ObjectWorkflowStatus? status;
+    private IReadOnlyList<Keel.Documents.Compare.RedlineReviewSummary> redlines = [];
     private TemplateView? template;
     private bool starting, busy;
     private string? error, startError;
@@ -120,6 +135,7 @@
     {
         var outcome = await Flow.StatusForObjectAsync(await Users.GetAsync(), "document", Number, CurrentUser.NewCorrelationId());
         status = outcome.IsOk ? outcome.Value : null;
+        redlines = (await Docs.ListRedlineReviewsAsync(await Users.GetAsync(), Number)).Where(r => r.TotalThreads > 0).ToList();
     }
 
     private async Task BeginStart()
