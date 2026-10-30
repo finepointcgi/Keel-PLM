@@ -1,0 +1,211 @@
+{
+  "realm": "customer",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\": \"ADMIN_VIEW\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"validations\": {\"length\": {\"min\": 3, \"max\": 255}}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"validations\": {\"email\": {}}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
+          ]
+        }
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "PLM-Viewers"
+    },
+    {
+      "name": "PLM-Authors"
+    },
+    {
+      "name": "PLM-Approvers"
+    },
+    {
+      "name": "PLM-Admins"
+    },
+    {
+      "name": "PLM-Auditors"
+    },
+    {
+      "name": "Cafeteria"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "keel-broker",
+      "name": "Keel broker",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "upstream-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "us_person",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "us_person",
+            "claim.name": "us_person",
+            "jsonType.label": "boolean",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "citizenship",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "citizenship",
+            "claim.name": "citizenship",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "org",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "org",
+            "claim.name": "org",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "programs",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "programs",
+            "claim.name": "programs",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "jane",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Jane",
+      "lastName": "Upstream",
+      "email": "jane@customer.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "ENG"
+        ],
+        "programs": [
+          "ORCA",
+          "FALCON"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "jane-upstream-pw",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/PLM-Authors",
+        "/PLM-Approvers"
+      ]
+    },
+    {
+      "username": "eve",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Eve",
+      "lastName": "Upstream",
+      "email": "eve@customer.test",
+      "attributes": {},
+      "credentials": [
+        {
+          "type": "password",
+          "value": "eve-upstream-pw",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/Cafeteria"
+      ]
+    },
+    {
+      "username": "alicia",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alicia",
+      "lastName": "Upstream",
+      "email": "alice@keel.test",
+      "attributes": {
+        "us_person": [
+          "true"
+        ],
+        "citizenship": [
+          "USA"
+        ],
+        "org": [
+          "ENG"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alicia-upstream-pw",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/PLM-Admins"
+      ]
+    }
+  ]
+}

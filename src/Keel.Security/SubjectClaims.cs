@@ -31,6 +31,7 @@ public static class SubjectClaims
             CuiCategories = Set(principal, "cui_categories", upper: true),
             Roles = Set(principal, "roles", upper: false),
             AuthTime = AuthTimeOf(principal),
+            Acr = principal.FindFirst("acr")?.Value is { Length: > 0 } acr ? acr : null,
         };
     }
 

@@ -99,6 +99,7 @@ public static class RequirementsModule
     {
         var options = new RequirementOptions();
         configuration?.GetSection("Keel:Requirements").Bind(options);
+        if (string.IsNullOrWhiteSpace(options.StepUpRequiredAcr)) options.StepUpRequiredAcr = configuration?["Keel:Auth:StepUpAcr"]; // ADR-0058
         services.AddSingleton(options);
         services.AddSingleton(sp => new RequirementService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(),
             sp.GetService<INotificationSink>(), sp.GetRequiredService<RequirementOptions>(), sp.GetService<IBaselineMembership>()));

@@ -1,0 +1,27 @@
+# OPT-IN overlay for the dev Keycloak: TLS with client-certificate authentication, so the CAC/PIV flow of ADR-0058 can be tried on a
+# development machine with the generated TEST PKI. Not part of the default stack, not for production (start-dev, dev admin password).
+#
+#   scripts/idp/generate-test-pki.sh ./cac-test-pki
+#   mkdir -p cac-test-pki/server && cp cac-test-pki/{server.crt,server.key,ca.crt} cac-test-pki/server/ && chmod 644 cac-test-pki/server/*
+#   mkdir -p cac-test-pki/conf && cp cac-test-pki/crl.pem cac-test-pki/conf/
+#   KEEL_CAC_PKI=$PWD/cac-test-pki docker compose -f compose.yaml -f compose.cac-piv.yaml up -d keycloak
+#   docker compose -f compose.yaml -f compose.cac-piv.yaml exec -e KC_CLI_PASSWORD=keel_kc_admin_dev keycloak bash /overlay/configure-cac-piv.sh
+#   docker compose ... exec -e KC_CLI_PASSWORD=keel_kc_admin_dev keycloak bash /overlay/map-credential.sh alice 1000000001
+#
+# To sign Keel in through it: Keel__Auth__Authority=https://localhost:18443/realms/keel, SSL_CERT_FILE=<pki>/ca.crt for the Keel host (so it trusts the test CA),
+# Keel__Auth__SignIn__Method=Certificate and Keel__Auth__StepUpAcr=2; the browser needs the test client certificate (alice.p12, password keel-dev-test) imported.
+# That joined browser run was NOT performed (see docs/ops/cac-piv-sign-in.md, section 9).
+# The HTTPS port is KEEL_IDP_TLS_PORT (default 18443, loopback only). Choose ports that no other stack on the machine uses.
+# This file has been checked with `docker compose config`; the same configuration is exercised, in throwaway containers, by
+# tests/Keel.IntegrationTests/Idp (the tests do not use this file).
+services:
+  keycloak:
+    command: ["start-dev", "--import-realm", "--https-port=8443",
+              "--https-certificate-file=/pki/server.crt", "--https-certificate-key-file=/pki/server.key",
+              "--https-client-auth=request", "--truststore-paths=/pki/ca.crt"]
+    ports:
+      - "127.0.0.1:${KEEL_IDP_TLS_PORT:-18443}:8443"
+    volumes:
+      - ${KEEL_CAC_PKI:?set KEEL_CAC_PKI to the directory made by scripts/idp/generate-test-pki.sh}/server:/pki:ro
+      - ${KEEL_CAC_PKI}/conf/crl.pem:/opt/keycloak/conf/crl.pem:ro
+      - ./keycloak/overlays/cac-piv:/overlay:ro

@@ -37,6 +37,8 @@ public static class WorkflowRegistration
         var options = configuration.GetSection(WorkflowOptions.Section).Get<WorkflowOptions>() ?? new WorkflowOptions();
         if (options.StepUpMaxAgeSeconds is < 30 or > 900)
             throw new InvalidOperationException("Keel:Workflow:StepUpMaxAgeSeconds must be between 30 and 900 (A9 default 300).");
+        // One setting for the whole site (ADR-0058): Keel:Auth:StepUpAcr, unless Keel:Workflow overrides it.
+        if (string.IsNullOrWhiteSpace(options.StepUpRequiredAcr)) options.StepUpRequiredAcr = configuration["Keel:Auth:StepUpAcr"];
         services.AddSingleton(options);
         services.AddSingleton<UserDirectory>();
         services.AddSingleton<WorkflowService>();

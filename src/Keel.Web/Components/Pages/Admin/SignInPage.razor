@@ -1,0 +1,110 @@
+@page "/admin/signin"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject AuthenticationStateProvider Auth
+@inject SignInSettings Settings
+@inject IdpProbe Probe
+
+@* How people sign in, as this host is configured (ADR-0058). Read-only: nothing here can change a setting, and no secret is ever shown. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: sign-in">
+    <AdminNav />
+    <div class="stack">
+        <p>This page shows how this Keel host is set up to sign people in, and warns about settings that weaken it. It is read-only: change the settings in the host configuration (see the sign-in guides) and restart. Keel can see its own settings, the identity provider's public discovery document and your own session. It cannot see the identity provider's login flows or certificate trust store, so for those it shows only what the operator declared.</p>
+
+        @if (report is not null)
+        {
+            <section class="panel stack" aria-labelledby="warnings-heading">
+                <h2 id="warnings-heading">Warnings and notes</h2>
+                @if (report.Findings.Count == 0) { <p class="muted" data-testid="signin-no-findings">Nothing to report.</p> }
+                else
+                {
+                    <ul class="plain" data-testid="signin-findings">
+                        @foreach (var f in report.Findings)
+                        {
+                            <li class="@(f.Severity == SignInSeverity.Info ? "notice" : "warning-box")" data-severity="@f.Severity" data-code="@f.Code">
+                                <strong>@SeverityLabel(f.Severity)</strong> @f.Message
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="panel" aria-labelledby="effective-heading">
+                <h2 id="effective-heading">Effective configuration</h2>
+                <div class="table-wrap"><table class="data" data-testid="signin-settings">
+                    <caption class="visually-hidden">Effective sign-in configuration</caption>
+                    <thead><tr><th scope="col">Setting</th><th scope="col">Value</th><th scope="col">Controlled by</th></tr></thead>
+                    <tbody>
+                    @foreach (var s in report.Settings)
+                    {
+                        <tr><th scope="row">@s.Name</th><td>@s.Value</td><td><code>@s.Key</code></td></tr>
+                    }
+                    </tbody>
+                </table></div>
+                <p class="muted">The sign-in method and the password fallback are statements by the operator, used only for the warnings above; Keel does not check them against the identity provider.</p>
+            </section>
+
+            <section class="panel stack" aria-labelledby="session-heading">
+                <h2 id="session-heading">Your current sign-in</h2>
+                <dl class="facts" data-testid="signin-session">
+                    <dt>Level (acr)</dt><dd>@(report.Session.Acr ?? "Not released by the identity provider")</dd>
+                    <dt>Methods (amr)</dt><dd>@(report.Session.Amr.Count == 0 ? "Not released by the identity provider" : string.Join(", ", report.Session.Amr))</dd>
+                    <dt>Signed in at</dt><dd>@(report.Session.AuthTime is { } t ? UiText.Utc(t) : "Not released by the identity provider")</dd>
+                    <dt>Security claims present</dt><dd>@(report.Session.ClaimsPresent.Count == 0 ? "None" : string.Join(", ", report.Session.ClaimsPresent))</dd>
+                    <dt>Security claims absent</dt><dd>@(report.Session.ClaimsMissing.Count == 0 ? "None" : string.Join(", ", report.Session.ClaimsMissing))</dd>
+                </dl>
+                <p class="muted">Only claim names are shown, not their values. An absent claim is treated as the most restrictive value.</p>
+            </section>
+
+            <section class="panel stack" aria-labelledby="idp-heading">
+                <h2 id="idp-heading">Identity provider check</h2>
+                <p>Reads the discovery document at the configured authority (a read-only request to that one address) and compares it with the settings above.</p>
+                <div class="toolbar"><button type="button" class="secondary" @onclick="CheckAsync" disabled="@probing" data-testid="signin-probe">@(probing ? "Checking" : "Check the identity provider")</button></div>
+                @if (idp is not null)
+                {
+                    <dl class="facts" data-testid="signin-idp">
+                        <dt>Reached</dt><dd>@(idp.Reached ? "Yes" : "No: " + idp.Error)</dd>
+                        @if (idp.Reached)
+                        {
+                            <dt>Issuer</dt><dd>@idp.Issuer @(idp.IssuerMatches ? "(matches the configured authority)" : "(DOES NOT match the configured authority)")</dd>
+                            <dt>PKCE S256</dt><dd>@(idp.Pkce ? "Advertised" : "Not advertised")</dd>
+                            <dt>Levels (acr values)</dt><dd>@(idp.AcrValuesSupported.Count == 0 ? "Not advertised" : string.Join(", ", idp.AcrValuesSupported))</dd>
+                            <dt>ID token algorithms</dt><dd>@(idp.SigningAlgorithms.Count == 0 ? "Not advertised" : string.Join(", ", idp.SigningAlgorithms))</dd>
+                        }
+                    </dl>
+                }
+            </section>
+        }
+    </div>
+</PageFrame>
+
+@code {
+    private SignInReport? report;
+    private IdpProbeResult? idp;
+    private bool probing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Users.GetAsync(); // a locked session fails closed here
+        report = SignInAssessor.Report(Settings, (await Auth.GetAuthenticationStateAsync()).User);
+    }
+
+    private async Task CheckAsync()
+    {
+        probing = true;
+        try
+        {
+            idp = await Probe.ProbeAsync();
+            var user = (await Auth.GetAuthenticationStateAsync()).User;
+            report = SignInAssessor.Report(Settings, user, idp);
+        }
+        finally { probing = false; }
+    }
+
+    private static string SeverityLabel(SignInSeverity s) => s switch
+    {
+        SignInSeverity.Critical => "Critical:",
+        SignInSeverity.Warning => "Warning:",
+        _ => "Note:",
+    };
+}

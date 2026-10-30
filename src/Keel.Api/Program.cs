@@ -194,7 +194,31 @@ var uiOptions = new KeelUiOptions
     ClientId = options.Auth.WebClientId,
     ClientSecret = options.Auth.WebClientSecret,
     RequireHttpsMetadata = options.Auth.RequireHttpsMetadata,
+    StepUpAcr = options.Auth.StepUpAcr,
 };
+// Sign-in status (ADR-0058): what the admin page shows. The declared method is only a statement of how the IdP is set up; a typo ends the start here.
+var signInMethod = Keel.Web.Services.SignInMethods.Normalize(options.Auth.SignIn.Method)
+    ?? throw new InvalidOperationException($"Keel:Auth:SignIn:Method '{options.Auth.SignIn.Method}' is not valid; use Password, Certificate or Federated.");
+var secureCookies = !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing") && !demo;
+builder.Services.AddKeelSignInStatus(new Keel.Web.Services.SignInSettings
+{
+    Environment = builder.Environment.EnvironmentName,
+    Demo = demo,
+    Authority = options.Auth.Authority,
+    ClientId = options.Auth.WebClientId,
+    Audience = options.Auth.Audience,
+    RequireHttpsMetadata = options.Auth.RequireHttpsMetadata,
+    Method = signInMethod,
+    PasswordFallback = options.Auth.SignIn.PasswordFallback,
+    StepUpAcr = options.Auth.StepUpAcr.Trim(),
+    StepUpMaxAgeSeconds = builder.Configuration.GetValue<int?>("Keel:Workflow:StepUpMaxAgeSeconds") ?? 300,
+    SessionLifetime = uiOptions.SessionLifetime,
+    IdleLockMinutes = options.Session.IdleLockMinutes,
+    RequireFips = options.Security.RequireFips,
+    FipsActive = fips.Enabled,
+    ProxyEnabled = options.Proxy.Enabled,
+    SecureCookies = secureCookies,
+});
 builder.Services
     .AddAuthentication(o =>
     {
@@ -208,7 +232,7 @@ builder.Services
         if (demo && !bearer && ctx.Request.Path.StartsWithSegments("/api") && ctx.Request.Cookies.ContainsKey("keel.session")) return KeelUi.CookieScheme;
         return ctx.Request.Path.StartsWithSegments("/api") || bearer ? JwtBearerDefaults.AuthenticationScheme : KeelUi.CookieScheme;
     })
-    .AddKeelUi(uiOptions, secureCookies: !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing") && !demo, demo: demo)
+    .AddKeelUi(uiOptions, secureCookies: secureCookies, demo: demo)
     .AddJwtBearer(o =>
     {
         o.Authority = options.Auth.Authority;

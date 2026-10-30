@@ -32,6 +32,21 @@ public sealed class KeelOptions
         public string WebClientId { get; set; } = "keel-web";
         /// <summary>Client secret for <see cref="WebClientId"/>; supply via environment/secret, never in images.</summary>
         public string WebClientSecret { get; set; } = "";
+        /// <summary>
+        /// The authentication level (<c>acr</c>) an e-signature needs, for example "2" for the certificate-only level of the CAC/PIV Keycloak flow
+        /// (ADR-0058). Sent as <c>acr_values</c> at the step-up and required in the id token and in every signing token. Empty = any fresh authentication (A9).
+        /// </summary>
+        public string StepUpAcr { get; set; } = "";
+        /// <summary>What the operator states the identity provider is set up for; shown on the Sign-in status page, never enforced against the IdP.</summary>
+        public SignInOptions SignIn { get; set; } = new();
+    }
+
+    public sealed class SignInOptions
+    {
+        /// <summary>How people sign in at the IdP: <c>Password</c> (the dev/demo default), <c>Certificate</c> (CAC/PIV) or <c>Federated</c> (the customer's own IdP).</summary>
+        public string Method { get; set; } = "Password";
+        /// <summary>True when the IdP also offers a username/password form next to the certificate or the federated sign-in.</summary>
+        public bool PasswordFallback { get; set; }
     }
 
     public sealed class AuditOptions

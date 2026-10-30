@@ -14,7 +14,8 @@ public sealed partial class RequirementService
     public const int MaxEvidence = 20;
 
     private bool IsFresh(Subject subject, DateTimeOffset now) =>
-        subject.AuthTime is { } t && t <= now + TimeSpan.FromSeconds(60) && now - t <= TimeSpan.FromSeconds(opts.StepUpMaxAgeSeconds);
+        subject.AuthTime is { } t && t <= now + TimeSpan.FromSeconds(60) && now - t <= TimeSpan.FromSeconds(opts.StepUpMaxAgeSeconds)
+        && (string.IsNullOrWhiteSpace(opts.StepUpRequiredAcr) || string.Equals(subject.Acr, opts.StepUpRequiredAcr.Trim(), StringComparison.Ordinal));
 
     /// <summary>
     /// Records a verification of the requirement's CURRENT content (informal, or formal with an e-signature). A formal record needs the approver role and a recent sign-in

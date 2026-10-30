@@ -33,8 +33,11 @@ internal sealed class StepUpRequiredResult(int maxAgeSeconds) : IResult
 {
     public Task ExecuteAsync(HttpContext httpContext)
     {
+        // RFC 9470: acr_values names the authentication level the new token must carry when the site requires one (Keel:Auth:StepUpAcr, ADR-0058).
+        var acr = httpContext.RequestServices.GetService<Keel.Workflow.WorkflowOptions>()?.StepUpRequiredAcr;
+        var acrPart = string.IsNullOrWhiteSpace(acr) ? "" : $", acr_values=\"{acr.Trim()}\"";
         httpContext.Response.Headers.WWWAuthenticate =
-            $"Bearer error=\"insufficient_user_authentication\", error_description=\"A fresh authentication is required to sign\", max_age=\"{maxAgeSeconds}\"";
+            $"Bearer error=\"insufficient_user_authentication\", error_description=\"A fresh authentication is required to sign\", max_age=\"{maxAgeSeconds}\"{acrPart}";
         return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Step-up authentication required", type: "urn:keel:problem:step-up-required",
             extensions: new Dictionary<string, object?> { ["reason"] = "stepup.required", ["maxAgeSeconds"] = maxAgeSeconds }).ExecuteAsync(httpContext);
     }

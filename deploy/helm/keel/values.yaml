@@ -20,6 +20,12 @@ config:
     audience: keel-api
     webClientId: keel-web
     requireHttpsMetadata: true
+    # How people sign in at the IdP, as a statement for the admin Sign-in page and its warnings (ADR-0058): Certificate | Federated.
+    # Empty leaves the host default (a username and password at the IdP), which the Sign-in page warns about in production.
+    # See docs/ops/cac-piv-sign-in.md and docs/ops/sso-integration.md.
+    signInMethod: ""
+    passwordFallback: false        # true when the IdP also offers a password form next to the certificate / federated sign-in
+    stepUpAcr: ""                  # authentication level (acr) an e-signature needs, e.g. "2" for the shipped CAC/PIV flow; empty = any fresh sign-in
   security:
     requireFips: true              # refuse to start unless the node kernel runs in FIPS mode (ADR-0008)
   vault:

@@ -55,6 +55,15 @@ app.kubernetes.io/component: migrate
 - { name: Keel__Auth__Audience, value: {{ .Values.config.auth.audience | quote }} }
 - { name: Keel__Auth__WebClientId, value: {{ .Values.config.auth.webClientId | quote }} }
 - { name: Keel__Auth__RequireHttpsMetadata, value: {{ .Values.config.auth.requireHttpsMetadata | quote }} }
+{{- with .Values.config.auth.signInMethod }}
+- { name: Keel__Auth__SignIn__Method, value: {{ . | quote }} }
+{{- end }}
+{{- if .Values.config.auth.passwordFallback }}
+- { name: Keel__Auth__SignIn__PasswordFallback, value: "true" }
+{{- end }}
+{{- with .Values.config.auth.stepUpAcr }}
+- { name: Keel__Auth__StepUpAcr, value: {{ . | quote }} }
+{{- end }}
 - { name: Keel__Security__RequireFips, value: {{ .Values.config.security.requireFips | quote }} }
 - { name: Keel__Vault__ServiceUrl, value: {{ required "config.vault.serviceUrl is required" .Values.config.vault.serviceUrl | quote }} }
 - { name: Keel__Vault__Bucket, value: {{ .Values.config.vault.bucket | quote }} }
