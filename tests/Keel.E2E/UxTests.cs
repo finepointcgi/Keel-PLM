@@ -21,7 +21,7 @@ public sealed class UxTests(E2EFixture fx)
             await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Home", Level = 1 })).ToBeVisibleAsync();
             foreach (var card in new[] { "Needs my attention", "Recently viewed", "Favorites", "Changes in my programs", "Recently released", "Quick actions" })
                 await Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = card, Exact = true })).ToBeVisibleAsync();
-            await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "New part", Exact = true })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Create part", Exact = true })).ToBeVisibleAsync();
             await BrowserSession.AssertBannersAsync(page);
 
             // Opening an object makes it appear under "Recently viewed".
@@ -34,7 +34,7 @@ public sealed class UxTests(E2EFixture fx)
             var viewer = await session.SignInAsync("lena");
             await session.GotoAsync(viewer, "/");
             await Expect(viewer.Page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Quick actions" })).ToBeVisibleAsync();
-            await Expect(viewer.Page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "New part", Exact = true })).ToHaveCountAsync(0);
+            await Expect(viewer.Page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Create part", Exact = true })).ToHaveCountAsync(0);
             await BrowserSession.AssertBannersAsync(viewer.Page);
         });
     }
@@ -159,19 +159,22 @@ public sealed class UxTests(E2EFixture fx)
             await BrowserSession.FillAsync(page.GetByLabel("Name *"), "E2E undo part");
             await BrowserSession.ClickAsync(page, "Create part");
             await page.WaitForURLAsync(new Regex(@"/parts/P-\d+$"));
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Check out");
             await Expect(page.Locator("[data-toast=success]")).ToContainTextAsync("Checked out");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Undo check-out");
             var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Undo check-out?" });
             await Expect(dialog).ToBeVisibleAsync();
             await Expect(dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Cancel" })).ToBeFocusedAsync();
             await page.Keyboard.PressAsync("Escape");
             await Expect(dialog).ToHaveCountAsync(0);
-            await Expect(page.GetByText("You have this part checked out")).ToBeVisibleAsync();
+            await Expect(page.GetByText("You are editing this part")).ToBeVisibleAsync();
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Undo check-out");
             await dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Undo check-out" }).ClickAsync();
             await Expect(page.Locator("[data-toast=success]").Last).ToContainTextAsync("Check-out undone");
-            await Expect(page.GetByText("You have this part checked out")).ToHaveCountAsync(0);
+            await Expect(page.GetByText("You are editing this part")).ToHaveCountAsync(0);
             await BrowserSession.AssertBannersAsync(page);
         });
     }

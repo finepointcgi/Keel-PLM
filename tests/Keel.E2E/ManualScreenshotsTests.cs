@@ -229,6 +229,32 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                 // ---- parts and BOMs
                 await GoAsync(session, alice, "/parts", "parts-list");
                 await GoAsync(session, alice, "/parts/new", "parts-new");
+                // Simplified flows (ADR 0061): the quick form with every fold-out open, a part being edited, the Add document dialog and the released-part banner.
+                await GoAsync(session, alice, "/parts/new", "parts-new-more", async p =>
+                {
+                    await p.Locator("[data-kind-change]").ClickAsync();
+                    await p.Locator("[data-markings-change]").ClickAsync();
+                    await p.Locator("details[data-more-details] summary").ClickAsync();
+                });
+                await TryAsync("parts-edit", async () =>
+                {
+                    await session.GotoAsync(alice, "/parts/" + m.TopAssembly);
+                    await BrowserSession.ClickAsync(ap, "Edit");
+                    await ap.GetByLabel("Description").FillAsync("Camera head with the thicker wall.");
+                    await ap.GetByLabel("Change note (optional)").FillAsync("Thicker wall");
+                    await ShotAsync(ap, "parts-edit");
+                    await BrowserSession.ClickAsync(ap, "Discard changes");
+                    await ap.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Discard changes" }).ClickAsync();
+                    await ap.WaitForTimeoutAsync(800);
+                });
+                await GoAsync(session, alice, "/parts/" + m.TopAssembly + "?tab=documents", "parts-add-document", async p =>
+                {
+                    await p.Locator("[data-action=add-document]").ClickAsync();
+                    await p.Locator("[data-picker=add-doc-existing] input").FillAsync("drawing");
+                    await p.WaitForTimeoutAsync(800);
+                });
+                await TryAsync("close-add-document", async () => await ap.Locator("[data-add-cancel]").ClickAsync());
+                await GoAsync(session, alice, "/parts/" + m.GimbalBracket, "parts-released-banner");
                 await GoAsync(session, alice, "/parts/" + m.GimbalBracket, "parts-overview");
                 foreach (var (tab, name) in new[] { ("structure", "structure-bracket"), ("documents", "documents-tab"), ("changes", "changes-tab"), ("review", "review-tab"), ("classification", "classification-tab"), ("history", "history-tab"), ("timeline", "timeline-tab"), ("security", "security-tab"), ("sourcing", "sourcing-tab"), ("quality", "quality-tab"), ("compliance", "compliance-tab"), ("trace", "trace-tab"), ("comments", "comments-tab"), ("activity", "activity-tab") })
                     await GoAsync(session, alice, $"/parts/{m.GimbalBracket}?tab={tab}", "parts-" + name);

@@ -36,6 +36,10 @@ To open or close a group, select its header. The group that holds the current pa
 
 ![The rail with several groups open](images/shell-rail-groups.png)
 
+### Simple view
+
+Open the user menu (your name, top right) and under **Navigation** choose **Simple** to keep the rail to the everyday places: Work, Parts, Documents, Manufacturing BOMs and Changes (plus Records, Configuration, Administration and the audit log if your roles give you those). Choose **All areas** to bring the rest (Programs, Quality, Sourcing, Output, and the other product data and tools) back. The choice is kept for you. It only changes what the rail shows: search and the command palette (Ctrl + K) still find everything your roles allow, and nothing about your access changes.
+
 To shrink the rail to icons, select **Collapse navigation** at its bottom; select the same button to expand it again.
 
 ![The rail collapsed to icons](images/shell-rail-collapsed.png)
@@ -58,7 +62,7 @@ The full search page (`/search`) has a tab per kind of object and can keep saved
 
 ## Object pages
 
-Parts, documents, changes, baselines and manufacturing BOMs share one layout: a header with number, name, markings and version; a **lifecycle stepper** showing where the object is; a sticky action bar (Check out, Check in, Move to...); and tabs. A tab is part of the address (`?tab=history`), so you can bookmark or send a link to it. The star (**Add to favorites**) and **Watch** button sit in the header.
+Parts, documents, changes, baselines and manufacturing BOMs share one layout: a header with number, name, markings and version; a **lifecycle stepper** showing where the object is; a sticky action bar (Edit, Save, Add document, Move to..., and More for the step-by-step Check out and Check in); and tabs. A tab is part of the address (`?tab=history`), so you can bookmark or send a link to it. The star (**Add to favorites**) and **Watch** button sit in the header.
 
 ## Themes and density
 

@@ -86,14 +86,14 @@ public static class DensityNames
 }
 
 /// <summary>Display preferences of one user. The default is what a user who never chose anything gets.</summary>
-public sealed record UserPreferences(string Theme, string Density, bool NavCollapsed)
+public sealed record UserPreferences(string Theme, string Density, bool NavCollapsed, bool SimpleView = false)
 {
     public static readonly UserPreferences Default = new(ThemeNames.System, DensityNames.Comfortable, false);
 
     /// <summary>Unknown values fall back to the defaults, so a damaged row can never break the page shell.</summary>
-    public static UserPreferences Normalize(string? theme, string? density, bool navCollapsed) =>
+    public static UserPreferences Normalize(string? theme, string? density, bool navCollapsed, bool simpleView = false) =>
         new(theme is not null && ThemeNames.All.Contains(theme) ? theme : ThemeNames.System,
-            density is not null && DensityNames.All.Contains(density) ? density : DensityNames.Comfortable, navCollapsed);
+            density is not null && DensityNames.All.Contains(density) ? density : DensityNames.Comfortable, navCollapsed, simpleView);
 }
 
 /// <summary>Column choices, density and sort of one table (identified by a stable id such as "parts") for one user.</summary>

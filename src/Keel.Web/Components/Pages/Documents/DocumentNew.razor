@@ -3,30 +3,49 @@
 @using Keel.Documents.Vault
 @inject CurrentUser Users
 @inject DocumentService Docs
+@inject PartService Parts
+@inject SimpleFlows Flows
 @inject VaultOptions Vault
 @inject NavigationManager Nav
 @inject IReferenceData Refs
+@inject LastChoiceStore Last
+@inject ToastService Toasts
 
-@* A blank form shows no controlled data; the markings being entered appear on the created document. *@
+@* A blank form shows no controlled data; the markings being entered appear on the created document. The optional "Link to part" links the new document to a part in the same step (ADR 0061). *@
 <PageFrame Banner="@UiText.Unclassified" Title="New document">
-    <EditForm Model="this" OnSubmit="Create" FormName="new-document" class="stack">
-        <fieldset class="grid-form">
-            <legend>Document</legend>
-            <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
+    <form class="stack" @onsubmit="Create" novalidate>
+        <div class="grid-form">
+            <label class="wide">
+                Name *
+                <input @bind="name" @bind:event="oninput" maxlength="200" aria-required="true" aria-invalid="@(nameError is null ? null : "true")" aria-describedby="@(nameError is null ? null : "doc-name-error")" />
+                @if (nameError is not null) { <span id="doc-name-error" class="error" role="alert">@nameError</span> }
+            </label>
             <label>
                 Type
-                <InputSelect @bind-Value="documentType">@foreach (var t in docTypes) { <option value="@t">@t</option> }</InputSelect>
+                <InputSelect @bind-Value="documentType">@foreach (var t in docTypes) { <option value="@t.Code">@t.Label</option> }</InputSelect>
             </label>
-            <label class="wide">Description <InputTextArea @bind-Value="description" rows="3" maxlength="4000" /></label>
+            <label class="wide">Description (optional) <InputTextArea @bind-Value="description" rows="2" maxlength="4000" /></label>
             <label class="wide">
                 Primary file (optional, up to @DocumentUi.Size(Vault.MaxUploadBytes))
                 <InputFile OnChange="Pick" />
             </label>
-        </fieldset>
-        <fieldset class="grid-form">
-            <legend>Security markings</legend>
-            <MarkingsFields Value="markings" />
-        </fieldset>
+        </div>
+        <section class="panel" aria-labelledby="link-part-heading" data-link-to-part>
+            <h2 id="link-part-heading" class="h3">Link to a part (optional)</h2>
+            <ObjectPicker Id="link-part" Label="Part" Noun="parts" Placeholder="Part number or name" Search="q => Flows.FindPartsAsync(me!, q)" @bind-Selected="part" />
+            @if (part is not null)
+            {
+                <label>
+                    How is the document related to the part?
+                    <select @bind="linkType" data-link-type>
+                        @foreach (var c in QuickDefaults.LinkChoices) { <option value="@c.Value">@c.Label</option> }
+                    </select>
+                    <span class="muted small">@QuickDefaults.LinkChoices.First(c => c.Value == linkType).Help</span>
+                </label>
+                <p class="muted small">Keel saves a new version of the part with the link; you do not need to check the part out. If the part is released, add the document through a change order instead.</p>
+            }
+        </section>
+        <MarkingsDefaultPicker @ref="markingsPicker" Value="markings" />
         @if (errors is not null)
         {
             <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
@@ -35,37 +54,73 @@
             <button type="submit" disabled="@busy">@(busy && file is not null ? "Uploading…" : "Create document")</button>
             <a class="button secondary" href="documents">Cancel</a>
         </div>
-    </EditForm>
+    </form>
 </PageFrame>
 
 @code {
-    private string name = "", documentType = "Drawing", description = "";
-    private IReadOnlyList<string> docTypes = []; // 2.2: administrator data
+    [SupplyParameterFromQuery(Name = "part")] public string? PartParam { get; set; }
 
-    protected override async Task OnInitializedAsync() => docTypes = await Refs.CodesAsync(RefLists.DocumentType);
-    private readonly MarkingsInput markings = new();
+    private string name = "", documentType = QuickDefaults.DocumentType, description = "", linkType = LinkTypes.Describes;
+    private IReadOnlyList<RefItem> docTypes = []; // 2.2: administrator data
+    private MarkingsInput markings = new();
+    private MarkingsDefaultPicker? markingsPicker;
+    private Subject? me;
+    private PickItem? part;
     private IBrowserFile? file;
     private IReadOnlyList<string>? errors;
+    private string? nameError;
     private bool busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        me = await Users.GetAsync();
+        docTypes = await Refs.ListAsync(RefLists.DocumentType);
+        IReadOnlyDictionary<string, string> last = new Dictionary<string, string>();
+        try { last = await Last.GetAsync(me); } catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException) { /* defaults apply */ }
+        documentType = QuickDefaults.Pick([.. docTypes.Select(t => t.Code)], last, LastChoiceKeys.DocumentType, QuickDefaults.DocumentType);
+        linkType = QuickDefaults.DefaultLinkType(last);
+        markings = QuickDefaults.Markings(me);
+        if (!string.IsNullOrWhiteSpace(PartParam)) // coming from a part page: the part is already chosen
+        {
+            var found = await Parts.GetAsync(me, PartParam.Trim().ToUpperInvariant(), null, CurrentUser.NewCorrelationId());
+            if (found.IsOk) part = new PickItem(found.Value!.Number, found.Value.Name, found.Value.Banner);
+        }
+    }
 
     private void Pick(InputFileChangeEventArgs e) => file = e.File;
 
     private async Task Create()
     {
-        var m = markings.Effective().ToMarkings();
-        if (!m.IsSuccess) { errors = m.Errors; return; }
-        busy = true;
+        if (busy) return;
         errors = null;
-        Outcome<DocumentDetail> outcome;
+        nameError = string.IsNullOrWhiteSpace(name) ? "Enter a name for the document." : null;
+        if (nameError is not null) return;
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess) { errors = [.. m.Errors.Select(e => "Security markings: " + e)]; markingsPicker?.Show(); return; }
+        busy = true;
         // The browser streams the file over the circuit straight into the vault; it is never buffered whole.
-        await using (var content = file?.OpenReadStream(Vault.MaxUploadBytes))
-        {
-            var upload = file is null ? null : new FileUpload(file.Name, file.ContentType, content!);
-            outcome = await Docs.CreateAsync(await Users.GetAsync(), new CreateDocumentCommand(name, documentType, m.Value, description), upload,
-                CurrentUser.NewCorrelationId());
-        }
+        await using var content = file?.OpenReadStream(Vault.MaxUploadBytes);
+        var upload = file is null ? null : new FileUpload(file.Name, file.ContentType, content!);
+        var (doc, link) = await Flows.CreateDocumentAndLinkAsync(me!, new CreateDocumentCommand(name.Trim(), documentType, m.Value, description), upload, part?.Number, linkType,
+            CurrentUser.NewCorrelationId());
         busy = false;
-        if (outcome.IsOk) Nav.NavigateTo($"documents/{Uri.EscapeDataString(outcome.Value!.Number)}");
-        else errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
+        if (!doc.IsOk)
+        {
+            errors = doc.Kind == OutcomeKind.Invalid ? doc.Errors : [UiText.Message(doc)];
+            return;
+        }
+        try
+        {
+            var map = new Dictionary<string, string> { [LastChoiceKeys.DocumentType] = documentType };
+            if (part is not null) map[LastChoiceKeys.LinkType] = linkType;
+            await Last.SetAsync(me!, map);
+        }
+        catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException) { /* remembering is a convenience */ }
+        if (link is not null)
+        {
+            if (link.IsOk) Toasts.Success(link.Message);
+            else Toasts.Warning($"{doc.Value!.Number} was created, but it could not be linked to {part!.Number}: {link.Message}");
+        }
+        Nav.NavigateTo($"documents/{Uri.EscapeDataString(doc.Value!.Number)}");
     }
 }

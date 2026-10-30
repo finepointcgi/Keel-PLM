@@ -64,6 +64,9 @@ public sealed class ShellState(CurrentUser users, IPreferenceStore workspace, Sh
 
     public Task SetNavCollapsedAsync(bool collapsed) => UpdateAsync(Preferences with { NavCollapsed = collapsed }, apply: false);
 
+    /// <summary>Simple view (ADR 0061): the navigation shows the everyday groups only. Display only; access never depends on it.</summary>
+    public Task SetSimpleViewAsync(bool simple) => UpdateAsync(Preferences with { SimpleView = simple }, apply: false);
+
     /// <summary>Cycles light, dark, high contrast (the palette's "Toggle theme"). "System" counts as the theme the OS currently shows, so it moves to light.</summary>
     public Task ToggleThemeAsync() => SetThemeAsync(Preferences.Theme switch
     {
@@ -74,7 +77,7 @@ public sealed class ShellState(CurrentUser users, IPreferenceStore workspace, Sh
 
     private async Task UpdateAsync(UserPreferences next, bool apply = true)
     {
-        next = UserPreferences.Normalize(next.Theme, next.Density, next.NavCollapsed);
+        next = UserPreferences.Normalize(next.Theme, next.Density, next.NavCollapsed, next.SimpleView);
         Preferences = next;
         Changed?.Invoke();
         if (apply) await js.InvokeVoidAsync("applyPreferences", next.Theme, next.Density);

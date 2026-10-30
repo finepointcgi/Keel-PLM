@@ -1,0 +1,163 @@
+@* Quick add part (ADR 0061): a name is all that is required. Type, unit and source start from the person's last choice, the markings from their own program (one chip
+   with a Change button), and the attributes the administrator marked required are asked for here; the rest wait under More details. The part is created by the same
+   PartService call as before, so numbering, validation, markings rules and audit are unchanged. *@
+@inject CurrentUser Users
+@inject PartService Parts
+@inject NpgsqlDataSource Db
+@inject NavigationManager Nav
+@inject IReferenceData Refs
+@inject LastChoiceStore Last
+@inject ToastService Toasts
+@inject ShellJs Js
+@using Npgsql
+
+@if (defs is not null)
+{
+    <form class="stack quick-form" @onsubmit="CreateAsync" novalidate aria-labelledby="quick-part-title" data-quick-part>
+        <p class="muted" id="quick-part-title">Give the part a name and create it. You can add details afterwards on the part's page.</p>
+        <div class="grid-form">
+            <label class="wide">
+                Name *
+                <input @bind="name" @bind:event="oninput" maxlength="200" aria-required="true" aria-invalid="@(Has(nameKey) ? "true" : null)" aria-describedby="@(Has(nameKey) ? "quick-name-error" : null)" data-quick-name />
+                @if (Has(nameKey)) { <span id="quick-name-error" class="error" role="alert">@Field(nameKey)</span> }
+            </label>
+            <label class="wide">
+                Description (optional)
+                <textarea rows="2" maxlength="4000" @bind="description"></textarea>
+            </label>
+            @if (requiredDefs.Count > 0)
+            {
+                <AttributeFields Definitions="requiredDefs" Value="attributes" />
+                @foreach (var d in requiredDefs.Where(d => Has(d.Name)))
+                {
+                    <p class="error wide" role="alert">@Field(d.Name)</p>
+                }
+            }
+        </div>
+
+        <div class="defaults-line">
+            <p class="markings-line">
+                <span>This part will be a</span> <strong>@Label(partTypes, partType)</strong>, <strong>@Label(units, unit).ToLowerInvariant()</strong>,
+                <strong>@Label(sources, source).ToLowerInvariant()</strong>.
+                <button type="button" class="secondary small" aria-expanded="@(showKind ? "true" : "false")" aria-controls="quick-kind" data-kind-change @onclick="() => showKind = !showKind">@(showKind ? "Done" : "Change")</button>
+            </p>
+            @if (showKind)
+            {
+                <fieldset class="grid-form" id="quick-kind">
+                    <legend>Part kind</legend>
+                    <label>Type <InputSelect @bind-Value="partType">@foreach (var t in partTypes) { <option value="@t.Code">@t.Label</option> }</InputSelect></label>
+                    <label>Unit of measure <InputSelect @bind-Value="unit">@foreach (var u in units) { <option value="@u.Code">@u.Label</option> }</InputSelect></label>
+                    <label>Source <InputSelect @bind-Value="source">@foreach (var s in sources) { <option value="@s.Code">@s.Label</option> }</InputSelect></label>
+                    <p class="muted small wide">The type, unit and source cannot be changed after the part is created.</p>
+                </fieldset>
+            }
+        </div>
+
+        <MarkingsDefaultPicker @ref="markingsPicker" Value="markings" />
+
+        @if (optionalDefs.Count > 0)
+        {
+            <details class="more-details" data-more-details>
+                <summary>More details (optional)</summary>
+                <div class="grid-form"><AttributeFields Definitions="optionalDefs" Value="attributes" /></div>
+            </details>
+        }
+
+        @if (errors is { Count: > 0 })
+        {
+            <ul class="error" role="alert" data-quick-errors>@foreach (var e in errors) { <li>@e</li> }</ul>
+        }
+        <div class="toolbar">
+            <button type="submit" disabled="@busy">Create part</button>
+            <button type="button" class="secondary" disabled="@busy" data-create-another @onclick="CreateAnotherAsync">Create and add another</button>
+            <a class="button secondary" href="parts">Cancel</a>
+        </div>
+    </form>
+}
+
+@code {
+    private const string nameKey = "name";
+    private IReadOnlyList<AttributeDefinition>? defs;
+    private IReadOnlyList<AttributeDefinition> requiredDefs = [], optionalDefs = [];
+    private IReadOnlyList<RefItem> partTypes = [], units = [], sources = [];
+    private string name = "", partType = QuickDefaults.PartType, unit = UnitsOfMeasure.Each, source = QuickDefaults.PartSource, description = "";
+    private readonly AttributeInput attributes = new();
+    private MarkingsInput markings = new();
+    private MarkingsDefaultPicker? markingsPicker;
+    private readonly Dictionary<string, string> fieldErrors = new(StringComparer.Ordinal);
+    private List<string>? errors;
+    private bool busy, showKind;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using (var conn = await Db.OpenConnectionAsync())
+            defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);
+        var active = defs.Where(d => !d.Retired).ToList();
+        requiredDefs = [.. active.Where(d => d.Required)];
+        optionalDefs = [.. active.Where(d => !d.Required)];
+        partTypes = await Refs.ListAsync(RefLists.PartType);
+        units = await Refs.ListAsync(RefLists.Unit);
+        sources = await Refs.ListAsync(RefLists.PartSource);
+        var me = await Users.GetAsync();
+        IReadOnlyDictionary<string, string> last = new Dictionary<string, string>();
+        try { last = await Last.GetAsync(me); } catch (Exception e) when (e is NpgsqlException or InvalidOperationException) { /* defaults apply */ }
+        partType = QuickDefaults.Pick([.. partTypes.Select(t => t.Code)], last, LastChoiceKeys.PartType, QuickDefaults.PartType);
+        unit = QuickDefaults.Pick([.. units.Select(t => t.Code)], last, LastChoiceKeys.PartUnit, UnitsOfMeasure.Each);
+        source = QuickDefaults.Pick([.. sources.Select(t => t.Code)], last, LastChoiceKeys.PartSource, QuickDefaults.PartSource);
+        markings = QuickDefaults.Markings(me);
+    }
+
+    private bool Has(string key) => fieldErrors.ContainsKey(key);
+    private string? Field(string key) => fieldErrors.GetValueOrDefault(key);
+    private static string Label(IReadOnlyList<RefItem> list, string code) => list.FirstOrDefault(i => i.Code == code)?.Label ?? code;
+
+    private Task CreateAsync() => SubmitAsync(another: false);
+    private Task CreateAnotherAsync() => SubmitAsync(another: true);
+
+    // Rules the server owns (markings, attribute formats, numbering) are checked there; the form only asks for what the person has not filled in yet, in plain words.
+    private bool Check()
+    {
+        fieldErrors.Clear();
+        errors = null;
+        if (string.IsNullOrWhiteSpace(name)) fieldErrors[nameKey] = "Enter a name for the part.";
+        foreach (var d in requiredDefs)
+            if (!attributes.Values.TryGetValue(d.Name, out var v) || string.IsNullOrWhiteSpace(v))
+                fieldErrors[d.Name] = $"Enter a value for {d.Label}. This detail is required.";
+        return fieldErrors.Count == 0;
+    }
+
+    private async Task SubmitAsync(bool another)
+    {
+        if (busy) return;
+        if (!Check()) return;
+        var m = markings.Effective().ToMarkings();
+        if (!m.IsSuccess)
+        {
+            errors = [.. m.Errors.Select(e => "Security markings: " + e)];
+            markingsPicker?.Show();
+            return;
+        }
+        busy = true;
+        var me = await Users.GetAsync();
+        var outcome = await Parts.CreateAsync(me,
+            new CreatePartCommand(name.Trim(), partType, unit, source, m.Value, description, attributes.ToJson(defs!)), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk)
+        {
+            errors = outcome.Kind == OutcomeKind.Invalid ? [.. outcome.Errors] : [UiText.Message(outcome)];
+            return;
+        }
+        try
+        {
+            await Last.SetAsync(me, new Dictionary<string, string>
+            { [LastChoiceKeys.PartType] = partType, [LastChoiceKeys.PartUnit] = unit, [LastChoiceKeys.PartSource] = source });
+        }
+        catch (Exception e) when (e is NpgsqlException or InvalidOperationException) { /* remembering is a convenience */ }
+        var created = outcome.Value!;
+        if (!another) { Nav.NavigateTo($"parts/{Uri.EscapeDataString(created.Number)}"); return; }
+        Toasts.Success($"Created {created.Number} {created.Name}. Add the next one.");
+        name = description = "";
+        attributes.Values.Clear();
+        await Js.InvokeVoidAsync("focusSelector", "[data-quick-name]");
+    }
+}

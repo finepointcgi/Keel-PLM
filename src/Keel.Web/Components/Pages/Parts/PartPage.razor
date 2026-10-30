@@ -5,6 +5,7 @@
 @inject ToastService Toasts
 @inject NavigationManager Nav
 @inject Keel.Cad.CadGraphService CadGraph
+@inject SimpleFlows Flows
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
 
@@ -27,24 +28,49 @@
                 @{ var co = p.Checkout; }
                 @if (p.Revision.IsLatest)
                 {
-                    @if (co is null && p.Permissions.CanModify && !p.Revision.IsLocked)
-                    {
-                        <button type="button" disabled="@busy" @onclick='() => Run(s => Parts.CheckOutAsync(s, Number, Corr()), "Checked out. Your changes stay private until you check in.")'>Check out</button>
-                    }
+                    @* Simple path (ADR 0061): Edit starts a draft in one step, Save stores it and checks in, Discard undoes it. The step-by-step controls sit under More. *@
                     @if (co?.IsMine == true && workingAttributes is not null)
                     {
-                        <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save working copy</button>
-                        <input aria-label="Check-in comment" placeholder="Check-in comment" class="grow" @bind="comment" />
-                        <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
+                        <input aria-label="Change note (optional)" placeholder="Change note (optional)" class="grow" maxlength="1000" data-change-note @bind="note" />
+                        <button type="button" disabled="@busy" data-action="save" @onclick="SaveSimple">Save</button>
+                        <button type="button" class="secondary" disabled="@busy" data-action="discard" @onclick="() => confirmDiscard = true">Discard changes</button>
                     }
-                    @if (co is not null && (co.IsMine || p.Permissions.CanAdminister))
+                    else if (editAdvice.State == PartEditState.CanEdit)
                     {
-                        <button type="button" class="secondary" disabled="@busy" @onclick="() => confirmUndo = true">Undo check-out</button>
+                        <button type="button" disabled="@busy" data-action="edit" @onclick="StartEdit">Edit</button>
+                    }
+                    @if (editAdvice.State is PartEditState.CanEdit or PartEditState.Resume)
+                    {
+                        <button type="button" class="secondary" disabled="@busy" data-action="add-document" @onclick="() => OpenAddDocument(false)">Add document</button>
                     }
                     @foreach (var t in p.Transitions)
                     {
                         <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
                                 @onclick='() => Run(s => Parts.SetStateAsync(s, Number, t.To, null, false, Corr()), $"Moved to {t.Label}.")'>Move to @t.Label</button>
+                    }
+                    @if ((co is null && p.Permissions.CanModify && !p.Revision.IsLocked) || co?.IsMine == true || (co is not null && p.Permissions.CanAdminister))
+                    {
+                        <details class="more-menu" data-more-menu>
+                            <summary>More</summary>
+                            <div class="more-panel" role="group" aria-label="Step-by-step version control">
+                                <p class="muted small">Check out, save a working copy and check in as separate steps (the same thing Edit and Save do in one).</p>
+                                <GlossaryHint Term="check out" />
+                                @if (co is null && p.Permissions.CanModify && !p.Revision.IsLocked)
+                                {
+                                    <button type="button" disabled="@busy" @onclick='() => Run(s => Parts.CheckOutAsync(s, Number, Corr()), "Checked out. Your changes stay private until you check in.")'>Check out</button>
+                                }
+                                @if (co?.IsMine == true && workingAttributes is not null)
+                                {
+                                    <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save working copy</button>
+                                    <input aria-label="Check-in comment" placeholder="Check-in comment" @bind="comment" />
+                                    <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
+                                }
+                                @if (co is not null && (co.IsMine || p.Permissions.CanAdminister))
+                                {
+                                    <button type="button" class="secondary" disabled="@busy" @onclick="() => confirmUndo = true">Undo check-out</button>
+                                }
+                            </div>
+                        </details>
                     }
                 }
                 <span class="spacer"></span>
@@ -53,6 +79,7 @@
             </div>
 
             @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <PartEditBanner Part="p" />
             @if (co is not null && !co.IsMine)
             {
                 <p class="notice">Checked out by @(co.UserName ?? co.UserId) since @UiText.Utc(co.CheckedOutAt).</p>
@@ -74,8 +101,9 @@
                             @if (co?.IsMine == true && workingAttributes is not null)
                             {
                                 <section class="panel" aria-labelledby="work-heading">
-                                    <h3 id="work-heading">Edit working copy</h3>
-                                    <p class="muted">You have this part checked out. Changes stay private until you check in.</p>
+                                    <h3 id="work-heading">Your changes</h3>
+                                    <p class="muted">You are editing this part. Your changes stay private until you save (this is your working copy, checked out to you).</p>
+                                    <GlossaryHint Term="working copy" />
                                     <div class="grid-form">
                                         <label class="wide">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label>
                                         <AttributeFields Definitions="defs" Value="workingAttributes" />
@@ -120,7 +148,8 @@
                         <Keel.Web.Components.Pages.Cad.PartModelViewerPanel PartNumber="@p.Number" OnBanner="b => viewerBanner = b" />
                         break;
                     case "documents":
-                        <PartDocumentsPanel PartNumber="@p.Number" Revision="@Revision" IterationLabel="@p.Iteration.Label" CheckedOutByMe="@(p.Checkout?.IsMine == true)" />
+                        <PartDocumentsPanel PartNumber="@p.Number" Revision="@Revision" IterationLabel="@p.Iteration.Label" CheckedOutByMe="@(p.Checkout?.IsMine == true)"
+                                            OnAddDocument="@(editAdvice.CanStart ? (() => OpenAddDocument(false)) : null)" />
                         break;
                     case "changes":
                         <Keel.Web.Components.Pages.Change.PartChangesPanel Number="@p.Number" Revision="@p.Revision.Revision" State="@p.Revision.State" Latest="@p.Revision.IsLatest"
@@ -163,6 +192,8 @@
                     case "history":
                         <section class="panel" aria-labelledby="history-heading">
                             <h3 id="history-heading">Version history</h3>
+                            <GlossaryHint Term="version" />
+                            <GlossaryHint Term="revision" />
                             <div class="table-wrap"><table class="data">
                                 <thead><tr><th scope="col">Version</th><th scope="col">Checked in (UTC)</th><th scope="col">By</th><th scope="col">Comment</th></tr></thead>
                                 <tbody>
@@ -219,6 +250,10 @@
             </TabSet>
         </article>
 
+        <ConfirmDialog @bind-Open="confirmDiscard" Title="Discard your changes?" Destructive="true" ConfirmText="Discard changes" OnConfirm='_ => Run(s => Flows.DiscardAsync(s, Number, Corr()), "Changes discarded. The part is as it was before you started.")'>
+            <p>Your unsaved edits to @p.Number are thrown away. The last saved version stays as it is.</p>
+        </ConfirmDialog>
+        <AddDocumentDialog @bind-Open="addDocOpen" Part="p" StartCreate="addDocCreate" OnAdded="OnDocumentAdded" />
         <ConfirmDialog @bind-Open="confirmUndo" Title="Undo check-out?" Destructive="true" ConfirmText="Undo check-out" OnConfirm='_ => Run(s => Parts.UndoCheckOutAsync(s, Number, Corr()), "Check-out undone. Unsaved changes were discarded.")'>
             <p>The working copy of @p.Number is discarded: edits you have not checked in are lost. The last checked-in version stays as it is.</p>
         </ConfirmDialog>
@@ -255,7 +290,8 @@
     private PartDetail? part;
     private IReadOnlyList<AttributeDefinition>? defs;
     private Lifecycle? lifecycle;
-    private bool notFound, busy, confirmUndo, confirmOverride;
+    private bool notFound, busy, confirmUndo, confirmOverride, confirmDiscard, addDocOpen, addDocCreate;
+    private string note = "";
     private string? error;
     private string tab = "overview";
     private int? commentCount; // number of comments, shown on the Comments tab (UX-4)
@@ -365,6 +401,38 @@
         }
         error = UiText.Message(outcome);
         return false;
+    }
+
+    private PartEditAdvice editAdvice => part is null ? new(PartEditState.ReadOnly, "") : SimpleFlows.Advise(part);
+
+    // Edit: check-out when needed, then show the form (ADR 0061). The module's check-out decides; a refusal is shown as it is.
+    private async Task StartEdit()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Flows.BeginEditAsync(await Users.GetAsync(), Number, Corr());
+        busy = false;
+        if (outcome.IsOk) { Apply(outcome.Value); tab = "overview"; Toasts.Success("You can edit now. Your changes stay private until you save."); }
+        else error = UiText.Message(outcome);
+    }
+
+    // Save: store the draft and check in as the next version, with the optional note.
+    private async Task SaveSimple()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Flows.SaveAsync(await Users.GetAsync(), Number, workingDescription, workingAttributes!.ToJson(defs!), note, Corr());
+        busy = false;
+        if (outcome.IsOk) { Apply(outcome.Value); note = ""; Toasts.Success($"Saved as version {outcome.Value!.Iteration.Label}."); }
+        else error = UiText.Message(outcome);
+    }
+
+    private void OpenAddDocument(bool create) { addDocCreate = create; addDocOpen = true; }
+
+    private async Task OnDocumentAdded(AddDocumentResult result)
+    {
+        if (result.IsOk) Toasts.Success(result.Message); else error = result.Message;
+        await Refresh();
     }
 
     private Task SaveWorkingCopy() =>

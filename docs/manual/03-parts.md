@@ -1,6 +1,6 @@
 # 3. Parts
 
-A **part** is an item you design, make or buy. It has a **master** (number and name, shared by all versions), **revisions** (A, B, C... formal, change-controlled versions) and **iterations** (A.1, A.2... working saves inside a revision). The lifecycle state lives on the revision.
+A **part** is an item you design, make or buy. It has a **master** (number and name, shared by all versions), **revisions** (A, B, C... formal, change-controlled releases) and **versions** (A.1, A.2... each save inside a revision; the architecture calls them iterations). The lifecycle state lives on the revision.
 
 ## Find parts
 
@@ -16,16 +16,27 @@ Parts you may not read are not in the list. **Parts > classification** (`/parts/
 
 ## Create a part
 
-1. On the parts list select **New part**.
-2. Fill in the name, type, unit, source (Make or Buy) and the attributes your administrator defined. The part number is assigned automatically (`P-nnnnnn`); only administrators can choose one.
-3. Set the **markings** (export jurisdiction, CUI categories, distribution statement, program and owning organization). They are mandatory and validated: an ITAR part needs a USML category, export-controlled data must be CUI//EXPT, and it cannot have distribution A.
-4. Select **Create part**.
+The quick way needs a name and nothing else.
 
-![The new part form](images/parts-new.png)
+1. On the parts list select **Create part** (or press Ctrl + K and choose **Create part**).
+2. Type the name. Add a description if you like.
+3. Select **Create part**. The part number is assigned automatically (`P-nnnnnn`); only administrators can choose one.
+
+That is three steps from the parts list. To enter several parts in a row, select **Create and add another**: the form empties its name and puts the cursor back there.
+
+![The quick add form](images/parts-new.png)
+
+What the form fills in for you, and how to change it:
+
+- **Type, unit and source.** The line "This part will be a Component, each, make" shows what will be used. It starts from what you chose last time, or the common default. Select **Change** to pick another. These three cannot be changed after the part exists.
+- **Security markings.** One chip shows the markings the part will get. They start from your own program and the standard export and distribution settings. Select **Change** to open the full markings form (export jurisdiction, CUI categories, distribution statement, program, owning organization). The rules are the same as ever: an ITAR part needs a USML category, export-controlled data must be CUI//EXPT, and it cannot have distribution A. If something is missing you are told in plain words and the markings form opens.
+- **Attributes.** Attributes your administrator marked as required are asked for on the form (marked with an asterisk, and the form tells you which one is missing). All other attributes are under **More details (optional)**.
+
+![The quick add form with every fold-out open](images/parts-new-more.png)
 
 ## Read a part
 
-The part page has these tabs:
+The part page has the actions **Edit**, **Add document** and the lifecycle moves in a bar that stays in view, and these tabs:
 
 | Tab | What it shows |
 |---|---|
@@ -52,15 +63,34 @@ Use the revision links under the stepper (for example **Rev A (Released)**, **Re
 ![The Classification tab](images/parts-classification-tab.png)
 ![The Trace tab lists allocated requirements](images/parts-trace-tab.png)
 
-## Change a part: check out, edit, check in
+## Change a part: Edit and Save
 
-A part is changed only by its holder. **Check out** takes an exclusive lock and creates your private working copy.
+A part is changed by one person at a time. While you edit, nobody else can, and your changes stay private until you save.
 
-1. On an In Work part select **Check out**.
-2. Edit the description and attributes (and, on assemblies, the BOM) in the working copy.
-3. Select **Save working copy** as often as you like.
-4. Select **Check in**. This creates the next iteration (A.1 becomes A.2). Document links and BOM lines are copied forward.
-5. Changed your mind? **Undo check-out** discards the working copy. Only the holder or an administrator can undo it.
+1. On an In Work part select **Edit**. The part is reserved for you and the **Your changes** form opens (description and attributes; on assemblies also the BOM and documents).
+2. Make your changes. Add a **change note** if you want the history to say why.
+3. Select **Save**. This stores your changes as the next version (A.1 becomes A.2) and releases the reservation. Document links and BOM lines are carried forward.
+4. Changed your mind? **Discard changes** throws away what you have not saved (it asks first). The last saved version stays as it is.
+
+If you already have the part reserved (for example from before), **Edit** is not shown: you are already editing, and **Save** and **Discard changes** are there.
+
+![A part being edited, with Save and Discard changes](images/parts-edit.png)
+
+When you cannot edit, one line above the tabs says why and what to do:
+
+- **The part is released.** Changes to a released part go through a change order. **Start change** opens a new change notice with this part already filled in ([chapter 7](07-change-management.md)).
+- **The part is under review.** It cannot be edited until the review is finished.
+- **Somebody else is editing it.** The line names them and since when.
+- **You can see the part but not change it.** The line gives the reason (role, program, organization).
+- **You are looking at an older revision.** Open the latest revision to edit.
+
+![A released part explains why it cannot be edited and offers Start change](images/parts-released-banner.png)
+
+These are the same rules as before. Edit and Save simply do the steps for you and tell you plainly when a rule says no.
+
+### Step by step (advanced)
+
+Under **More** in the action bar the individual steps are still there, for people who want them: **Check out** (reserve the part), **Save working copy** (store your changes without releasing the part, so you can keep working), **Check in** with a comment (the next version), and **Undo check-out**. Edit does check out; Save does save working copy and check in; Discard changes does undo check-out. The audit log records the same entries either way (check-out, edit, check-in, undo check-out). Only the holder or an administrator can undo a check-out.
 
 Released revisions are locked. To change a released part you revise it inside a change notice ([chapter 7](07-change-management.md)).
 

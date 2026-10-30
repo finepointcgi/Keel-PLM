@@ -49,8 +49,8 @@ public static class PaletteActions
         if (roles.Contains(Roles.Admin)) list.Add(new("go:admin", "Go to Administration", "Go to", "admin", "admin", "settings configuration"));
         if (canCreate)
         {
-            list.Add(new("new:part", "New part", "Create", "plus", "parts/new", "create add"));
-            list.Add(new("new:document", "New document", "Create", "plus", "documents/new", "create add upload"));
+            list.Add(new("new:part", "Create part", "Create", "plus", "parts/new", "new add create component assembly quick"));
+            list.Add(new("new:document", "Create document", "Create", "plus", "documents/new", "new add create upload attach link"));
             list.Add(new("new:ncr", "New nonconformance report", "Create", "plus", "quality/new/ncr", "create add defect quality"));
             list.Add(new("new:capa", "New corrective action", "Create", "plus", "quality/new/capa", "create add capa"));
             list.Add(new("new:deviation", "New deviation or waiver", "Create", "plus", "quality/new/deviation", "create add waiver"));

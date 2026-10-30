@@ -1,0 +1,9 @@
+@* One line that explains a term that stays on screen (ADR 0061). Plain text, not a tooltip, so it reads the same with a keyboard, a screen reader and on a touch screen. *@
+@if (Glossary.Explain(Term) is { } text)
+{
+    <p class="glossary-hint" data-glossary="@Term"><strong>@Term:</strong> @text</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public required string Term { get; set; }
+}

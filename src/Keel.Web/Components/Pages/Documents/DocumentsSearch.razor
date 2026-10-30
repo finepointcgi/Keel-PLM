@@ -20,7 +20,7 @@
         </select>
         <button type="submit">Search</button>
         <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
-            <a class="button secondary" href="documents/new">New document</a>
+            <a class="button" href="documents/new">Create document</a>
         </AuthorizeView>
     </form>
 
@@ -29,7 +29,7 @@
         <p class="muted">@result.Total document@(result.Total == 1 ? "" : "s") you can access</p>
         <DataTable TItem="DocumentSummary" TableId="documents" Items="result.Items" Columns="Columns" Caption="Documents" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
-                <EmptyState Title="@(Filtered ? "No documents match" : "No documents yet")" IconName="document" ActionHref="@(Filtered ? null : "documents/new")" ActionText="New document">
+                <EmptyState Title="@(Filtered ? "No documents match" : "No documents yet")" IconName="document" ActionHref="@(Filtered ? null : "documents/new")" ActionText="Create document">
                     @(Filtered ? "Try a different number or name, or clear the filters." : "Upload the first drawing or specification to get started.")
                 </EmptyState>
             </Empty>

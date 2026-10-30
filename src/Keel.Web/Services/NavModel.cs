@@ -15,6 +15,31 @@ public sealed record NavGroup(string Title, IReadOnlyList<NavItem> Items);
 /// </summary>
 public static class NavModel
 {
+    /// <summary>Groups the Simple view (ADR 0061) hides. Everything in them stays reachable by search, the command palette and the Home page; role groups are untouched.</summary>
+    public static readonly IReadOnlySet<string> AdvancedGroups = new HashSet<string>(StringComparer.Ordinal) { "Programs", "Quality", "Sourcing", "Output" };
+
+    /// <summary>Links of "Product data" the Simple view keeps.</summary>
+    private static readonly HashSet<string> SimpleProductLinks = new HashSet<string>(StringComparer.Ordinal) { "parts", "documents", "mboms" };
+
+    /// <summary>
+    /// The navigation for the Simple view: the everyday groups (Work, Parts, Documents, Manufacturing BOMs, Changes) and the groups the person's roles add
+    /// (Records, Configuration, Administration, the audit log). A display preference only: no page or service decides anything from it.
+    /// </summary>
+    public static IReadOnlyList<NavGroup> For(IReadOnlyCollection<string> roles, bool simple)
+    {
+        var all = For(roles);
+        if (!simple) return all;
+        var result = new List<NavGroup>();
+        foreach (var g in all)
+        {
+            if (AdvancedGroups.Contains(g.Title)) continue;
+            if (g.Title == "Product data") result.Add(g with { Items = [.. g.Items.Where(i => SimpleProductLinks.Contains(i.Href))] });
+            else if (g.Title == "Tools") { var audit = g.Items.Where(i => i.Href == "audit").ToList(); if (audit.Count > 0) result.Add(g with { Items = audit }); }
+            else result.Add(g);
+        }
+        return result;
+    }
+
     public static IReadOnlyList<NavGroup> For(IReadOnlyCollection<string> roles)
     {
         var admin = roles.Contains(Roles.Admin);

@@ -1,0 +1,34 @@
+@* The markings of a new object, shown as one chip with a Change button (ADR 0061). The values start from the person's own program and the standard defaults; Change opens the
+   full markings form. The service validates the markings exactly as before: nothing here relaxes a rule. *@
+<div class="markings-default" data-markings-default>
+    <p class="markings-line">
+        <span class="markings-caption" id="markings-caption">Security markings</span>
+        <MarkingChip Text="@Chip" />
+        <button type="button" class="secondary small" aria-expanded="@(open ? "true" : "false")" aria-controls="markings-editor" data-markings-change @onclick="Toggle">@(open ? "Done" : "Change")</button>
+    </p>
+    <p class="muted small">@Hint</p>
+    @if (open)
+    {
+        <fieldset class="grid-form" id="markings-editor">
+            <legend>Security markings</legend>
+            <MarkingsFields Value="Value" />
+        </fieldset>
+    }
+</div>
+
+@code {
+    private bool open;
+
+    [Parameter, EditorRequired] public required MarkingsInput Value { get; set; }
+    [Parameter] public string Hint { get; set; } = "Starts from your own program and the standard export and distribution settings. Change them if this item is controlled differently.";
+    /// <summary>Open the editor at once (for example after the form was refused for its markings).</summary>
+    [Parameter] public bool StartOpen { get; set; }
+
+    private string Chip => QuickDefaults.ChipText(Value);
+
+    protected override void OnInitialized() => open = StartOpen;
+
+    public void Show() { open = true; StateHasChanged(); }
+
+    private void Toggle() => open = !open;
+}
