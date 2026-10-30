@@ -69,7 +69,7 @@ public static class NavModel
     }
 
     /// <summary>The navigation of an external supplier user (8.2): the portal and nothing else.</summary>
-    public static IReadOnlyList<NavGroup> ForSupplier() => [new("Supplier portal", [new("My requests", "portal", "inbox", ExactMatch: true)])];
+    public static IReadOnlyList<NavGroup> ForSupplier() => [new("Supplier portal", [new("My requests", "portal", "inbox", ExactMatch: true), new("My scorecard", "portal/scorecard", "quality")])];
 
     public static IReadOnlyList<string> RolesOf(ClaimsPrincipal user) => user.FindAll("roles").Select(c => c.Value).ToList();
 }

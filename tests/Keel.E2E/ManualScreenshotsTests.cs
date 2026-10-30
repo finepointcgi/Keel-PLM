@@ -468,6 +468,13 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                 var alpha = await session.SignInAsync("sup-alpha", 1440, 900);
                 await GoAsync(session, alpha, "/portal", "portal-my-requests");
                 await GoAsync(session, alpha, "/portal/requests/" + SourcingSeed.Request, "portal-request");
+                // RFQs beyond the portal and scorecards (9.6): the quotes side by side with an award, the new request form, the scorecard (chart and table) and what the supplier sees.
+                await GoAsync(session, alice, $"/requests/new?part={m.OpenFastener}", "rfq-new-request");
+                await GoAsync(session, alice, "/requests/" + SourcingSeed.RequestQuoted, "rfq-compare-quotes", async p => await p.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Compare quotes" }).ScrollIntoViewIfNeededAsync());
+                await GoAsync(session, alice, $"/suppliers/{SourcingSeed.SupplierA}?tab=scorecard", "scorecard-supplier");
+                await GoAsync(session, alice, $"/suppliers/{SourcingSeed.SupplierA}?tab=scorecard", "scorecard-table", async p => await p.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Table", Exact = true }).ClickAsync());
+                await GoAsync(session, alpha, "/portal/requests/" + SourcingSeed.RequestQuoted, "portal-rfq-quote", async p => await p.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Awarded to you" }).ScrollIntoViewIfNeededAsync());
+                await GoAsync(session, alpha, "/portal/scorecard", "portal-scorecard");
 
                 // ---- manufacturing process data
                 await GoAsync(session, alice, "/process/plans", "process-plans");

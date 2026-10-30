@@ -45,6 +45,36 @@ internal sealed class QualityReferenceResolver(NpgsqlDataSource dataSource) : IQ
 }
 
 /// <summary>
+/// The facts a supplier scorecard counts (<see cref="ISupplierQualityFacts"/>): the nonconformances and corrective actions a supplier is linked to, read through the SQL read
+/// filter of the caller (so an unreadable record is not counted and leaves no sign). Cancelled records are returned flagged as cancelled. A record counts as closed when it is in the Closed state;
+/// the time of the last state change is the time it closed (a closed record is locked).
+/// </summary>
+internal sealed class SupplierQualityFacts(NpgsqlDataSource dataSource) : ISupplierQualityFacts
+{
+    public async Task<IReadOnlyList<SupplierQualityFact>> ReadAsync(Subject subject, IReadOnlyList<(string Kind, string Id)> references, CancellationToken ct = default)
+    {
+        var facts = new List<SupplierQualityFact>();
+        await using var conn = await dataSource.OpenConnectionAsync(ct);
+        foreach (var kind in new[] { QualityKinds.Ncr, QualityKinds.Capa })
+        {
+            var numbers = references.Where(r => r.Kind == kind).Select(r => r.Id).Distinct(StringComparer.Ordinal).ToArray();
+            if (numbers.Length == 0) continue;
+            var filter = AccessPolicy.BuildReadFilter(subject, "m");
+            var severity = kind == QualityKinds.Ncr ? "m.severity" : "NULL::text";
+            await using var cmd = new NpgsqlCommand(
+                $"SELECT m.number, m.created_at, m.lifecycle_state, m.state_changed_at, {severity}, {MarkingColumns.Select("m")} FROM {QualityKinds.Table(kind)} m WHERE {filter.Sql} AND m.number = ANY(@n)", conn);
+            foreach (var (k, v) in filter.Parameters) cmd.Parameters.AddWithValue(k, v);
+            cmd.Parameters.AddWithValue("n", numbers);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                facts.Add(new SupplierQualityFact(kind, r.GetString(0), r.GetFieldValue<DateTimeOffset>(1), r.GetString(2) == "Closed" ? r.GetFieldValue<DateTimeOffset>(3) : null,
+                    r.IsDBNull(4) ? null : r.GetString(4), MarkingColumns.Read(r, 5), r.GetString(2) == "Cancelled"));
+        }
+        return facts;
+    }
+}
+
+/// <summary>
 /// Quality entries on the timeline of a part: reports raised against it and deviations or waivers that name it. Only records the caller may read are named (the SQL read
 /// filter); the others are left out, so a part with restricted records shows no sign of them. It never authorizes the timeline: the part's own sources do.
 /// </summary>

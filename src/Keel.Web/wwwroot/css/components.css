@@ -241,3 +241,12 @@ del.rl-del { background: var(--c-danger-bg); color: var(--c-text); text-decorati
 .rl-reply { margin-left: var(--sp-5); border-left: 3px solid var(--c-border-strong); padding-left: var(--sp-3); }
 .rl-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .inline-fieldset { border: 0; margin: 0; padding: 0; display: inline-flex; gap: var(--sp-4); align-items: center; }
+
+/* ---- supplier scorecard and RFQ comparison (ADR-0054) */
+.scorecard-score { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; margin: 0; }
+.scorecard-number { font-size: 2.25rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.rfq-compare th, .rfq-compare td { vertical-align: top; }
+.rfq-cell { display: flex; flex-direction: column; gap: 2px; min-width: 9rem; }
+.rfq-cell .rfq-price { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rfq-cell.is-awarded { outline: 2px solid var(--c-success); outline-offset: 2px; border-radius: var(--radius-1); padding: 2px 4px; }
+.rfq-flag { font-size: var(--fs-sm); }

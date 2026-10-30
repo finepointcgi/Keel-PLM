@@ -1,0 +1,67 @@
+@inject CurrentUser Users
+@inject ScorecardService Scorecards
+
+@* The Scorecard tab of a supplier: a quality score computed from data Keel already holds, with the formula in plain words. Nothing reaches the supplier until a buyer publishes it. *@
+<section class="panel stack" aria-labelledby="scorecard-heading">
+    <h2 id="scorecard-heading">Scorecard</h2>
+    @if (notFound) { <p class="error" role="alert">The scorecard is not available to you.</p> }
+    else if (data is null) { <Skeleton Lines="4" Label="Loading the scorecard" /> }
+    else
+    {
+        <p class="muted">Computed from the nonconformances and corrective actions linked on the Quality records tab, the supplier's answers to requests and its certifications. It counts only what you may read.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (data.NotCounted > 0)
+        {
+            <p class="notice" role="status">@data.NotCounted linked quality record@(data.NotCounted == 1 ? " is" : "s are") not counted: cancelled, or you may not read @(data.NotCounted == 1 ? "it" : "them").</p>
+        }
+        <ScorecardCard Card="data.Card" />
+        <section class="stack" aria-labelledby="publish-heading">
+            <h3 id="publish-heading">Share with the supplier</h3>
+            @if (data.Published is { } p)
+            {
+                <p>The supplier sees the scorecard published on <strong>@UiText.Utc(p.PublishedAt)</strong> by @p.PublishedBy (score @(p.Score?.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) ?? "none"), as of @p.AsOf.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)) in the supplier portal. A later publication replaces it.</p>
+            }
+            else
+            {
+                <p class="muted">The supplier sees no scorecard in the portal. A scorecard is shared only when you publish it, and it counts only the records that may be released to this supplier.</p>
+            }
+            @if (data.CanPublish)
+            {
+                <div class="toolbar">
+                    <button type="button" disabled="@busy" @onclick="Publish">@(data.Published is null ? "Publish to supplier" : "Publish again")</button>
+                    @if (data.Published is not null) { <button type="button" class="secondary" disabled="@busy" @onclick="Withdraw">Withdraw from supplier</button> }
+                </div>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string SupplierNumber { get; set; }
+    /// <summary>The banner of everything this tab shows (the supplier and the records its counts come from).</summary>
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private SupplierScorecard? data;
+    private bool notFound, busy;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync() => await Show(await Scorecards.GetAsync(await Users.GetAsync(), SupplierNumber, CurrentUser.NewCorrelationId()));
+
+    private async Task Show(Outcome<SupplierScorecard> outcome)
+    {
+        if (!outcome.IsOk && data is null) { notFound = true; return; }
+        if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
+        data = outcome.Value!;
+        await OnBanner.InvokeAsync(data!.Banner);
+    }
+
+    private async Task Publish() => await Run(s => Scorecards.PublishAsync(s, SupplierNumber, CurrentUser.NewCorrelationId()));
+    private async Task Withdraw() => await Run(s => Scorecards.WithdrawAsync(s, SupplierNumber, CurrentUser.NewCorrelationId()));
+
+    private async Task Run(Func<Subject, Task<Outcome<SupplierScorecard>>> action)
+    {
+        busy = true; error = null;
+        await Show(await action(await Users.GetAsync()));
+        busy = false;
+    }
+}

@@ -77,7 +77,7 @@ public sealed class SourcingTests(E2EFixture fx)
             await Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/portal$"));
             await BrowserSession.AssertBannersAsync(page);
             await Expect(page.Locator("h1")).ToContainTextAsync("E2E Alpha Works");
-            await Expect(page.GetByRole(AriaRole.Navigation).GetByRole(AriaRole.Link)).ToHaveCountAsync(1);
+            await Expect(page.GetByRole(AriaRole.Navigation).GetByRole(AriaRole.Link)).ToHaveCountAsync(2); // My requests and My scorecard
             await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Search or jump to" })).ToHaveCountAsync(0);
             await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = SourcingSeed.Request, Exact = true })).ToBeVisibleAsync();
             await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = SourcingSeed.RequestForB, Exact = true })).ToHaveCountAsync(0);

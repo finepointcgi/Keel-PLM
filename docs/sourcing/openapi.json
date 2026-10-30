@@ -527,6 +527,72 @@
         }
       }
     },
+    "/api/v1/sourcing/suppliers/{number}/scorecard": {
+      "get": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/sourcing/suppliers/{number}/scorecard/publish": {
+      "post": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/sourcing/suppliers/{number}/scorecard/withdraw": {
+      "post": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/sourcing/clearance-profiles": {
       "get": {
         "tags": [
@@ -1028,6 +1094,132 @@
         }
       }
     },
+    "/api/v1/sourcing/requests/{number}/due-date": {
+      "post": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DueDateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/sourcing/requests/{number}/comparison": {
+      "get": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/sourcing/requests/{number}/awards": {
+      "post": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AwardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/sourcing/requests/{number}/awards/{part}/withdraw": {
+      "post": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "part",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcingReasonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/sourcing/requests/{number}/files/{fileId}": {
       "get": {
         "tags": [
@@ -1127,6 +1319,49 @@
         }
       }
     },
+    "/api/v1/portal/scorecard": {
+      "get": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/requests/{number}/documents/{fileId}": {
+      "get": {
+        "tags": [
+          "Keel.Api"
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/portal/requests/{number}/files/{fileId}": {
       "get": {
         "tags": [
@@ -1161,6 +1396,32 @@
   },
   "components": {
     "schemas": {
+      "AwardRequest": {
+        "required": [
+          "supplier"
+        ],
+        "type": "object",
+        "properties": {
+          "supplier": {
+            "type": "string"
+          },
+          "parts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CertificationRequest": {
         "required": [
           "type",
@@ -1374,6 +1635,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "documents": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -1434,6 +1704,21 @@
           "E",
           "F"
         ]
+      },
+      "DueDateRequest": {
+        "required": [
+          "dueOn"
+        ],
+        "type": "object",
+        "properties": {
+          "dueOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          }
+        }
       },
       "EndEntryRequest": {
         "required": [
@@ -1637,6 +1922,13 @@
               "null",
               "string"
             ]
+          },
+          "needBy": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
           }
         }
       },

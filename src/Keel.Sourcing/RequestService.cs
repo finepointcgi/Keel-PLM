@@ -36,14 +36,14 @@ internal sealed record RequestRow(
     }
 }
 
-internal sealed record RequestPartRow(Guid PartId, string Number, string Name, decimal Quantity, string Unit, string? Note, Markings Markings);
+internal sealed record RequestPartRow(Guid PartId, string Number, string Name, decimal Quantity, string Unit, string? Note, Markings Markings, DateOnly? NeedBy = null);
 
 /// <summary>
 /// Requests for information or quotation to suppliers (RFQ-lite, ADR-0037), the internal side. A request is marked like any object; its markings must cover
 /// every part it lists (a reader of the request must be able to read the parts) and, per recipient, the supplier's clearance profile decides what the portal
 /// shows. Parts and recipients are fixed when the request is created (cancel and create a new one to change them).
 /// </summary>
-public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IContentReader? reader = null)
+public sealed partial class RequestService(NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IContentReader? reader = null)
 {
     public const string ObjectType = "request";
 
@@ -88,6 +88,17 @@ public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit,
             suppliers.Add(s);
         }
 
+        var documents = new List<DocumentPin>();
+        foreach (var n in (cmd.DocumentNumbers ?? []).Select(d => d.Trim()).Where(d => d.Length > 0).Distinct(StringComparer.Ordinal))
+        {
+            var doc = await LoadReleasedDocumentAsync(conn, tx, n, ct);
+            if (doc is null || !AccessPolicy.Evaluate(subject, doc.Markings, PlmAction.Read).Permitted) return Outcome<RequestDetail>.Invalid([$"There is no document '{n}'."]);
+            if (doc.RevisionId is null) return Outcome<RequestDetail>.Invalid([$"Document {doc.Number} has no released version. Only a released version can be sent to suppliers."]);
+            var gaps = MarkingDominance.Gaps(cmd.Markings, doc.Markings);
+            if (gaps.Count > 0) return Outcome<RequestDetail>.Invalid([$"The request's markings do not cover document {doc.Number} ({string.Join(", ", gaps)}). Raise the request's markings."]);
+            documents.Add(doc);
+        }
+
         var number = SourcingStore.NextNumber("RFQ-", await SourcingStore.NextValAsync(conn, tx, "src.request_seq", ct));
         var id = Guid.CreateVersion7();
         var now = clock.GetUtcNow();
@@ -119,7 +130,8 @@ public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit,
         }
         foreach (var (part, input) in parts)
         {
-            await using var ins = new NpgsqlCommand("INSERT INTO src.request_part (request_id, part_master_id, quantity, unit, note) VALUES (@r, @p, @q, @u, @n)", conn, tx);
+            await using var ins = new NpgsqlCommand("INSERT INTO src.request_part (request_id, part_master_id, quantity, unit, note, need_by) VALUES (@r, @p, @q, @u, @n, @nb)", conn, tx);
+            ins.Parameters.AddWithValue("nb", (object?)input.NeedBy ?? DBNull.Value);
             ins.Parameters.AddWithValue("r", id);
             ins.Parameters.AddWithValue("p", part.Id);
             ins.Parameters.AddWithValue("q", input.Quantity);
@@ -127,8 +139,20 @@ public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit,
             ins.Parameters.AddWithValue("n", (object?)SourcingRules.Clean(input.Note) ?? DBNull.Value);
             await ins.ExecuteNonQueryAsync(ct);
         }
+        foreach (var d in documents)
+        {
+            await using var ins = new NpgsqlCommand(
+                "INSERT INTO src.request_document (request_id, document_master_id, document_revision_id, iteration_id, added_at, added_by) VALUES (@r, @m, @rev, @it, @now, @by)", conn, tx);
+            ins.Parameters.AddWithValue("r", id);
+            ins.Parameters.AddWithValue("m", d.MasterId);
+            ins.Parameters.AddWithValue("rev", d.RevisionId!.Value);
+            ins.Parameters.AddWithValue("it", d.IterationId!.Value);
+            ins.Parameters.AddWithValue("now", now);
+            ins.Parameters.AddWithValue("by", subject.Username ?? subject.Id);
+            await ins.ExecuteNonQueryAsync(ct);
+        }
         await audit.AppendAsync(tx, Entry(subject, "rfq.create", AuditOutcome.Success, number, correlationId,
-            ("kind", cmd.Kind), ("parts", parts.Count.ToString(CultureInfo.InvariantCulture)), ("recipients", suppliers.Count.ToString(CultureInfo.InvariantCulture)), ("markings", cmd.Markings.BannerText())), ct);
+            ("kind", cmd.Kind), ("documents", documents.Count.ToString(CultureInfo.InvariantCulture)), ("parts", parts.Count.ToString(CultureInfo.InvariantCulture)), ("recipients", suppliers.Count.ToString(CultureInfo.InvariantCulture)), ("markings", cmd.Markings.BannerText())), ct);
         var detail = await BuildAsync(conn, tx, subject, (await RequestRow.LoadAsync(conn, tx, number, false, ct))!, ct);
         await tx.CommitAsync(ct);
         return Outcome<RequestDetail>.Ok(detail);
@@ -221,10 +245,10 @@ public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit,
     {
         var list = new List<RequestPartRow>();
         await using var cmd = new NpgsqlCommand(
-            $"SELECT pm.id, pm.number, pm.name, rp.quantity, rp.unit, rp.note, {MarkingColumns.Select("pm")} FROM src.request_part rp JOIN plm.part_master pm ON pm.id = rp.part_master_id WHERE rp.request_id = @r ORDER BY pm.number", conn, tx);
+            $"SELECT pm.id, pm.number, pm.name, rp.quantity, rp.unit, rp.note, {MarkingColumns.Select("pm")}, rp.need_by FROM src.request_part rp JOIN plm.part_master pm ON pm.id = rp.part_master_id WHERE rp.request_id = @r ORDER BY pm.number", conn, tx);
         cmd.Parameters.AddWithValue("r", requestId);
         await using var rd = await cmd.ExecuteReaderAsync(ct);
-        while (await rd.ReadAsync(ct)) list.Add(new RequestPartRow(rd.GetGuid(0), rd.GetString(1), rd.GetString(2), rd.GetDecimal(3), rd.GetString(4), SourcingStore.Str(rd, 5), MarkingColumns.Read(rd, 6)));
+        while (await rd.ReadAsync(ct)) list.Add(new RequestPartRow(rd.GetGuid(0), rd.GetString(1), rd.GetString(2), rd.GetDecimal(3), rd.GetString(4), SourcingStore.Str(rd, 5), MarkingColumns.Read(rd, 6), rd.IsDBNull(6 + MarkingColumns.Count) ? null : rd.GetFieldValue<DateOnly>(6 + MarkingColumns.Count)));
         return list;
     }
 
@@ -233,7 +257,7 @@ public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit,
         var partRows = await PartsOfAsync(conn, tx, r.Id, ct);
         // Every part is readable by anyone who can read the request (the request's markings cover them), but a changed part marking is re-checked at read time.
         var parts = partRows.Where(p => AccessPolicy.Evaluate(subject, p.Markings, PlmAction.Read).Permitted)
-            .Select(p => new RequestPartView(p.Number, p.Name, p.Quantity, p.Unit, p.Note, p.Markings.BannerText())).ToList();
+            .Select(p => new RequestPartView(p.Number, p.Name, p.Quantity, p.Unit, p.Note, p.Markings.BannerText(), p.NeedBy)).ToList();
         var recipients = new List<RequestRecipientView>();
         var responses = new List<ResponseView>();
         var suppliers = new List<(SupplierRow Supplier, string State, DateTimeOffset? Viewed)>();
@@ -253,21 +277,23 @@ public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit,
             var (releasable, reason) = await ReleasabilityAsync(conn, tx, s, r.Markings, partRows, ct);
             recipients.Add(new RequestRecipientView(s.Number, s.Name, state, viewed, releasable, reason));
         }
-        await using (var cmd = new NpgsqlCommand("SELECT id, supplier_id, seq, declined, message, quote::text, submitted_at, submitted_by_name FROM src.response WHERE request_id = @r ORDER BY supplier_id, seq", conn, tx))
+        await using (var cmd = new NpgsqlCommand("SELECT id, supplier_id, seq, declined, message, quote::text, submitted_at, submitted_by_name, valid_until FROM src.response WHERE request_id = @r ORDER BY supplier_id, seq", conn, tx))
         {
             cmd.Parameters.AddWithValue("r", r.Id);
-            var raw = new List<(Guid Id, Guid Supplier, int Seq, bool Declined, string Message, string Quote, DateTimeOffset At, string By)>();
+            var raw = new List<(Guid Id, Guid Supplier, int Seq, bool Declined, string Message, string Quote, DateTimeOffset At, string By, DateOnly? Valid)>();
             await using (var rd = await cmd.ExecuteReaderAsync(ct))
-                while (await rd.ReadAsync(ct)) raw.Add((rd.GetGuid(0), rd.GetGuid(1), rd.GetInt32(2), rd.GetBoolean(3), rd.GetString(4), rd.GetString(5), rd.GetFieldValue<DateTimeOffset>(6), rd.GetString(7)));
+                while (await rd.ReadAsync(ct)) raw.Add((rd.GetGuid(0), rd.GetGuid(1), rd.GetInt32(2), rd.GetBoolean(3), rd.GetString(4), rd.GetString(5), rd.GetFieldValue<DateTimeOffset>(6), rd.GetString(7), rd.IsDBNull(8) ? null : rd.GetFieldValue<DateOnly>(8)));
             foreach (var x in raw)
             {
                 var s = suppliers.FirstOrDefault(q => q.Supplier.Id == x.Supplier).Supplier;
                 if (s is null || !AccessPolicy.Evaluate(subject, s.Markings, PlmAction.Read).Permitted) continue;
-                responses.Add(new ResponseView(x.Id, s.Number, s.Name, x.Seq, x.Declined, x.Message, ParseQuote(x.Quote), x.At, x.By, await FilesAsync(conn, tx, x.Id, ct)));
+                responses.Add(new ResponseView(x.Id, s.Number, s.Name, x.Seq, x.Declined, x.Message, ParseQuote(x.Quote), x.At, x.By, await FilesAsync(conn, tx, x.Id, ct), x.Valid));
             }
         }
         var summary = await SummaryAsync(conn, tx, r, ct);
-        return new RequestDetail(summary, r.Description, parts, recipients, responses, AccessPolicy.Evaluate(subject, r.Markings, PlmAction.Modify).Permitted);
+        var documents = await DocumentsOfAsync(conn, tx, subject, r.Id, [.. suppliers.Where(x => AccessPolicy.Evaluate(subject, x.Supplier.Markings, PlmAction.Read).Permitted).Select(x => x.Supplier)], ct);
+        var awards = await AwardsOfAsync(conn, tx, subject, r.Id, ct);
+        return new RequestDetail(summary, r.Description, parts, recipients, responses, AccessPolicy.Evaluate(subject, r.Markings, PlmAction.Modify).Permitted, documents, awards);
     }
 
     internal static async Task<IReadOnlyList<ResponseFileView>> FilesAsync(NpgsqlConnection conn, NpgsqlTransaction? tx, Guid responseId, CancellationToken ct)
@@ -289,11 +315,18 @@ public sealed class RequestService(NpgsqlDataSource dataSource, IAuditLog audit,
             e.TryGetProperty("unitPrice", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetDecimal() : null,
             e.TryGetProperty("currency", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null,
             e.TryGetProperty("leadTimeDays", out var l) && l.ValueKind == JsonValueKind.Number ? l.GetInt32() : null,
-            e.TryGetProperty("moq", out var m) && m.ValueKind == JsonValueKind.Number ? m.GetDecimal() : null))];
+            e.TryGetProperty("moq", out var m) && m.ValueKind == JsonValueKind.Number ? m.GetDecimal() : null,
+            e.TryGetProperty("tiers", out var t) && t.ValueKind == JsonValueKind.Array ? [.. t.EnumerateArray().Select(x => new PriceBreak(x.GetProperty("quantity").GetDecimal(), x.GetProperty("unitPrice").GetDecimal()))] : null,
+            e.TryGetProperty("note", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null,
+            e.TryGetProperty("exception", out var x2) && x2.ValueKind == JsonValueKind.String ? x2.GetString() : null))];
     }
 
     internal static string QuoteJson(IReadOnlyList<QuoteLine> quote) =>
-        JsonSerializer.Serialize(quote.Select(q => new { part = q.Part, unitPrice = q.UnitPrice, currency = q.Currency, leadTimeDays = q.LeadTimeDays, moq = q.Moq }));
+        JsonSerializer.Serialize(quote.Select(q => new
+        {
+            part = q.Part, unitPrice = q.UnitPrice, currency = q.Currency, leadTimeDays = q.LeadTimeDays, moq = q.Moq,
+            tiers = q.Tiers is { Count: > 0 } ? q.Tiers.Select(t => new { quantity = t.Quantity, unitPrice = t.UnitPrice }) : null, note = q.Note, exception = q.Exception,
+        }));
 
     /// <summary>Can this supplier receive the request now? The supplier's standing, its clearance profile against the request's markings, and at least one part it may see.</summary>
     internal static async Task<(bool Releasable, string? Reason)> ReleasabilityAsync(NpgsqlConnection conn, NpgsqlTransaction tx, SupplierRow s, Markings requestMarkings, IReadOnlyList<RequestPartRow> parts, CancellationToken ct)

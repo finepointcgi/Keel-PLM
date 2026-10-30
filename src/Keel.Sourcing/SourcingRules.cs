@@ -217,6 +217,7 @@ public static partial class SourcingRules
             if (q.Currency is not null && !CurrencyPattern().IsMatch(q.Currency)) errors.Add($"{q.Part}: the currency is an ISO 4217 code.");
             if (q.LeadTimeDays is < 0 or > 3650) errors.Add($"{q.Part}: the lead time is 0 to 3650 days.");
             if (q.Moq is <= 0) errors.Add($"{q.Part}: the minimum order quantity must be positive.");
+            errors.AddRange(ValidateQuoteExtras(q));
         }
         if (input.Quote.Select(q => q.Part).Distinct(StringComparer.Ordinal).Count() != input.Quote.Count) errors.Add("A part can be quoted once.");
         return errors;

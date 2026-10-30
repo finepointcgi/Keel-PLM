@@ -282,6 +282,9 @@ public static partial class ActivityCatalog
         R("sourcing.entry_end", "state", "{actor} ended the list entry {entry}", "{actor} ended a list entry", F("entry", "Entry"), F("endsOn", "Ends on"), Reason),
         R("sourcing.relation_add", "link", "{actor} related the part to {related}", "{actor} related another part", F("related", "Part", FieldKind.ObjectRef), F("relation", "Relation")),
         R("sourcing.relation_remove", "link", "{actor} removed a related part"),
+        // supplier scorecards (9.6): details are the score, the date and the formula version; no record title or text
+        R("scorecard.publish", "state", "{actor} published the scorecard to the supplier", null, F("score", "Score"), F("asOf", "As of")),
+        R("scorecard.withdraw", "state", "{actor} withdrew the scorecard from the supplier"),
         // product compliance (8.5): events of a part's declarations; details are declaration numbers, codes and counts only, never names, notes or reasons
         R("compliance.declaration_create", "created", "{actor} added the compliance declaration {declaration}", "{actor} added a compliance declaration", F("declaration", "Declaration"), F("source", "Source"), F("status", "Status", FieldKind.State)),
         R("compliance.declaration_update", "edit", "{actor} changed the compliance declaration {declaration}", "{actor} changed a compliance declaration", F("declaration", "Declaration"), F("status", "Status", FieldKind.State)),
@@ -379,6 +382,11 @@ public static partial class ActivityCatalog
         ["sourcing.entry_read"] = "{actor} viewed a list entry",
         ["sourcing.where_sourced"] = "{actor} ran a where-sourced query",
         ["sourcing.coverage"] = "{actor} ran a sourcing coverage report",
+        ["scorecard.read"] = "{actor} viewed the scorecard of the supplier",
+        ["rfq.read"] = "{actor} viewed a supplier request",
+        ["rfq.search"] = "{actor} found a supplier request in a search",
+        ["rfq.compare"] = "{actor} compared the quotes of a supplier request",
+        ["rfq.file_download"] = "{actor} downloaded a file a supplier sent",
         ["program.read"] = "{actor} viewed the program",
         ["program.search"] = "{actor} found the program in a search",
         ["program.schedule"] = "{actor} viewed the schedule",
@@ -434,12 +442,15 @@ public static partial class ActivityCatalog
         "compliance.material_read", "compliance.list_create", "compliance.list_read", "compliance.list_draft_create", "compliance.list_draft_save", "compliance.list_draft_discard",
         "compliance.list_submit", "compliance.list_publish", "compliance.list_review_cancel",
         "requirement.link_type_save", "requirement.sweep",
+        // Supplier requests (RFQ, 8.2 and 9.6) are not yet an awareness kind (no watch list, comments or feed of their own); their story is the request page itself and the audit log.
+        "rfq.create", "rfq.issue", "rfq.close", "rfq.cancel", "rfq.due_change", "rfq.award", "rfq.award_withdraw",
+        "sourcing.foreign_supplier_itar_part", // a refusal reason code that looks like an action
         // Refusal reason codes that happen to look like actions (they are written into the details of a denial, never as an event's action).
         "comment.not_author_or_admin", "workflow.cancel_not_starter_or_admin",
     }.Concat(Keel.Core.EventTypes.All).ToFrozenSet(StringComparer.Ordinal); // the event types of the ERP contract are outbox events, not audit actions
 
     /// <summary>Whole namespaces that belong to administration and operations, not to an object's story.</summary>
-    public static readonly IReadOnlyList<string> HiddenPrefixes = ["admin.", "integration.", "migration.", "siem.", "vault.", "audit.", "session.", "tdp.", "workspace.", "records.", "output."];
+    public static readonly IReadOnlyList<string> HiddenPrefixes = ["admin.", "integration.", "migration.", "siem.", "vault.", "audit.", "session.", "tdp.", "workspace.", "records.", "output.", "portal."];
 
     public static bool IsHidden(string action) => Hidden.Contains(action) || HiddenPrefixes.Any(p => action.StartsWith(p, StringComparison.Ordinal));
 

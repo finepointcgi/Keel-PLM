@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Keel.Audit;
 using Keel.Core;
 using Keel.Parts;
+using Keel.Security;
 using Keel.Sourcing;
 using Keel.Workflow;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -33,6 +34,18 @@ internal sealed class FakeContentStore : IContentStore, IContentReader
     public Task<Stream> OpenReadAsync(string sha256, long sizeBytes, CancellationToken ct = default) => Task.FromResult<Stream>(new MemoryStream(Objects[sha256]));
 }
 
+/// <summary>
+/// The supplier quality facts of the scorecard tests, for services built without the Quality module: records added by the test, returned only to subjects who may read them (the contract of
+/// <see cref="ISupplierQualityFacts"/>; the real implementation is proved against the SQL oracle in the quality scorecard tests).
+/// </summary>
+internal sealed class FakeQualityFacts : ISupplierQualityFacts
+{
+    public List<SupplierQualityFact> Records { get; } = [];
+
+    public Task<IReadOnlyList<SupplierQualityFact>> ReadAsync(Subject subject, IReadOnlyList<(string Kind, string Id)> references, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<SupplierQualityFact>>([.. Records.Where(r => references.Any(x => x.Kind == r.Kind && x.Id == r.Id) && AccessPolicy.Evaluate(subject, r.Markings, PlmAction.Read).Permitted)]);
+}
+
 /// <summary>Records the notification requests the services make (pointers only by construction).</summary>
 internal sealed class RecordingSink : INotificationSink
 {
@@ -56,6 +69,8 @@ internal sealed class SourcingEnv
     public required RequestService Requests { get; init; }
     public required PortalService Portal { get; init; }
     public required CertificationExpiryService Expiry { get; init; }
+    public required ScorecardService Scorecards { get; init; }
+    public required FakeQualityFacts Facts { get; init; }
     public required TestClock Clock { get; init; }
     public required FakeContentStore Store { get; init; }
     public required RecordingSink Sink { get; init; }
@@ -88,6 +103,7 @@ internal sealed class SourcingEnv
         var sink = new RecordingSink();
         var store = new FakeContentStore();
         var options = new WorkflowOptions();
+        var facts = new FakeQualityFacts();
         var env = new SourcingEnv
         {
             Db = db, Ds = ds, Clock = clock, Store = store, Sink = sink,
@@ -99,6 +115,8 @@ internal sealed class SourcingEnv
             Requests = new RequestService(ds, audit, clock, store),
             Portal = new PortalService(ds, audit, clock, store, store),
             Expiry = new CertificationExpiryService(ds, audit, clock, sink),
+            Scorecards = new ScorecardService(ds, audit, clock, facts),
+            Facts = facts,
         };
         foreach (var u in new[] { Alice, Rita, Bob, Carol, Ada, Mallory, Audrey, Eve, Vic, Sup1, Sup2, Sup3 }) await env.Directory.UpsertAsync(u);
         return env;
@@ -197,6 +215,38 @@ internal sealed class SourcingEnv
         return Convert.ToInt64(await cmd.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>A document with one file. Released documents are created the way a release leaves them (the iteration is written while the revision is in work, then the state moves).</summary>
+    public async Task<(string Number, Guid FileId, byte[] Bytes)> NewDocumentAsync(Markings markings, string state = "Released", string content = "Synthetic drawing", string fileName = "housing.pdf")
+    {
+        var bytes = Encoding.UTF8.GetBytes(content + " " + Guid.NewGuid().ToString("N"));
+        var sha = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        Store.Objects[sha] = bytes;
+        var number = "D-" + (await ScalarAsync("SELECT nextval('plm.document_number_seq')")).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
+        var (master, revision, iteration, file) = (Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        await using var conn = new NpgsqlConnection(Db.SuperuserConnectionString);
+        await conn.OpenAsync();
+        async Task Run(string sql, params (string, object)[] parameters)
+        {
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            foreach (var (k, v) in parameters) cmd.Parameters.AddWithValue(k, v);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await using (var cmd = new NpgsqlCommand(
+            $"INSERT INTO plm.document_master (id, number, name, document_type, lifecycle_id, {Keel.Security.MarkingColumns.InsertColumns}, created_at, created_by) VALUES (@id, @n, 'Housing drawing', 'Drawing', 'document-default', {Keel.Security.MarkingColumns.InsertValues}, now(), 'alice')", conn))
+        {
+            cmd.Parameters.AddWithValue("id", master);
+            cmd.Parameters.AddWithValue("n", number);
+            foreach (var (k, v) in Keel.Security.MarkingColumns.Parameters(markings)) cmd.Parameters.AddWithValue(k, v);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await Run("INSERT INTO plm.document_revision (id, master_id, revision, lifecycle_state, is_latest, latest_iteration, created_at, created_by, state_changed_at, state_changed_by) VALUES (@r, @m, 'A', 'InWork', true, 1, now(), 'alice', now(), 'alice')", ("r", revision), ("m", master));
+        await Run("INSERT INTO plm.document_iteration (id, revision_id, iteration, description, created_at, created_by) VALUES (@i, @r, 1, 'first', now(), 'alice')", ("i", iteration), ("r", revision));
+        await Run("INSERT INTO plm.document_file (id, iteration_id, role, file_name, media_type, size_bytes, sha256, added_at, added_by) VALUES (@f, @i, 'primary', @name, 'application/pdf', @size, @sha, now(), 'alice')",
+            ("f", file), ("i", iteration), ("name", fileName), ("size", (long)bytes.Length), ("sha", sha));
+        if (state != "InWork") await Run("UPDATE plm.document_revision SET lifecycle_state = @s WHERE id = @r", ("s", state), ("r", revision));
+        return (number, file, bytes);
+    }
+
     public static CreateRequestCommand Request(string title, Markings markings, IReadOnlyList<string> parts, IReadOnlyList<string> suppliers, string kind = RequestKinds.Rfq) =>
         new(kind, title, "Please quote.", null, markings, [.. parts.Select(p => new RequestPartInput(p, 10))], suppliers);
 
@@ -207,5 +257,17 @@ internal sealed class SourcingEnv
         var issued = await Requests.IssueAsync(Alice, created.Value!.Summary.Number, null);
         Assert.True(issued.IsOk, string.Join("; ", issued.Errors));
         return created.Value.Summary.Number;
+    }
+}
+
+internal static class AuditRecordExtensions
+{
+    /// <summary>The details object of an audit record's payload.</summary>
+    public static IReadOnlyDictionary<string, string?> Details(this AuditRecord record)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(record.Payload);
+        return doc.RootElement.TryGetProperty("details", out var d)
+            ? d.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.ValueKind == System.Text.Json.JsonValueKind.Null ? null : p.Value.GetString(), StringComparer.Ordinal)
+            : new Dictionary<string, string?>();
     }
 }

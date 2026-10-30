@@ -21,7 +21,7 @@ This manual is written from the user's point of view, with task-oriented steps. 
 | 9 | [Markings, export control and the access check](09-markings-and-access.md) | What you may see and why |
 | 10 | [Quality](10-quality.md) | NCRs, CAPAs, deviations and waivers |
 | 11 | [CAD connector and the FreeCAD add-on](11-cad-connector-and-freecad.md) | Package check-out and check-in, structure proposals |
-| 12 | [Suppliers, sourcing and the portal](12-sourcing-and-portal.md) | Suppliers, AML/AVL, requests, supplier portal |
+| 12 | [Suppliers, sourcing and the portal](12-sourcing-and-portal.md) | Suppliers, AML/AVL, RFQs with quotes and awards, supplier scorecards, supplier portal |
 | 13 | [Manufacturing process data](13-manufacturing-process.md) | Process plans, tools and gauges, shop-floor view |
 | 14 | [Requirements and traceability](14-requirements.md) | Specifications, links, suspect links, verification |
 | 15 | [Product compliance](15-compliance.md) | Substances, lists, declarations, roll-up |
@@ -85,6 +85,7 @@ Stated in the chapter where it matters; collected here.
 - No manufacturing execution, work orders or machine integration ([chapter 13](13-manufacturing-process.md)).
 - No renaming of a part; no attributes on documents or changes ([chapters 3, 23](03-parts.md)).
 - No conditions on MBOM lines of their own, nor in baselines ([chapter 4](04-boms-variants-mbom.md)).
+- No on-time delivery measure in supplier scorecards, no split awards, no purchase orders and no currency conversion between quotes ([chapter 12](12-sourcing-and-portal.md)).
 - No message-broker sink for events ([chapter 21](21-integration-and-tdp.md)).
 - Migration has not been rehearsed against a real export ([chapter 22](22-migration.md)).
 - No high-availability automation; disaster-recovery targets are proposals ([chapter 24](24-administrator-and-operator-guide.md)).

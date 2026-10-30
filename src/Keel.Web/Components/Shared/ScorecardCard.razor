@@ -1,0 +1,44 @@
+@using System.Globalization
+@using Keel.Sourcing
+@* A supplier scorecard: the score, how each component contributes, the monthly trend (chart with a table alternative) and the formula in plain words. Used by the buyer's Scorecard tab and
+   by the supplier portal, so both see the same numbers. Counts and rates only: no record title or text is ever on a scorecard. *@
+<div class="stack scorecard">
+    <p class="scorecard-score">
+        <strong class="scorecard-number" aria-label="@(Card.Score is { } s ? $"Score {s:0.#} out of 100" : "No score")">@(Card.Score is { } sc ? sc.ToString("0.#", CultureInfo.InvariantCulture) : "no score")</strong>
+        <span class="muted"> out of 100</span>
+        <span class="badge @BandClass(Card.Band)">@Card.Band</span>
+        <span class="muted small">as of @Card.AsOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span>
+    </p>
+    <div class="table-wrap">
+        <table class="data">
+            <caption class="visually-hidden">How the score is made</caption>
+            <thead><tr><th scope="col">Measure</th><th scope="col">Weight</th><th scope="col">Score</th><th scope="col">Basis</th></tr></thead>
+            <tbody>
+                @foreach (var c in Card.Components)
+                {
+                    <tr>
+                        <th scope="row">@c.Label</th>
+                        <td>@c.Weight</td>
+                        <td>@(c.Available && c.Score is { } v ? v.ToString("0.#", CultureInfo.InvariantCulture) : "not measured")</td>
+                        <td>@c.Measure</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <TrendChartView Title="Score over the last 12 months" Points="@Points" References="@References" />
+    <details class="panel">
+        <summary>How the score is calculated</summary>
+        <ul>@foreach (var line in Card.Formula) { <li>@line</li> }</ul>
+        <p class="muted small">Formula version @Card.FormulaVersion.</p>
+    </details>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required ScorecardView Card { get; set; }
+
+    private static readonly IReadOnlyList<TrendChartView.ReferenceLine> References = [new(85, "Good 85"), new(65, "Watch 65")];
+    private IReadOnlyList<TrendChartView.TrendPoint> Points => [.. Card.Trend.Select(p => new TrendChartView.TrendPoint(p.AsOf.ToString("MMM yy", CultureInfo.InvariantCulture), p.Score))];
+
+    private static string BandClass(string band) => band switch { "Good" => "state-approved", "Watch" => "state-underreview", "Poor" => "state-obsolete", _ => "state-inwork" };
+}
