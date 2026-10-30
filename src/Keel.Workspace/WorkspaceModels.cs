@@ -86,14 +86,26 @@ public static class DensityNames
 }
 
 /// <summary>Display preferences of one user. The default is what a user who never chose anything gets.</summary>
-public sealed record UserPreferences(string Theme, string Density, bool NavCollapsed, bool SimpleView = false)
+public sealed record UserPreferences(string Theme, string Density, bool NavCollapsed, bool SimpleView = false, string Language = UserPreferences.DefaultLanguage)
 {
+    /// <summary>The language the product ships in (ADR 0057). A user who never chose one reads it.</summary>
+    public const string DefaultLanguage = "en";
+
     public static readonly UserPreferences Default = new(ThemeNames.System, DensityNames.Comfortable, false);
 
+    private static readonly System.Text.RegularExpressions.Regex LanguageShape = new("^[a-z]{2,3}(-[a-z0-9]{2,8})?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>A language tag in the stored shape (lowercase, language and optional subtag); anything else is English. Whether the tag is shipped is the UI's decision.</summary>
+    public static string NormalizeLanguage(string? language)
+    {
+        var l = language?.Trim().ToLowerInvariant();
+        return l is not null && LanguageShape.IsMatch(l) ? l : DefaultLanguage;
+    }
+
     /// <summary>Unknown values fall back to the defaults, so a damaged row can never break the page shell.</summary>
-    public static UserPreferences Normalize(string? theme, string? density, bool navCollapsed, bool simpleView = false) =>
+    public static UserPreferences Normalize(string? theme, string? density, bool navCollapsed, bool simpleView = false, string? language = null) =>
         new(theme is not null && ThemeNames.All.Contains(theme) ? theme : ThemeNames.System,
-            density is not null && DensityNames.All.Contains(density) ? density : DensityNames.Comfortable, navCollapsed, simpleView);
+            density is not null && DensityNames.All.Contains(density) ? density : DensityNames.Comfortable, navCollapsed, simpleView, NormalizeLanguage(language));
 }
 
 /// <summary>Column choices, density and sort of one table (identified by a stable id such as "parts") for one user.</summary>

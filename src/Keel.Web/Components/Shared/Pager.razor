@@ -1,14 +1,18 @@
 @* Server paging controls: "Showing 1-50 of 123" and Previous / Next. The page keeps owning the query; this only reports the new offset. *@
+@inject IServiceProvider Services
 @if (Total > 0)
 {
-    <nav class="toolbar" aria-label="Paging">
-        <span class="muted" aria-live="polite">Showing @(Offset + 1)–@Math.Min(Offset + PageSize, Total) of @Total</span>
-        <button type="button" class="secondary" disabled="@(Offset == 0)" @onclick="() => OnPage.InvokeAsync(Math.Max(0, Offset - PageSize))">Previous</button>
-        <button type="button" class="secondary" disabled="@(Offset + PageSize >= Total)" @onclick="() => OnPage.InvokeAsync(Offset + PageSize)">Next</button>
+    <nav class="toolbar" aria-label="@C["Paging"]">
+        <span class="muted" aria-live="polite">@C["Paging.Showing", Language.Number(Offset + 1), Language.Number(Math.Min(Offset + PageSize, Total)), Language.Number(Total)]</span>
+        <button type="button" class="secondary" disabled="@(Offset == 0)" @onclick="() => OnPage.InvokeAsync(Math.Max(0, Offset - PageSize))">@C["Paging.Previous"]</button>
+        <button type="button" class="secondary" disabled="@(Offset + PageSize >= Total)" @onclick="() => OnPage.InvokeAsync(Offset + PageSize)">@C["Paging.Next"]</button>
     </nav>
 }
 
 @code {
+    private IStringLocalizer<CommonStrings> C => Loc.Strings<CommonStrings>(Services);
+    private UiLanguage Language => Loc.Language(Services);
+
     [Parameter, EditorRequired] public required long Total { get; set; }
     [Parameter, EditorRequired] public required int Offset { get; set; }
     [Parameter] public int PageSize { get; set; } = 50;

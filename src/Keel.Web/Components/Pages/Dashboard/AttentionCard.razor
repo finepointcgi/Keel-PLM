@@ -1,12 +1,14 @@
 @* "Needs my attention": my open workflow tasks and review requests, change tasks assigned to me, and changes I requested that were decided recently. A task on an object
    the user can no longer read is a neutral "restricted" row: no number, name or markings. *@
 @inject WorkspaceReads Reads
+@inject IStringLocalizer<PageStrings> P
+@inject UiLanguage Language
 
 <section class="card" aria-labelledby="card-attention">
-    <h2 id="card-attention"><Icon Name="tasks" /> Needs my attention</h2>
+    <h2 id="card-attention"><Icon Name="tasks" /> @P["Attention.Title"]</h2>
     @if (loading)
     {
-        <Skeleton Lines="4" Label="Loading your tasks" />
+        <Skeleton Lines="4" Label="@P["Attention.Loading"]" />
     }
     else if (error is not null)
     {
@@ -14,7 +16,7 @@
     }
     else if (result is null || result.Items.Count == 0)
     {
-        <EmptyState Title="You are all caught up" IconName="check">Reviews to sign, change tasks assigned to you and decisions on your change requests show up here.</EmptyState>
+        <EmptyState Title="@P["Attention.EmptyTitle"]" IconName="check">@P["Attention.EmptyText"]</EmptyState>
     }
     else
     {
@@ -24,14 +26,14 @@
                 <li>
                     <span class="main">
                         <a href="@item.Href">@item.Title</a>
-                        <span class="sub">@item.Detail@(item.At is { } at ? " · " + (item.Kind == "decision" ? UiText.Utc(at) : "due " + UiText.Utc(at)[..10]) : "")</span>
+                        <span class="sub">@item.Detail@(item.At is { } at ? " · " + (item.Kind == "decision" ? Language.Utc(at) : P["Attention.Due", Language.Date(at)].Value) : "")</span>
                     </span>
-                    @if (item.Overdue) { <span class="badge state-obsolete error">Overdue</span> }
+                    @if (item.Overdue) { <span class="badge state-obsolete error">@P["Attention.Overdue"]</span> }
                     @if (item.Markings is { } m) { <MarkingChip Text="@m.BannerText()" /> }
                 </li>
             }
         </ul>
-        <p class="small"><a href="tasks">All my tasks</a></p>
+        <p class="small"><a href="tasks">@P["Attention.AllTasks"]</a></p>
     }
 </section>
 
@@ -47,7 +49,7 @@
         try { result = await Reads.AttentionAsync(); }
         catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
         {
-            error = "Your tasks could not be loaded. The rest of the page is not affected.";
+            error = P["Attention.LoadFailed"];
         }
         loading = false;
         await OnBanner.InvokeAsync(("attention", result?.Banner));

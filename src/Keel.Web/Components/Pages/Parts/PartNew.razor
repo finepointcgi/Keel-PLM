@@ -1,10 +1,11 @@
 @page "/parts/new"
+@inject IStringLocalizer<PageStrings> P
 
 @* A blank form shows no controlled data; the markings being entered appear on the created part. The form itself is the shared quick form (ADR 0061). *@
-<PageFrame Banner="@UiText.Unclassified" Title="Create part" Crumbs="@Crumbs">
+<PageFrame Banner="@UiText.Unclassified" Title="@P["Parts.Create"]" Crumbs="@Crumbs">
     <QuickPartForm />
 </PageFrame>
 
 @code {
-    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Parts", "parts"), new("Create part")];
+    private IReadOnlyList<Crumb> Crumbs => [new(P["Parts.Title"], "parts"), new(P["Parts.Create"])];
 }

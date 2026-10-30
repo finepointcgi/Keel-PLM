@@ -5,6 +5,9 @@
 @inject ShellState Shell
 @inject ShellJs Js
 @inject IServiceProvider Services
+@inject UiLanguage Language
+@inject NavigationManager Nav
+@inject IStringLocalizer<ShellStrings> S
 
 <div class="user-menu" @ref="root">
     <button type="button" class="icon-button bordered" id="user-menu-button" aria-haspopup="true" aria-expanded="@(open ? "true" : "false")" aria-controls="user-menu-panel" @onclick="ToggleAsync">
@@ -14,51 +17,70 @@
     </button>
     @if (open)
     {
-        <div class="user-menu-panel" id="user-menu-panel" role="group" aria-label="User menu">
+        <div class="user-menu-panel" id="user-menu-panel" role="group" aria-label="@S["UserMenu"]">
             <h2>@DisplayName</h2>
-            <a class="menu-item" href="profile" @onclick="Close"><Icon Name="access" /> My access</a>
+            <a class="menu-item" href="profile" @onclick="Close"><Icon Name="access" /> @S["UserMenu.MyAccess"]</a>
             <div class="group" role="group" aria-labelledby="theme-label">
-                <span class="label" id="theme-label">Theme</span>
+                <span class="label" id="theme-label">@S["Theme"]</span>
                 <div class="segmented">
-                    @foreach (var (value, text) in Themes)
+                    @foreach (var value in Themes)
                     {
                         var v = value;
-                        <button type="button" aria-pressed="@(Shell.Preferences.Theme == v ? "true" : "false")" data-theme-choice="@v" @onclick="() => Shell.SetThemeAsync(v)">@text</button>
+                        <button type="button" aria-pressed="@(Shell.Preferences.Theme == v ? "true" : "false")" data-theme-choice="@v" @onclick="() => Shell.SetThemeAsync(v)">@S["Theme." + v]</button>
                     }
                 </div>
             </div>
             <div class="group" role="group" aria-labelledby="density-label">
-                <span class="label" id="density-label">Density</span>
+                <span class="label" id="density-label">@S["Density"]</span>
                 <div class="segmented">
-                    @foreach (var (value, text) in Densities)
+                    @foreach (var value in Densities)
                     {
                         var v = value;
-                        <button type="button" aria-pressed="@(Shell.Preferences.Density == v ? "true" : "false")" data-density-choice="@v" @onclick="() => Shell.SetDensityAsync(v)">@text</button>
+                        <button type="button" aria-pressed="@(Shell.Preferences.Density == v ? "true" : "false")" data-density-choice="@v" @onclick="() => Shell.SetDensityAsync(v)">@S["Density." + v]</button>
                     }
                 </div>
             </div>
             <div class="group" role="group" aria-labelledby="simple-label">
-                <span class="label" id="simple-label">Navigation</span>
+                <span class="label" id="simple-label">@S["Navigation"]</span>
                 <div class="segmented">
-                    <button type="button" aria-pressed="@(Shell.Preferences.SimpleView ? "true" : "false")" data-simple-view-choice="simple" @onclick="() => Shell.SetSimpleViewAsync(true)">Simple</button>
-                    <button type="button" aria-pressed="@(Shell.Preferences.SimpleView ? "false" : "true")" data-simple-view-choice="all" @onclick="() => Shell.SetSimpleViewAsync(false)">All areas</button>
+                    <button type="button" aria-pressed="@(Shell.Preferences.SimpleView ? "true" : "false")" data-simple-view-choice="simple" @onclick="() => Shell.SetSimpleViewAsync(true)">@S["Navigation.Simple"]</button>
+                    <button type="button" aria-pressed="@(Shell.Preferences.SimpleView ? "false" : "true")" data-simple-view-choice="all" @onclick="() => Shell.SetSimpleViewAsync(false)">@S["Navigation.All"]</button>
                 </div>
-                <span class="muted small">Simple shows parts, documents and changes. Everything else is still found by search (Ctrl + K).</span>
+                <span class="muted small">@S["Navigation.Help"]</span>
+            </div>
+            <div class="group" role="group" aria-labelledby="language-label">
+                <span class="label" id="language-label">@S["Language"]</span>
+                <div class="segmented">
+                    @foreach (var locale in Language.Available)
+                    {
+                        var tag = locale.Tag;
+                        <button type="button" lang="@(locale.Pseudo ? null : tag)" aria-pressed="@(Language.Tag == tag ? "true" : "false")" data-language-choice="@tag" @onclick="() => ChangeLanguageAsync(tag)">@locale.NativeName</button>
+                    }
+                </div>
+                <span class="muted small">@S["Language.Help"]</span>
             </div>
             <div class="group">
                 @if (Lock is { Enabled: true, View: { Phase: SessionPhase.Active } })
                 {
-                    <button type="button" class="menu-item" data-action="lock-from-menu" @onclick="LockAsync"><Icon Name="lock" /> Lock session now</button>
+                    <button type="button" class="menu-item" data-action="lock-from-menu" @onclick="LockAsync"><Icon Name="lock" /> @S["UserMenu.Lock"]</button>
                 }
-                <button type="submit" class="menu-item" form="signout-form" data-action="sign-out-menu"><Icon Name="logout" /> Sign out</button>
+                <button type="submit" class="menu-item" form="signout-form" data-action="sign-out-menu"><Icon Name="logout" /> @S["SignOut"]</button>
             </div>
         </div>
     }
 </div>
 
 @code {
-    private static readonly (string, string)[] Themes = [(ThemeNames.System, "System"), (ThemeNames.Light, "Light"), (ThemeNames.Dark, "Dark"), (ThemeNames.HighContrast, "High contrast")];
-    private static readonly (string, string)[] Densities = [(DensityNames.Comfortable, "Comfortable"), (DensityNames.Compact, "Compact")];
+    private static readonly string[] Themes = [ThemeNames.System, ThemeNames.Light, ThemeNames.Dark, ThemeNames.HighContrast];
+    private static readonly string[] Densities = [DensityNames.Comfortable, DensityNames.Compact];
+
+    // The language is saved for the person, then the page loads again so the new circuit starts in it (ADR 0057). Only the words change: access, markings and banners do not.
+    private async Task ChangeLanguageAsync(string tag)
+    {
+        if (tag == Language.Tag) return;
+        await Shell.SetLanguageAsync(tag);
+        Nav.NavigateTo(Nav.Uri, forceLoad: true);
+    }
 
     private SessionLockCoordinator? Lock => Services.GetService<SessionLockCoordinator>();
 

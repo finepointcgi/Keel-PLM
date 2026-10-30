@@ -1,20 +1,21 @@
 @using MudBlazor
 @inject NavigationManager Nav
+@inject IStringLocalizer<ShellStrings> S
 @implements IDisposable
 @* The grouped navigation rail (MudBlazor links). Expanded, each group is a collapsible header (a disclosure button); the group of the current page opens by itself and the
    others stay as the user left them. Collapsed to icons, the groups are flat icon stacks with the native tooltip (title) naming each icon, as before. Icons come from the
    SVG sprite. The links shown depend on the user's roles (see NavModel); pages and services check the role again. *@
-<nav id="main-nav" class="rail" aria-label="Main">
+<nav id="main-nav" class="rail" aria-label="@S["Nav.Main"]">
     @if (Collapsed)
     {
         @foreach (var group in Groups)
         {
-            <div class="rail-group" role="group" aria-label="@group.Title">
+            <div class="rail-group" role="group" aria-label="@GroupText(group.Title)">
                 @foreach (var item in group.Items)
                 {
-                    <MudNavLink Href="@item.Href" Match="@Match(item)" Class="rail-link" title="@item.Label">
+                    <MudNavLink Href="@item.Href" Match="@Match(item)" Class="rail-link" title="@ItemText(item)">
                         <Icon Name="@item.Icon" />
-                        <span class="rail-label">@item.Label</span>
+                        <span class="rail-label">@ItemText(item)</span>
                     </MudNavLink>
                 }
             </div>
@@ -31,18 +32,18 @@
                 {
                     @* A group of one link that has the group's own name needs no header. *@
                     var only = group.Items[0];
-                    <MudNavLink Href="@only.Href" Match="@Match(only)" Class="rail-link" title="@only.Label">
+                    <MudNavLink Href="@only.Href" Match="@Match(only)" Class="rail-link" title="@ItemText(only)">
                         <Icon Name="@only.Icon" />
-                        <span class="rail-label">@only.Label</span>
+                        <span class="rail-label">@ItemText(only)</span>
                     </MudNavLink>
                 }
                 else
                 {
                     var open = IsOpen(group);
                     var id = "rail-g-" + Slug(title);
-                    <div class="rail-group @(open ? "open" : "closed")" role="group" aria-label="@title">
+                    <div class="rail-group @(open ? "open" : "closed")" role="group" aria-label="@GroupText(title)">
                         <button type="button" class="rail-group-header" aria-expanded="@(open ? "true" : "false")" aria-controls="@id" @onclick="() => SetOpen(title, !open)">
-                            <span class="rail-group-title">@title</span>
+                            <span class="rail-group-title">@GroupText(title)</span>
                             <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="rail-group-chevron" />
                         </button>
                         @if (open)
@@ -50,9 +51,9 @@
                             <div id="@id" class="rail-group-items">
                                 @foreach (var item in group.Items)
                                 {
-                                    <MudNavLink Href="@item.Href" Match="@Match(item)" Class="rail-link" title="@item.Label">
+                                    <MudNavLink Href="@item.Href" Match="@Match(item)" Class="rail-link" title="@ItemText(item)">
                                         <Icon Name="@item.Icon" />
-                                        <span class="rail-label">@item.Label</span>
+                                        <span class="rail-label">@ItemText(item)</span>
                                     </MudNavLink>
                                 }
                             </div>
@@ -62,9 +63,9 @@
             }
         </div>
     }
-    <button type="button" class="icon-button collapse-toggle" aria-pressed="@(Collapsed ? "true" : "false")" title="@(Collapsed ? "Expand navigation" : "Collapse navigation")" data-action="collapse-nav" @onclick="() => OnToggle.InvokeAsync(!Collapsed)">
+    <button type="button" class="icon-button collapse-toggle" aria-pressed="@(Collapsed ? "true" : "false")" title="@(Collapsed ? S["Nav.Expand"] : S["Nav.Collapse"])" data-action="collapse-nav" @onclick="() => OnToggle.InvokeAsync(!Collapsed)">
         <Icon Name="@(Collapsed ? "chevron-right" : "chevron-left")" />
-        <span class="rail-label">@(Collapsed ? "Expand navigation" : "Collapse navigation")</span>
+        <span class="rail-label">@(Collapsed ? S["Nav.Expand"] : S["Nav.Collapse"])</span>
     </button>
 </nav>
 
@@ -84,6 +85,11 @@
         foreach (var g in Groups) if (HoldsCurrent(g)) chosen.Remove(g.Title);
         _ = InvokeAsync(StateHasChanged);
     }
+
+    // The links and groups are data of NavModel in English (their text is also the identity the Simple view and the open/closed state go by); only what is shown is translated.
+    private string GroupText(string english) => S.Or(LocalizationServices.Key("Nav.group", english), english);
+
+    private string ItemText(NavItem item) => S.Or(LocalizationServices.Key("Nav.item", item.Label), item.Label);
 
     private static string Slug(string title) => new string(title.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
 

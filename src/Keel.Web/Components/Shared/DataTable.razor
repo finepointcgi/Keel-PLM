@@ -9,6 +9,7 @@
 @inject IPreferenceStore Workspace
 @inject ShellState Shell
 @inject ShellJs Js
+@inject IServiceProvider Services
 @implements IAsyncDisposable
 
 <div class="dt" data-table="@TableId" data-density="@Density">
@@ -16,20 +17,20 @@
         <div class="left">@Toolbar</div>
         <div class="right dt-popover-anchor" @ref="chooserRoot">
             <button type="button" class="secondary icon-button bordered" aria-pressed="@(Density == "compact" ? "true" : "false")" @onclick="ToggleDensityAsync" data-action="density">
-                <Icon Name="density" /> <span>@(Density == "compact" ? "Comfortable rows" : "Compact rows")</span>
+                <Icon Name="density" /> <span>@(Density == "compact" ? C["Table.ComfortableRows"] : C["Table.CompactRows"])</span>
             </button>
             <button type="button" class="secondary icon-button bordered" aria-expanded="@(chooserOpen ? "true" : "false")" aria-controls="@(TableId)-columns" @onclick="ToggleChooser" data-action="columns">
-                <Icon Name="columns" /> <span>Columns</span>
+                <Icon Name="columns" /> <span>@C["Table.Columns"]</span>
             </button>
             @if (chooserOpen)
             {
-                <div class="dt-popover" id="@(TableId)-columns" role="group" aria-label="Choose columns">
+                <div class="dt-popover" id="@(TableId)-columns" role="group" aria-label="@C["Table.ChooseColumns"]">
                     @foreach (var c in Columns.Where(c => !c.Required))
                     {
                         var key = c.Key;
                         <label><input type="checkbox" checked="@(!hidden.Contains(key))" @onchange="e => SetVisibleAsync(key, (bool)e.Value!)" /> @c.Title</label>
                     }
-                    <button type="button" class="secondary" @onclick="ResetColumnsAsync">Reset columns</button>
+                    <button type="button" class="secondary" @onclick="ResetColumnsAsync">@C["Table.ResetColumns"]</button>
                 </div>
             }
         </div>
@@ -37,7 +38,7 @@
 
     @if (Loading)
     {
-        <Skeleton Lines="6" Label="Loading the list" />
+        <Skeleton Lines="6" Label="@C["Table.Loading"]" />
     }
     else if (Error is not null)
     {
@@ -53,7 +54,7 @@
         var rows = Sorted();
         <div class="dt-scroll" tabindex="-1">
             <table class="data">
-                <caption class="visually-hidden">@Caption</caption>
+                <caption class="visually-hidden">@(Caption ?? C["Table.Results"])</caption>
                 <thead>
                     <tr>
                         @foreach (var c in shown)
@@ -92,6 +93,8 @@
 </div>
 
 @code {
+    private IStringLocalizer<CommonStrings> C => Loc.Strings<CommonStrings>(Services);
+
     private ElementReference chooserRoot;
     private DotNetObjectReference<DataTable<TItem>>? self;
     private bool chooserOpen, watching;
@@ -105,7 +108,7 @@
     [Parameter] public IReadOnlyList<TItem>? Items { get; set; }
     [Parameter, EditorRequired] public required IReadOnlyList<DataColumn<TItem>> Columns { get; set; }
     /// <summary>Accessible name of the table.</summary>
-    [Parameter] public string Caption { get; set; } = "Results";
+    [Parameter] public string? Caption { get; set; }
     [Parameter] public bool Loading { get; set; }
     [Parameter] public string? Error { get; set; }
     [Parameter] public RenderFragment? Empty { get; set; }
@@ -176,7 +179,7 @@
 
     private string SortIcon(DataColumn<TItem> c) => c.Key != ActiveKey ? "sort" : ActiveDescending ? "sort-desc" : "sort-asc";
 
-    private string SortTitle(DataColumn<TItem> c) => ServerMode ? $"Sort all results by {c.Title}" : $"Sort the rows of this page by {c.Title}";
+    private string SortTitle(DataColumn<TItem> c) => ServerMode ? C["Table.SortAll", c.Title] : C["Table.SortPage", c.Title];
 
     private async Task SortByAsync(DataColumn<TItem> c)
     {

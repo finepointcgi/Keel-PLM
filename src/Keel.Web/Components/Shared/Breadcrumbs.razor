@@ -1,9 +1,10 @@
 @* Where the user is: Home, then each level, the last one the current page (no link). Fed through PageFrame by every page. *@
+@inject IServiceProvider Services
 @if (Items.Count > 0)
 {
-    <nav class="breadcrumbs" aria-label="Breadcrumb">
+    <nav class="breadcrumbs" aria-label="@C["Breadcrumb"]">
         <ol>
-            <li><a href="">Home</a></li>
+            <li><a href="">@C["Breadcrumb.Home"]</a></li>
             @for (var i = 0; i < Items.Count; i++)
             {
                 var crumb = Items[i];
@@ -21,5 +22,7 @@
 }
 
 @code {
+    private IStringLocalizer<CommonStrings> C => Loc.Strings<CommonStrings>(Services);
+
     [Parameter] public IReadOnlyList<Crumb> Items { get; set; } = [];
 }

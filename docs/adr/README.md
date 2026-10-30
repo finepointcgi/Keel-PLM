@@ -59,3 +59,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0053](0053-document-compare-and-redline.md) | Cross-document compare and redline review: word diff, honest non-text compare, anchored review threads, marked HTML/PDF export | Accepted |
 | [0052](0052-3d-viewer-and-assembly-placements.md) | Assembly placements from STEP and the Viewer tab: placed bounding boxes, stored and exposed through the CAD API and CLI, strict CSP kept | Accepted |
 | [0061](0061-simplified-flows.md) | Simplified flows: quick add part, one-step edit/save and add document, plain-language help, Simple view navigation | Accepted |
+| [0057](0057-localization.md) | Localization foundation: per-user language, .resx resources with satellite assemblies, culture-aware display without ICU, pseudo-locale, marking text never translated | Accepted |

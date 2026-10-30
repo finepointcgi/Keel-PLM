@@ -3,6 +3,7 @@
    Cancel. When ReasonLabel is set the dialog asks for a reason (required when ReasonRequired) and hands it to OnConfirm. *@
 @implements IAsyncDisposable
 @inject ShellJs Shell
+@inject IServiceProvider Services
 
 @if (Open)
 {
@@ -15,21 +16,23 @@
                 @if (ReasonLabel is not null)
                 {
                     <label class="stack">
-                        <span>@ReasonLabel@(ReasonRequired ? " (required)" : "")</span>
+                        <span>@(ReasonRequired ? C["Reason.Required", ReasonLabel] : ReasonLabel)</span>
                         <textarea rows="3" maxlength="1000" data-confirm-reason aria-invalid="@(reasonError is null ? null : "true")" aria-describedby="@(reasonError is null ? null : ErrorId)" @bind="reason" @bind:event="oninput"></textarea>
                     </label>
                     @if (reasonError is not null) { <p id="@ErrorId" class="error" role="alert">@reasonError</p> }
                 }
             </div>
             <div class="dialog-foot">
-                <button type="button" class="secondary" data-confirm-cancel @onclick="CancelAsync">@CancelText</button>
-                <button type="button" class="@(Destructive ? "danger" : null)" data-confirm-ok @onclick="ConfirmAsync">@ConfirmText</button>
+                <button type="button" class="secondary" data-confirm-cancel @onclick="CancelAsync">@(CancelText ?? C["Cancel"])</button>
+                <button type="button" class="@(Destructive ? "danger" : null)" data-confirm-ok @onclick="ConfirmAsync">@(ConfirmText ?? C["Confirm"])</button>
             </div>
         </div>
     </div>
 }
 
 @code {
+    private IStringLocalizer<CommonStrings> C => Loc.Strings<CommonStrings>(Services);
+
     private static int counter;
     private readonly string id = $"confirm-{Interlocked.Add(ref counter, 1)}";
     private ElementReference dialog;
@@ -45,8 +48,8 @@
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
     [Parameter, EditorRequired] public required string Title { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public string ConfirmText { get; set; } = "Confirm";
-    [Parameter] public string CancelText { get; set; } = "Cancel";
+    [Parameter] public string? ConfirmText { get; set; }
+    [Parameter] public string? CancelText { get; set; }
     [Parameter] public bool Destructive { get; set; }
     /// <summary>When set, the dialog asks for a reason with this label.</summary>
     [Parameter] public string? ReasonLabel { get; set; }
@@ -92,7 +95,7 @@
         var text = reason.Trim();
         if (ReasonLabel is not null && ReasonRequired && text.Length == 0)
         {
-            reasonError = "Enter a reason to continue.";
+            reasonError = C["Reason.Enter"];
             return;
         }
         await Close();

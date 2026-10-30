@@ -10,39 +10,42 @@
 @inject IReferenceData Refs
 @inject LastChoiceStore Last
 @inject ToastService Toasts
+@inject IStringLocalizer<PageStrings> P
+@inject IStringLocalizer<CommonStrings> C
+@inject UiLanguage Language
 
 @* A blank form shows no controlled data; the markings being entered appear on the created document. The optional "Link to part" links the new document to a part in the same step (ADR 0061). *@
-<PageFrame Banner="@UiText.Unclassified" Title="New document">
+<PageFrame Banner="@UiText.Unclassified" Title="@P["DocNew.Title"]">
     <form class="stack" @onsubmit="Create" novalidate>
         <div class="grid-form">
             <label class="wide">
-                Name *
+                @C["Field.Name"]
                 <input @bind="name" @bind:event="oninput" maxlength="200" aria-required="true" aria-invalid="@(nameError is null ? null : "true")" aria-describedby="@(nameError is null ? null : "doc-name-error")" />
                 @if (nameError is not null) { <span id="doc-name-error" class="error" role="alert">@nameError</span> }
             </label>
             <label>
-                Type
+                @C["Column.Type"]
                 <InputSelect @bind-Value="documentType">@foreach (var t in docTypes) { <option value="@t.Code">@t.Label</option> }</InputSelect>
             </label>
-            <label class="wide">Description (optional) <InputTextArea @bind-Value="description" rows="2" maxlength="4000" /></label>
+            <label class="wide">@C["Field.DescriptionOptional"] <InputTextArea @bind-Value="description" rows="2" maxlength="4000" /></label>
             <label class="wide">
-                Primary file (optional, up to @DocumentUi.Size(Vault.MaxUploadBytes))
+                @P["DocNew.File", DocumentUi.Size(Vault.MaxUploadBytes)]
                 <InputFile OnChange="Pick" />
             </label>
         </div>
         <section class="panel" aria-labelledby="link-part-heading" data-link-to-part>
-            <h2 id="link-part-heading" class="h3">Link to a part (optional)</h2>
-            <ObjectPicker Id="link-part" Label="Part" Noun="parts" Placeholder="Part number or name" Search="q => Flows.FindPartsAsync(me!, q)" @bind-Selected="part" />
+            <h2 id="link-part-heading" class="h3">@P["DocNew.LinkPart"]</h2>
+            <ObjectPicker Id="link-part" Label="@P["DocNew.Part"]" Noun="parts" Placeholder="@P["DocNew.PartPlaceholder"]" Search="q => Flows.FindPartsAsync(me!, q)" @bind-Selected="part" />
             @if (part is not null)
             {
                 <label>
-                    How is the document related to the part?
+                    @P["DocNew.Related"]
                     <select @bind="linkType" data-link-type>
-                        @foreach (var c in QuickDefaults.LinkChoices) { <option value="@c.Value">@c.Label</option> }
+                        @foreach (var c in QuickDefaults.LinkChoices) { <option value="@c.Value">@P.Or("DocNew.Link." + c.Value + ".Label", c.Label)</option> }
                     </select>
-                    <span class="muted small">@QuickDefaults.LinkChoices.First(c => c.Value == linkType).Help</span>
+                    <span class="muted small">@(P.Or("DocNew.Link." + linkType + ".Help", QuickDefaults.LinkChoices.First(c => c.Value == linkType).Help))</span>
                 </label>
-                <p class="muted small">Keel saves a new version of the part with the link; you do not need to check the part out. If the part is released, add the document through a change order instead.</p>
+                <p class="muted small">@P["DocNew.LinkNote"]</p>
             }
         </section>
         <MarkingsDefaultPicker @ref="markingsPicker" Value="markings" />
@@ -51,8 +54,8 @@
             <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
         }
         <div class="toolbar">
-            <button type="submit" disabled="@busy">@(busy && file is not null ? "Uploading…" : "Create document")</button>
-            <a class="button secondary" href="documents">Cancel</a>
+            <button type="submit" disabled="@busy">@(busy && file is not null ? P["DocNew.Uploading"] : P["Documents.Create"])</button>
+            <a class="button secondary" href="documents">@C["Cancel"]</a>
         </div>
     </form>
 </PageFrame>
@@ -93,10 +96,10 @@
     {
         if (busy) return;
         errors = null;
-        nameError = string.IsNullOrWhiteSpace(name) ? "Enter a name for the document." : null;
+        nameError = string.IsNullOrWhiteSpace(name) ? P["DocNew.NameRequired"].Value : null;
         if (nameError is not null) return;
         var m = markings.Effective().ToMarkings();
-        if (!m.IsSuccess) { errors = [.. m.Errors.Select(e => "Security markings: " + e)]; markingsPicker?.Show(); return; }
+        if (!m.IsSuccess) { errors = [.. m.Errors.Select(e => C["Markings.Prefix", e].Value)]; markingsPicker?.Show(); return; }
         busy = true;
         // The browser streams the file over the circuit straight into the vault; it is never buffered whole.
         await using var content = file?.OpenReadStream(Vault.MaxUploadBytes);
@@ -106,7 +109,7 @@
         busy = false;
         if (!doc.IsOk)
         {
-            errors = doc.Kind == OutcomeKind.Invalid ? doc.Errors : [UiText.Message(doc)];
+            errors = doc.Kind == OutcomeKind.Invalid ? doc.Errors : [UiText.Message(doc, C)];
             return;
         }
         try
@@ -119,7 +122,7 @@
         if (link is not null)
         {
             if (link.IsOk) Toasts.Success(link.Message);
-            else Toasts.Warning($"{doc.Value!.Number} was created, but it could not be linked to {part!.Number}: {link.Message}");
+            else Toasts.Warning(P["DocNew.LinkFailed", doc.Value!.Number, part!.Number, link.Message].Value);
         }
         Nav.NavigateTo($"documents/{Uri.EscapeDataString(doc.Value!.Number)}");
     }

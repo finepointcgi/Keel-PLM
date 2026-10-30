@@ -1,6 +1,7 @@
 using Keel.Core;
 using Keel.Web.Services;
 using Keel.Workflow;
+using Microsoft.Extensions.Localization;
 
 namespace Keel.Web.Components.Pages.Workflow;
 
@@ -27,6 +28,17 @@ public static class WorkflowText
 
     public static string Reason(string code) => Reasons.TryGetValue(code, out var text) ? text : UiText.Reason(code);
 
+    /// <summary>The reason in the person's language; the workflow's own codes first, then the shared ones (resource keys <c>Reason.&lt;code&gt;</c>).</summary>
+    public static string Reason(string code, IStringLocalizer common) =>
+        Reasons.TryGetValue(code, out var text) ? Keel.Web.Localization.LocalizerExtensions.Or(common, "Reason." + code, text) : UiText.Reason(code, common);
+
+    public static string Message<T>(Outcome<T> o, IStringLocalizer common) => o.Kind switch
+    {
+        OutcomeKind.Forbidden => string.Join(" ", o.Errors.Select(e => Reason(e, common))),
+        OutcomeKind.StepUpRequired => Reason("stepup.required", common),
+        _ => UiText.Message(o, common),
+    };
+
     public static string Message<T>(Outcome<T> o) => o.Kind switch
     {
         OutcomeKind.Forbidden => string.Join(" ", o.Errors.Select(Reason)),
@@ -50,6 +62,10 @@ public static class WorkflowText
     };
 
     public static string Due(DateTimeOffset? due, bool overdue) => due is null ? "No due date" : (overdue ? "Overdue since " : "Due ") + UiText.Utc(due.Value) + " UTC";
+
+    /// <summary>The due date in the person's language and date order (still shown in UTC).</summary>
+    public static string Due(DateTimeOffset? due, bool overdue, IStringLocalizer common, Keel.Web.Localization.UiLanguage language) =>
+        due is null ? common["Due.None"].Value : common[overdue ? "Due.Overdue" : "Due.On", language.Utc(due.Value)].Value;
 
     /// <summary>Link to an object's own page, when its module has one.</summary>
     public static string? ObjectLink(string objectType, string key) => objectType switch

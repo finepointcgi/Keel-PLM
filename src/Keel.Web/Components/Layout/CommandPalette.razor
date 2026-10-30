@@ -10,18 +10,20 @@
 @inject ShellJs Js
 @inject NavigationManager Nav
 @inject IServiceProvider Services
+@inject IStringLocalizer<ShellStrings> S
+@inject IStringLocalizer<CommonStrings> C
 
 @if (State.IsOpen)
 {
     <div class="dialog-backdrop" @onclick="Close">
-        <div @ref="dialog" class="dialog" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1" data-palette @onclick:stopPropagation="true" @onkeydown="OnDialogKey">
+        <div @ref="dialog" class="dialog" role="dialog" aria-modal="true" aria-label="@S["Palette.Title"]" tabindex="-1" data-palette @onclick:stopPropagation="true" @onkeydown="OnDialogKey">
             <div class="palette-input">
                 <Icon Name="search" />
-                <input @ref="input" type="text" role="combobox" aria-label="Search or run a command" aria-autocomplete="list" aria-expanded="true" aria-controls="palette-list"
-                       aria-activedescendant="@(entries.Count > 0 ? OptionId(selected) : null)" autocomplete="off" spellcheck="false" placeholder="Search parts, documents, changes… or type a command"
+                <input @ref="input" type="text" role="combobox" aria-label="@S["Palette.Input"]" aria-autocomplete="list" aria-expanded="true" aria-controls="palette-list"
+                       aria-activedescendant="@(entries.Count > 0 ? OptionId(selected) : null)" autocomplete="off" spellcheck="false" placeholder="@S["Palette.Placeholder"]"
                        @oninput="OnInput" @onkeydown="OnInputKey" data-palette-input />
             </div>
-            <ul id="palette-list" class="palette-list" role="listbox" aria-label="Results">
+            <ul id="palette-list" class="palette-list" role="listbox" aria-label="@S["Palette.Results"]">
                 @for (var i = 0; i < entries.Count; i++)
                 {
                     var e = entries[i];
@@ -48,14 +50,14 @@
             }
             else if (entries.Count == 0)
             {
-                <p class="palette-empty">@(loading ? "Searching…" : "Nothing found. Try a part number, a name, or a prefix such as p: or ecn:.")</p>
+                <p class="palette-empty">@(loading ? S["Palette.Searching"] : S["Palette.Empty"])</p>
             }
             <div class="visually-hidden" aria-live="polite">@Announcement</div>
             <div class="palette-foot" aria-hidden="true">
-                <span><kbd>↑</kbd> <kbd>↓</kbd> to move</span>
-                <span><kbd>Enter</kbd> to open</span>
-                <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> in a new tab</span>
-                <span><kbd>Esc</kbd> to close</span>
+                <span><kbd>↑</kbd> <kbd>↓</kbd> @S["Palette.Hint.Move"]</span>
+                <span><kbd>Enter</kbd> @S["Palette.Hint.Open"]</span>
+                <span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> @S["Palette.Hint.NewTab"]</span>
+                <span><kbd>Esc</kbd> @S["Palette.Hint.Close"]</span>
             </div>
         </div>
     </div>
@@ -84,7 +86,7 @@
 
     private string OptionId(int i) => "palette-option-" + i;
 
-    private string Announcement => loading ? "Searching" : query.Length == 0 ? "" : $"{entries.Count} results";
+    private string Announcement => loading ? S["Palette.Announce.Searching"].Value : query.Length == 0 ? "" : S.Count("Palette.Announce.Results", entries.Count);
 
     protected override void OnInitialized() => State.Changed += OnStateChanged;
 
@@ -139,7 +141,7 @@
         try
         {
             var me = await Users.GetAsync();
-            actions = PaletteActions.For(me.Roles, Services.GetService<SessionLockCoordinator>() is { Enabled: true });
+            actions = PaletteActions.Localize(PaletteActions.For(me.Roles, Services.GetService<SessionLockCoordinator>() is { Enabled: true }), S);
         }
         catch (InvalidOperationException)
         {
@@ -191,7 +193,7 @@
         catch (Exception ex) when (ex is InvalidOperationException or Npgsql.NpgsqlException)
         {
             hits = [];
-            error = "Search is not available right now.";
+            error = S["Palette.SearchUnavailable"];
         }
         if (mine.IsCancellationRequested) return;
         loading = false;
@@ -204,24 +206,25 @@
         var parsed = ParsedQuery.Parse(query);
         if (query.Length == 0)
         {
-            list.AddRange(recents.Select(HitEntry("Recent")));
+            list.AddRange(recents.Select(HitEntry(S["Palette.Recent"])));
         }
         else
         {
-            list.AddRange(hits.Select(h => HitEntry(ObjectKinds.Label(h.Kind) + "s")(h)));
+            list.AddRange(hits.Select(h => HitEntry(C.Or("Kinds." + h.Kind, ObjectKinds.Label(h.Kind) + "s"))(h)));
         }
         // Places and commands: all of them when nothing is typed, otherwise those that match (not when a typed prefix narrows to one kind of object).
         if (query.Length == 0 || parsed.Kinds.Count == ObjectKinds.All.Length)
             list.AddRange(PaletteActions.Filter(actions, query.Trim()).Select(a => new Entry(a.Group, a.Label, null, a.Icon, a.Href, a.Id, null, null, "action")));
         if (parsed.Text.Length >= ParsedQuery.MinLength)
-            list.Add(new Entry("Search", $"See all results for “{query.Trim()}”", null, "search", "search?q=" + Uri.EscapeDataString(query.Trim()), null, null, null, "all"));
+            list.Add(new Entry(S["Palette.Search"], S["Palette.SeeAll", query.Trim()], null, "search", "search?q=" + Uri.EscapeDataString(query.Trim()), null, null, null, "all"));
         entries = list;
         selected = Math.Min(selected, Math.Max(0, list.Count - 1));
         if (list.Count == 0) selected = 0;
     }
 
-    private static Func<SearchHit, Entry> HitEntry(string group) =>
-        h => new Entry(group, $"{h.Number} · {h.Name}", ObjectKinds.Label(h.Kind), h.Kind, h.Href, null, h.Banner, h.StateLabel, h.Kind);
+    private Func<SearchHit, Entry> HitEntry(string group) =>
+        h => new Entry(group, $"{h.Number} · {h.Name}", C.Or("Kind." + h.Kind, ObjectKinds.Label(h.Kind)), h.Kind, h.Href, null, h.Banner,
+            h.StateLabel is null ? null : C.Or(LocalizationServices.Key("State", h.StateLabel), h.StateLabel), h.Kind);
 
     private double lastX = -1, lastY = -1;
 

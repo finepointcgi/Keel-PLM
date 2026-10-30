@@ -222,6 +222,29 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                     await ap.Locator("[data-density-choice=comfortable]").ClickAsync();
                     await ap.Keyboard.PressAsync("Escape");
                 });
+                // Localization (ADR 0057): the user menu's language group, then Home and the Parts list in Spanish; the language goes back to English afterwards (it is stored for the user).
+                await GoAsync(session, alice, "/", "shell-language-menu", async p => { await p.Locator("#user-menu-button").ClickAsync(); await p.WaitForTimeoutAsync(400); });
+                await ap.Keyboard.PressAsync("Escape");
+                await TryAsync("language-es", async () =>
+                {
+                    await ap.Locator("#user-menu-button").ClickAsync();
+                    await ap.Locator("[data-language-choice=es]").ClickAsync();
+                    await ap.WaitForLoadStateAsync(LoadState.NetworkIdle);
+                    await ap.WaitForTimeoutAsync(900);
+                    await ShotAsync(ap, "shell-home-es");
+                    await session.GotoAsync(alice, "/parts");
+                    await ShotAsync(ap, "parts-list-es");
+                    await session.GotoAsync(alice, "/parts/new");
+                    await ShotAsync(ap, "parts-new-es");
+                });
+                await TryAsync("language-en", async () =>
+                {
+                    await session.GotoAsync(alice, "/");
+                    await ap.Locator("#user-menu-button").ClickAsync();
+                    await ap.Locator("[data-language-choice=en]").ClickAsync();
+                    await ap.WaitForLoadStateAsync(LoadState.NetworkIdle);
+                    await ap.WaitForTimeoutAsync(600);
+                });
                 await GoAsync(session, alice, "/profile", "access-my-access");
                 await GoAsync(session, alice, "/access", "access-check");
                 await GoAsync(session, alice, "/tools/style-guide", "shell-style-guide");

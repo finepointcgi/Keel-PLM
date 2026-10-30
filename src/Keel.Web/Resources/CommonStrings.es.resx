@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" id="root">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Breadcrumb" xml:space="preserve"><value>Ruta de navegación</value></data>
+  <data name="Breadcrumb.Home" xml:space="preserve"><value>Inicio</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="Column.Markings" xml:space="preserve"><value>Marcas</value></data>
+  <data name="Column.Name" xml:space="preserve"><value>Nombre</value></data>
+  <data name="Column.Number" xml:space="preserve"><value>Número</value></data>
+  <data name="Column.State" xml:space="preserve"><value>Estado</value></data>
+  <data name="Column.Type" xml:space="preserve"><value>Tipo</value></data>
+  <data name="Column.Version" xml:space="preserve"><value>Versión</value></data>
+  <data name="Confirm" xml:space="preserve"><value>Confirmar</value></data>
+  <data name="Due.None" xml:space="preserve"><value>Sin fecha de vencimiento</value></data>
+  <data name="Due.On" xml:space="preserve"><value>Vence el {0} UTC</value></data>
+  <data name="Due.Overdue" xml:space="preserve"><value>Vencida desde el {0} UTC</value></data>
+  <data name="Field.DescriptionOptional" xml:space="preserve"><value>Descripción (opcional)</value></data>
+  <data name="Field.Name" xml:space="preserve"><value>Nombre *</value></data>
+  <data name="Format.DatePattern" xml:space="preserve"><value>dd/MM/yyyy</value></data>
+  <data name="Format.DayNames" xml:space="preserve"><value>domingo,lunes,martes,miércoles,jueves,viernes,sábado</value></data>
+  <data name="Format.DayNamesShort" xml:space="preserve"><value>dom,lun,mar,mié,jue,vie,sáb</value></data>
+  <data name="Format.DecimalSeparator" xml:space="preserve"><value>,</value></data>
+  <data name="Format.FirstDayOfWeek" xml:space="preserve"><value>Monday</value></data>
+  <data name="Format.GroupSeparator" xml:space="preserve"><value>.</value></data>
+  <data name="Format.LongDatePattern" xml:space="preserve"><value>d 'de' MMMM 'de' yyyy</value></data>
+  <data name="Format.MonthNames" xml:space="preserve"><value>enero,febrero,marzo,abril,mayo,junio,julio,agosto,septiembre,octubre,noviembre,diciembre</value></data>
+  <data name="Format.MonthNamesShort" xml:space="preserve"><value>ene,feb,mar,abr,may,jun,jul,ago,sep,oct,nov,dic</value></data>
+  <data name="Format.TimePattern" xml:space="preserve"><value>HH:mm</value></data>
+  <data name="Kind.baseline" xml:space="preserve"><value>Línea base</value></data>
+  <data name="Kind.capa" xml:space="preserve"><value>Acción correctiva</value></data>
+  <data name="Kind.change" xml:space="preserve"><value>Cambio</value></data>
+  <data name="Kind.deviation" xml:space="preserve"><value>Desviación</value></data>
+  <data name="Kind.document" xml:space="preserve"><value>Documento</value></data>
+  <data name="Kind.mbom" xml:space="preserve"><value>Lista de materiales de fabricación</value></data>
+  <data name="Kind.ncr" xml:space="preserve"><value>Informe de no conformidad</value></data>
+  <data name="Kind.part" xml:space="preserve"><value>Pieza</value></data>
+  <data name="Kind.process_plan" xml:space="preserve"><value>Plan de proceso</value></data>
+  <data name="Kind.program" xml:space="preserve"><value>Programa</value></data>
+  <data name="Kind.reqspec" xml:space="preserve"><value>Especificación de requisitos</value></data>
+  <data name="Kind.substance" xml:space="preserve"><value>Sustancia</value></data>
+  <data name="Kind.supplier" xml:space="preserve"><value>Proveedor</value></data>
+  <data name="Kind.tool" xml:space="preserve"><value>Herramienta</value></data>
+  <data name="Kinds.baseline" xml:space="preserve"><value>Líneas base</value></data>
+  <data name="Kinds.capa" xml:space="preserve"><value>Acciones correctivas</value></data>
+  <data name="Kinds.change" xml:space="preserve"><value>Cambios</value></data>
+  <data name="Kinds.deviation" xml:space="preserve"><value>Desviaciones</value></data>
+  <data name="Kinds.document" xml:space="preserve"><value>Documentos</value></data>
+  <data name="Kinds.mbom" xml:space="preserve"><value>Listas de materiales de fabricación</value></data>
+  <data name="Kinds.ncr" xml:space="preserve"><value>Informes de no conformidad</value></data>
+  <data name="Kinds.part" xml:space="preserve"><value>Piezas</value></data>
+  <data name="Kinds.process_plan" xml:space="preserve"><value>Planes de proceso</value></data>
+  <data name="Kinds.program" xml:space="preserve"><value>Programas</value></data>
+  <data name="Kinds.reqspec" xml:space="preserve"><value>Especificaciones de requisitos</value></data>
+  <data name="Kinds.substance" xml:space="preserve"><value>Sustancias</value></data>
+  <data name="Kinds.supplier" xml:space="preserve"><value>Proveedores</value></data>
+  <data name="Kinds.tool" xml:space="preserve"><value>Herramientas</value></data>
+  <data name="Loading" xml:space="preserve"><value>Cargando {0}</value></data>
+  <data name="Loading.Plain" xml:space="preserve"><value>Cargando</value></data>
+  <data name="Markings.Prefix" xml:space="preserve"><value>Marcas de seguridad: {0}</value></data>
+  <data name="Paging" xml:space="preserve"><value>Paginación</value></data>
+  <data name="Paging.Next" xml:space="preserve"><value>Siguiente</value></data>
+  <data name="Paging.Previous" xml:space="preserve"><value>Anterior</value></data>
+  <data name="Paging.Showing" xml:space="preserve"><value>Mostrando {0}–{1} de {2}</value></data>
+  <data name="Reason.CuiCategory" xml:space="preserve"><value>Usted no tiene autorización para la categoría CUI {0}.</value></data>
+  <data name="Reason.Enter" xml:space="preserve"><value>Escriba un motivo para continuar.</value></data>
+  <data name="Reason.Generic" xml:space="preserve"><value>Usted no tiene permiso para hacer esto.</value></data>
+  <data name="Reason.NewMarkings" xml:space="preserve"><value>Con las marcas nuevas: {0}</value></data>
+  <data name="Reason.NotFound" xml:space="preserve"><value>No se encontró, o usted no tiene autorización para verlo.</value></data>
+  <data name="Reason.Required" xml:space="preserve"><value>{0} (obligatorio)</value></data>
+  <data name="Reason.checkout.not_owner" xml:space="preserve"><value>Solo quien lo extrajo (o un administrador) puede hacerlo.</value></data>
+  <data name="Reason.child.not_readable" xml:space="preserve"><value>Usted no tiene autorización para ver una pieza que este cambio afectaría.</value></data>
+  <data name="Reason.document.read_denied" xml:space="preserve"><value>Usted no tiene autorización para ver el documento vinculado.</value></data>
+  <data name="Reason.export.us_person_or_authorization_required" xml:space="preserve"><value>Control de exportación: requiere la condición de persona de EE. UU. o una autorización de exportación indicada en el objeto.</value></data>
+  <data name="Reason.instance.not_active" xml:space="preserve"><value>Este flujo de trabajo ya no está activo.</value></data>
+  <data name="Reason.number.explicit_requires_admin" xml:space="preserve"><value>Solo los administradores pueden asignar números explícitos.</value></data>
+  <data name="Reason.object.state_changed" xml:space="preserve"><value>El objeto ya no está en revisión en la iteración que abarca este flujo de trabajo.</value></data>
+  <data name="Reason.org.not_owner" xml:space="preserve"><value>Solo la organización propietaria o los miembros del programa pueden modificar este objeto.</value></data>
+  <data name="Reason.portal.no_clearance_profile" xml:space="preserve"><value>El proveedor no tiene un perfil de autorización, por lo que no se le pueden entregar datos.</value></data>
+  <data name="Reason.portal.not_linked" xml:space="preserve"><value>Su cuenta no está vinculada a un proveedor.</value></data>
+  <data name="Reason.program.not_member" xml:space="preserve"><value>Usted no es miembro del programa del objeto.</value></data>
+  <data name="Reason.role.missing" xml:space="preserve"><value>Sus roles no permiten esta acción.</value></data>
+  <data name="Reason.sod.submitter" xml:space="preserve"><value>Usted envió esta revisión, así que no puede revisarla ni aprobarla (separación de funciones).</value></data>
+  <data name="Reason.sourcing.foreign_supplier_itar_part" xml:space="preserve"><value>Nunca se selecciona a un proveedor extranjero para una pieza con marca ITAR, ni se le envían datos de ella.</value></data>
+  <data name="Reason.stepup.required" xml:space="preserve"><value>Para firmar hace falta iniciar sesión de nuevo. Se le pedirá que lo haga.</value></data>
+  <data name="Reason.task.not_assignee" xml:space="preserve"><value>Esta tarea está asignada a otra persona.</value></data>
+  <data name="Reason.task.not_eligible" xml:space="preserve"><value>Usted ya no puede ver ni firmar este elemento.</value></data>
+  <data name="Reason.task.not_open" xml:space="preserve"><value>Esta tarea ya se completó o se omitió.</value></data>
+  <data name="Reason.workflow.cancel_not_starter_or_admin" xml:space="preserve"><value>Solo quien inició el flujo de trabajo, o un administrador, puede cancelarlo.</value></data>
+  <data name="Search" xml:space="preserve"><value>Buscar</value></data>
+  <data name="Search.Placeholder" xml:space="preserve"><value>Número o nombre</value></data>
+  <data name="State" xml:space="preserve"><value>Estado</value></data>
+  <data name="State.Any" xml:space="preserve"><value>Cualquier estado</value></data>
+  <data name="State.approved" xml:space="preserve"><value>Aprobado</value></data>
+  <data name="State.closed" xml:space="preserve"><value>Cerrado</value></data>
+  <data name="State.draft" xml:space="preserve"><value>Borrador</value></data>
+  <data name="State.in-work" xml:space="preserve"><value>En trabajo</value></data>
+  <data name="State.obsolete" xml:space="preserve"><value>Obsoleto</value></data>
+  <data name="State.open" xml:space="preserve"><value>Abierto</value></data>
+  <data name="State.rejected" xml:space="preserve"><value>Rechazado</value></data>
+  <data name="State.released" xml:space="preserve"><value>Liberado</value></data>
+  <data name="State.superseded" xml:space="preserve"><value>Sustituido</value></data>
+  <data name="State.under-review" xml:space="preserve"><value>En revisión</value></data>
+  <data name="Table.ChooseColumns" xml:space="preserve"><value>Elegir columnas</value></data>
+  <data name="Table.Columns" xml:space="preserve"><value>Columnas</value></data>
+  <data name="Table.ComfortableRows" xml:space="preserve"><value>Filas cómodas</value></data>
+  <data name="Table.CompactRows" xml:space="preserve"><value>Filas compactas</value></data>
+  <data name="Table.Loading" xml:space="preserve"><value>Cargando la lista</value></data>
+  <data name="Table.ResetColumns" xml:space="preserve"><value>Restablecer columnas</value></data>
+  <data name="Table.Results" xml:space="preserve"><value>Resultados</value></data>
+  <data name="Table.SortAll" xml:space="preserve"><value>Ordenar todos los resultados por {0}</value></data>
+  <data name="Table.SortPage" xml:space="preserve"><value>Ordenar las filas de esta página por {0}</value></data>
+  <data name="Type.Any" xml:space="preserve"><value>Cualquier tipo</value></data>
+  <data name="Unit.cm" xml:space="preserve"><value>cm</value></data>
+  <data name="Unit.ea" xml:space="preserve"><value>unidad</value></data>
+  <data name="Unit.ft" xml:space="preserve"><value>pie</value></data>
+  <data name="Unit.g" xml:space="preserve"><value>g</value></data>
+  <data name="Unit.gal" xml:space="preserve"><value>gal</value></data>
+  <data name="Unit.in" xml:space="preserve"><value>pulg.</value></data>
+  <data name="Unit.kg" xml:space="preserve"><value>kg</value></data>
+  <data name="Unit.l" xml:space="preserve"><value>l</value></data>
+  <data name="Unit.lb" xml:space="preserve"><value>lb</value></data>
+  <data name="Unit.m" xml:space="preserve"><value>m</value></data>
+  <data name="Unit.m2" xml:space="preserve"><value>m²</value></data>
+  <data name="Unit.m3" xml:space="preserve"><value>m³</value></data>
+  <data name="Unit.ml" xml:space="preserve"><value>ml</value></data>
+  <data name="Unit.mm" xml:space="preserve"><value>mm</value></data>
+  <data name="Unit.set" xml:space="preserve"><value>juego</value></data>
+</root>

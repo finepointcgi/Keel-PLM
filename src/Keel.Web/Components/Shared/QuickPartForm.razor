@@ -9,20 +9,23 @@
 @inject LastChoiceStore Last
 @inject ToastService Toasts
 @inject ShellJs Js
+@inject IStringLocalizer<PageStrings> P
+@inject IStringLocalizer<CommonStrings> C
 @using Npgsql
+@inject UiLanguage Language
 
 @if (defs is not null)
 {
     <form class="stack quick-form" @onsubmit="CreateAsync" novalidate aria-labelledby="quick-part-title" data-quick-part>
-        <p class="muted" id="quick-part-title">Give the part a name and create it. You can add details afterwards on the part's page.</p>
+        <p class="muted" id="quick-part-title">@P["PartForm.Intro"]</p>
         <div class="grid-form">
             <label class="wide">
-                Name *
+                @C["Field.Name"]
                 <input @bind="name" @bind:event="oninput" maxlength="200" aria-required="true" aria-invalid="@(Has(nameKey) ? "true" : null)" aria-describedby="@(Has(nameKey) ? "quick-name-error" : null)" data-quick-name />
                 @if (Has(nameKey)) { <span id="quick-name-error" class="error" role="alert">@Field(nameKey)</span> }
             </label>
             <label class="wide">
-                Description (optional)
+                @C["Field.DescriptionOptional"]
                 <textarea rows="2" maxlength="4000" @bind="description"></textarea>
             </label>
             @if (requiredDefs.Count > 0)
@@ -37,18 +40,17 @@
 
         <div class="defaults-line">
             <p class="markings-line">
-                <span>This part will be a</span> <strong>@Label(partTypes, partType)</strong>, <strong>@Label(units, unit).ToLowerInvariant()</strong>,
-                <strong>@Label(sources, source).ToLowerInvariant()</strong>.
-                <button type="button" class="secondary small" aria-expanded="@(showKind ? "true" : "false")" aria-controls="quick-kind" data-kind-change @onclick="() => showKind = !showKind">@(showKind ? "Done" : "Change")</button>
+                @Rich.Strong(P["PartForm.Summary"], Label(partTypes, partType), Label(units, unit).ToLower(Language.Culture), Label(sources, source).ToLower(Language.Culture))
+                <button type="button" class="secondary small" aria-expanded="@(showKind ? "true" : "false")" aria-controls="quick-kind" data-kind-change @onclick="() => showKind = !showKind">@(showKind ? P["PartForm.Done"] : P["PartForm.Change"])</button>
             </p>
             @if (showKind)
             {
                 <fieldset class="grid-form" id="quick-kind">
-                    <legend>Part kind</legend>
-                    <label>Type <InputSelect @bind-Value="partType">@foreach (var t in partTypes) { <option value="@t.Code">@t.Label</option> }</InputSelect></label>
-                    <label>Unit of measure <InputSelect @bind-Value="unit">@foreach (var u in units) { <option value="@u.Code">@u.Label</option> }</InputSelect></label>
-                    <label>Source <InputSelect @bind-Value="source">@foreach (var s in sources) { <option value="@s.Code">@s.Label</option> }</InputSelect></label>
-                    <p class="muted small wide">The type, unit and source cannot be changed after the part is created.</p>
+                    <legend>@P["PartForm.Kind"]</legend>
+                    <label>@C["Column.Type"] <InputSelect @bind-Value="partType">@foreach (var t in partTypes) { <option value="@t.Code">@t.Label</option> }</InputSelect></label>
+                    <label>@P["PartForm.Unit"] <InputSelect @bind-Value="unit">@foreach (var u in units) { <option value="@u.Code">@u.Label</option> }</InputSelect></label>
+                    <label>@P["PartForm.Source"] <InputSelect @bind-Value="source">@foreach (var s in sources) { <option value="@s.Code">@s.Label</option> }</InputSelect></label>
+                    <p class="muted small wide">@P["PartForm.Fixed"]</p>
                 </fieldset>
             }
         </div>
@@ -58,7 +60,7 @@
         @if (optionalDefs.Count > 0)
         {
             <details class="more-details" data-more-details>
-                <summary>More details (optional)</summary>
+                <summary>@P["PartForm.More"]</summary>
                 <div class="grid-form"><AttributeFields Definitions="optionalDefs" Value="attributes" /></div>
             </details>
         }
@@ -68,9 +70,9 @@
             <ul class="error" role="alert" data-quick-errors>@foreach (var e in errors) { <li>@e</li> }</ul>
         }
         <div class="toolbar">
-            <button type="submit" disabled="@busy">Create part</button>
-            <button type="button" class="secondary" disabled="@busy" data-create-another @onclick="CreateAnotherAsync">Create and add another</button>
-            <a class="button secondary" href="parts">Cancel</a>
+            <button type="submit" disabled="@busy">@P["Parts.Create"]</button>
+            <button type="button" class="secondary" disabled="@busy" data-create-another @onclick="CreateAnotherAsync">@P["PartForm.CreateAnother"]</button>
+            <a class="button secondary" href="parts">@C["Cancel"]</a>
         </div>
     </form>
 }
@@ -119,10 +121,10 @@
     {
         fieldErrors.Clear();
         errors = null;
-        if (string.IsNullOrWhiteSpace(name)) fieldErrors[nameKey] = "Enter a name for the part.";
+        if (string.IsNullOrWhiteSpace(name)) fieldErrors[nameKey] = P["PartForm.NameRequired"];
         foreach (var d in requiredDefs)
             if (!attributes.Values.TryGetValue(d.Name, out var v) || string.IsNullOrWhiteSpace(v))
-                fieldErrors[d.Name] = $"Enter a value for {d.Label}. This detail is required.";
+                fieldErrors[d.Name] = P["PartForm.ValueRequired", d.Label];
         return fieldErrors.Count == 0;
     }
 
@@ -133,7 +135,7 @@
         var m = markings.Effective().ToMarkings();
         if (!m.IsSuccess)
         {
-            errors = [.. m.Errors.Select(e => "Security markings: " + e)];
+            errors = [.. m.Errors.Select(e => C["Markings.Prefix", e].Value)];
             markingsPicker?.Show();
             return;
         }
@@ -155,7 +157,7 @@
         catch (Exception e) when (e is NpgsqlException or InvalidOperationException) { /* remembering is a convenience */ }
         var created = outcome.Value!;
         if (!another) { Nav.NavigateTo($"parts/{Uri.EscapeDataString(created.Number)}"); return; }
-        Toasts.Success($"Created {created.Number} {created.Name}. Add the next one.");
+        Toasts.Success(P["PartForm.CreatedNext", created.Number, created.Name]);
         name = description = "";
         attributes.Values.Clear();
         await Js.InvokeVoidAsync("focusSelector", "[data-quick-name]");

@@ -1,11 +1,13 @@
 @* One dashboard card that lists objects. It loads on its own (a skeleton shows meanwhile), fails on its own (the other cards are unaffected), and reports the aggregate
    marking banner of exactly the objects it shows, so the page banner covers what is on the screen. *@
 
+@inject IServiceProvider Services
+
 <section class="card" aria-labelledby="@HeadingId">
     <h2 id="@HeadingId"><Icon Name="@IconName" /> @Title</h2>
     @if (loading)
     {
-        <Skeleton Lines="4" Label="@($"Loading {Title.ToLowerInvariant()}")" />
+        <Skeleton Lines="4" Label="@C["Loading", Title.ToLower(Language.Culture)]" />
     }
     else if (error is not null)
     {
@@ -13,7 +15,7 @@
     }
     else if (result is null || result.Items.Count == 0)
     {
-        <EmptyState Title="@EmptyTitle" IconName="@IconName">@EmptyText</EmptyState>
+        <EmptyState Title="@(EmptyTitle ?? P["Card.NothingYet"])" IconName="@IconName">@EmptyText</EmptyState>
     }
     else
     {
@@ -24,12 +26,12 @@
                 <li>
                     <span class="main">
                         <a href="@i.Href">@i.Number · @i.Name</a>
-                        <span class="sub">@ObjectKinds.Label(i.Kind) · @i.StateLabel@(ShowDate ? " · " + UiText.Utc(i.At) : "")</span>
+                        <span class="sub">@C.Or("Kind." + i.Kind, ObjectKinds.Label(i.Kind)) · @C.Or(LocalizationServices.Key("State", i.StateLabel), i.StateLabel)@(ShowDate ? " · " + Language.Utc(i.At) : "")</span>
                     </span>
                     <MarkingChip Text="@i.Banner" />
                     @if (Removable)
                     {
-                        <button type="button" class="secondary" aria-label="@($"Remove {i.Number} from favorites")" @onclick="() => OnRemove.InvokeAsync(i)">Remove</button>
+                        <button type="button" class="secondary" aria-label="@P["Card.RemoveFavorite", i.Number]" @onclick="() => OnRemove.InvokeAsync(i)">@P["Card.Remove"]</button>
                     }
                 </li>
             }
@@ -38,11 +40,15 @@
 </section>
 
 @code {
+    private IStringLocalizer<PageStrings> P => Loc.Strings<PageStrings>(Services);
+    private IStringLocalizer<CommonStrings> C => Loc.Strings<CommonStrings>(Services);
+    private UiLanguage Language => Loc.Language(Services);
+
     [Parameter, EditorRequired] public required string Id { get; set; }
     [Parameter, EditorRequired] public required string Title { get; set; }
     [Parameter] public string IconName { get; set; } = "inbox";
     [Parameter, EditorRequired] public required Func<Task<CardResult<ResolvedItem>>> Load { get; set; }
-    [Parameter] public string EmptyTitle { get; set; } = "Nothing here yet";
+    [Parameter] public string? EmptyTitle { get; set; }
     [Parameter] public string EmptyText { get; set; } = "";
     [Parameter] public bool ShowDate { get; set; }
     /// <summary>Favorites can be removed from the card; the page that owns the favorites does it and then asks the card to reload.</summary>
@@ -70,7 +76,7 @@
         catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
         {
             result = null;
-            error = "This list could not be loaded. The rest of the page is not affected.";
+            error = P["Card.LoadFailed"];
         }
         loading = false;
         await OnBanner.InvokeAsync((Id, result?.Banner));

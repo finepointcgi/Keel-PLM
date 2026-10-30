@@ -288,6 +288,7 @@ public sealed class E2EFixture : IAsyncLifetime
         ["Keel__Vault__AccessKey"] = vault.AccessKey,
         ["Keel__Vault__SecretKey"] = vault.SecretKey,
         ["Keel__Vault__Bucket"] = vault.Bucket,
+        ["Keel__Localization__PseudoLocale"] = "true", // ADR 0057: the generated pseudo-locale is offered in the language picker so the layout can be audited with longer text
         ["Keel__Workflow__StepUpMaxAgeSeconds"] = StepUpSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
         ["Logging__LogLevel__Default"] = "Warning",
     };

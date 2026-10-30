@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Bunit;
 using Keel.Core;
+using Keel.Web.Localization;
 using Keel.Web.Services;
 using Keel.Workspace;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -83,6 +84,7 @@ internal static class ShellTestKit
         ctx.Services.AddScoped<CurrentUser>();
         ctx.Services.AddScoped<ShellJs>();
         ctx.Services.AddScoped<ShellState>();
+        ctx.Services.AddKeelLocalization(); // ADR 0057: converted components ask for IStringLocalizer<T> and the circuit language
         ctx.Services.AddScoped<PaletteState>();
         ctx.Services.AddScoped<ToastService>();
         _ = AwarenessTestKit.Register(ctx); // UX-4: the bell is part of the layout

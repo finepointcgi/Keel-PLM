@@ -1,5 +1,6 @@
 @page "/not-found"
+@inject IStringLocalizer<PageStrings> P
 
-<PageFrame Banner="@UiText.Unclassified" Title="Page not found">
-    <p>There is nothing at this address. <a href="parts">Go to parts</a>.</p>
+<PageFrame Banner="@UiText.Unclassified" Title="@P["NotFound.Title"]">
+    <p>@P["NotFound.Text"] <a href="parts">@P["NotFound.GoToParts"]</a></p>
 </PageFrame>

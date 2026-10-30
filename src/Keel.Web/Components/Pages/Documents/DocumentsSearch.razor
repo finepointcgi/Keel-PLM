@@ -3,34 +3,33 @@
 @inject CurrentUser Users
 @inject DocumentService Docs
 @inject IReferenceData Refs
+@inject IStringLocalizer<PageStrings> P
+@inject IStringLocalizer<CommonStrings> C
 
-<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Documents" Crumbs="@Crumbs">
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="@P["Documents.Title"]" Crumbs="@Crumbs">
     <form class="toolbar" role="search" @onsubmit="() => Search(0)">
-        <input aria-label="Search documents" placeholder="Number or name" class="grow" @bind="query" />
-        <select aria-label="Document type" @bind="type" @bind:after="() => Search(0)">
-            <option value="">Any type</option>
+        <input aria-label="@P["Documents.Search"]" placeholder="@C["Search.Placeholder"]" class="grow" @bind="query" />
+        <select aria-label="@P["Documents.Type"]" @bind="type" @bind:after="() => Search(0)">
+            <option value="">@C["Type.Any"]</option>
             @foreach (var t in docTypes) { <option value="@t">@t</option> }
         </select>
-        <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
-            <option value="">Any state</option>
-            <option value="InWork">In Work</option>
-            <option value="UnderReview">Under Review</option>
-            <option value="Released">Released</option>
-            <option value="Obsolete">Obsolete</option>
+        <select aria-label="@C["State"]" @bind="state" @bind:after="() => Search(0)">
+            <option value="">@C["State.Any"]</option>
+            @foreach (var s in States) { <option value="@s">@C.StateLabel(s)</option> }
         </select>
-        <button type="submit">Search</button>
+        <button type="submit">@C["Search"]</button>
         <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
-            <a class="button" href="documents/new">Create document</a>
+            <a class="button" href="documents/new">@P["Documents.Create"]</a>
         </AuthorizeView>
     </form>
 
     @if (result is not null)
     {
-        <p class="muted">@result.Total document@(result.Total == 1 ? "" : "s") you can access</p>
-        <DataTable TItem="DocumentSummary" TableId="documents" Items="result.Items" Columns="Columns" Caption="Documents" OnServerSort="OnSort" ServerSort="sort">
+        <p class="muted">@P.Count("Documents.Count", result.Total)</p>
+        <DataTable TItem="DocumentSummary" TableId="documents" Items="result.Items" Columns="Columns" Caption="@P["Documents.Title"]" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
-                <EmptyState Title="@(Filtered ? "No documents match" : "No documents yet")" IconName="document" ActionHref="@(Filtered ? null : "documents/new")" ActionText="Create document">
-                    @(Filtered ? "Try a different number or name, or clear the filters." : "Upload the first drawing or specification to get started.")
+                <EmptyState Title="@(Filtered ? P["Documents.NoMatch"] : P["Documents.None"])" IconName="document" ActionHref="@(Filtered ? null : "documents/new")" ActionText="@P["Documents.Create"]">
+                    @(Filtered ? P["Documents.NoMatchHelp"] : P["Documents.NoneHelp"])
                 </EmptyState>
             </Empty>
         </DataTable>
@@ -38,7 +37,7 @@
     }
     else
     {
-        <Skeleton Lines="6" Label="Loading documents" />
+        <Skeleton Lines="6" Label="@P["Documents.Loading"]" />
     }
 </PageFrame>
 
@@ -68,17 +67,18 @@
     private int offset;
     private DocumentSearchResult? result;
 
-    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Documents")];
+    private static readonly string[] States = ["InWork", "UnderReview", "Released", "Obsolete"];
+    private IReadOnlyList<Crumb> Crumbs => [new(P["Documents.Title"])];
     private bool Filtered => query.Length > 0 || type != "" || state != "";
 
-    private static readonly IReadOnlyList<DataColumn<DocumentSummary>> Columns =
+    private IReadOnlyList<DataColumn<DocumentSummary>> Columns =>
     [
-        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = d => @<a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a> },
-        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = d => d.Name },
-        new() { Key = "type", Title = "Type", ServerSortKey = "type", Text = d => d.DocumentType },
-        new() { Key = "version", Title = "Version", ServerSortKey = "version", Text = d => $"{d.Revision}.{d.Iteration}" },
-        new() { Key = "state", Title = "State", ServerSortKey = "state", Text = d => StateText.Label(d.State) },
-        new() { Key = "markings", Title = "Markings", Required = true, Cell = d => @<MarkingChip Text="@d.Banner" /> },
+        new() { Key = "number", Title = C["Column.Number"], Required = true, ServerSortKey = "number", Cell = d => @<a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a> },
+        new() { Key = "name", Title = C["Column.Name"], ServerSortKey = "name", Text = d => d.Name },
+        new() { Key = "type", Title = C["Column.Type"], ServerSortKey = "type", Text = d => d.DocumentType },
+        new() { Key = "version", Title = C["Column.Version"], ServerSortKey = "version", Text = d => $"{d.Revision}.{d.Iteration}" },
+        new() { Key = "state", Title = C["Column.State"], ServerSortKey = "state", Text = d => C.StateLabel(d.State) },
+        new() { Key = "markings", Title = C["Column.Markings"], Required = true, Cell = d => @<MarkingChip Text="@d.Banner" /> },
     ];
 
     private IReadOnlyList<string> docTypes = []; // 2.2: administrator data
