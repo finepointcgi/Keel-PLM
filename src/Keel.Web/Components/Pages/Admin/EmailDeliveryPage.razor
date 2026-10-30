@@ -35,7 +35,7 @@
                                     <td>@s.HardBounces</td>
                                     <td>@s.SuppressedAt.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) UTC</td>
                                     <td>@s.Users</td>
-                                    <td class="actions-cell"><button type="button" class="secondary" data-email="clear" aria-label="@($"Lift the suppression of {address}")" @onclick="() => pending = address">Lift suppression</button></td>
+                                    <td class="actions-cell"><button type="button" class="secondary" data-email="clear" aria-label="@($"Lift the suppression of {address}")" @onclick="() => { pending = address; confirming = true; }">Lift suppression</button></td>
                                 </tr>
                             }
                         </tbody>
@@ -68,7 +68,7 @@
             </section>
         }
     </div>
-    <ConfirmDialog Open="@(pending is not null)" OpenChanged="@(o => { if (!o) pending = null; })" Title="Lift this suppression?" ConfirmText="Lift suppression" OnConfirm="_ => ClearAsync()">
+    <ConfirmDialog @bind-Open="confirming" Title="Lift this suppression?" ConfirmText="Lift suppression" OnConfirm="_ => ClearAsync()">
         <p>Mail to <strong>@pending</strong> resumes only after each user of the address confirms it again. If the address still bounces it is suppressed again.</p>
     </ConfirmDialog>
 </PageFrame>
@@ -77,6 +77,7 @@
     private EmailHealth? health;
     private string? error;
     private string? pending;
+    private bool confirming;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -93,7 +94,7 @@
 
     private async Task ClearAsync()
     {
-        var address = pending;
+        var address = pending; // the dialog has closed itself by now; the address it was opened for is still here
         pending = null;
         if (address is null) return;
         try

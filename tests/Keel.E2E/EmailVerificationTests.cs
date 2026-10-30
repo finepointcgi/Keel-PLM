@@ -38,7 +38,11 @@ public sealed partial class EmailVerificationTests(E2EFixture fx)
         {
             var axe = await File.ReadAllTextAsync(AxePath());
             var findings = new List<string>();
-            async Task Audit(IPage page, string label) => await AccessibilityTests.RunAxeAsync(page, label, axe, findings);
+            async Task Audit(IPage page, string label)
+            {
+                await page.WaitForTimeoutAsync(400); // the shell marks scrolling tables as focusable regions shortly after the page changes
+                await AccessibilityTests.RunAxeAsync(page, label, axe, findings);
+            }
             var address = $"e2e-{Guid.NewGuid().ToString("N")[..8]}@corp.example";
 
             var alice = await session.SignInAsync("alice");
