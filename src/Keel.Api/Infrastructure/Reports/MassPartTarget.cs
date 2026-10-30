@@ -15,7 +15,7 @@ namespace Keel.Api.Infrastructure.Reports;
 /// Bulk operations on parts (ADR-0044). Every change is the owning service's own command (check-out, edit, check-in; markings change; review start; watch; favorite), so release locks,
 /// iteration rules, access checks and audit are the normal ones. Preview makes no change and writes no per-part event.
 /// </summary>
-public sealed class MassPartTarget(NpgsqlDataSource dataSource, PartService parts, ICadPartPort partPort, WorkflowService workflow, WatchService watches, WorkspaceService workspace) : IMassChangeTarget
+public sealed class MassPartTarget(NpgsqlDataSource dataSource, PartService parts, ICadPartPort partPort, WorkflowService workflow, WatchService watches, WorkspaceService workspace, IMassChangeBinder? binder = null) : IMassChangeTarget
 {
     public const string NotFound = "Not found, or you may not read it.";
     public string Kind => "part";
@@ -48,6 +48,7 @@ public sealed class MassPartTarget(NpgsqlDataSource dataSource, PartService part
                 if (!d.Permitted) general = "You may not set these markings: you could not change data carrying them (" + string.Join(", ", d.Reasons) + ").";
             }
         }
+        var order = operation is MassOperations.SetAttribute or MassOperations.ChangeMarkings ? MassBinding.Order(parameters) : null;
         var result = new Dictionary<string, MassVerdict>(StringComparer.Ordinal);
         foreach (var key in keys)
         {
@@ -59,12 +60,14 @@ public sealed class MassPartTarget(NpgsqlDataSource dataSource, PartService part
                     case MassOperations.SetAttribute or MassOperations.ChangeMarkings or MassOperations.SubmitReview:
                         var modify = AccessPolicy.Evaluate(subject, p.Markings, PlmAction.Modify);
                         if (!modify.Permitted) reason = "You may not change it (" + string.Join(", ", modify.Reasons) + ").";
+                        else if (p.IsLocked && order is not null && p.State != "Released") reason = $"Revision {p.Revision} is {p.State} and locked. Only a Released revision can be revised through {order}.";
+                        else if (p.IsLocked && order is not null) reason = operation == MassOperations.ChangeMarkings && newMarkings == p.Markings ? "The markings are unchanged." : null;
                         else if (p.IsLocked && operation == MassOperations.ChangeMarkings) reason = $"Revision {p.Revision} is {p.State} and locked. Markings of locked data change through change control.";
                         else if (p.IsLocked) reason = $"Revision {p.Revision} is {p.State} and locked. Change it through an ECN.";
                         else if (operation == MassOperations.ChangeMarkings && newMarkings == p.Markings) reason = "The markings are unchanged.";
                         break;
                 }
-            result[key] = new MassVerdict(reason is null, reason, p.Name, p.Banner, p.State);
+            result[key] = new MassVerdict(reason is null, reason ?? MassBinding.Note(order, p), p.Name, p.Banner, p.State);
         }
         return result;
     }
@@ -78,12 +81,23 @@ public sealed class MassPartTarget(NpgsqlDataSource dataSource, PartService part
     {
         switch (operation)
         {
-            case MassOperations.SetAttribute: return await SetAttributeAsync(subject, key, Str(parameters, "name")!, Str(parameters, "value")!, null, $"Mass change {correlationId[..8]}", correlationId, ct);
+            case MassOperations.SetAttribute:
+            {
+                if (MassBinding.Order(parameters) is { } order)
+                {
+                    var infos = await partPort.FindManyAsync(subject, [key], ct);
+                    var info = infos.Count == 0 ? null : infos[0];
+                    if (info is null) return Outcome<JsonObject?>.NotFound();
+                    if (await MassBinding.ListAsync<JsonObject?>(binder, subject, order, info, correlationId, ct) is { } failed) return failed;
+                }
+                return await SetAttributeAsync(subject, key, Str(parameters, "name")!, Str(parameters, "value")!, null, $"Mass change {correlationId[..8]}", correlationId, ct);
+            }
             case MassOperations.ChangeMarkings:
             {
                 var currentList = await partPort.FindManyAsync(subject, [key], ct);
                 var current = currentList.Count == 0 ? null : currentList[0];
                 if (current is null) return Outcome<JsonObject?>.NotFound();
+                if (await MassBinding.ListAsync<JsonObject?>(binder, subject, MassBinding.Order(parameters), current, correlationId, ct) is { } failed) return failed;
                 var parsed = ParseMarkings(parameters["markings"] as JsonObject);
                 if (!parsed.IsSuccess) return Outcome<JsonObject?>.Invalid(parsed.Errors);
                 var changed = await parts.ChangeMarkingsAsync(subject, key, parsed.Value, Str(parameters, "reason"), correlationId, ct);

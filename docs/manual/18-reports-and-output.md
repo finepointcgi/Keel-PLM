@@ -37,15 +37,32 @@ For a released part or assembly, an ECN or an established baseline, **Output > R
 
 ## Mass change
 
-**Output > Mass change** applies one operation to many parts: set an attribute, change markings (within your authority), add to a baseline proposal, submit for review, watch, or favorite.
+**Output > Mass change** applies one operation to many objects. Choose the **Kind of object**:
 
-1. Paste part numbers, one per line (at most 500).
-2. Choose the **operation**.
-3. Select **Preview**: each object shows *Will change*, or the reason it will not ("Not found, or you may not read it.").
-4. Select **Apply to n part(s)**. Each object goes through the normal services under one correlation id; a partial failure is reported.
-5. **Undo** reverses reversible operations; the status then reads Undone.
+| Kind | Operations |
+|---|---|
+| Parts | Change an attribute, change markings (within your authority), add to a baseline proposal, submit for review, watch, add to favorites |
+| Documents | Change the description, change markings, submit for review, watch, add to favorites |
+| Assembly structure (BOM lines) | Add, replace or remove one component on many assemblies |
+| Requirements | Change one field (priority, verification method, status, type, rationale), change markings |
 
-![A mass change preview: two parts will change, one is refused](images/output-mass-change.png)
+1. **Choose the objects.** Type numbers, one per line (at most 500), or use **Add up to 200 results** after typing search text. Requirements are written as the specification number, a slash and the requirement key (for example `SPEC-000001/R-0001`).
+2. **Assembly structure only:** type a part number under **Or find the assemblies that use a component** and select **Select assemblies that use it**. Keel lists the assemblies that directly use it and that you may read; remove any you do not want.
+3. Choose the **operation** and fill in its fields.
+4. Optional, for parts and assembly structure: **Attach to a change notice**. A released part or assembly is then revised through the notice (a new revision in work) and changed, and every object changed is listed on the notice. Without a notice, released objects are refused.
+5. Select **Preview**: each object shows *Will change*, or the reason it will not ("Not found, or you may not read it.", "Revision A is Released and locked...").
+6. Select **Apply to n object(s)**. Each object goes through the normal services under one correlation id; a partial failure is reported and a second apply retries only the failed ones.
+7. **Undo** reverses reversible operations; the status then reads Undone. (The listing on a change notice stays.)
+
+![Documents: a preview with one object not found](images/output-mass-documents.png)
+
+![Assemblies selected by where-used, replacing a component: the released assembly is refused](images/output-mass-where-used.png)
+
+### From a CSV or Excel file
+
+Open **Or read the objects (and their values) from a CSV or Excel file**, select **Download an empty template for this change**, fill it in, choose it under **File** and select **Preview from file**. The first row names the columns: one column holds the objects (`part`, `document`, `assembly` or `requirement`); the other columns are values for the chosen operation, for example `name` and `value`, or `component` and `replacement`. A blank cell uses the value typed on the page; a filled cell gives that object its own. A file may also carry `kind` and `operation` columns. List each object once. Unknown columns are refused: a file cannot carry markings or a change notice. The file is read into the same preview as a typed list; nothing changes until you apply. The file itself is not kept.
+
+![A file read into a preview](images/output-mass-upload.png)
 
 ## Excel/PDF are generated on the server
 

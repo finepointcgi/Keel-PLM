@@ -73,6 +73,57 @@ public static class MassOperations
     public const string Watch = "watch";
     public const string Favorite = "favorite";
     public const string CheckRead = "check_read";
+    /// <summary>Documents (migration 0029): the description of the latest iteration, through check-out and check-in.</summary>
+    public const string SetDescription = "set_description";
+    /// <summary>Assembly structure (migration 0029): add, replace or remove one component on many assemblies. The object key is the assembly.</summary>
+    public const string AddComponent = "add_component";
+    public const string ReplaceComponent = "replace_component";
+    public const string RemoveComponent = "remove_component";
+    /// <summary>Requirements (migration 0029): one field of a requirement (priority, method, status, type, rationale). The object key is "SPEC/R-0001".</summary>
+    public const string SetRequirementField = "set_requirement_field";
+}
+
+/// <summary>The object kinds mass change handles, and the selectors that can fill a selection (where-used).</summary>
+public static class MassKinds
+{
+    public const string Part = "part";
+    public const string Document = "document";
+    public const string Assembly = "assembly";
+    public const string Requirement = "requirement";
+    public static readonly IReadOnlyList<string> All = [Part, Document, Assembly, Requirement];
+    /// <summary>Kinds whose objects are parts, so a change order can list them and a baseline proposal can hold them.</summary>
+    public static bool IsPartLike(string kind) => kind is Part or Assembly;
+}
+
+public static class MassSelectors
+{
+    /// <summary>Assemblies that directly use a component (where-used, one level), as the caller may read them.</summary>
+    public const string WhereUsed = "where_used";
+}
+
+public static class MassParameterNames
+{
+    /// <summary>Reserved parameter: the number of the change order the mass change is attached to. Set by the service, never by the caller.</summary>
+    public const string Change = "_change";
+}
+
+/// <summary>A change order a mass change can be attached to: an ECN that is still open for editing and that the caller may modify.</summary>
+public sealed record MassChangeOrder(string Number, string Title, string Banner);
+
+/// <summary>
+/// Attaches a mass change to a change order (migration 0029). Implemented by the host over the change service, so the notice's own rules apply: access, markings
+/// dominance, one open notice per revision, a revision in work for a released part.
+/// </summary>
+public interface IMassChangeBinder
+{
+    /// <summary>The ECN, when it exists, the caller may read and modify it, and it is not final or locked. Otherwise NotFound, Forbidden or Conflict with words.</summary>
+    Task<Outcome<MassChangeOrder>> FindAsync(Subject subject, string number, CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists a part on the change order. A part that is locked (Released) is revised through the notice (a new revision in work, bound to it) so it can be edited; an unlocked
+    /// part is listed as referenced. Listing a part twice is not an error. The value says what was done.
+    /// </summary>
+    Task<Outcome<string>> ListPartAsync(Subject subject, string changeNumber, string partNumber, bool locked, string correlationId, CancellationToken ct = default);
 }
 
 public sealed record MassVerdict(bool CanApply, string? Reason, string? Name = null, string? Banner = null, string? State = null);
@@ -94,6 +145,12 @@ public interface IMassChangeTarget
 
     /// <summary>The subset of keys the caller may read now.</summary>
     Task<IReadOnlySet<string>> ReadableAsync(Subject subject, IReadOnlyList<string> keys, CancellationToken ct = default);
+
+    /// <summary>Selectors this kind offers to fill a selection (for example <see cref="MassSelectors.WhereUsed"/>).</summary>
+    IReadOnlyCollection<string> Selectors => [];
+
+    /// <summary>The keys a selector yields for a value (a component number), read-filtered for the caller; null when the selector is not offered or the value is not readable.</summary>
+    Task<IReadOnlyList<string>?> SelectAsync(Subject subject, string selector, string value, int limit, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<string>?>(null);
 }
 
 // ---------------------------------------------------------------- report datasets

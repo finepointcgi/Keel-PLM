@@ -15,7 +15,11 @@ public static class ReportsSetup
     {
         services.AddSingleton<IReleasePackageSource, ReleasePackageSource>();
         services.AddSingleton<IBomExchangeSource, BomExchangeSource>();
+        services.AddSingleton<IMassChangeBinder, MassChangeBinder>();
         services.AddSingleton<IMassChangeTarget, MassPartTarget>();
+        services.AddSingleton<IMassChangeTarget, MassDocumentTarget>();
+        services.AddSingleton<IMassChangeTarget, MassAssemblyTarget>();
+        services.AddSingleton<IMassChangeTarget, MassRequirementTarget>();
         services.AddSingleton<IReportDataset, PartsDataset>();
         services.AddSingleton<IReportDataset, ChangesDataset>();
         services.AddSingleton<IReportDataset, BaselinesDataset>();

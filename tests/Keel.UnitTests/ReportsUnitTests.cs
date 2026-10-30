@@ -349,7 +349,7 @@ public sealed partial class ReportsUnitTests
         var text = File.ReadAllText(Path.Combine(Root, "src", "Keel.Api", "Endpoints", "ReportsEndpoints.cs"));
         Assert.Contains("MapGroup(\"/api/v1/output\").RequireAuthorization(Policies.AnyPlmRole)", text, StringComparison.Ordinal);
         var starts = Regex.Matches(text, @"app\.MapGet\(Ui").Select(m => m.Index).ToList();
-        Assert.Equal(4, starts.Count);
+        Assert.Equal(5, starts.Count);
         foreach (var at in starts)
         {
             var end = text.IndexOf("ExcludeFromDescription", at, StringComparison.Ordinal);
