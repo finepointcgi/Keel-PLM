@@ -242,7 +242,7 @@ class FakeKeel:
             number = unquote(m.group(1))
             stale = [{"number": n, "name": n, "cadRole": "drawing", "stale": True, "redacted": False, "seenRevision": "A", "seenIteration": 1, "children": []} for n in self.stale_numbers]
             return self._json(200, {"number": number, "name": number, "registered": True, "revision": "A", "iteration": 1, "uses": [], "usedBy": stale, "parts": [],
-                                    "redactedCount": 0, "staleCount": len(stale), "banner": "UNCLASSIFIED"})
+                                    "redactedCount": 0, "staleCount": 0, "banner": "UNCLASSIFIED"})  # as the real host: staleCount counts only what the top document uses, not its stale dependents
 
         if p == "/associations" and method == "POST":
             req = json.loads(body)

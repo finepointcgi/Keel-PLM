@@ -1,10 +1,11 @@
-"""Optional check of the add-on's extraction logic against a REAL FreeCAD document. Run with FreeCAD's command-line binary:
+"""Check of the add-on's extraction logic against a REAL FreeCAD document, without the GUI. Run with FreeCAD's command-line binary:
 
     FreeCADCmd tools/freecad-keel/scripts/freecad_headless_check.py
 
-It builds a three-level assembly (App::Part with App::Link objects, a link array, a body), saves two files, and asserts what keel_plm.fcdoc reads from it.
-It needs no Keel server. NOT YET RUN by its authors: FreeCAD was not installed where it was written (docs/increments/9.2-open-source-cad.md, OSS-CAD-6).
-If FreeCAD's object model differs from what fcdoc assumes (property names of links or TechDraw), this script is where that shows up."""
+It builds a three-level assembly (App::Part with App::Link objects, a link array, a body), saves it, and asserts what keel_plm.fcdoc reads from it.
+It needs no Keel server. Verified in FreeCAD 1.1.4 (macOS, 2026-10-29): passes. The GUI layer is checked by run_gui_check.py, the add-on against a real Keel
+server by tests/Keel.E2E/AddOnLiveTests.cs (docs/integration/freecad-addon.md). Exits non-zero (and prints the reason) when an assertion fails; if FreeCAD's
+object model differs from what fcdoc assumes (property names of links or TechDraw), this script is where that shows up."""
 import os
 import sys
 import tempfile
@@ -54,4 +55,12 @@ def main():
     print("freecad_headless_check: ok", FreeCAD.Version()[:3], got)
 
 
-main()
+try:
+    main()
+except BaseException as e:  # noqa: BLE001 - freecadcmd reports a failing script with exit code 0, so say it plainly and leave with 1
+    import traceback
+
+    traceback.print_exc()
+    print("freecad_headless_check: FAILED", type(e).__name__, e)
+    sys.stdout.flush()
+    os._exit(1)

@@ -1,7 +1,7 @@
 """The FreeCAD GUI layer: commands for the toolbar and menu. THIN by design: it only collects input, calls the plain modules, and shows the result.
 
-This is the only module that imports FreeCAD, FreeCADGui and PySide. It has NOT been run in a real FreeCAD by the authors (FreeCAD was not installed
-where it was written; see docs/increments/9.2-open-source-cad.md). The logic it calls is tested (tests/), the widgets and command registration are not.
+This is the only module that imports FreeCAD, FreeCADGui and PySide. Command registration, toolbar, menu and the commands (with the dialogs replaced by recorders) were run in a real FreeCAD 1.1.4 GUI
+(scripts/freecad_gui_check.py); the look of the dialogs and real clicks were not.
 """
 from __future__ import annotations
 
@@ -151,7 +151,7 @@ class Checkout(_Command):
         folder = workfolder.folder_for(_work_root(s), number)
         state = workfolder.checkout(_client(), number, folder)
         for path in workfolder.openable_files(folder):
-            FreeCAD.openDocument(str(path))
+            FreeCAD.openDocument(str(path.resolve()))  # the real path: FreeCAD resolves external links relative to it
         _info("Check out", f"Checked out {len(state.members)} document(s) into\n{folder}")
 
 
