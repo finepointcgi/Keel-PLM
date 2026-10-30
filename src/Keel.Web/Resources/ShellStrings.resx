@@ -157,4 +157,7 @@
   <data name="UserMenu" xml:space="preserve"><value>User menu</value></data>
   <data name="UserMenu.Lock" xml:space="preserve"><value>Lock session now</value></data>
   <data name="UserMenu.MyAccess" xml:space="preserve"><value>My access</value></data>
+  <data name="Nav.item.my-scorecard" xml:space="preserve"><value>My scorecard</value></data>
+  <data name="Palette.go:requests" xml:space="preserve"><value>Go to Supplier requests</value></data>
+  <data name="Palette.new:request" xml:space="preserve"><value>Request a quote</value></data>
 </root>

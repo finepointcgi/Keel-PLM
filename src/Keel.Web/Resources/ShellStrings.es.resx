@@ -157,4 +157,7 @@
   <data name="UserMenu" xml:space="preserve"><value>Menú de usuario</value></data>
   <data name="UserMenu.Lock" xml:space="preserve"><value>Bloquear la sesión ahora</value></data>
   <data name="UserMenu.MyAccess" xml:space="preserve"><value>Mi acceso</value></data>
+  <data name="Nav.item.my-scorecard" xml:space="preserve"><value>Mi evaluación</value></data>
+  <data name="Palette.go:requests" xml:space="preserve"><value>Ir a Solicitudes a proveedores</value></data>
+  <data name="Palette.new:request" xml:space="preserve"><value>Solicitar una cotización</value></data>
 </root>
