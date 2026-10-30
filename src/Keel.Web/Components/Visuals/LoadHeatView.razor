@@ -1,0 +1,59 @@
+@* The resource load picture (ADR-0049, visuals kit): one row per resource, one cell per week, in the shared pan-and-zoom frame. A cell is empty (no allocation), light (up to half of
+   capacity), solid (up to full capacity) or hatched with a heavy outline (over capacity), so colour is never the only signal. Keyboard: focus the frame, then the arrow keys up and
+   down move between resources; + - 0 zoom. Each row speaks its summary. The table next to the picture (the "Table" view) holds the same facts. *@
+@using System.Globalization
+@using Keel.Programs
+
+<div class="stack load-heat">
+    @if (geo.Rows.Count == 0)
+    {
+        <EmptyState Title="Nothing to draw yet" IconName="program">Add resources and assign them to tasks and their weekly load appears here.</EmptyState>
+    }
+    else
+    {
+        <DiagramViewport Width="@geo.Width" Height="@geo.Height" Label="@Label" FirstId="r0" LastId="@("r" + (geo.Rows.Count - 1).ToString(CultureInfo.InvariantCulture))" ContentKey="@Key">
+            @{
+                var ctx = context;
+                @foreach (var t in geo.Ticks)
+                {
+                    <line class="gantt-grid" x1="@Num(t.X)" y1="@Num(LoadHeatLayout.Header - 6)" x2="@Num(t.X)" y2="@Num(geo.Height - 8)" />
+                    <g><text class="vis-sub" x="@Num(t.X + 3)" y="@Num(LoadHeatLayout.Header - 12)">@t.Label</text></g>
+                }
+                @foreach (var r in geo.Rows)
+                {
+                    <g id="@ctx.NodeId(r.Id)" class="vis-node load-row" role="img" tabindex="@(r.Row == 0 ? 0 : -1)" aria-label="@r.Aria"
+                       data-x="0" data-y="@Num(r.Y)" data-w="@Num(geo.Width)" data-h="@Num(LoadHeatLayout.Row - 2)"
+                       data-up="@(r.Up is null ? null : ctx.NodeId(r.Up))" data-down="@(r.Down is null ? null : ctx.NodeId(r.Down))">
+                        <g><text class="vis-label gantt-label" x="6" y="@Num(r.Y + 17)">@Shorten(r.Key + " " + r.Name)</text></g>
+                        @foreach (var c in r.Cells)
+                        {
+                            <rect class="load-cell load-@c.Band" x="@Num(c.X)" y="@Num(r.Y + 3)" width="@Num(c.Width)" height="@Num(LoadHeatLayout.Row - 8)" rx="2" data-tip="@c.Tip" />
+                            @if (c.Band == "over") { <rect x="@Num(c.X)" y="@Num(r.Y + 3)" width="@Num(c.Width)" height="@Num(LoadHeatLayout.Row - 8)" rx="2" fill="url(#@(ctx.Uid)-hatch)" stroke="none" pointer-events="none" /> }
+                        }
+                    </g>
+                }
+            }
+        </DiagramViewport>
+        <Legend Label="Load key" Items="legend" />
+        <p class="muted small">Each row is a resource and each cell a week (starting Monday). Hatched cells with a heavy outline are weeks in which the assigned hours exceed what the resource can work. The table view lists the same figures.</p>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<LegendItem> legend =
+    [
+        new("No allocation", "load-none", LegendItem.Rounded), new("Up to half of capacity", "load-low", LegendItem.Rounded),
+        new("Up to full capacity", "load-high", LegendItem.Rounded), new("Over capacity (hatched, heavy outline)", "load-over", LegendItem.Rounded, "hatch"),
+    ];
+    private LoadHeatLayout geo = LoadHeatLayout.Empty;
+
+    [Parameter, EditorRequired] public required LoadView Load { get; set; }
+    [Parameter] public string Label { get; set; } = "Resource load by week";
+    [Parameter] public string? Key { get; set; }
+
+    protected override void OnParametersSet() => geo = LoadHeatLayout.Build(Load);
+
+    private static string Num(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string Shorten(string s) => s.Length <= 30 ? s : s[..29] + "…";
+}

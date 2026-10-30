@@ -102,5 +102,7 @@ public static class ProgramEndpoints
                 .ToHttp(i => Results.Created($"/api/v1/workflows/{i.Id}", i)));
         gates.MapGet("/{number}/workflow", async (string number, HttpContext ctx, WorkflowService flow, CancellationToken ct) =>
             (await flow.StatusForObjectAsync(SubjectFactory.Require(ctx), AwarenessKinds.Gate, number, CorrelationId.Get(ctx), ct)).ToHttp());
+
+        app.MapProgramResourceEndpoints(); // 9.5 resources, load and cost of a program
     }
 }

@@ -30,9 +30,11 @@ public sealed partial class ProgramService
     private readonly Dictionary<string, IObjectAccess> _objects;
     private readonly INotificationSink? _notifications;
     private readonly IDomainEventSink? _events;
+    private readonly IProgramMaterialSource? _materials;
 
-    internal ProgramService(NpgsqlDataSource db, IAuditLog audit, TimeProvider clock, IEnumerable<IObjectAccess> objects, INotificationSink? notifications, IDomainEventSink? events)
+    internal ProgramService(NpgsqlDataSource db, IAuditLog audit, TimeProvider clock, IEnumerable<IObjectAccess> objects, INotificationSink? notifications, IDomainEventSink? events, IProgramMaterialSource? materials = null)
     {
+        _materials = materials;
         _db = db;
         _audit = audit;
         _clock = clock;

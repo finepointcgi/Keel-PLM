@@ -1,0 +1,72 @@
+@* The cost curves of a program (ADR-0049, visuals kit): cumulative budget, actual and estimate at completion by month. Server-computed SVG (no script, no outside library). The three lines differ
+   in line style and in marker shape, the last value of each is written on the chart, and the legend names them; a table with the same numbers (the "Table" view of the Cost tab) holds every month. *@
+@using System.Globalization
+@using Keel.Programs
+
+<div class="stack cost-curve">
+    @if (geo.Points.Count == 0)
+    {
+        <EmptyState Title="Nothing to draw yet" IconName="program">Set a budget, record costs or assign resources, and the curves appear here.</EmptyState>
+    }
+    else
+    {
+        <svg class="cost-chart" viewBox="0 0 @Num(geo.Width) @Num(geo.Height)" role="img" aria-labelledby="@(uid)-t @(uid)-d" focusable="false">
+            <title id="@(uid)-t">@Label</title>
+            <desc id="@(uid)-d">@geo.Summary</desc>
+            @foreach (var t in geo.YTicks)
+            {
+                <line class="cost-grid" x1="@Num(CostCurveLayout.Left)" y1="@Num(t.Pos)" x2="@Num(CostCurveLayout.Left + CostCurveLayout.PlotWidth)" y2="@Num(t.Pos)" />
+                <g><text class="vis-sub cost-ylabel" x="@Num(CostCurveLayout.Left - 6)" y="@Num(t.Pos + 4)" text-anchor="end">@t.Label</text></g>
+            }
+            @foreach (var t in geo.XTicks)
+            {
+                <g><text class="vis-sub" x="@Num(t.Pos)" y="@Num(CostCurveLayout.Top + CostCurveLayout.PlotHeight + 18)" text-anchor="middle">@t.Label</text></g>
+            }
+            @if (geo.StatusX is { } sx)
+            {
+                <line class="cost-status" x1="@Num(sx)" y1="@Num(CostCurveLayout.Top)" x2="@Num(sx)" y2="@Num(CostCurveLayout.Top + CostCurveLayout.PlotHeight)" />
+                <g><text class="vis-sub" x="@Num(sx + 4)" y="@Num(CostCurveLayout.Top + 10)">Status date</text></g>
+            }
+            <path class="cost-line cost-line-budget" d="@geo.BudgetPath" fill="none" />
+            <path class="cost-line cost-line-eac" d="@geo.EacPath" fill="none" />
+            @if (geo.ActualPath.Length > 0) { <path class="cost-line cost-line-actual" d="@geo.ActualPath" fill="none" /> }
+            @foreach (var m in geo.Markers)
+            {
+                @switch (m.Series)
+                {
+                    case "budget":
+                        <rect class="cost-mark cost-mark-budget" x="@Num(m.X - 3.5)" y="@Num(m.Y - 3.5)" width="7" height="7"><title>@m.Tip</title></rect>
+                        break;
+                    case "actual":
+                        <circle class="cost-mark cost-mark-actual" cx="@Num(m.X)" cy="@Num(m.Y)" r="4"><title>@m.Tip</title></circle>
+                        break;
+                    default:
+                        <path class="cost-mark cost-mark-eac" d="@Triangle(m.X, m.Y)"><title>@m.Tip</title></path>
+                        break;
+                }
+            }
+        </svg>
+        <Legend Label="Cost curves key" Items="legend" />
+        <p class="muted small">@geo.Summary</p>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<LegendItem> legend =
+    [
+        new("Budget (cumulative, dashed line, squares)", "cost-budget", "M2 11 H32"),
+        new("Actual (cumulative, solid line, circles)", "cost-actual", "M2 11 H32"),
+        new("Estimate at completion (cumulative, dotted line, triangles)", "cost-eac", "M2 11 H32"),
+    ];
+    private readonly string uid = "cc" + Guid.NewGuid().ToString("N")[..8];
+    private CostCurveLayout geo = CostCurveLayout.Empty;
+
+    [Parameter, EditorRequired] public required CostView Cost { get; set; }
+    [Parameter] public string Label { get; set; } = "Cumulative cost curves";
+
+    protected override void OnParametersSet() => geo = CostCurveLayout.Build(Cost);
+
+    private static string Num(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string Triangle(double x, double y) => FormattableString.Invariant($"M {x:0.##} {y - 5:0.##} L {x + 4.5:0.##} {y + 3.5:0.##} L {x - 4.5:0.##} {y + 3.5:0.##} Z");
+}

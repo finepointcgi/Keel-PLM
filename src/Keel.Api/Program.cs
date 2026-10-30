@@ -144,6 +144,7 @@ Keel.Workspace.WorkspaceModule.AddKeelWorkspace(builder.Services); // UX-1 perso
 Keel.Notifications.NotificationsModule.AddKeelNotifications(builder.Services, builder.Configuration); // UX-4 notifications, watch lists, comments, activity feed
 Keel.Quality.QualityModule.AddKeelQuality(builder.Services, builder.Configuration); // 8.1 nonconformance reports, corrective actions, deviations and waivers
 builder.Services.AddKeelQualityOpenApi();
+builder.Services.AddSingleton<Keel.Core.IProgramMaterialSource, Keel.Api.Infrastructure.Programs.ProgramMaterialSource>(); // 9.5 material cost of an end item from the BOM and price lists
 Keel.Programs.ProgramModule.AddKeelPrograms(builder.Services, builder.Configuration); // 8.8 programs, schedules, deliverables and gate reviews
 builder.Services.AddKeelProgramsOpenApi();
 Keel.Sourcing.SourcingModule.AddKeelSourcing(builder.Services, builder.Configuration); // 8.2 suppliers, approved lists, supplier portal

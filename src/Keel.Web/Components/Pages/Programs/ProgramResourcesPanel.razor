@@ -1,0 +1,254 @@
+@inject CurrentUser Users
+@inject ProgramService Programs
+@inject ToastService Toasts
+
+@* Resources of a program (ADR-0049): pools, roles, people-or-crews as resources, their assignments to tasks and the load against capacity. Everything here is hours: rates and money
+   are on the Cost tab and need the program cost permission. Only rows you may read are listed, and over-allocation is computed over those rows. *@
+@if (catalog is null || load is null)
+{
+    <Skeleton Lines="6" Label="Loading the resources" />
+}
+else
+{
+    <div class="stack" data-panel="program-resources">
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+
+        <section class="panel stack" aria-labelledby="load-heading" data-panel="program-load">
+            <h3 id="load-heading">Load by week</h3>
+            @if (load.OverAllocations.Count > 0)
+            {
+                <p class="error" role="status" data-over-allocation="true">@load.OverAllocations.Select(o => o.ResourceKey).Distinct().Count() resource@(load.OverAllocations.Select(o => o.ResourceKey).Distinct().Count() == 1 ? " is" : "s are") over-allocated. See the periods below.</p>
+            }
+            else if (catalog.Resources.Count > 0)
+            {
+                <p class="muted">No resource is over-allocated.</p>
+            }
+            <ViewSwitch Label="Load view" Options="views" Value="@mode" ValueChanged="v => mode = v" />
+            @if (mode == "chart")
+            {
+                <LoadHeatView Load="load" Label="@($"Resource load of program {Code} by week")" Key="@($"{Code}:{Version}")" />
+            }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="load">
+                    <caption class="sr-only">Load per resource</caption>
+                    <thead><tr><th scope="col">Resource</th><th scope="col">Role</th><th scope="col" class="num">Allocated hours</th><th scope="col" class="num">Available hours</th><th scope="col" class="num">Load</th><th scope="col" class="num">Weeks over capacity</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in load.Rows)
+                        {
+                            var over = r.Weeks.Count(w => w.Over);
+                            <tr>
+                                <td><strong>@r.ResourceKey</strong> @r.ResourceName</td><td>@r.RoleName</td>
+                                <td class="num">@ResourceMath.Hours(r.Allocated)</td><td class="num">@ResourceMath.Hours(r.Capacity)</td>
+                                <td class="num">@(r.Capacity > 0 ? (r.Allocated / r.Capacity).ToString("P0", System.Globalization.CultureInfo.InvariantCulture) : "n/a")</td>
+                                <td class="num @(over > 0 ? "error" : null)">@over@(over > 0 ? " (over)" : "")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+            @if (load.OverAllocations.Count > 0)
+            {
+                <h4 id="over-heading">Over-allocation periods</h4>
+                <div class="table-wrap"><table class="data" data-table="over-allocation" aria-labelledby="over-heading">
+                    <thead><tr><th scope="col">Resource</th><th scope="col">From</th><th scope="col">To</th><th scope="col" class="num">Peak hours per day</th><th scope="col" class="num">Capacity per day</th><th scope="col" class="num">Hours above capacity</th><th scope="col">Assignments</th></tr></thead>
+                    <tbody>
+                        @foreach (var o in load.OverAllocations)
+                        {
+                            <tr><td><strong>@o.ResourceKey</strong> @o.ResourceName</td><td>@ProgramUi.Date(o.From)</td><td>@ProgramUi.Date(o.To)</td><td class="num">@ResourceMath.Hours(o.PeakHours)</td><td class="num">@ResourceMath.Hours(o.CapacityHoursPerDay)</td><td class="num error">@ResourceMath.Hours(o.ExcessHours)</td><td>@string.Join(", ", o.AssignmentKeys)</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+            <div class="toolbar">
+                <a class="button secondary" href="@ExportHref("xlsx")" download>Export to Excel</a>
+                <a class="button secondary" href="@ExportHref("csv")" download>Export CSV (load by week)</a>
+            </div>
+            <p class="muted small">Hours count on weekdays only; there are no holiday calendars. Rows you may not read are not counted.</p>
+        </section>
+
+        <section class="panel" aria-labelledby="res-heading">
+            <h3 id="res-heading">Resources</h3>
+            @if (catalog.Resources.Count == 0) { <EmptyState Title="No resources yet" IconName="program">Create a pool and a role, then add the resources that will work on tasks.</EmptyState> }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="resources">
+                    <caption class="sr-only">Resources</caption>
+                    <thead><tr><th scope="col">Resource</th><th scope="col">Role</th><th scope="col">Pool</th><th scope="col" class="num">Hours per day</th><th scope="col">Available</th><th scope="col">Active</th><th scope="col">Markings</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in catalog.Resources)
+                        {
+                            <tr><td><strong>@r.Key</strong> @r.Name</td><td>@r.RoleName</td><td>@r.PoolKey</td><td class="num">@ResourceMath.Hours(r.CapacityHoursPerDay)</td><td>@ProgramUi.Date(r.AvailableFrom) to @ProgramUi.Date(r.AvailableTo)</td><td>@(r.Active ? "Yes" : "No")</td><td><MarkingChip Text="@r.Markings.BannerText()" /></td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+            <h4 id="pool-heading">Pools and roles</h4>
+            @if (catalog.Pools.Count == 0) { <p class="muted">No pools yet.</p> }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="roles" aria-labelledby="pool-heading">
+                    <thead><tr><th scope="col">Pool</th><th scope="col">Role</th><th scope="col" class="num">Resources</th>@if (catalog.CanViewCost) { <th scope="col" class="num">Rate per hour</th> }</tr></thead>
+                    <tbody>
+                        @foreach (var p in catalog.Pools)
+                        {
+                            var roles = catalog.Roles.Where(r => r.PoolKey == p.Key).ToList();
+                            if (roles.Count == 0) { <tr><td><strong>@p.Key</strong> @p.Name</td><td class="muted">No roles</td><td class="num">0</td>@if (catalog.CanViewCost) { <td></td> }</tr> }
+                            foreach (var r in roles)
+                            {
+                                <tr><td><strong>@p.Key</strong> @p.Name</td><td><strong>@r.Key</strong> @r.Name</td><td class="num">@r.ResourceCount</td>@if (catalog.CanViewCost) { <td class="num">@(r.CurrentRate is { } v ? ResourceMath.Money(v) : "No rate")</td> }</tr>
+                            }
+                        }
+                    </tbody>
+                </table></div>
+            }
+            @if (!catalog.CanViewCost) { <p class="muted small">Rates are shown to holders of the program cost permission.</p> }
+        </section>
+
+        <section class="panel" aria-labelledby="asg-heading">
+            <h3 id="asg-heading">Assignments</h3>
+            @if (catalog.Assignments.Count == 0) { <EmptyState Title="No assignments yet" IconName="program">Assign a resource to a task with hours per day for a period.</EmptyState> }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="assignments">
+                    <caption class="sr-only">Assignments</caption>
+                    <thead><tr><th scope="col">Assignment</th><th scope="col">Task</th><th scope="col">Resource</th><th scope="col">Start</th><th scope="col">End</th><th scope="col" class="num">Hours per day</th><th scope="col" class="num">Total hours</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var a in catalog.Assignments)
+                        {
+                            <tr>
+                                <td><strong>@a.Key</strong></td><td>@(a.ItemKey is null ? "" : a.ItemKey) @a.ItemTitle</td><td>@a.ResourceKey @a.ResourceName</td>
+                                <td>@ProgramUi.Date(a.Start)</td><td>@ProgramUi.Date(a.End)</td><td class="num">@ResourceMath.Hours(a.HoursPerDay)</td><td class="num">@ResourceMath.Hours(a.TotalHours)</td>
+                                <td>@if (a.CanModify && CanModify) { <button type="button" class="secondary" aria-label="@($"Remove {a.Key}")" @onclick="() => RemoveAssignment(a)">Remove</button> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+        </section>
+
+        @if (CanModify)
+        {
+            <section class="panel" aria-labelledby="add-pool-heading">
+                <h3 id="add-pool-heading">Add a pool</h3>
+                <div class="grid-form">
+                    <label>Pool name * <input maxlength="120" @bind="poolName" /></label>
+                    <label class="wide">Description <input maxlength="1000" @bind="poolDescription" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="AddPool">Add pool</button></div>
+            </section>
+            <section class="panel" aria-labelledby="add-role-heading">
+                <h3 id="add-role-heading">Add a role</h3>
+                <div class="grid-form">
+                    <label>Pool * <select @bind="rolePool"><option value="">Choose a pool</option>@foreach (var p in catalog.Pools) { <option value="@p.Key">@p.Key @p.Name</option> }</select></label>
+                    <label>Role name * <input maxlength="120" @bind="roleName" /></label>
+                    @if (catalog.CanViewCost) { <label>Rate per hour (optional) <input type="number" min="0" step="0.01" @bind="roleRate" /></label> }
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="AddRole">Add role</button></div>
+            </section>
+            <section class="panel" aria-labelledby="add-resource-heading">
+                <h3 id="add-resource-heading">Add a resource</h3>
+                <div class="grid-form">
+                    <label>Role * <select @bind="resourceRole"><option value="">Choose a role</option>@foreach (var r in catalog.Roles) { <option value="@r.Key">@r.Key @r.Name</option> }</select></label>
+                    <label>Resource name * <input maxlength="120" @bind="resourceName" /></label>
+                    <label>Hours per day <input type="number" min="0.25" max="24" step="0.25" @bind="resourceCapacity" /></label>
+                    <label>Available from <input type="date" @bind="resourceFrom" /></label>
+                    <label>Available to <input type="date" @bind="resourceTo" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="AddResource">Add resource</button></div>
+            </section>
+            <section class="panel" aria-labelledby="add-asg-heading">
+                <h3 id="add-asg-heading">Assign a resource to a task</h3>
+                <div class="grid-form">
+                    <label>Task (for example TK-001) * <input maxlength="20" @bind="asgItem" /></label>
+                    <label>Resource * <select @bind="asgResource"><option value="">Choose a resource</option>@foreach (var r in catalog.Resources.Where(r => r.Active)) { <option value="@r.Key">@r.Key @r.Name</option> }</select></label>
+                    <label>Start * <input type="date" @bind="asgStart" /></label>
+                    <label>End * <input type="date" @bind="asgEnd" /></label>
+                    <label>Hours per day * <input type="number" min="0.25" max="24" step="0.25" @bind="asgHours" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="AddAssignment">Assign resource</button></div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private static readonly IReadOnlyList<ViewOption> views = [new("chart", "Chart"), new("table", "Table")];
+    [Parameter, EditorRequired] public required string Code { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    [Parameter] public string? Version { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    private ResourceCatalog? catalog;
+    private LoadView? load;
+    private string mode = "chart", loadedFor = "";
+    private string? error;
+    private bool busy;
+    private string poolName = "", poolDescription = "", rolePool = "", roleName = "", resourceRole = "", resourceName = "", asgItem = "", asgResource = "";
+    private decimal? roleRate;
+    private decimal resourceCapacity = 8m, asgHours = 8m;
+    private DateOnly? resourceFrom, resourceTo, asgStart, asgEnd;
+
+    private string ExportHref(string format) => $"ui/programs/{Uri.EscapeDataString(Code)}/resources-export?format={format}&table=load";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Code}:{Version}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        var c = await Programs.GetResourcesAsync(subject, Code, CurrentUser.NewCorrelationId());
+        var l = await Programs.GetLoadAsync(subject, Code, null, null, CurrentUser.NewCorrelationId());
+        catalog = c.Value;
+        load = l.Value;
+        error = !c.IsOk ? ProgramUi.Message(c) : !l.IsOk ? ProgramUi.Message(l) : null;
+        await OnShown.InvokeAsync(catalog is null ? [] : [.. catalog.Pools.Select(p => p.Markings), .. catalog.Roles.Select(r => r.Markings), .. catalog.Resources.Select(r => r.Markings), .. catalog.Assignments.Select(a => a.Markings)]);
+    }
+
+    private async Task Done<T>(Outcome<T> o, string message, Action? reset = null)
+    {
+        busy = false;
+        if (!o.IsOk) { error = ProgramUi.Message(o); return; }
+        reset?.Invoke();
+        error = null;
+        Toasts.Success(message);
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task AddPool()
+    {
+        busy = true;
+        await Done(await Programs.AddPoolAsync(await Users.GetAsync(), Code, new AddPoolCommand(poolName, poolDescription, null), CurrentUser.NewCorrelationId()), "Pool added.", () => (poolName, poolDescription) = ("", ""));
+    }
+
+    private async Task AddRole()
+    {
+        busy = true;
+        await Done(await Programs.AddRoleAsync(await Users.GetAsync(), Code, new AddRoleCommand(rolePool, roleName, catalog!.CanViewCost ? roleRate : null, null, null), CurrentUser.NewCorrelationId()), "Role added.", () => (roleName, roleRate) = ("", null));
+    }
+
+    private async Task AddResource()
+    {
+        busy = true;
+        await Done(await Programs.AddResourceAsync(await Users.GetAsync(), Code, new AddResourceCommand(resourceRole, resourceName, resourceCapacity, resourceFrom, resourceTo, null), CurrentUser.NewCorrelationId()), "Resource added.",
+            () => (resourceName, resourceFrom, resourceTo) = ("", null, null));
+    }
+
+    private async Task AddAssignment()
+    {
+        if (asgStart is null || asgEnd is null) { error = "Choose the start and end dates."; return; }
+        busy = true;
+        await Done(await Programs.AddAssignmentAsync(await Users.GetAsync(), Code, new AddAssignmentCommand(asgItem, asgResource, asgStart.Value, asgEnd.Value, asgHours), CurrentUser.NewCorrelationId()), "Resource assigned.",
+            () => (asgItem, asgStart, asgEnd) = ("", null, null));
+    }
+
+    private async Task RemoveAssignment(AssignmentRow a) =>
+        await Done(await Programs.RemoveAssignmentAsync(await Users.GetAsync(), Code, a.Key, CurrentUser.NewCorrelationId()), "Assignment removed.");
+}

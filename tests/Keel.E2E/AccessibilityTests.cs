@@ -138,7 +138,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
             $"/records/disposition/{RecordsSeed.Request}", "/records/archives", "/records/certificates", $"/documents/{m.SystemSpecification}", "/");
         // 8.1 quality: the three lists, the three forms, every tab of the three record pages and the quality tab of a part
         Add("alice", "/programs", "/programs/new", $"/programs/{pg.Code}", $"/programs/gates/{pg.Gate}");
-        foreach (var tab in new[] { "overview", "schedule", "timeline", "deliverables", "history", "activity", "comments" }) Add("alice", $"/programs/{pg.Code}?tab={tab}");
+        foreach (var tab in new[] { "overview", "schedule", "timeline", "resources", "cost", "deliverables", "history", "activity", "comments" }) Add("alice", $"/programs/{pg.Code}?tab={tab}");
         foreach (var tab in new[] { "overview", "review", "activity", "comments" }) Add("alice", $"/programs/gates/{pg.Gate}?tab={tab}");
         Add("alice", "/quality/ncrs", "/quality/capas", "/quality/deviations", "/quality/new/ncr", "/quality/new/capa", "/quality/new/deviation", $"/parts/{q.Part}?tab=quality");
         foreach (var tab in new[] { "overview", "disposition", "actions", "links", "review", "history", "activity", "comments" }) Add("alice", $"/quality/ncrs/{q.Ncr}?tab={tab}");
@@ -188,6 +188,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
 
                 var quality = await QualityRecords.EnsureAsync(fx, session, users["alice"]);
                 var programData = await ProgramRecords.EnsureAsync(fx, session, users["alice"]);
+                await ProgramResourceRecords.EnsureAsync(fx, session, users["alice"], programData);
                 foreach (var target in Targets(extras, quality, programData))
                 {
                     var up = users[target.User];

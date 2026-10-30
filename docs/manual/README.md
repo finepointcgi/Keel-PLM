@@ -26,7 +26,7 @@ This manual is written from the user's point of view, with task-oriented steps. 
 | 14 | [Requirements and traceability](14-requirements.md) | Specifications, links, suspect links, verification |
 | 15 | [Product compliance](15-compliance.md) | Substances, lists, declarations, roll-up |
 | 16 | [Records management](16-records.md) | Retention, legal holds, disposition, archives |
-| 17 | [Programs](17-programs.md) | Schedules, dependencies, deliverables, gates |
+| 17 | [Programs](17-programs.md) | Schedules, dependencies, deliverables, gates, resources, load and cost |
 | 18 | [Reports and output](18-reports-and-output.md) | Report builder, release package PDFs, Excel BOM, mass change |
 | 19 | [Notifications and activity](19-notifications-and-activity.md) | The bell, watching, comments, activity |
 | 20 | [Audit and integrity verification](20-audit-and-integrity.md) | Reading and verifying the audit log |
@@ -86,6 +86,7 @@ Stated in the chapter where it matters; collected here.
 - No renaming of a part; no attributes on documents or changes ([chapters 3, 23](03-parts.md)).
 - No conditions on MBOM lines of their own, nor in baselines ([chapter 4](04-boms-variants-mbom.md)).
 - No message-broker sink for events ([chapter 21](21-integration-and-tdp.md)).
+- No timesheet or ERP feed of actual program costs, one currency only, no holiday calendars ([chapter 17](17-programs.md)).
 - Migration has not been rehearsed against a real export ([chapter 22](22-migration.md)).
 - No high-availability automation; disaster-recovery targets are proposals ([chapter 24](24-administrator-and-operator-guide.md)).
 - The legal and export-control review packets in [docs/review](../review/README.md) are pending sign-off and are not legal advice.

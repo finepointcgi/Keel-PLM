@@ -368,6 +368,11 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                     foreach (var tab in new[] { "schedule", "timeline", "deliverables" })
                         await GoAsync(session, alice, $"/programs/{prog.Code}?tab={tab}", "programs-" + tab);
                     await GoAsync(session, alice, "/programs/gates/" + prog.Gate, "programs-gate");
+                    await TryAsync("program-resources-data", () => ProgramResourceRecords.EnsureAsync(fx, session, alice, prog));
+                    await GoAsync(session, alice, $"/programs/{prog.Code}?tab=resources", "programs-resources", async p => { await p.Locator("[data-panel='program-load'] .vis-viewport").WaitForAsync(); await p.Locator("[data-panel='program-load']").ScrollIntoViewIfNeededAsync(); });
+                    await GoAsync(session, alice, $"/programs/{prog.Code}?tab=resources", "programs-resources-table", async p => { await p.Locator("[data-panel='program-load']").WaitForAsync(); await ClickIfAsync(p, "Table"); await p.Locator("table[data-table='over-allocation']").ScrollIntoViewIfNeededAsync(); });
+                    await GoAsync(session, alice, $"/programs/{prog.Code}?tab=cost", "programs-cost");
+                    await GoAsync(session, alice, $"/programs/{prog.Code}?tab=cost", "programs-cost-table", async p => { await p.Locator("[data-panel='program-cost']").WaitForAsync(); await ClickIfAsync(p, "Table"); await p.Locator("table[data-table='cost-months']").ScrollIntoViewIfNeededAsync(); });
                 }
 
                 // ---- output and bulk work

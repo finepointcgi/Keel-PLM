@@ -1,0 +1,261 @@
+@inject CurrentUser Users
+@inject ProgramService Programs
+@inject ToastService Toasts
+
+@* Cost of a program (ADR-0049): budget against actual against estimate to complete, by month and cost type, with the material estimate from the product structure and price lists.
+   Only holders of the program cost permission see this tab; every figure is computed over the rows and parts YOU may read. *@
+@if (cost is null && error is null)
+{
+    <Skeleton Lines="6" Label="Loading the cost" />
+}
+else if (cost is null)
+{
+    <p class="error" role="alert">@error</p>
+}
+else
+{
+    <div class="stack" data-panel="program-cost">
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        <section class="panel stack" aria-labelledby="cost-heading">
+            <h3 id="cost-heading">Budget, actual and estimate to complete</h3>
+            <ul class="cost-tiles" aria-label="Totals in @cost.Currency">
+                <li class="cost-tile"><span>Budget</span><strong data-total="budget">@ResourceMath.Money(cost.Total.Budget)</strong></li>
+                <li class="cost-tile"><span>Actual to date</span><strong data-total="actual">@ResourceMath.Money(cost.Total.Actual)</strong></li>
+                <li class="cost-tile"><span>Estimate to complete</span><strong data-total="etc">@ResourceMath.Money(cost.Total.Etc)</strong></li>
+                <li class="cost-tile"><span>Estimate at completion</span><strong data-total="eac">@ResourceMath.Money(cost.Total.Eac)</strong></li>
+                <li class="cost-tile"><span>@(cost.Total.Variance < 0 ? "Forecast overrun" : "Forecast under budget")</span><strong data-total="variance" class="@(cost.Total.Variance < 0 ? "error" : null)">@ResourceMath.Money(Math.Abs(cost.Total.Variance))</strong></li>
+            </ul>
+            @if (cost.OverBudget) { <p class="error" role="status">The estimate at completion is over the budget by @ResourceMath.Money(-cost.Total.Variance) @cost.Currency.</p> }
+            @if (cost.UnpricedHours > 0 || cost.ResourcesWithoutRate > 0)
+            {
+                <p class="muted" role="status">@ResourceMath.Hours(cost.UnpricedHours) assigned hours have no rate and are not in the labor figures. @cost.ResourcesWithoutRate active resource@(cost.ResourcesWithoutRate == 1 ? " has" : "s have") a role without a rate.</p>
+            }
+            @if (cost.OverAllocatedResources > 0) { <p class="muted" role="status">@cost.OverAllocatedResources resource@(cost.OverAllocatedResources == 1 ? " is" : "s are") over-allocated; see the Resources tab.</p> }
+            <p class="muted small">Status date @ProgramUi.Date(cost.AsOf). Amounts in @cost.Currency. Estimate at completion is actual plus estimate to complete; the variance is budget minus that.</p>
+            <ViewSwitch Label="Cost view" Options="views" Value="@mode" ValueChanged="v => mode = v" />
+            @if (mode == "chart")
+            {
+                <CostCurveView Cost="cost" Label="@($"Cumulative cost of program {Code}")" />
+            }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="cost-months">
+                    <caption class="sr-only">Cost by month and cost type</caption>
+                    <thead><tr><th scope="col">Month</th><th scope="col">Cost type</th><th scope="col" class="num">Budget</th><th scope="col" class="num">Planned</th><th scope="col" class="num">Actual</th><th scope="col" class="num">Estimate to complete</th><th scope="col" class="num">Estimate at completion</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in cost.Months)
+                        {
+                            <tr><td>@m.Period.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture)</td><td>@m.CostType</td><td class="num">@ResourceMath.Money(m.Budget)</td><td class="num">@ResourceMath.Money(m.Planned)</td><td class="num">@ResourceMath.Money(m.Actual)</td><td class="num">@ResourceMath.Money(m.Etc)</td><td class="num">@ResourceMath.Money(m.Eac)</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            }
+            <h4 id="type-heading">By cost type</h4>
+            <div class="table-wrap"><table class="data" data-table="cost-types" aria-labelledby="type-heading">
+                <thead><tr><th scope="col">Cost type</th><th scope="col" class="num">Budget</th><th scope="col" class="num">Planned</th><th scope="col" class="num">Actual</th><th scope="col" class="num">Estimate to complete</th><th scope="col" class="num">Estimate at completion</th><th scope="col" class="num">Variance</th></tr></thead>
+                <tbody>
+                    @foreach (var t in CostTypes.All)
+                    {
+                        var x = cost.ByType[t];
+                        <tr><td>@t</td><td class="num">@ResourceMath.Money(x.Budget)</td><td class="num">@ResourceMath.Money(x.Planned)</td><td class="num">@ResourceMath.Money(x.Actual)</td><td class="num">@ResourceMath.Money(x.Etc)</td><td class="num">@ResourceMath.Money(x.Eac)</td><td class="num @(x.Variance < 0 ? "error" : null)">@ResourceMath.Money(x.Variance)</td></tr>
+                    }
+                </tbody>
+            </table></div>
+            <div class="toolbar">
+                <a class="button secondary" href="@ExportHref("xlsx", null)" download>Export to Excel</a>
+                <a class="button secondary" href="@ExportHref("csv", "months")" download>Export CSV (by month)</a>
+            </div>
+        </section>
+
+        @if (cost.Roles.Count > 0)
+        {
+            <section class="panel" aria-labelledby="role-cost-heading">
+                <h3 id="role-cost-heading">Labor by role</h3>
+                <div class="table-wrap"><table class="data" data-table="cost-roles">
+                    <caption class="sr-only">Labor by role</caption>
+                    <thead><tr><th scope="col">Role</th><th scope="col">Pool</th><th scope="col" class="num">Planned hours</th><th scope="col" class="num">Planned cost</th><th scope="col" class="num">Remaining hours</th><th scope="col" class="num">Estimate to complete</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in cost.Roles)
+                        {
+                            <tr><td><strong>@r.RoleKey</strong> @r.RoleName</td><td>@r.PoolName</td><td class="num">@ResourceMath.Hours(r.Hours)</td><td class="num">@ResourceMath.Money(r.PlannedCost)</td><td class="num">@ResourceMath.Hours(r.RemainingHours)</td><td class="num">@ResourceMath.Money(r.Etc)</td></tr>
+                        }
+                    </tbody>
+                </table></div>
+            </section>
+        }
+
+        <section class="panel" aria-labelledby="material-heading">
+            <h3 id="material-heading">Material from the product structure</h3>
+            @if (cost.Material.Count == 0) { <EmptyState Title="No material lines yet" IconName="program">Add an end item and a quantity. Its cost is estimated from its bill of materials and the preferred or approved prices in the sourcing lists.</EmptyState> }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="cost-material">
+                    <caption class="sr-only">Material lines</caption>
+                    <thead><tr><th scope="col">Line</th><th scope="col">Part</th><th scope="col" class="num">Quantity</th><th scope="col">Needed</th><th scope="col" class="num">Estimate</th><th scope="col">Parts priced</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var m in cost.Material)
+                        {
+                            <tr>
+                                <td><strong>@m.Key</strong></td><td><a href="@($"parts/{Uri.EscapeDataString(m.PartNumber)}")">@m.PartNumber</a> @m.PartName</td><td class="num">@ResourceMath.Hours(m.Quantity)</td><td>@ProgramUi.Date(m.NeededOn)</td>
+                                <td class="num">@(m.Estimate is { } e ? ResourceMath.Money(e) : "No estimate")</td>
+                                <td>@m.PricedLines priced, @m.UnpricedLines without a price@(m.RestrictedLines > 0 ? $", {m.RestrictedLines} restricted" : "")@(m.Problem is null ? "" : ". " + m.Problem)</td>
+                                <td>@if (CanModify) { <button type="button" class="secondary" aria-label="@($"Remove {m.Key}")" @onclick="() => RemoveMaterial(m)">Remove</button> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+                <p class="muted small">Prices come from active preferred or approved entries in @cost.Currency; nothing is converted between currencies. Restricted lines of the structure are not in any estimate.</p>
+            }
+        </section>
+
+        <section class="panel" aria-labelledby="actual-heading">
+            <h3 id="actual-heading">Actual costs</h3>
+            @if (cost.Actuals.Count == 0) { <EmptyState Title="No actual costs yet" IconName="program">Record labor hours worked by a resource, or the amount of a material or other cost.</EmptyState> }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-table="cost-actuals">
+                    <caption class="sr-only">Actual costs, newest first</caption>
+                    <thead><tr><th scope="col">Entry</th><th scope="col">Type</th><th scope="col">Date</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Hours</th><th scope="col">Resource</th><th scope="col">Task</th><th scope="col">Note</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var a in cost.Actuals)
+                        {
+                            <tr>
+                                <td><strong>@a.Key</strong>@(a.ReversesKey is null ? "" : $" (reverses {a.ReversesKey})")</td><td>@a.CostType</td><td>@ProgramUi.Date(a.IncurredOn)</td><td class="num">@ResourceMath.Money(a.Amount)</td>
+                                <td class="num">@(a.Hours is { } h ? ResourceMath.Hours(h) : "")</td><td>@a.ResourceKey</td><td>@a.ItemKey</td><td>@a.Note</td>
+                                <td>@if (CanModify && a.ReversesKey is null && !reversed.Contains(a.Key)) { <button type="button" class="secondary" aria-label="@($"Reverse {a.Key}")" @onclick="() => Reverse(a)">Reverse</button> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+                @if (cost.Actuals.Count >= 300) { <p class="muted small">The newest 300 entries are listed; the totals include every entry.</p> }
+            }
+        </section>
+
+        @if (CanModify)
+        {
+            <section class="panel" aria-labelledby="budget-heading">
+                <h3 id="budget-heading">Set a budget</h3>
+                <div class="grid-form">
+                    <label>Cost type <select @bind="budgetType">@foreach (var t in CostTypes.All) { <option value="@t">@t</option> }</select></label>
+                    <label>Month * <input type="month" @bind="budgetMonth" /></label>
+                    <label>Amount (@cost.Currency) * <input type="number" min="0" step="0.01" @bind="budgetAmount" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="SetBudget">Set budget</button></div>
+                <p class="muted small">Each change of an amount is kept in a log that cannot be edited.</p>
+            </section>
+            <section class="panel" aria-labelledby="actual-add-heading">
+                <h3 id="actual-add-heading">Record an actual cost</h3>
+                <div class="grid-form">
+                    <label>Cost type <select @bind="actualType">@foreach (var t in CostTypes.All) { <option value="@t">@t</option> }</select></label>
+                    <label>Date * <input type="date" @bind="actualDate" /></label>
+                    @if (actualType == CostTypes.Labor)
+                    {
+                        <label>Resource * <input maxlength="20" placeholder="RS-001" @bind="actualResource" /></label>
+                        <label>Hours * <input type="number" min="0.25" step="0.25" @bind="actualHours" /></label>
+                    }
+                    else
+                    {
+                        <label>Amount (@cost.Currency) * <input type="number" step="0.01" @bind="actualAmount" /></label>
+                    }
+                    <label>Task (optional) <input maxlength="20" @bind="actualItem" /></label>
+                    <label class="wide">Note <input maxlength="200" @bind="actualNote" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="AddActual">Record cost</button></div>
+                <p class="muted small">Labor is priced at the rate of the resource's role on that date. A recorded cost is never changed; reverse it to correct it.</p>
+            </section>
+            <section class="panel" aria-labelledby="material-add-heading">
+                <h3 id="material-add-heading">Add a material line</h3>
+                <div class="grid-form">
+                    <label>End item (part number) * <input maxlength="64" @bind="matPart" /></label>
+                    <label>Quantity * <input type="number" min="0.0001" step="any" @bind="matQuantity" /></label>
+                    <label>Needed on * <input type="date" @bind="matDate" /></label>
+                    <label class="wide">Note <input maxlength="200" @bind="matNote" /></label>
+                </div>
+                <div class="toolbar"><button type="button" disabled="@busy" @onclick="AddMaterial">Add material line</button></div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private static readonly IReadOnlyList<ViewOption> views = [new("chart", "Chart"), new("table", "Table")];
+    [Parameter, EditorRequired] public required string Code { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    [Parameter] public string? Version { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Markings>> OnShown { get; set; }
+
+    private CostView? cost;
+    private string mode = "chart", loadedFor = "", budgetType = CostTypes.Labor, actualType = CostTypes.Labor, actualResource = "", actualItem = "", actualNote = "", matPart = "", matNote = "";
+    private string? error;
+    private bool busy;
+    private DateTime? budgetMonth;
+    private decimal? budgetAmount, actualAmount, actualHours, matQuantity;
+    private DateOnly? actualDate, matDate;
+    private HashSet<string> reversed = [];
+
+    private string ExportHref(string format, string? table) => $"ui/programs/{Uri.EscapeDataString(Code)}/resources-export?format={format}" + (table is null ? "" : $"&table={table}");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Code}:{Version}";
+        if (key == loadedFor) return;
+        loadedFor = key;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var o = await Programs.GetCostAsync(await Users.GetAsync(), Code, null, CurrentUser.NewCorrelationId());
+        cost = o.Value;
+        error = o.IsOk ? null : ProgramUi.Message(o);
+        reversed = [.. (cost?.Actuals ?? []).Where(a => a.ReversesKey is not null).Select(a => a.ReversesKey!)];
+        await OnShown.InvokeAsync(cost is null ? [] : [.. cost.Budget.Select(b => b.Markings), .. cost.Actuals.Select(a => a.Markings), .. cost.Material.Select(m => m.Markings)]);
+    }
+
+    private async Task Done<T>(Outcome<T> o, string message, Action? reset = null)
+    {
+        busy = false;
+        if (!o.IsOk) { error = ProgramUi.Message(o); return; }
+        reset?.Invoke();
+        Toasts.Success(message);
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task SetBudget()
+    {
+        if (budgetMonth is null || budgetAmount is null) { error = "Choose the month and the amount."; return; }
+        busy = true;
+        error = null;
+        await Done(await Programs.SetBudgetAsync(await Users.GetAsync(), Code, new SetBudgetCommand(budgetType, DateOnly.FromDateTime(budgetMonth.Value), budgetAmount.Value), CurrentUser.NewCorrelationId()), "Budget set.", () => budgetAmount = null);
+    }
+
+    private async Task AddActual()
+    {
+        if (actualDate is null) { error = "Choose the date."; return; }
+        busy = true;
+        error = null;
+        var cmd = new AddActualCommand(actualType, actualDate.Value, actualType == CostTypes.Labor ? null : actualAmount, actualType == CostTypes.Labor ? actualHours : null,
+            actualType == CostTypes.Labor ? actualResource : null, string.IsNullOrWhiteSpace(actualItem) ? null : actualItem, actualNote, null);
+        await Done(await Programs.AddActualAsync(await Users.GetAsync(), Code, cmd, CurrentUser.NewCorrelationId()), "Cost recorded.", () => (actualAmount, actualHours, actualNote) = (null, null, ""));
+    }
+
+    private async Task Reverse(ActualRow a)
+    {
+        busy = true;
+        error = null;
+        await Done(await Programs.AddActualAsync(await Users.GetAsync(), Code, new AddActualCommand(a.CostType, a.IncurredOn, null, null, null, null, "Reversal", a.Key), CurrentUser.NewCorrelationId()), "Entry reversed.");
+    }
+
+    private async Task AddMaterial()
+    {
+        if (matDate is null || matQuantity is null) { error = "Choose the quantity and the date it is needed."; return; }
+        busy = true;
+        error = null;
+        await Done(await Programs.AddMaterialLineAsync(await Users.GetAsync(), Code, new AddMaterialLineCommand(matPart, matQuantity.Value, matDate.Value, matNote), CurrentUser.NewCorrelationId()), "Material line added.", () => (matPart, matQuantity, matNote) = ("", null, ""));
+    }
+
+    private async Task RemoveMaterial(MaterialLineRow m) =>
+        await Done(await Programs.RemoveMaterialLineAsync(await Users.GetAsync(), Code, m.Key, CurrentUser.NewCorrelationId()), "Material line removed.");
+}
