@@ -71,12 +71,12 @@
     // Built per render: the titles and state labels follow the language of the circuit (ADR 0057).
     private IReadOnlyList<DataColumn<PartSummary>> Columns =>
     [
-        new() { Key = "number", Title = C["Column.Number"], Required = true, ServerSortKey = "number", Cell = p => @<a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a> },
-        new() { Key = "name", Title = C["Column.Name"], ServerSortKey = "name", Text = p => p.Name },
+        new() { Key = "number", Title = C["Column.Number"], Required = true, ServerSortKey = "number", Cell = p => @<a class="row-id" href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a> },
+        new() { Key = "name", Title = C["Column.Name"], ServerSortKey = "name", Cell = p => @<a class="row-name" href="parts/@Uri.EscapeDataString(p.Number)">@p.Name</a>, Text = p => p.Name },
         new() { Key = "type", Title = C["Column.Type"], ServerSortKey = "type", Text = p => p.PartType },
         new() { Key = "version", Title = C["Column.Version"], ServerSortKey = "version", Text = p => $"{p.Revision}.{p.Iteration}" },
-        new() { Key = "state", Title = C["Column.State"], ServerSortKey = "state", Text = p => C.StateLabel(p.State) },
-        new() { Key = "markings", Title = C["Column.Markings"], Required = true, Cell = p => @<MarkingChip Text="@p.Banner" /> },
+        new() { Key = "state", Title = C["Column.State"], ServerSortKey = "state", Cell = p => @<span class="badge state-@p.State.ToLowerInvariant()">@C.StateLabel(p.State)</span>, Text = p => C.StateLabel(p.State) },
+        new() { Key = "markings", Title = C["Column.Markings"], Required = true, Cell = p => @<MarkingChip Text="@p.Banner" Compact="true" /> },
     ];
 
     private async Task Search(int newOffset)

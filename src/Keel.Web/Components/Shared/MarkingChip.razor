@@ -1,8 +1,19 @@
 @* The marking of one object. The text wraps only at the " · " separators: each segment (for example "DISTRIBUTION D") is a no-break unit, so a narrow column never splits a word. The text is never truncated. *@
-<span class="chip @MarkingBanner.Tone(Text)"><Icon Name="markings" /><span class="chip-text">@Segments(Text)</span></span>
+@if (Compact)
+{
+    var parts = Text.Split(" · ");
+    @* List rows: the first segment and a count; the full text stays in the title and for assistive technology, and the page banner above is the aggregate. *@
+    <span class="chip compact @MarkingBanner.Tone(Text)" title="@Text"><Icon Name="markings" /><span aria-hidden="true">@parts[0]</span>@if (parts.Length > 1) { <span class="more" aria-hidden="true">+@(parts.Length - 1)</span> }<span class="visually-hidden">@Text</span></span>
+}
+else
+{
+    <span class="chip @MarkingBanner.Tone(Text)"><Icon Name="markings" /><span class="chip-text">@Segments(Text)</span></span>
+}
 
 @code {
     [Parameter, EditorRequired] public required string Text { get; set; }
+    /// <summary>The short form for list rows (first segment and a count). The default is the full text, never truncated.</summary>
+    [Parameter] public bool Compact { get; set; }
 
     private static MarkupString Segments(string text)
     {

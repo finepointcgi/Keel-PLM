@@ -73,12 +73,12 @@
 
     private IReadOnlyList<DataColumn<DocumentSummary>> Columns =>
     [
-        new() { Key = "number", Title = C["Column.Number"], Required = true, ServerSortKey = "number", Cell = d => @<a href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a> },
-        new() { Key = "name", Title = C["Column.Name"], ServerSortKey = "name", Text = d => d.Name },
+        new() { Key = "number", Title = C["Column.Number"], Required = true, ServerSortKey = "number", Cell = d => @<a class="row-id" href="documents/@Uri.EscapeDataString(d.Number)">@d.Number</a> },
+        new() { Key = "name", Title = C["Column.Name"], ServerSortKey = "name", Cell = d => @<a class="row-name" href="documents/@Uri.EscapeDataString(d.Number)">@d.Name</a>, Text = d => d.Name },
         new() { Key = "type", Title = C["Column.Type"], ServerSortKey = "type", Text = d => d.DocumentType },
         new() { Key = "version", Title = C["Column.Version"], ServerSortKey = "version", Text = d => $"{d.Revision}.{d.Iteration}" },
-        new() { Key = "state", Title = C["Column.State"], ServerSortKey = "state", Text = d => C.StateLabel(d.State) },
-        new() { Key = "markings", Title = C["Column.Markings"], Required = true, Cell = d => @<MarkingChip Text="@d.Banner" /> },
+        new() { Key = "state", Title = C["Column.State"], ServerSortKey = "state", Cell = d => @<span class="badge state-@d.State.ToLowerInvariant()">@C.StateLabel(d.State)</span>, Text = d => C.StateLabel(d.State) },
+        new() { Key = "markings", Title = C["Column.Markings"], Required = true, Cell = d => @<MarkingChip Text="@d.Banner" Compact="true" /> },
     ];
 
     private IReadOnlyList<string> docTypes = []; // 2.2: administrator data
