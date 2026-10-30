@@ -10,13 +10,14 @@
 #     ./install.sh --k8s --namespace keel --values site-values.yaml [--registry registry.example.mil:5000]
 #                  [--secrets-dir /secure/keel-secrets] [--dry-run]
 #
-# Order of operations (both modes): verify signature and hashes -> load images -> secrets -> migration job -> start.
+# Order of operations (both modes): verify signature and hashes -> preflight checks -> load images -> secrets -> migration job -> start.
+# --preflight-only stops after the checks (nothing is loaded or written); --skip-preflight is for sites that ran preflight.sh separately.
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 MODE="" TARGET=/opt/keel PUBLIC_HOST="" AUTHORITY="" SECRET_FILE="" CERTS_DIR="" TEST_PKI=false NO_START=false DRY_RUN=false
-NAMESPACE=keel VALUES="" REGISTRY="" SECRETS_DIR="" VERIFY_ARGS=()
+NAMESPACE=keel VALUES="" REGISTRY="" SECRETS_DIR="" VERIFY_ARGS=() PREFLIGHT_ONLY=false SKIP_PREFLIGHT=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --compose) MODE=compose; shift ;;
@@ -28,13 +29,15 @@ while [[ $# -gt 0 ]]; do
     --certs-dir) CERTS_DIR=$2; shift 2 ;;
     --test-pki) TEST_PKI=true; shift ;;
     --no-start) NO_START=true; shift ;;
+    --preflight-only) PREFLIGHT_ONLY=true; shift ;;
+    --skip-preflight) SKIP_PREFLIGHT=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --namespace) NAMESPACE=$2; shift 2 ;;
     --values) VALUES=$2; shift 2 ;;
     --registry) REGISTRY=$2; shift 2 ;;
     --secrets-dir) SECRETS_DIR=$2; shift 2 ;;
     --pubkey|--fingerprint) VERIFY_ARGS+=("$1" "$2"); shift 2 ;;
-    -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
 done
@@ -47,6 +50,17 @@ run() { if $DRY_RUN; then printf '+ %s\n' "$*"; else "$@"; fi; }
 
 log "== 1/5 verifying bundle $VERSION"
 verify_bundle "${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}"
+
+if $SKIP_PREFLIGHT; then warn "--skip-preflight: the host, certificates and settings were not checked by this run"
+else
+  log "== preflight checks"
+  if [[ $MODE == compose ]]; then
+    pf=(--compose --target "$TARGET" --public-host "$PUBLIC_HOST" --oidc-authority "$AUTHORITY" --oidc-client-secret-file "$SECRET_FILE")
+    if [[ -n "$CERTS_DIR" ]]; then pf+=(--certs-dir "$CERTS_DIR"); elif $TEST_PKI; then pf+=(--test-pki); fi
+  else pf=(--k8s --namespace "$NAMESPACE" --values "$VALUES"); fi
+  "$BUNDLE_DIR/preflight.sh" "${pf[@]}" || die "preflight failed: fix the FAIL lines above and run again (nothing was loaded or changed)"
+fi
+$PREFLIGHT_ONLY && { log "--preflight-only: stopping here"; exit 0; }
 
 RUNTIME=$(detect_runtime)
 log "== 2/5 loading images with $RUNTIME"

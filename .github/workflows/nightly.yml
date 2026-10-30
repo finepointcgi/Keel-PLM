@@ -1,0 +1,22 @@
+# Nightly: everything main runs, plus the operations proof (backup and restore drill, upgrade rehearsal, load smoke) and a fresh advisory read.
+# Advisories change without a commit, which is why the dependency audit also runs on a schedule.
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    uses: ./.github/workflows/fast.yml
+  browser:
+    uses: ./.github/workflows/e2e.yml
+  image:
+    needs: fast
+    uses: ./.github/workflows/image.yml
+  drills:
+    uses: ./.github/workflows/drills.yml

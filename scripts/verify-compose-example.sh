@@ -80,6 +80,25 @@ check "app drops all capabilities"            "[ALL]" "$(docker inspect -f '{{.H
 check "no secret in the app environment"      0 "$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$APP" | grep -ciE 'password|secret_?key|clientsecret' || true)"
 check "image healthcheck reports healthy"     healthy "$(docker inspect -f '{{.State.Health.Status}}' "$APP")"
 check "migrate job exited 0"                  0 "$(docker inspect -f '{{.State.ExitCode}}' "$("${COMPOSE[@]}" ps -a -q migrate)")"
+# Resource limits and healthchecks of the production bundle as the runtime applied them (ADR-0060)
+for svc in app postgres vault proxy; do
+  cid=$("${COMPOSE[@]}" ps -q "$svc")
+  check "$svc reports healthy"                  healthy "$(docker inspect -f '{{.State.Health.Status}}' "$cid")"
+  check "$svc has a memory limit applied"       yes "$([[ "$(docker inspect -f '{{.HostConfig.Memory}}' "$cid")" -gt 0 ]] && echo yes || echo no)"
+  check "$svc has a CPU limit applied"          yes "$([[ "$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$cid")" -gt 0 ]] && echo yes || echo no)"
+  check "$svc has a pids limit applied"         yes "$([[ "$(docker inspect -f '{{.HostConfig.PidsLimit}}' "$cid")" -gt 0 ]] && echo yes || echo no)"
+done
+check "app memory limit is the documented 2 GiB" 2147483648 "$(docker inspect -f '{{.HostConfig.Memory}}' "$APP")"
+
+# The operator tools of the production image on the production stack, over TLS with the real secret files (docs/ops/backup-restore.md)
+SECRETS="$EX/secrets"
+APP_CS=$(cat "$SECRETS/Keel__Database__AppConnectionString")
+AUDIT_OUT=$("${COMPOSE[@]}" run --rm --no-deps -T -e "KEEL_AUDIT_CONNECTION=$APP_CS" --entrypoint dotnet app /app/audit/keel-audit.dll verify --public-key /run/secrets/audit_checkpoint_key_pub 2>&1 || true)
+check "keel-audit verify runs on the production stack" VALID "$(awk '/RESULT:/{print $2}' <<<"$AUDIT_OUT")"
+VAULT_OUT=$("${COMPOSE[@]}" run --rm --no-deps -T -e "Keel__Database__AppConnectionString=$APP_CS" -e Keel__Vault__ServiceUrl=https://vault:8334 -e Keel__Vault__Bucket=keel-vault \
+  -e "Keel__Vault__AccessKey=$(cat "$SECRETS/Keel__Vault__AccessKey")" -e "Keel__Vault__SecretKey=$(cat "$SECRETS/Keel__Vault__SecretKey")" -e Keel__Vault__ServerSideEncryption=false \
+  --entrypoint dotnet app /app/vault/keel-vault.dll verify 2>&1 || true)
+check "keel-vault verify runs on the production stack over TLS" "RESULT: INTACT" "$(grep '^RESULT:' <<<"$VAULT_OUT")"
 PGOUT=$("${COMPOSE[@]}" exec -T -e PGPASSWORD=wrong postgres psql -w "host=postgres sslmode=disable user=keel_app dbname=keel" -c 'select 1' 2>&1 || true)
 check "postgres rejects non-TLS clients"      yes "$(grep -qi 'no encryption' <<<"$PGOUT" && echo yes || echo no)"
 

@@ -37,6 +37,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Keel.E2E/Keel.E2E.csproj" />
     <Project Path="tests/Keel.BackupTestTool/Keel.BackupTestTool.csproj" />
+    <Project Path="tests/Keel.LoadTool/Keel.LoadTool.csproj" />
     <Project Path="tests/Keel.IntegrationTests/Keel.IntegrationTests.csproj" />
     <Project Path="tests/Keel.Migration.Fixtures/Keel.Migration.Fixtures.csproj" />
     <Project Path="tests/Keel.TestSupport/Keel.TestSupport.csproj" />

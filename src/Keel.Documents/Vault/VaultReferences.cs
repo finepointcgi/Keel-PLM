@@ -8,7 +8,8 @@ namespace Keel.Documents.Vault;
 /// document disposed of under a retention schedule (and not under legal hold) stop counting as references and the existing sweeper, with its grace period and integrity
 /// checks, removes the content.
 /// </param>
-public sealed record VaultReferenceSource(string Schema, string Table, string Column, string Why, string? LivePredicate = null)
+/// <param name="SizeColumn">The column of the same row that holds the recorded size in bytes (the bulk verifier, <c>keel-vault verify</c>, checks size and hash against it).</param>
+public sealed record VaultReferenceSource(string Schema, string Table, string Column, string Why, string? LivePredicate = null, string SizeColumn = "size_bytes")
 {
     public string Qualified => $"{Schema}.{Table}.{Column}";
 }
@@ -33,7 +34,7 @@ public static class VaultReferences
             "NOT rec.iteration_content_released(r.iteration_id)"),
         new("plm", "document_checkout_file", "sha256", "files of working copies not yet checked in"),
         new("src", "response_file", "sha256", "files a supplier uploaded with a response in the supplier portal (immutable rows)"),
-        new("rec", "archive", "package_sha256", "WORM-style archive packages (8.6): immutable rows, never garbage"),
+        new("rec", "archive", "package_sha256", "WORM-style archive packages (8.6): immutable rows, never garbage", null, "package_size"),
         new("rpt", "artifact", "sha256", "generated release package PDFs (8.9): immutable rows, content addressed"),
     ];
 
@@ -73,6 +74,9 @@ public static class VaultReferences
         new("proc", "plan_revision", "bound_mbom_sha", "content digest of the released MBOM revision a plan revision is written against (ADR-0042), not a vault object"),
         new("proc", "review_binding", "review_sha256", "hash binding a process plan review to its content and MBOM revision (ADR-0042), not a vault object"),
         new("rpt", "artifact_signature", "signed_digest", "SHA-256 of the signed byte ranges of a signed package PDF (ADR-0051); the artifact row is the vault reference, a signature record never keeps bytes alive"),
+        new("rdl", "review", "left_sha256", "names the bytes of the left document file that were compared; the document_file row is the reference, a review never keeps bytes alive (ADR-0053)"),
+        new("rdl", "review", "right_sha256", "names the bytes of the right document file that were compared; the document_file row is the reference, a review never keeps bytes alive (ADR-0053)"),
+        new("rdl", "annotation", "change_digest", "SHA-256 over the deleted and inserted text of one change of a word diff (WordDiff.ChangeDigest); not a vault object (ADR-0053)"),
         new("mdl", "iteration_metrics", "file_sha256", "names the bytes that were measured; the document_file row is the reference, a measurement never keeps bytes alive (ADR-0046)"),
         new("audit", "event", "hash", "audit chain"),
         new("audit", "event", "prev_hash", "audit chain"),

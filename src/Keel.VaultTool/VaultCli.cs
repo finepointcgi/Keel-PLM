@@ -10,6 +10,7 @@ namespace Keel.VaultTool;
 /// <summary>
 /// <c>keel-vault</c>: operator tool for the document vault (ADR-0026).
 /// <code>
+/// keel-vault verify [--parallel N] [--json] [target options]     read-only bulk integrity check of every object the database refers to (ADR-0060)
 /// keel-vault gc [--dry-run | --delete --confirm-bucket NAME] [--grace-days N] [--max-deletions N] [--page-size N] [--prefix P] [--continuation T] [--json]
 ///               [--connection CS | --settings FILE | --use-dev-stack] [--vault-url U --vault-access-key K --vault-secret-key S --vault-bucket B]
 /// </code>
@@ -24,13 +25,14 @@ public static class VaultCli
     private static readonly HashSet<string> ValueOptions =
     [
         "--connection", "--settings", "--grace-days", "--max-deletions", "--page-size", "--prefix", "--continuation", "--confirm-bucket", "--operator",
-        "--vault-url", "--vault-access-key", "--vault-secret-key", "--vault-bucket", "--vault-region",
+        "--vault-url", "--vault-access-key", "--vault-secret-key", "--vault-bucket", "--vault-region", "--parallel",
     ];
 
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextWriter error, Func<string, string?> env, CancellationToken ct)
     {
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help") return Usage(output, 0);
         if (args[0] == "verify-archive") return ArchiveCli.Run(args.Skip(1).ToArray(), output, error); // 8.6: offline verification of archive packages, no database or vault needed
+        if (args[0] == "verify") return await VerifyAsync(args.Skip(1).ToArray(), output, error, env, ct);
         if (args[0] != "gc") { error.WriteLine($"Unknown command '{args[0]}'."); return Usage(error, 2); }
         if (!TryParse(args.Skip(1).ToArray(), error, out var opts)) return 2;
 
@@ -86,6 +88,47 @@ public static class VaultCli
         if (opts.Flags.Contains("--json")) output.WriteLine(JsonSerializer.Serialize(report, ReportJson));
         else Print(report, output);
         return 0;
+    }
+
+    /// <summary>
+    /// <c>keel-vault verify [--parallel N] [--json]</c>: reads every object the database refers to and checks that it exists and hashes to its key at the recorded size (ADR-0060).
+    /// Read-only. Exit 0 when everything is intact, 1 when something is missing or damaged, 2 for a usage or configuration error.
+    /// </summary>
+    private static async Task<int> VerifyAsync(string[] args, TextWriter output, TextWriter error, Func<string, string?> env, CancellationToken ct)
+    {
+        if (!TryParse(args, error, out var opts)) return 2;
+        if (opts.Flags.Contains("--delete") || opts.Flags.Contains("--dry-run")) { error.WriteLine("verify takes no --delete or --dry-run: it never changes anything."); return 2; }
+        var parallel = IntOption(opts, "--parallel", 4);
+        if (parallel is null or < 1 or > 32) { error.WriteLine("--parallel must be a whole number from 1 to 32."); return 2; }
+        var settings = Resolve(opts, env, error);
+        if (settings is null) return 2;
+        var (connection, vaultOptions) = settings.Value;
+        var vaultErrors = vaultOptions.Validate();
+        if (vaultErrors.Count > 0) { error.WriteLine("Vault settings: " + string.Join(" ", vaultErrors)); return 2; }
+        await using var ds = NpgsqlDataSource.Create(connection);
+        using var vault = new ObjectVault(vaultOptions, null, new PostgresVaultPendingGuard(ds, TimeProvider.System));
+        var csb = new NpgsqlConnectionStringBuilder(connection);
+        output.WriteLine($"Target database: {csb.Host}:{csb.Port}/{csb.Database} as {csb.Username}; vault: {vaultOptions.ServiceUrl}/{vaultOptions.Bucket}");
+        VaultVerifyReport report;
+        try
+        {
+            report = await VaultVerifier.VerifyAsync(vault, ds, parallel.Value, ct);
+        }
+        catch (Exception e) when (e is VaultUnavailableException or NpgsqlException)
+        {
+            error.WriteLine("The run failed: " + e.Message);
+            return 1;
+        }
+        var inv = CultureInfo.InvariantCulture;
+        if (opts.Flags.Contains("--json")) output.WriteLine(JsonSerializer.Serialize(report, ReportJson));
+        else
+        {
+            output.WriteLine($"References: {report.References.ToString(inv)} row(s) naming {report.Distinct.ToString(inv)} distinct object(s).");
+            output.WriteLine($"Verified: {report.Verified.ToString(inv)} object(s), {report.BytesVerified.ToString(inv)} bytes (existence, size and SHA-256 of every byte).");
+            foreach (var p in report.Problems) output.WriteLine($"PROBLEM {p.Kind}: {p.Sha256} ({p.SizeBytes.ToString(inv)} bytes) referenced by {string.Join(", ", p.Sources)}: {p.Detail}");
+            output.WriteLine(report.Intact ? "RESULT: INTACT" : $"RESULT: NOT INTACT ({report.Problems.Count.ToString(inv)} problem(s))");
+        }
+        return report.Intact ? 0 : 1;
     }
 
     private static void Print(GcReport r, TextWriter w)
@@ -147,6 +190,7 @@ public static class VaultCli
         w.WriteLine("usage: keel-vault gc [--dry-run | --delete --confirm-bucket NAME] [--grace-days N] [--max-deletions N] [--page-size N] [--prefix P]");
         w.WriteLine("                     [--continuation TOKEN] [--json] [--operator NAME]");
         w.WriteLine("                     [--connection CS | --settings FILE | --use-dev-stack] [--vault-url URL --vault-access-key K --vault-secret-key S --vault-bucket B]");
+        w.WriteLine("       keel-vault verify [--parallel N] [--json] [--connection CS | --settings FILE | --use-dev-stack] [vault options]   (read-only: every referenced object exists and hashes to its key)");
         w.WriteLine("       keel-vault verify-archive --package FILE --public-key PEM [--extract SHA256 --out FILE] [--json]   (offline check of a records archive package)");
         w.WriteLine("The target database is never implied: set Keel__Database__AppConnectionString, or pass --connection / --settings / --use-dev-stack.");
         w.WriteLine("Default is a dry run. A delete run removes only unreferenced objects older than the grace period (default 7 days, at least 1).");

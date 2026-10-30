@@ -1,0 +1,28 @@
+# Builds the production image (--target runtime, pins from deploy/images.env) and proves the production compose bundle starts, answers over TLS and
+# refuses what it should (scripts/verify-compose-example.sh, throwaway PKI and secrets, stub IdP). Reusable.
+name: image
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  image-and-bundle:
+    name: Production image and compose bundle smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build the runtime image from the pinned bases
+        run: |
+          set -a; source deploy/images.env; set +a
+          docker build --target runtime -t keel/api:ci-${GITHUB_RUN_NUMBER} \
+            --build-arg SDK_IMAGE="$SDK_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
+            --build-arg KEEL_VERSION="0.0.0-ci.${GITHUB_RUN_NUMBER}" --build-arg KEEL_REVISION="${GITHUB_SHA}" .
+      - name: Compose bundle smoke test
+        run: |
+          set -a; source deploy/images.env; set +a
+          docker pull "$KEEL_POSTGRES_IMAGE" "$KEEL_VAULT_IMAGE" "$KEEL_PROXY_IMAGE" >/dev/null
+          KEEL_APP_IMAGE=keel/api:ci-${GITHUB_RUN_NUMBER} scripts/verify-compose-example.sh

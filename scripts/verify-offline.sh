@@ -110,9 +110,20 @@ mv "$WORK/license.saved" "$B/licenses/opencascade-LGPL-2.1.txt"
 check "licence and source checks pass after restoring"    pass licence
 check "bundle verifies after the licence checks"          pass "$B/verify.sh"
 
+# --- versions manifest (ADR-0060): present, signed (it is a file of the manifest), and truthful about the archives ---
+check "versions.json is in the signed manifest"          pass grep -q ' ./versions.json$' "$B/SHA256SUMS"
+check "versions.json names this bundle's version"        pass test "$(jq -r .bundle.version "$B/versions.json")" = "$VERSION"
+check "every image archive hash in versions.json matches the file" pass bash -c 'cd "$1" && jq -r ".images[]|\"\(.archiveSha256)  \(.archive)\"" versions.json | while read -r h f; do [[ "$(openssl dgst -sha256 -r "$f" | cut -d" " -f1)" == "$h" ]] || exit 1; done' _ "$B"
+check "versions.json lists every shipped migration"      pass test "$(jq .migrations.count "$B/versions.json")" = "$(ls "$(dirname "$0")/../db/migrations"/*.sql | wc -l | tr -d ' ')"
+
 # --- install preparation (no network, nothing started) ---
 printf 'synthetic-oidc-secret' > "$WORK/oidc.secret"
 T="$WORK/install"
+export KEEL_HTTPS_PORT=${KEEL_VERIFY_HTTPS_PORT:-18453}   # preflight checks that the port is free: not 443, which a developer machine may use
+check "preflight refuses KEEL_REQUIRE_FIPS=true on a host that is not in FIPS mode (nothing is loaded)" fail env KEEL_REQUIRE_FIPS=true "$B/install.sh" --compose --target "$WORK/fipsinstall" --public-host keel.test --oidc-authority https://idp.test/realms/keel --oidc-client-secret-file "$WORK/oidc.secret" --test-pki --preflight-only
+export KEEL_REQUIRE_FIPS=false   # this machine is a test host
+check "install --preflight-only passes and installs nothing" pass "$B/install.sh" --compose --target "$WORK/pfonly" --public-host keel.test --oidc-authority https://idp.test/realms/keel --oidc-client-secret-file "$WORK/oidc.secret" --test-pki --preflight-only
+check "install --preflight-only wrote nothing"           pass test ! -e "$WORK/pfonly/.keel-version"
 check "install refuses without certificates"             fail "$B/install.sh" --compose --target "$WORK/noinstall" --public-host keel.test --oidc-authority https://idp.test/realms/keel --oidc-client-secret-file "$WORK/oidc.secret" --no-start
 if [[ "${KEEL_SKIP_LOAD:-0}" == 1 ]]; then echo "skip install --no-start (KEEL_SKIP_LOAD=1)"; else
   check "install --no-start prepares a compose install"  pass "$B/install.sh" --compose --target "$T" --public-host keel.test --oidc-authority https://idp.test/realms/keel --oidc-client-secret-file "$WORK/oidc.secret" --test-pki --no-start

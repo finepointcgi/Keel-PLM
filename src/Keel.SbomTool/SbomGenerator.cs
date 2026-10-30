@@ -9,7 +9,7 @@ using System.Xml.Linq;
 namespace Keel.SbomTool;
 
 /// <summary>What to inventory. <see cref="AssetsFiles"/> are NuGet <c>project.assets.json</c> files of the shipped projects (empty: the conventional ones under <see cref="Root"/>).</summary>
-public sealed record SbomOptions(string Root, string Version, DateTimeOffset Timestamp, IReadOnlyList<string>? AssetsFiles = null);
+public sealed record SbomOptions(string Root, string Version, DateTimeOffset Timestamp, IReadOnlyList<string>? AssetsFiles = null, bool IncludeDevelopment = false);
 
 /// <summary>One inventoried component, as the SBOM and the notices file both need it.</summary>
 public sealed class SbomComponent
@@ -71,12 +71,14 @@ public sealed partial class SbomGenerator
     {
         var root = Path.GetFullPath(o.Root);
         var sources = LoadSources(root);
-        AddNuGet(root, o.AssetsFiles);
+        AddNuGet(root, o.AssetsFiles, o.IncludeDevelopment);
         AddNpm(root);
         AddVendoredViewerFiles(root);
         AddFonts(root);
         AddBundled(root);
         AddImages(root);
+        AddPythonAddon(root);
+        if (o.IncludeDevelopment) AddDevelopment(root);
         AttachSources(sources);
 
         var ordered = _components.OrderBy(c => c.Kind, StringComparer.Ordinal).ThenBy(c => c.Name, StringComparer.Ordinal).ThenBy(c => c.Version, StringComparer.Ordinal).ToList();
@@ -130,11 +132,26 @@ public sealed partial class SbomGenerator
 
     // ---------------------------------------------------------------- NuGet
 
-    private void AddNuGet(string root, IReadOnlyList<string>? assetsFiles)
+    private void AddNuGet(string root, IReadOnlyList<string>? assetsFiles, bool includeDevelopment)
     {
         var files = assetsFiles is { Count: > 0 }
             ? [.. assetsFiles]
             : ShippedProjects.Select(p => Path.Combine(root, "src", p, "obj", "project.assets.json")).Where(File.Exists).ToList();
+        var shippedCount = files.Count;
+        if (includeDevelopment && files.Count > 0)
+        {
+            // Every other project of the solution (tests, tools, importers): what building and testing Keel needs, never delivered.
+            foreach (var area in new[] { "src", "tests" })
+            {
+                var dir = Path.Combine(root, area);
+                if (!Directory.Exists(dir)) continue;
+                foreach (var project in Directory.EnumerateDirectories(dir).Order(StringComparer.Ordinal))
+                {
+                    var f = Path.Combine(project, "obj", "project.assets.json");
+                    if (File.Exists(f) && !files.Contains(f, StringComparer.OrdinalIgnoreCase)) files.Add(f);
+                }
+            }
+        }
         if (files.Count == 0)
         {
             _warnings.Add("No project.assets.json found (run dotnet restore first): the NuGet inventory lists only direct package references and is marked incomplete.");
@@ -142,8 +159,10 @@ public sealed partial class SbomGenerator
             return;
         }
         var seen = new Dictionary<string, SbomComponent>(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in files)
+        for (var fileIndex = 0; fileIndex < files.Count; fileIndex++)
         {
+            var file = files[fileIndex];
+            var shipped = fileIndex < shippedCount;
             using var doc = JsonDocument.Parse(File.ReadAllText(file));
             var rootEl = doc.RootElement;
             var folders = rootEl.TryGetProperty("packageFolders", out var pf) ? pf.EnumerateObject().Select(p => p.Name).ToList() : [];
@@ -158,9 +177,10 @@ public sealed partial class SbomGenerator
                 var relPath = lib.Value.TryGetProperty("path", out var p) ? p.GetString() : $"{id.ToLowerInvariant()}/{version.ToLowerInvariant()}";
                 var c = new SbomComponent
                 {
-                    Ref = $"pkg:nuget/{id}@{version}", Type = "library", Name = id, Version = version, Kind = "nuget",
+                    Ref = $"pkg:nuget/{id}@{version}", Type = "library", Name = id, Version = version, Kind = "nuget", Shipped = shipped,
                     Purl = $"pkg:nuget/{id}@{version}", Url = $"https://www.nuget.org/packages/{id}/{version}",
                 };
+                if (!shipped) c.Properties["keel:reason"] = "referenced only by test, tooling or importer projects; not delivered";
                 if (lib.Value.TryGetProperty("sha512", out var sha) && sha.GetString() is { Length: > 0 } b64)
                     c.Hashes["SHA-512"] = Convert.ToHexStringLower(Convert.FromBase64String(b64));
                 foreach (var folder in folders)
@@ -231,6 +251,67 @@ public sealed partial class SbomGenerator
             var info = new FileInfo(f);
             if (info.Length is 0 or > 2_000_000) continue;
             c.LicenseTexts.Add((Path.GetFileName(f), File.ReadAllText(f).ReplaceLineEndings("\n").TrimEnd()));
+        }
+    }
+
+    // ---------------------------------------------------------------- the FreeCAD add-on (Python) and development-only components
+
+    private static readonly string[] AddonDirectories = ["keel_plm", "resources"];
+
+    /// <summary>The add-on itself, with a digest of its files. It uses the Python standard library at run time; the packages the repository's own scripts need are catalogued as development components.</summary>
+    private void AddPythonAddon(string root)
+    {
+        var dir = Path.Combine(root, "tools", "freecad-keel");
+        var manifest = Path.Combine(dir, "package.xml");
+        if (!File.Exists(manifest)) { _warnings.Add("tools/freecad-keel/package.xml not found: the FreeCAD add-on is not inventoried."); return; }
+        var meta = XDocument.Load(manifest).Root!.Elements().ToDictionary(e => e.Name.LocalName, e => e.Value.Trim(), StringComparer.Ordinal);
+        var files = new List<string> { manifest };
+        foreach (var f in new[] { "Init.py", "InitGui.py" }) if (File.Exists(Path.Combine(dir, f))) files.Add(Path.Combine(dir, f));
+        foreach (var sub in AddonDirectories)
+            if (Directory.Exists(Path.Combine(dir, sub)))
+                files.AddRange(Directory.EnumerateFiles(Path.Combine(dir, sub), "*", SearchOption.AllDirectories).Where(f => !f.Contains("__pycache__", StringComparison.Ordinal) && !f.EndsWith(".pyc", StringComparison.Ordinal)));
+        var lines = files.Select(f => Path.GetRelativePath(dir, f).Replace('\\', '/') + "  " + Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(f)))).Order(StringComparer.Ordinal).ToList();
+        var c = new SbomComponent
+        {
+            Ref = "addon:keel-freecad-addon@" + meta["version"], Type = "application", Name = "keel-freecad-addon", Version = meta["version"], Kind = "first-party",
+            Supplier = "Keel PLM team", Purl = "pkg:generic/keel-freecad-addon@" + meta["version"],
+        };
+        c.Hashes["SHA-256"] = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', lines) + "\n")));
+        c.Properties["keel:first-party"] = "true";
+        c.Properties["keel:files"] = lines.Count.ToString(CultureInfo.InvariantCulture);
+        c.Properties["keel:digest"] = "SHA-256 over the sorted lines 'path  sha256' of package.xml, Init*.py, keel_plm/ and resources/ (tests excluded)";
+        c.Properties["keel:runtime-dependencies"] = "Python standard library and the FreeCAD host application only (no third-party Python package is imported by the add-on)";
+        _components.Add(c);
+    }
+
+    /// <summary>Components that only developers, tests and maintainers use: the Python packages of the add-on's tests and fixture generator, the FreeCAD host, and the test-only vendored axe-core.</summary>
+    private void AddDevelopment(string root)
+    {
+        foreach (var d in _catalogue!["development"]!.AsArray().Select(n => n!.AsObject()))
+        {
+            var name = Str(d, "name");
+            var kind = Str(d, "kind");
+            var version = d["version"]?.GetValue<string>();
+            var constraint = d["specifier"]?.GetValue<string>();
+            var c = new SbomComponent
+            {
+                Ref = kind == "python" ? $"pkg:pypi/{name}{(version is null ? "" : "@" + version)}" : $"{kind}:{Slug(name)}@{version ?? "unpinned"}",
+                Type = kind == "vendored-file" ? "file" : "library", Name = name, Version = version, Kind = kind, Shipped = false,
+                Supplier = Str(d, "supplier"), Url = Str(d, "url"),
+                Purl = kind == "python" ? $"pkg:pypi/{name.ToLowerInvariant()}{(version is null ? "" : "@" + version)}" : null,
+            };
+            c.Licenses.Add(Str(d, "license"));
+            if (constraint is not null) c.Properties["keel:version-constraint"] = constraint;
+            c.Properties["keel:reason"] = Str(d, "note");
+            c.Properties["keel:licence-basis"] = Str(d, "licenseBasis");
+            if (d["file"]?.GetValue<string>() is { } file)
+            {
+                var full = Path.Combine(root, file);
+                if (!File.Exists(full)) throw new FileNotFoundException($"The development component {name} names {file}, which does not exist.", full);
+                c.Hashes["SHA-256"] = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(full)));
+                c.Properties["keel:file"] = file;
+            }
+            _components.Add(c);
         }
     }
 

@@ -1,0 +1,23 @@
+# On every push to main: the fast set, the browser suite (including axe), and the production image with the compose bundle smoke test.
+name: main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: main-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fast:
+    uses: ./.github/workflows/fast.yml
+  browser:
+    uses: ./.github/workflows/e2e.yml
+  image:
+    needs: fast
+    uses: ./.github/workflows/image.yml

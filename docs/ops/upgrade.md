@@ -17,11 +17,14 @@ Because migrations cannot be undone, the only rollback after a migration has run
 (backup-restore.md) together with the previous image. If the migration job itself fails, its transaction is rolled back; fix the cause and
 re-run. Application-only rollbacks (no migration in the release) are `helm rollback` or re-pointing `KEEL_APP_IMAGE`.
 
+## Rehearse before you upgrade
+`scripts/ops/upgrade-rehearsal.sh` (ADR-0060) builds a database exactly as the previous release left it (the previous migration files are read from git history and run by the image's own migrator), puts data in it, runs the shipped migrations, and checks that every earlier table keeps its rows and content, the audit chain and checkpoints still verify with the same event count, the recorded migration hashes equal the shipped files, a second run changes nothing, the new application reports ready, and the migrator refuses an edited, already-applied file. The result of the last run, with the commands and the limits of what it shows, is in [drill-results/upgrade-rehearsal.md](drill-results/upgrade-rehearsal.md). To rehearse against YOUR data, restore a backup into a throwaway server and run the migrator image against it.
+
 ## Procedure
 1. Read the release notes; check for new settings (configuration.md).
 2. Take a base backup and confirm WAL archiving is current; export/copy secrets if rotated.
-3. Verify and transfer the new bundle (offline-install.md).
-4. `upgrade.sh ... --backup-done`. It refuses downgrades and same-version re-installs.
+3. Verify and transfer the new bundle (offline-install.md). Run `./preflight.sh --compose --upgrade --target /opt/keel` ahead of the window.
+4. `upgrade.sh ... --backup-done`. It runs the preflight, refuses downgrades and same-version re-installs.
 5. Check `/health/ready`, run `keel-audit verify`, sign in, open a part and a document.
 6. Keep the previous bundle and backup until the next maintenance window.
 

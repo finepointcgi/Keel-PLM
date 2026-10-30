@@ -59,6 +59,24 @@ where-used and comparison tables are paged at 100 rows; the structure-difference
 elements; banners are present and the accessibility audit passes with the big grid on screen. Time budgets there are generous (expand all under 90 s; others under 30 s).
 Timings of the last run are in the fixture log (`TestResults/e2e/`).
 
+## End-to-end load smoke (ADR-0060, measured 2026-10-30)
+The numbers above are service-level (no HTTP, no authentication). `scripts/ops/load-smoke.sh` measures what a client sees: the **production image** with the limits of the compose bundle (application 2 CPUs and 2 GiB, PostgreSQL 2 CPUs and 4 GiB, vault 1 CPU and 2 GiB, read-only root, uid 1001), real Keycloak tokens, the real access filter, and the in-repo client `tests/Keel.LoadTool` (closed loop, 20 s per phase, 3 s warm-up; no third-party load tool, k6 is AGPL). Data: a synthetic structure of 50,000 usage lines over 8 levels (36,362 part masters before the run, 61,628 at the end because the run creates parts). Everything ran on one machine (Apple silicon, Docker VM with 8 CPUs and 15 GiB, PostgreSQL and the vault in tmpfs, the client on the host), so latency includes no network and no disk. Full table and conditions: [drill-results/load-smoke.md](drill-results/load-smoke.md).
+
+| Operation (what it is) | 1 worker p50 / p95 | 8 workers p50 / p95 | 32 workers p50 / p95 | Errors |
+|---|---|---|---|---|
+| list: a page of 50 parts at a random offset (about 25 KB) | 66 / 75 ms | 305 / 392 ms | 1,206 / 2,301 ms | 0 |
+| search: free text from names and numbers in the data (small result sets, about 1.4 KB) | 2 / 4 ms | 4 / 53 ms | 20 / 83 ms | 0 |
+| create-part: `POST /api/v1/parts` (writes the part and its audit event in one transaction) | 5 / 8 ms | 15 / 27 ms | 54 / 87 ms | 0 |
+| BOM expand, one level of the root (about 10 KB; the structure tab's first paint) | 3 / 5 ms | 5 / 47 ms | 23 / 70 ms | 0 |
+| BOM expand, every level of the root (46 MB of JSON) | 935 / 981 ms | 4,984 / 5,430 ms | not run | 0 |
+
+How to read it, and its limits:
+- **The database is the limit for list pages.** With PostgreSQL held to the bundle's 2 CPUs, a list page costs a pass over the readable part set (the `count(*) OVER ()` described above), PostgreSQL ran at about 205% CPU, and list throughput stopped at about 25 pages per second whatever the concurrency (p95 2.3 s at 32 concurrent clients). An earlier run of the same script on the same 50,000-line data with PostgreSQL unrestricted on the 8-CPU VM (PostgreSQL used about 780% CPU; that run's report was replaced by this one and is not kept) sustained about 97 list pages per second with p95 575 ms at 32 workers, so give PostgreSQL more CPU (`KEEL_POSTGRES_CPUS`) before more application replicas if list and search at this size matter to your users.
+- The application container peaked at about 142% CPU and 652 MiB of its 2 CPUs and 2 GiB in this run: it was not the bottleneck.
+- Search and one-level BOM expand stay under 100 ms p95 at 32 concurrent clients on this data. The search terms come from names found in the data, so the result sets are small; a query that matches thousands of parts costs like a list page.
+- Full BOM expand of a 50,000-line structure is a 46 MB response and takes about one second for one client and five seconds each with eight at once. The UI does not do this (it loads a level at a time); the API allows it. It is capped at 8 workers in the smoke because many 46 MB responses in flight measure the response size, not the service.
+- This is a smoke on one machine, with the client on the same host, an empty cache profile (warm-up only), one user (`alice`, a US person who can read most of the data) and no concurrent uploads, workflow, notifications or SIEM forwarding. It is **not a capacity test and not an availability or response-time commitment**. It shows the order of magnitude, finds the first bottleneck, and gives a repeatable measurement: run it against your own sizing, and `--lines`, `--concurrency`, `--duration`, `--app-cpus`, `--pg-cpus`, `--app-memory` and `--pg-memory` change the conditions.
+
 ## Operating notes
 - Each page of a list costs one pass over the readable rows. If a deployment's lists pass about 1 million rows, measure with `KEEL_SCALE_FACTOR=10` before relying on this table.
 - Run `ANALYZE` after bulk loads.

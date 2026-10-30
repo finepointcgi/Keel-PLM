@@ -11,7 +11,7 @@ set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-MODE="" TARGET=/opt/keel BACKUP_DONE=false NAMESPACE=keel VALUES="" REGISTRY="" DRY_RUN=false VERIFY_ARGS=()
+MODE="" TARGET=/opt/keel BACKUP_DONE=false NAMESPACE=keel VALUES="" REGISTRY="" DRY_RUN=false VERIFY_ARGS=() SKIP_PREFLIGHT=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --compose) MODE=compose; shift ;;
@@ -22,6 +22,7 @@ while [[ $# -gt 0 ]]; do
     --values) VALUES=$2; shift 2 ;;
     --registry) REGISTRY=$2; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
+    --skip-preflight) SKIP_PREFLIGHT=true; shift ;;
     --pubkey|--fingerprint) VERIFY_ARGS+=("$1" "$2"); shift 2 ;;
     -h|--help) sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
@@ -39,6 +40,13 @@ version_lt() { [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,
 
 log "== 1/4 verifying bundle $VERSION"
 verify_bundle "${VERIFY_ARGS[@]+"${VERIFY_ARGS[@]}"}"
+
+if $SKIP_PREFLIGHT; then warn "--skip-preflight: the host and the running installation were not checked by this run"
+else
+  log "== preflight checks"
+  if [[ $MODE == compose ]]; then pf=(--compose --upgrade --target "$TARGET"); else pf=(--k8s --upgrade --namespace "$NAMESPACE" --values "$VALUES"); fi
+  "$BUNDLE_DIR/preflight.sh" "${pf[@]}" || die "preflight failed: fix the FAIL lines above and run again (nothing was loaded or changed)"
+fi
 
 RUNTIME=$(detect_runtime)
 log "== 2/4 loading images with $RUNTIME"

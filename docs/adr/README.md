@@ -65,3 +65,5 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0054](0054-rfq-and-supplier-scorecards.md) | RFQs beyond the portal (need-by dates, released documents whole or refused, tiered quotes, comparison, awards that record the sourcing link) and supplier quality scorecards (transparent formula, trend, published to the supplier on purpose) | Accepted |
 | [0056](0056-workflow-admin-and-phone-approvals.md) | Workflow designer in administration (steps editor, drafts, preview as the workflow map) and phone approvals with a review summary of exactly what is signed | Accepted |
 | [0058](0058-production-sign-in.md) | Production sign-in: CAC/PIV (X.509) through Keycloak, customer IdP brokering, certificate level for e-signatures, read-only Sign-in status page | Accepted |
+| [0059](0059-ci-and-supply-chain.md) | CI pipeline, supply-chain checks, SBOM and the committed licence inventory with an enforcing test | Accepted |
+| [0060](0060-packaging-backup-restore-and-upgrade.md) | Production packaging, preflight, versions manifest and the operations proof: backup and restore drill, upgrade rehearsal, load smoke, `keel-vault verify` | Accepted |

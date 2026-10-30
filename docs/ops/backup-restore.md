@@ -24,8 +24,8 @@ Three things must be backed up together, because the audit chain, the document r
 - **Replicate** the bucket to a second store (store-native replication or `rclone sync` with `--immutable`). Back up on the same
   schedule as the database: a database restored to time T needs every object referenced up to T, and objects are only ever added, so
   a vault backup taken **after** the database backup contains everything the database refers to.
-- After a restore, run a full integrity pass: every referenced object must exist and hash to its key (downloads verify this on
-  access; a bulk verifier is Phase 5, until then sample or script `GET` + SHA-256 against `plm.document_file`).
+- After a restore, run a full integrity pass with `keel-vault verify` (below): every object the database refers to must exist and hash to its key at the recorded size.
+  Downloads also verify on access.
 - Garbage collection of unreferenced objects is not implemented (ADR-0015, Phase 5); nothing is deleted, which keeps restores simple.
 
 ## Audit chain and checkpoint keys
@@ -39,6 +39,42 @@ Three things must be backed up together, because the audit chain, the document r
 
 ## SIEM cursor
 `siem.cursor` (forwarding position per destination) and `vault.pending_upload` / `vault.gc_run` are ordinary tables in the database backup; nothing else to save. After a restore the forwarder resumes from the restored cursor and re-sends events the SIEM already has (deduplicate on `seq`+`id`, siem-onboarding.md); if the restored cursor is ahead of the restored log, the tail check reports `tail_changed`: investigate, then replay or clear as described there. Scan results (`plm.file_scan`) and quarantines (`plm.file_quarantine`) are restored with the documents.
+
+## Logical backup of a compose site and the vault integrity check (ADR-0060)
+For the compose production bundle (`/opt/keel/compose`; `P` is the compose command with the project's files, as `upgrade.sh` builds it) the same assets are saved like this, in this order (**database first, then the vault**, because objects are only ever added):
+```bash
+cd /opt/keel/compose
+P="docker compose --project-directory . -p keel --env-file ../images.env --env-file .env -f compose.prod-example.yaml"
+$P exec -T postgres pg_dump -U postgres -Fc keel > /backup/keel.dump                      # 1. database (custom format, restorable with pg_restore)
+$P stop vault                                                                              # 2. vault: a cold copy of its volume (or your store's replication/snapshots)
+docker run --rm -v keel_vaultdata:/data:ro -v /backup:/backup "$(. ../images.env; echo ${KEEL_POSTGRES_IMAGE%@*})" tar -C /data -czf /backup/vault-data.tar.gz .
+$P start vault
+cp prod-example/secrets/audit_checkpoint_key.pub.pem /backup/                              # 3. public checkpoint key (the PRIVATE key is kept offline, separately)
+(cd /backup && sha256sum keel.dump vault-data.tar.gz audit_checkpoint_key.pub.pem > SHA256SUMS)   # 4. manifest
+```
+Restore into a new server (the installer created the roles and the empty `keel` database from the secrets; the migration job is a no-op afterwards):
+```bash
+(cd /backup && sha256sum -c SHA256SUMS)
+$P up -d postgres
+$P exec -T postgres pg_restore -U postgres -d keel --exit-on-error < /backup/keel.dump
+docker run --rm -v keel_vaultdata:/data -v /backup:/backup:ro "$(. ../images.env; echo ${KEEL_POSTGRES_IMAGE%@*})" tar -C /data -xzf /backup/vault-data.tar.gz
+$P up -d
+```
+Check the result with the tools of the production image (they run in the `app` service's configuration, over TLS, with the secret files):
+```bash
+APP_CS=$(cat prod-example/secrets/Keel__Database__AppConnectionString)
+$P run --rm --no-deps -T -e "KEEL_AUDIT_CONNECTION=$APP_CS" --entrypoint dotnet app \
+   /app/audit/keel-audit.dll verify --public-key /run/secrets/audit_checkpoint_key_pub              # RESULT: VALID, events and checkpoints checked
+$P run --rm --no-deps -T -e "Keel__Database__AppConnectionString=$APP_CS" -e Keel__Vault__ServiceUrl=https://vault:8334 -e Keel__Vault__Bucket=keel-vault \
+   -e "Keel__Vault__AccessKey=$(cat prod-example/secrets/Keel__Vault__AccessKey)" -e "Keel__Vault__SecretKey=$(cat prod-example/secrets/Keel__Vault__SecretKey)" \
+   --entrypoint dotnet app /app/vault/keel-vault.dll verify                                         # RESULT: INTACT
+```
+`keel-vault verify [--parallel N] [--json]` is read-only (no audit event, no deletion). It reads every object that `plm.document_file`, `plm.document_checkout_file`, `src.response_file`, `rec.archive` and `rpt.artifact` refer to (honouring the retention release predicate) and checks existence, recorded size and the SHA-256 of every byte. It exits 1 and prints `PROBLEM missing|damaged: <sha256> ... referenced by <columns>` otherwise. It reads the whole vault once, so run it in a quiet period on a large vault and raise `--parallel` only as far as the store tolerates. If a PostgreSQL restore is point-in-time (WAL), the vault copy must be taken after the database state you restore to.
+
+`keel-audit verify` and `keel-vault verify` were run on the production TLS compose stack by `scripts/verify-compose-example.sh` (empty system); the drill below runs them on restored data without TLS.
+
+## The restore drill (executed, repeatable)
+`scripts/ops/backup-restore-drill.sh` does the above for real against throwaway containers and volumes named `keel-drill-backup-*` (removed afterwards; nothing existing is touched): real services create parts and documents with files and a signed checkpoint; `pg_dump -Fc`, then a cold copy of the vault volume, then a SHA-256 manifest; more changes are made after the backup; the source is destroyed; a new server and a new vault volume are restored from the artifacts only; then it checks that row counts of all tables equal the baseline, the audit chain and signed checkpoints verify with the same counts, `keel-vault verify` is INTACT with the same objects and bytes, every document file reads back with its recorded SHA-256, the changes made after the backup are absent, and (negative controls) a tampered audit row, a damaged vault object and a deleted vault object are each reported. The result of the last run, the dataset and the timings are in [drill-results/backup-restore.md](drill-results/backup-restore.md). The data is small: the timings show the procedure works, not how long your data takes; time a restore of your own backup quarterly.
 
 ## Restore procedure
 1. Provision a fresh PostgreSQL server (same major version) and, if needed, a fresh vault bucket restored from replica.
@@ -57,4 +93,4 @@ and a signed checkpoint, base backup with WAL archiving on, 5 more parts, then t
 WAL, and to a point in time before the later parts) and these checks: all-table row counts equal, `keel-audit verify` VALID,
 event and checkpoint counts equal, and a negative control (a tampered restored row is reported INVALID). Run it before every
 release and after changing the PostgreSQL major version; run the same procedure against your real backup tooling quarterly.
-It does not cover the vault, the operator tooling you choose, or encryption of backup media.
+It does not cover the vault (the drill above does), the operator tooling you choose, or encryption of backup media.

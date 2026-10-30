@@ -1,0 +1,18 @@
+# Pull requests run the FAST set only (about 15 minutes, no browser). The browser suite (about 19 minutes) runs on main and nightly (main.yml, nightly.yml).
+# Axe accessibility is the exception that follows the change: axe.yml runs on pull requests that touch the UI. See docs/ops/ci.md.
+name: pull-request
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    uses: ./.github/workflows/fast.yml
