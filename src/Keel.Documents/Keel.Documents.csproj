@@ -6,6 +6,8 @@
     <PackageReference Include="Npgsql" />
     <PackageReference Include="AWSSDK.S3" />
     <PackageReference Include="PDFsharp" />
+    <!-- 9.5 redline: PdfPig (Apache-2.0, managed) reads the text layer of PDFs for the comparison. No network, no native code. -->
+    <PackageReference Include="PdfPig" />
     <!-- Overrides PDFsharp's vulnerable transitive 8.0.1 (see Directory.Packages.props). -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>

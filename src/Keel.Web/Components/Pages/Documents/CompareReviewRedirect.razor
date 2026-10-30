@@ -1,0 +1,24 @@
+@page "/compare/review/{Id:guid}"
+@using Keel.Documents
+@inject CurrentUser Users
+@inject DocumentService Docs
+@inject NavigationManager Nav
+
+@* A link to a redline review (from a notification or a review panel): resolves the pointer after the access checks and opens the comparison. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Redline review">
+    @if (notFound) { <p class="error" role="alert">This redline review was not found, or you are not authorized to see both of its documents.</p> }
+    else { <Skeleton Lines="2" Label="Opening the redline review" /> }
+</PageFrame>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool notFound;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var outcome = await Docs.ResolveRedlineReviewAsync(await Users.GetAsync(), Id, CurrentUser.NewCorrelationId());
+        if (!outcome.IsOk) { notFound = true; return; }
+        var t = outcome.Value!;
+        Nav.NavigateTo(RedlineUi.PageUrl(t.Left.Number, t.Left.IterationId, t.Right.Number, t.Right.IterationId), replace: true);
+    }
+}

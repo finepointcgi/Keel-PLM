@@ -45,6 +45,7 @@ public static class NotificationKinds
     public const string WatchedEstablished = NotificationKindCodes.WatchedEstablished;
     public const string CommentAdded = NotificationKindCodes.CommentAdded;
     public const string CommentMention = NotificationKindCodes.CommentMention;
+    public const string RedlineComment = NotificationKindCodes.RedlineComment;
     public const string QualityActionAssigned = NotificationKindCodes.QualityActionAssigned;
     public const string QualityActionOverdue = NotificationKindCodes.QualityActionOverdue;
     public const string DeviationExpiring = NotificationKindCodes.DeviationExpiring;
@@ -92,6 +93,8 @@ public static class NotificationKinds
             "The change you requested was rejected (decided by {actor})", true, null, false, true, 80),
         new(CommentAdded, NotificationGroups.Watching, "Comment on something you follow", "A new comment on an object you watch, or a reply to your comment.",
             "{actor} commented", true, null, false, false, 50),
+        new(RedlineComment, NotificationGroups.Watching, "Comment on a redline of a document you follow", "A reviewer commented on a changed range in a comparison of two versions of a document you watch, or replied to your comment there.",
+            "{actor} commented on a redline", true, null, false, false, 50),
         new(WatchedReleased, NotificationGroups.Watching, "Watched object released", "An object you watch was released.",
             "Released (by {actor})", true, null, false, true, 40),
         new(WatchedObsoleted, NotificationGroups.Watching, "Watched object obsoleted", "An object you watch became obsolete.",
@@ -148,6 +151,7 @@ public static class NotificationKinds
         {
             CommentMention or CommentAdded => refId is { } c ? $"{path}?comment={c:D}#comments" : $"{path}#comments",
             TaskAssigned or ReviewRequested => refId is { } t ? $"tasks/{t:D}" : $"{path}#{AwarenessKinds.ReviewTab(objectType)}",
+            RedlineComment => refId is { } rv ? $"compare/review/{rv:D}" : $"{path}#versions",
             ChangeTaskAssigned => $"{path}#tasks",
             QualityActionAssigned or QualityActionOverdue => $"{path}?tab=actions",
             MilestoneDue or MilestoneOverdue => $"{path}?tab=schedule",

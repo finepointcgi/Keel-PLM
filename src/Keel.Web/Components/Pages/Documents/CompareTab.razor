@@ -1,0 +1,64 @@
+@using Keel.Documents
+@using Keel.Documents.Compare
+@inject CurrentUser Users
+@inject DocumentService Docs
+
+@* The Compare tab of a document (increment 9.5, ADR-0053): start a redline of two of its versions, or of this document against another one, and see the redline reviews that
+   involve it with how many comment threads are still open. *@
+<section class="panel stack" aria-labelledby="cmp-heading" data-testid="compare-tab">
+    <h3 id="cmp-heading">Compare and redline</h3>
+    <p class="muted">See what changed between two versions of this document, or between this document and another one, word by word. Reviewers can comment on each change.</p>
+    @if (list is null) { <Skeleton Lines="2" Label="Loading the versions" /> }
+    else if (list.Versions.Count >= 2)
+    {
+        <div class="toolbar">
+            <label>Base version <select data-testid="tab-left" @bind="leftSel">@foreach (var v in list.Versions) { <option value="@v.IterationId">@v.Label · @v.State</option> }</select></label>
+            <label>Changed version <select data-testid="tab-right" @bind="rightSel">@foreach (var v in list.Versions) { <option value="@v.IterationId">@v.Label · @v.State</option> }</select></label>
+            <a class="button" data-testid="tab-compare" href="@RedlineUi.PageUrl(Number, leftSel, Number, rightSel)">Compare versions</a>
+        </div>
+    }
+    else { <p class="muted">This document has one version with a file. Compare it with another document instead.</p> }
+    <p><a href="@("compare?left=" + Uri.EscapeDataString(Number))" data-testid="tab-other">Compare with another document</a></p>
+
+    <h4>Redline reviews</h4>
+    @if (reviews.Count == 0) { <p class="muted" data-testid="no-reviews">No redline has been commented on yet.</p> }
+    else
+    {
+        <div class="table-wrap"><table class="data" data-testid="review-table">
+            <caption class="sr-only">Redline reviews that involve @Number</caption>
+            <thead><tr><th scope="col">Compared</th><th scope="col">Started by</th><th scope="col">Started (UTC)</th><th scope="col">Comment threads</th></tr></thead>
+            <tbody>
+            @foreach (var r in reviews)
+            {
+                <tr>
+                    <td><a href="@($"compare/review/{r.ReviewId:D}")">@r.LeftNumber @r.LeftLabel against @r.RightNumber @r.RightLabel</a></td>
+                    <td>@r.CreatedByName</td><td>@UiText.Utc(r.CreatedAt)</td><td>@r.OpenThreads open of @r.TotalThreads</td>
+                </tr>
+            }
+            </tbody>
+        </table></div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>The banner of the reviews listed (they may name other documents), for the page banner.</summary>
+    [Parameter] public EventCallback<string?> OnBanner { get; set; }
+
+    private CompareVersionList? list;
+    private IReadOnlyList<RedlineReviewSummary> reviews = [];
+    private Guid leftSel, rightSel;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var subject = await Users.GetAsync();
+        list = (await Docs.ListCompareVersionsAsync(subject, Number, CurrentUser.NewCorrelationId())).Value;
+        reviews = await Docs.ListRedlineReviewsAsync(subject, Number);
+        if (list is { Versions.Count: >= 2 })
+        {
+            rightSel = list.Versions[^1].IterationId;
+            leftSel = list.Versions[^2].IterationId;
+        }
+        await OnBanner.InvokeAsync(reviews.Count == 0 ? null : BannerMerge.Union(reviews.Select(r => r.Banner).ToArray()));
+    }
+}

@@ -74,6 +74,7 @@ Direct references (project in brackets):
 | prometheus-net.AspNetCore (and prometheus-net) | 8.2.1 | `MIT` | `Keel.Api`, `Keel.Integration` | managed assembly |
 | AWSSDK.S3 (and AWSSDK.Core 4.0.102.8) | 4.0.104 | `Apache-2.0` | `Keel.Documents` | managed assembly, talks S3 API to the vault |
 | PDFsharp | 6.2.4 | `MIT` | `Keel.Documents`, `Keel.Reports` | managed assembly; the "Core" build (no GDI/WPF), no native code per ADR-0044 |
+| PdfPig (UglyToad.PdfPig and its Core, Fonts, Tokenization, Tokens and DocumentLayoutAnalysis assemblies, one package) | 0.1.16 | `Apache-2.0` | `Keel.Documents` | managed assembly, no native code; reads the text layer of PDFs for the redline comparison (ADR-0053, increment 9.5). Also used by the tests. Apache-2.0 notice and any NOTICE text to be carried: **unverified** whether the package ships a NOTICE file |
 | System.Security.Cryptography.Pkcs | 10.0.14 | `MIT` | `Keel.Documents`, `Keel.Reports` | pinned patched servicing version, transitive of PDFsharp (comment in `Directory.Packages.props`) |
 
 Transitive packages found by the SBOM run, all `MIT`: Microsoft.Bcl.Cryptography 10.0.2, Microsoft.Extensions.DependencyInjection.Abstractions 10.0.0, Microsoft.Extensions.Logging.Abstractions 10.0.0, Microsoft.IdentityModel.Abstractions / JsonWebTokens / Logging / Protocols / Protocols.OpenIdConnect / Tokens 8.19.2, System.IdentityModel.Tokens.Jwt 8.19.2, Microsoft.OpenApi 2.12.2.
@@ -91,7 +92,7 @@ The Keel host also contains Keel's own modules (`src/Keel.*`) and three command-
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.14 | `MIT` | nuspec | host tests |
 | Testcontainers, Testcontainers.PostgreSql | 4.16.0 | `MIT` | nuspec | integration tests start PostgreSQL and SeaweedFS containers |
 | Microsoft.Playwright | 1.61.0 | `MIT` | nuspec | E2E browser tests (`tests/Keel.E2E`). Playwright downloads browser builds at set-up time; those browsers' licences are **unverified** and outside the repository |
-| PdfPig | 0.1.16 | `Apache-2.0` | nuspec | reads text of marked PDFs in tests |
+| PdfPig | 0.1.16 | `Apache-2.0` | nuspec | reads text of marked PDFs in tests (since 9.5 it is also a delivered package of `Keel.Documents`, see the delivered table) |
 | axe-core (Deque Systems) | 4.10.2 | `MPL-2.0` | `tests/Keel.E2E/vendor/axe-core/VENDOR.md` and `LICENSE` | accessibility audit, injected through the DevTools protocol |
 
 Evidence that the test-only items do not ship: the SBOM generator marks them out of scope and lists build tooling as `excluded`; `tests/Keel.E2E/vendor/axe-core/VENDOR.md` says "a test asserts both" (not referenced by `src/`, not copied into the image or bundle). The Dockerfile copies only `src`, `db/migrations`, two named input files and (demo stage) `tests/Keel.TestSupport` (see 3.7). **`tests/Keel.TestSupport` is copied into the demo build stage and the seeder links it**: it references `Npgsql` and the ASP.NET Core framework only (verified in its csproj); whether it contains other third-party code is **unverified**.

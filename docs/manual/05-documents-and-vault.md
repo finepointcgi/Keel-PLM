@@ -59,6 +59,33 @@ For CAD documents and any document whose primary file is STL, OBJ, 3MF, STEP, gl
 ![The Versions tab of a drawing](images/documents-versions.png)
 ![The versions tab of a model document](images/documents-model-versions.png)
 
+## Compare and redline
+
+Use the redline to see what changed between two versions of a document, or between two documents, and to talk about each change with your reviewers. Open **Compare** on a document, or choose **Compare documents** in the navigation (or press `Ctrl+K` and type `compare`).
+
+1. On a document, open the **Compare** tab. Pick a **Base version** and a **Changed version** and select **Compare versions**. To compare with another document, select **Compare with another document**.
+2. On the **Compare documents** page, type a document number for the left side and select **Find versions of left**, then the same for the right side with **Find versions of right**. Choose a version on each side and select **Compare**.
+3. Keel reads both files. Plain text, Markdown, Word (`.docx`), Excel (`.xlsx`) and the text of PDFs are compared **word by word**. The page shows the **Summary** (changes, inserted words, deleted words, similarity) and the **Redline**.
+4. In the redline, <ins>inserted text</ins> is underlined and set between `[+` and `+]`; <del>deleted text</del> is struck through and set between `[−` and `−]`. Colour is only a help: the marks and the underline or strike-through carry the meaning, and screen readers announce each insertion and deletion. Spacing and line breaks are not changes.
+5. Select **Next change** and **Previous change** to step through the changes (the status says, for example, "Change 3 of 12"). With the redline focused you can press `N` for the next change and `P` for the previous one. Choose **Inline** for one text with both marks, or **Side by side** for the old text (deletions) beside the new text (insertions). The **Changes** table lists each change; select its number to jump to it.
+6. To comment, select a change, write in **Comment on change 3** and select **Add comment**. A reviewer answers with **Reply**. When the change is settled, the author of the thread, or someone who can modify or sign the document, selects **Resolve thread** (**Reopen thread** undoes it). Comments belong to this pair of versions and to the change they are written on. Open ones are counted on the document's **Review & release** tab, and the people watching the document get a notification. They do not block a release: the reviewers and approvers of the workflow decide that.
+7. Select **Export PDF** or **Export HTML** for a report with the summary, the redline, the change list and the comments. The marking banner of both documents is at the top and bottom of every page, with every distribution notice either document needs. The HTML is one self-contained file.
+
+![The Compare tab of a document](images/documents-compare-tab.png)
+![Choosing two documents to compare](images/documents-compare-picker.png)
+![A redline, inline, with the third change selected](images/documents-redline-inline.png)
+![The same redline side by side](images/documents-redline-side-by-side.png)
+![Review comments on a change](images/documents-redline-comments.png)
+![The review hint on the Review and release tab](images/documents-redline-review-hint.png)
+
+**When the content is not compared.** For other formats (drawings, CAD files, images, old `.doc` and `.xls` files), for two files of different kinds, for a scan with no text layer (Keel does not read images) or for a very large file, Keel does not guess. The page says **Content not comparable** and why, and compares what it can: size, SHA-256, version, state and who saved it. If the two files have the same bytes it says so.
+
+![A comparison that is not a text comparison](images/documents-compare-not-comparable.png)
+
+**Who may compare.** You must be allowed to read **both** documents. If you cannot read one, Keel answers as if it did not exist, whichever side it is, and records the attempt. Reading the text of a comparison also needs permission to download both files (as for viewing); without it you get the facts table and a sentence saying why. The banner is the combination of both documents, so a comparison of an open note and an ITAR specification is marked ITAR. Comments need a viewer role or higher and can be read only by someone who can read and download both documents.
+
+What is read: Word documents are read as the body text shows now (tracked insertions in, tracked deletions out; headers, footers, text boxes, footnotes and comments are not read). Excel workbooks list every filled cell as `Sheet!A1: value`, formulas with their cached result. PDFs are read in the order the file draws its text, one paragraph per page, so wrapping a line differently is not a change; the reading order of a multi-column PDF may differ from what you see.
+
 ## Review and release
 
 The **Review & release** tab runs the document through the `document-release-review` workflow ([chapter 6](06-lifecycles-workflow-signatures.md)).

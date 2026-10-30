@@ -1,0 +1,17 @@
+@using Keel.Documents.Compare
+@* One run of a redline. Insertions and deletions are marked by more than colour: underline or strike-through, visible [+ +] / [-] marks, and text for screen readers. *@
+@if (Segment.Op == DiffOp.Equal) {<span>@Segment.Text</span>} else if (Segment.Op == DiffOp.Insert) {<ins id="@Id" class="rl-ins@(IsCurrent ? " rl-current" : "")" data-change="@Number"><span class="sr-only">Inserted, change @Number: </span><span aria-hidden="true" class="rl-mark">[+</span>@Segment.Text<span aria-hidden="true" class="rl-mark">+]</span><span class="sr-only"> End of insertion.</span></ins>} else {<del id="@Id" class="rl-del@(IsCurrent ? " rl-current" : "")" data-change="@Number"><span class="sr-only">Deleted, change @Number: </span><span aria-hidden="true" class="rl-mark">[&#8722;</span>@Segment.Text<span aria-hidden="true" class="rl-mark">&#8722;]</span><span class="sr-only"> End of deletion.</span></del>}
+
+@code {
+    [Parameter, EditorRequired] public required DiffSegment Segment { get; set; }
+    /// <summary>"inline" or "side".</summary>
+    [Parameter] public string Where { get; set; } = "inline";
+    /// <summary>The column of a side-by-side view ("l" or "r").</summary>
+    [Parameter] public string Side { get; set; } = "";
+    /// <summary>Index of the change the reader is on.</summary>
+    [Parameter] public int Current { get; set; } = -1;
+
+    private int Number => (Segment.Change ?? 0) + 1;
+    private bool IsCurrent => Segment.Change is { } c && c == Current;
+    private string Id => $"rl-{Where}-{Number}-{(Where == "inline" ? (Segment.Op == DiffOp.Insert ? "i" : "d") : Side)}";
+}
