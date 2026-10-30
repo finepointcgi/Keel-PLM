@@ -50,13 +50,16 @@ public sealed partial class HappyPathTests(E2EFixture fx)
             await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Download (marked)" })).ToBeVisibleAsync();
 
             await session.GotoAsync(alice, "/parts/" + part);
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Check out");
-            await Expect(page.GetByText("You have this part checked out")).ToBeVisibleAsync();
+            await Expect(page.GetByText("You are editing this part")).ToBeVisibleAsync();
             await BrowserSession.OpenTabAsync(page, "Documents");
             await BrowserSession.FillAsync(page.GetByLabel("Document number"), document);
             await BrowserSession.ClickAsync(page, "Add link");
             await Expect(page.GetByLabel("Document number")).ToHaveValueAsync("");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.FillAsync(page.GetByLabel("Check-in comment"), "Drawing linked");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Check in");
             await Expect(page.Locator(".badges")).ToContainTextAsync("Version A.2");
             await Expect(page.Locator("#linked-docs-heading").Locator("xpath=..")).ToContainTextAsync(document);
@@ -64,12 +67,15 @@ public sealed partial class HappyPathTests(E2EFixture fx)
             // ---- 3. a two-level BOM: the child (the part above) already exists; a new assembly uses it
             var assemblyName = $"E2E sensor head {suffix}";
             var assembly = await CreatePartAsync(session, alice, assemblyName, "Assembly", material: "Assembly");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Check out");
-            await Expect(page.GetByText("You have this part checked out")).ToBeVisibleAsync();
+            await Expect(page.GetByText("You are editing this part")).ToBeVisibleAsync();
             await BrowserSession.OpenTabAsync(page, "Structure");
             await AddBomLineAsync(page, part, "2");
             await AddBomLineAsync(page, m.OpenFastener, "8");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.FillAsync(page.GetByLabel("Check-in comment"), "Structure");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Check in");
             await Expect(page.Locator(".badges")).ToContainTextAsync("Version A.2");
             await Expect(page.Locator(".bom-grid").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = part })).ToBeVisibleAsync();
@@ -125,9 +131,12 @@ public sealed partial class HappyPathTests(E2EFixture fx)
             await BrowserSession.OpenTabAsync(page, "Changes");
             await Expect(page.GetByText($"Revision B was created by change notice {ecn}")).ToBeVisibleAsync();
             await BrowserSession.OpenTabAsync(page, "Overview");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Check out");
             await BrowserSession.FillAsync(page.GetByLabel("Description"), "Wall thickness increased from 2 mm to 3 mm.");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.FillAsync(page.GetByLabel("Check-in comment"), "Thicker wall");
+            await BrowserSession.OpenMoreAsync(page);
             await BrowserSession.ClickAsync(page, "Check in");
             await Expect(page.Locator(".badges")).ToContainTextAsync("Version B.2");
 

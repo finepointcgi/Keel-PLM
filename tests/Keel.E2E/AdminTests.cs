@@ -78,6 +78,7 @@ public sealed class AdminTests(E2EFixture fx)
             await BrowserSession.ClickAsync(ap, "Create part");
             await ap.WaitForURLAsync(new System.Text.RegularExpressions.Regex(@"/parts/P-\d+$"));
             var part = ap.Url[(ap.Url.LastIndexOf('/') + 1)..];
+            await BrowserSession.OpenMoreAsync(ap);
             await BrowserSession.ClickAsync(ap, "Check out");
             await BrowserSession.OpenTabAsync(ap, "Classification");
             var panel = Section(ap, "Classification");
@@ -87,6 +88,7 @@ public sealed class AdminTests(E2EFixture fx)
             await BrowserSession.FillAsync(panel.GetByLabel("Diameter (mm)"), "8");
             await panel.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Save classification" }).ClickAsync();
             await Expect(panel).ToContainTextAsync("Mechanical › Fasteners");
+            await BrowserSession.OpenMoreAsync(ap);
             await BrowserSession.ClickAsync(ap, "Check in");
             await Expect(ap.Locator(".badges")).ToContainTextAsync("Version A.2");
             await Expect(panel).ToContainTextAsync("Mechanical › Fasteners");

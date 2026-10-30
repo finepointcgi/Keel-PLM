@@ -6,11 +6,11 @@ namespace Keel.Workspace;
 /// <summary>The form fields whose last choice is remembered per user (ADR 0061). The set is closed (the table has a CHECK on it too).</summary>
 public static class LastChoiceKeys
 {
-    public const string PartType = "part.type";
-    public const string PartUnit = "part.unit";
-    public const string PartSource = "part.source";
-    public const string DocumentType = "document.type";
-    public const string LinkType = "link.type";
+    public const string PartType = "part-type";
+    public const string PartUnit = "part-unit";
+    public const string PartSource = "part-source";
+    public const string DocumentType = "document-type";
+    public const string LinkType = "link-type";
 
     public static readonly IReadOnlyList<string> All = [PartType, PartUnit, PartSource, DocumentType, LinkType];
 }

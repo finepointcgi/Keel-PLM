@@ -12,7 +12,7 @@ This manual is written from the user's point of view, with task-oriented steps. 
 |---|---|---|
 | 1 | [Getting started](01-getting-started.md) | Signing in, the development accounts, My access, Home |
 | 2 | [Navigating Keel](02-navigating.md) | The rail, the command palette, search, themes, density, phones, session lock |
-| 3 | [Parts](03-parts.md) | Find, create, check out and in, lifecycle moves, markings |
+| 3 | [Parts](03-parts.md) | Find, quick add, edit and save, lifecycle moves, markings |
 | 4 | [BOMs, variants and manufacturing BOMs](04-boms-variants-mbom.md) | Structure, where-used, structure diff, 150% BOM and variants, MBOM and reconciliation |
 | 5 | [Documents and the vault](05-documents-and-vault.md) | Documents, viewer, marked downloads, links, model versions |
 | 6 | [Lifecycles, workflow and e-signatures](06-lifecycles-workflow-signatures.md) | Submitting for review, tasks, signing with step-up |
@@ -104,7 +104,7 @@ Stated in the chapter where it matters; collected here.
 | **BOM / EBOM / MBOM** | Bill of materials; engineering BOM; manufacturing BOM (per plant) |
 | **CAPA** | Corrective and preventive action |
 | **CCB** | Change control board; approves Class I ECRs |
-| **Check-out / check-in** | Exclusive lock creating a working copy / saving it as the next iteration |
+| **Check-out / check-in** | Exclusive lock creating a working copy / saving it as the next version. **Edit** and **Save** do both in one step; the separate controls are under **More** |
 | **Clearance profile** | What an outbound recipient may receive |
 | **CUI** | Controlled unclassified information |
 | **Deviation / waiver** | Approved departure from a requirement for a scope and a period |

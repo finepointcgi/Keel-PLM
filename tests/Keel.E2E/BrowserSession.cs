@@ -93,6 +93,14 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
     public static async Task ClickAsync(IPage page, string name, bool exact = true) =>
         await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = name, Exact = exact }).ClickAsync();
 
+    /// <summary>Opens the "More" menu of a part page (the step-by-step check-out and check-in controls); does nothing when it is already open.</summary>
+    public static async Task OpenMoreAsync(IPage page)
+    {
+        var menu = page.Locator("details.more-menu").First;
+        if (await menu.GetAttributeAsync("open") is null) await menu.Locator("summary").ClickAsync();
+        await Expect(menu).ToHaveAttributeAsync("open", "");
+    }
+
     /// <summary>Opens a tab of an object page (Overview, Structure, Documents, Changes, Review &amp; release, ...) and waits until it is selected.</summary>
     public static async Task OpenTabAsync(IPage page, string name)
     {

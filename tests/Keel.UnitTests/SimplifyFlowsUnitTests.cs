@@ -86,6 +86,11 @@ public sealed class SimplifyFlowsUnitTests : BunitContext
         Assert.Equal(PartEditState.NeedsChange, released.State);
         Assert.Contains("change order", released.Message, StringComparison.Ordinal);
 
+        var review = SimpleFlows.Advise(Part("UnderReview", locked: true));
+        Assert.Equal(PartEditState.InReview, review.State);
+        Assert.Contains("until the review is finished", review.Message, StringComparison.Ordinal);
+        Assert.False(review.CanStart);
+
         Assert.Equal(PartEditState.NotLatest, SimpleFlows.Advise(Part(latest: false)).State);
         var readOnly = SimpleFlows.Advise(Part(canModify: false, denied: ["role.missing"]));
         Assert.Equal(PartEditState.ReadOnly, readOnly.State);
@@ -196,6 +201,10 @@ public sealed class SimplifyFlowsUnitTests : BunitContext
         var start = cut.Find("[data-action=start-change]");
         Assert.EndsWith("?part=P-000001", start.GetAttribute("href"), StringComparison.Ordinal);
         Assert.Contains("changes/new/", start.GetAttribute("href"), StringComparison.Ordinal);
+
+        var review = Render<PartEditBanner>(p => p.Add(x => x.Part, Part("UnderReview", locked: true)));
+        Assert.Contains("under review", review.Find("[data-edit-banner]").TextContent, StringComparison.Ordinal);
+        Assert.Empty(review.FindAll("[data-action=start-change]")); // a review in progress is not changed by a change order
 
         Assert.Empty(Render<PartEditBanner>(p => p.Add(x => x.Part, Part())).Markup.Trim()); // nothing to explain when editing is possible
         var noRight = Render<PartEditBanner>(p => p.Add(x => x.Part, Part("Released", locked: true, canModify: false)));

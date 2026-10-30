@@ -44,7 +44,7 @@ Other administrator tasks live elsewhere: supplier **Portal access** on a suppli
 
 ## Routine tasks
 
-**Add a part attribute.** Attributes > add; choose kind and whether it is required; save. New part forms show it at once. Classification attributes belong to classes.
+**Add a part attribute.** Attributes > add; choose kind and whether it is required; save. The quick add form asks for a required attribute at once; optional ones are under More details. Classification attributes belong to classes.
 
 **Change a lifecycle.** Lifecycles > open the family > edit a draft version > **Validate** > **Publish**. New objects use the new version; to move existing objects, choose **Migrate** and map old states to new ones. Both steps are confirmed and audited.
 

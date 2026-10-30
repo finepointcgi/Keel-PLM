@@ -6,7 +6,7 @@ ALTER TABLE ws.preference ADD COLUMN simple_view boolean NOT NULL DEFAULT false;
 
 CREATE TABLE ws.last_choice (
     user_sub   text        NOT NULL CHECK (length(user_sub) BETWEEN 1 AND 200),
-    key        text        NOT NULL CHECK (key IN ('part.type', 'part.unit', 'part.source', 'document.type', 'link.type')),
+    key        text        NOT NULL CHECK (key IN ('part-type', 'part-unit', 'part-source', 'document-type', 'link-type')),
     value      text        NOT NULL CHECK (length(value) BETWEEN 1 AND 100),
     updated_at timestamptz NOT NULL,
     PRIMARY KEY (user_sub, key)

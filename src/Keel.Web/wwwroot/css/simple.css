@@ -13,13 +13,13 @@ details.more-details[open] > summary { margin-bottom: var(--sp-2); }
 .edit-banner { display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap; }
 .edit-banner p { margin: 0; flex: 1 1 24rem; }
 
-/* More menu of the part action bar: a disclosure, no script */
-details.more-menu { position: relative; }
+/* More menu of the part action bar: a disclosure, no script. It opens in the flow of the bar (nothing floats over the page) */
 details.more-menu > summary { list-style: none; border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); padding: 0 var(--sp-3); background: var(--c-surface); color: var(--c-text); font-weight: 600; }
 details.more-menu > summary::-webkit-details-marker { display: none; }
 details.more-menu > summary::after { content: "\25BE"; margin-left: var(--sp-1); }
-details.more-menu .more-panel { position: absolute; z-index: 30; left: 0; top: calc(100% + 4px); min-width: min(24rem, 90vw); display: flex; flex-direction: column; gap: var(--sp-2); align-items: stretch; background: var(--c-surface); border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); box-shadow: var(--shadow-2); padding: var(--sp-3); }
-details.more-menu .more-panel p { margin: 0; }
+details.more-menu[open] { flex: 1 1 100%; }
+details.more-menu .more-panel { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; border-top: 1px dashed var(--c-border-strong); margin-top: var(--sp-2); padding-top: var(--sp-2); }
+details.more-menu .more-panel p { flex: 1 1 100%; }
 
 /* Type-ahead picker */
 .picker { display: flex; flex-direction: column; gap: var(--sp-1); }

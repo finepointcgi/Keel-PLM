@@ -25,7 +25,7 @@ If a line holds a part you may not read, you see **Restricted item** with only t
 
 ### Edit a BOM
 
-BOM lines change in the assembly's working copy: **Check out**, edit lines in the structure editor (add a child by number, change quantity, find number, designators, effectivity, option condition), then **Check in** ([chapter 3](03-parts.md)). Keel refuses a check-in that would make a cycle or add a part you cannot read.
+BOM lines change in the assembly's working copy: **Edit** (or **Check out** under **More**), edit lines in the structure editor (add a child by number, change quantity, find number, designators, effectivity, option condition), then **Save** (or **Check in**; [chapter 3](03-parts.md)). Keel refuses a check-in that would make a cycle or add a part you cannot read.
 
 ### Where used
 

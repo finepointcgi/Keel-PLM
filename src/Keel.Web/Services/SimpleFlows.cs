@@ -18,6 +18,8 @@ public enum PartEditState
     CheckedOutByOther,
     /// <summary>The revision is released (locked): it changes only through a change order.</summary>
     NeedsChange,
+    /// <summary>The revision is under review (locked until the review ends).</summary>
+    InReview,
     /// <summary>An older revision: only the latest revision is edited.</summary>
     NotLatest,
     /// <summary>The access policy does not let the person modify the part; the reasons are on the part.</summary>
@@ -51,6 +53,8 @@ public sealed class SimpleFlows(PartService parts, DocumentService docs)
         var co = part.Checkout;
         if (!part.Revision.IsLatest) return new(PartEditState.NotLatest, $"You are looking at revision {part.Revision.Revision}, which is not the latest. Open the latest revision to edit.");
         if (co?.IsMine == true) return new(PartEditState.Resume, "You are editing this part. Your changes stay private until you save.");
+        if (part.Revision.IsLocked && part.Revision.State == "UnderReview")
+            return new(PartEditState.InReview, $"This part is under review (revision {part.Revision.Revision}), so it cannot be edited until the review is finished.");
         if (part.Revision.IsLocked)
             return new(PartEditState.NeedsChange, $"This part is {part.Revision.StateLabel.ToLowerInvariant()} (revision {part.Revision.Revision}), so it cannot be edited directly. Changes to a {part.Revision.StateLabel.ToLowerInvariant()} part go through a change order.");
         if (co is not null) return new(PartEditState.CheckedOutByOther, $"{co.UserName ?? co.UserId} is editing this part (since {UiText.Utc(co.CheckedOutAt)}). You can edit it after they save or discard their changes.");
@@ -66,7 +70,7 @@ public sealed class SimpleFlows(PartService parts, DocumentService docs)
         if (!current.IsOk) return current;
         var advice = Advise(current.Value!);
         if (advice.State == PartEditState.Resume) return current;
-        if (advice.State is PartEditState.NeedsChange or PartEditState.NotLatest or PartEditState.CheckedOutByOther)
+        if (advice.State is PartEditState.NeedsChange or PartEditState.InReview or PartEditState.NotLatest or PartEditState.CheckedOutByOther)
             return Outcome<PartDetail>.Conflict(advice.Message);
         // CanEdit and ReadOnly both go to the module: it is the module that decides and audits (a refusal is an audited denial).
         return await parts.CheckOutAsync(subject, number, correlationId, ct);
@@ -160,7 +164,8 @@ public sealed class SimpleFlows(PartService parts, DocumentService docs)
         {
             string? note = null;
             if (!AccessPolicy.Evaluate(subject, p.Markings, PlmAction.Modify).Permitted) note = "You can see this part but not change it.";
-            else if (p.State is "Released" or "UnderReview" or "Obsolete") note = $"{StateText.Label(p.State)}: documents are added through a change order.";
+            else if (p.State == "UnderReview") note = "Under review: wait until the review is finished.";
+            else if (p.State is "Released" or "Obsolete") note = $"{StateText.Label(p.State)}: documents are added through a change order.";
             return new PickItem(p.Number, p.Name, p.Banner, note, note is not null);
         })];
     }

@@ -12,7 +12,7 @@
         }
     </div>
 }
-else if (!Part.Revision.IsLatest)
+else if (Part.Revision.IsLatest && advice.State is PartEditState.InReview || !Part.Revision.IsLatest)
 {
     <p class="notice" role="status" data-edit-banner>@advice.Message</p>
 }
