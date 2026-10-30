@@ -89,11 +89,17 @@ public sealed class QualityTests(E2EFixture fx)
             // Start from the top of the page: Blazor moves focus to the heading on navigation, which is past the navigation bar.
             await page.EvaluateAsync("() => { const b = document.querySelector('.brand'); b.setAttribute('tabindex', '-1'); b.focus(); }");
             var reached = new List<string>();
-            for (var i = 0; i < 80 && !reached.Contains("Create part"); i++)
+            // The rail groups are disclosure buttons: a closed group holds no links, so the keyboard user opens it with Enter on its header and Tab then continues into it.
+            for (var i = 0; i < 160 && !reached.Contains("Create part"); i++)
             {
                 await page.Keyboard.PressAsync("Tab");
                 var focus = await page.EvaluateAsync<string>("() => { const e = document.activeElement; return e ? ((e.closest('nav') ? 'nav:' : '') + (e.innerText || e.getAttribute('aria-label') || e.tagName).trim()) : ''; }");
                 reached.Add(focus);
+                if (await page.EvaluateAsync<bool>("() => document.activeElement?.matches('.rail-group-header[aria-expanded=false]') === true"))
+                {
+                    await page.Keyboard.PressAsync("Enter");
+                    await Expect(page.Locator(".rail-group-header:focus")).ToHaveAttributeAsync("aria-expanded", "true");
+                }
             }
             foreach (var link in new[] { "Home", "Parts", "Documents", "Changes", "My tasks", "Access check" })
                 Assert.Contains("nav:" + link, reached);

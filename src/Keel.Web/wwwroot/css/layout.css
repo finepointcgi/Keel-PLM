@@ -58,8 +58,31 @@
   position: sticky; top: var(--banner-h); align-self: start; max-height: calc(100vh - 2 * var(--banner-h)); overflow-y: auto;
   background: var(--c-surface); border-right: 1px solid var(--c-border); padding: var(--sp-4) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-4); scrollbar-width: thin;
 }
+/* Rail groups and links (the links are MudBlazor nav links: the wrapper carries .rail-link, the anchor inside is the link). Colours come from the design tokens only. */
+.rail-menu { display: flex; flex-direction: column; gap: var(--sp-1); }
+.rail-group { display: flex; flex-direction: column; gap: 2px; }
+.rail-group-header {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); width: 100%; min-height: var(--target); padding: 4px var(--sp-2);
+  background: transparent; color: var(--c-muted); border: 0; border-radius: var(--radius-1); box-shadow: none; text-align: left;
+  font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: var(--tracking-caps);
+}
+.rail-group-header:hover { background: var(--c-surface-2); color: var(--c-text); filter: none; }
+.rail-group-chevron { flex: none; width: 1.25rem; height: 1.25rem; transition: transform var(--dur-1, 120ms) ease; }
+.rail-group.closed .rail-group-chevron { transform: rotate(-90deg); }
+.rail-group-items { display: flex; flex-direction: column; gap: 2px; }
+.rail .rail-link { margin: 0; padding: 0; }
+.rail .rail-link > a {
+  display: flex; align-items: center; gap: var(--sp-3); min-height: var(--target); padding: 4px var(--sp-2); border-radius: var(--radius-1);
+  color: var(--c-text); text-decoration: none; border: 1px solid transparent; border-left-width: 3px; font-weight: 500; background: transparent;
+}
+.rail .rail-link > a .mud-nav-link-text, .rail .rail-link > a .rail-label { color: inherit; font-weight: inherit; }
+.rail .rail-link > a:hover { background: var(--c-surface-2); color: var(--c-text); }
+.rail .rail-link > a.active, .rail .rail-link > a[aria-current="page"] { background: var(--c-accent-bg); border-left-color: var(--c-accent); font-weight: 700; color: var(--c-text); }
+.rail .rail-link > a .icon { flex: none; color: var(--c-muted); }
+.rail .rail-link > a.active .icon, .rail .rail-link > a[aria-current="page"] .icon { color: var(--c-accent); }
 .rail .collapse-toggle { margin-top: auto; justify-content: flex-start; }
 .app.rail-collapsed .rail .rail-label, .app.rail-collapsed .rail .rail-heading, .app.rail-collapsed .rail .collapse-toggle .rail-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.app.rail-collapsed .rail .rail-link > a { justify-content: center; padding: 4px; border-left-width: 1px; }
 .app.rail-collapsed .rail-group + .rail-group { border-top: 1px solid var(--c-border); padding-top: var(--sp-2); }
 
 main { padding: var(--sp-5) var(--sp-6) var(--sp-6); width: 100%; max-width: var(--content-max); min-width: 0; margin: 0 auto; }
@@ -108,6 +131,7 @@ nav.breadcrumbs li[aria-current="page"] { color: var(--c-muted); overflow-wrap: 
   }
   .app.rail-open .rail { transform: none; visibility: visible; transition: transform 160ms ease; }
   .app.rail-collapsed .rail .rail-label, .app.rail-collapsed .rail .rail-heading { position: static; width: auto; height: auto; clip: auto; }
+  .app.rail-collapsed .rail .rail-link > a { justify-content: flex-start; padding: 4px var(--sp-2); border-left-width: 3px; }
   .rail .collapse-toggle { display: none; }
   .rail-backdrop { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, 0.45); border: 0; min-height: 0; padding: 0; border-radius: 0; }
   main { padding: var(--sp-4) var(--sp-4) var(--sp-5); }
