@@ -57,3 +57,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0050](0050-mass-change-beyond-parts.md) | Mass change beyond parts: documents, assembly structure with where-used, requirements, change notices and CSV/Excel upload | Accepted |
 | [0051](0051-signed-release-packages.md) | Digitally signed release packages: PAdES-style CMS signature, operator PKI key references, offline verification and tamper detection | Accepted |
 | [0053](0053-document-compare-and-redline.md) | Cross-document compare and redline review: word diff, honest non-text compare, anchored review threads, marked HTML/PDF export | Accepted |
+| [0052](0052-3d-viewer-and-assembly-placements.md) | Assembly placements from STEP and the Viewer tab: placed bounding boxes, stored and exposed through the CAD API and CLI, strict CSP kept | Accepted |

@@ -1,0 +1,30 @@
+/* The Viewer tab (increment 9.5, ADR-0052): the 3D picture, its controls and the structure list that is its text alternative. Tokens only (var(--...)), never a colour literal,
+   never an inline style (CSP). The canvas colours come from the same tokens, read by the script, so light, dark and high contrast follow the theme; under forced colours the
+   script reads the system palette. The marking banners are not touched here. Nothing animates (the picture redraws only when the view changes). */
+.mv-split { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: var(--sp-3); align-items: start; }
+.mv-stage { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.mv-toolbar { flex-wrap: wrap; }
+.mv-toolbar button { min-width: var(--target); min-height: var(--target); }
+.mv-view { position: relative; border: 1px solid var(--c-border-strong); border-radius: var(--radius-2); background: var(--c-surface-2); overflow: hidden; touch-action: none; }
+.mv-view:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.mv-view canvas { display: block; width: 100%; height: min(60vh, 520px); min-height: 280px; }
+.mv-view[data-viewer-state="unavailable"] canvas, .mv-view[data-viewer-state="error"] canvas, .mv-view[data-viewer-state="empty"] canvas { opacity: 0.35; }
+.mv-side { border: 1px solid var(--c-border); border-radius: var(--radius-2); background: var(--c-surface); padding: var(--sp-3); min-width: 0; overflow-wrap: anywhere; max-height: min(78vh, 720px); overflow: auto; }
+.mv-side h4 { margin: 0 0 var(--sp-1); }
+.mv-tree, .mv-tree ul { list-style: none; margin: 0; padding: 0; }
+.mv-tree ul { margin-inline-start: var(--sp-3); padding-inline-start: var(--sp-2); border-inline-start: 1px solid var(--c-border); }
+.mv-tree li { margin: var(--sp-1) 0; }
+.mv-node { display: inline-flex; gap: var(--sp-2); align-items: baseline; text-align: start; min-height: var(--target); padding: 2px var(--sp-2); background: transparent; color: var(--c-text); border: 1px solid transparent; border-radius: var(--radius-1); font: inherit; cursor: pointer; }
+.mv-node:hover { background: var(--c-surface-2); }
+.mv-node:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.mv-node[aria-pressed="true"] { background: var(--c-accent-bg); border-color: var(--c-accent); font-weight: 700; }
+.mv-node-number { font-weight: 700; }
+.mv-node-facts { display: block; margin-inline-start: var(--sp-2); }
+.mv-facts { margin-top: var(--sp-3); border-top: 1px solid var(--c-border); padding-top: var(--sp-2); }
+.mv-matrix td { font-variant-numeric: tabular-nums; text-align: end; }
+.mv-choose { display: inline-flex; flex-direction: column; gap: var(--sp-1); max-width: 28rem; }
+@media (max-width: 860px) { .mv-split { grid-template-columns: minmax(0, 1fr); } }
+@media (forced-colors: active) {
+  .mv-node[aria-pressed="true"] { border-color: Highlight; forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .mv-view { border-color: CanvasText; }
+}

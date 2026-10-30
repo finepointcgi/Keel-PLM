@@ -208,6 +208,31 @@ public sealed class CadConnector(HttpClient http, Action<string>? log = null)
         return (await res.Content.ReadFromJsonAsync<JsonNode>(Json, ct))!;
     }
 
+    /// <summary>
+    /// Reads the placements of a structure proposal or of a document's STEP file and prints them: the raw JSON with <paramref name="json"/>, otherwise a table of
+    /// instances (path, number, name, position of the part's origin and its box in the file's length unit).
+    /// </summary>
+    public async Task PrintPlacementsAsync(string url, bool json, TextWriter @out, CancellationToken ct = default)
+    {
+        var doc = await SendAsync(HttpMethod.Get, url, null, ct);
+        if (json) { await @out.WriteLineAsync(doc.ToJsonString(new JsonSerializerOptions(Json) { WriteIndented = true })); return; }
+        var unit = doc["lengthUnit"]?.GetValue<string>() ?? "units";
+        await @out.WriteLineAsync($"{doc["banner"]?.GetValue<string>()}");
+        await @out.WriteLineAsync($"Instances (lengths in {unit}; 'no placement' means the file carries none for that occurrence):");
+        foreach (var i in doc["instances"]!.AsArray())
+        {
+            var depth = i!["depth"]!.GetValue<int>();
+            var world = i["world"]!.AsArray().Select(x => x!.GetValue<double>()).ToArray();
+            var box = i["worldBox"] is JsonObject b ? $"box {F(b["minX"])},{F(b["minY"])},{F(b["minZ"])} to {F(b["maxX"])},{F(b["maxY"])},{F(b["maxZ"])}" : "no box";
+            var at = i["placed"]!.GetValue<bool>() ? $"at {Fmt(world[3])},{Fmt(world[7])},{Fmt(world[11])}" : "no placement";
+            await @out.WriteLineAsync($"{new string(' ', depth * 2)}{i["number"]?.GetValue<string>() ?? i["name"]!.GetValue<string>()} {i["name"]!.GetValue<string>()} [{i["path"]!.GetValue<string>()}] {at}; {box}");
+        }
+        if (doc["truncated"]?.GetValue<bool>() == true) await @out.WriteLineAsync("The list was cut at the instance limit.");
+
+        static string F(JsonNode? n) => Fmt(n?.GetValue<double>() ?? 0);
+        static string Fmt(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     /// <summary>The markings of a document in the shape a proposal needs (a proposal takes the markings of the data it was drawn from).</summary>
     public async Task<JsonObject> MarkingsOfDocumentAsync(string number, CancellationToken ct = default)
     {

@@ -25,7 +25,7 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
         DateTimeOffset CreatedAt, string CreatedBy, DateTimeOffset? DecidedAt, string? DecidedBy, string? ResultJson);
 
     private sealed record PartRow(string Ref, string? CadNumber, string Name, string PartType, string Unit, string Source, IReadOnlyList<MatchRule> MatchOn,
-        IReadOnlyDictionary<string, string> Attributes, string MatchKind, Guid? MatchedId, IReadOnlyList<Guid> Candidates, string Decision, Guid? DecisionId, Guid? CreatedId)
+        IReadOnlyDictionary<string, string> Attributes, string MatchKind, Guid? MatchedId, IReadOnlyList<Guid> Candidates, string Decision, Guid? DecisionId, Guid? CreatedId, BoundingBox? Box = null)
     {
         /// <summary>The Keel part this CAD part stands for, if one is chosen or was created.</summary>
         public Guid? Target => Decision switch { "match" => DecisionId ?? MatchedId, "create" => CreatedId, _ => null };
@@ -78,7 +78,7 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
                 }
             }
             var dec = kind switch { "number" or "attribute" => "match", "ambiguous" => "undecided", _ => "create" };
-            rows.Add(new PartRow(p.Ref, p.Number?.Trim(), p.Name.Trim(), partType, unit, source, p.MatchOn, p.Attributes, kind, matched, candidates, dec, null, null));
+            rows.Add(new PartRow(p.Ref, p.Number?.Trim(), p.Name.Trim(), partType, unit, source, p.MatchOn, p.Attributes, kind, matched, candidates, dec, null, null, p.Box));
         }
 
         await using var conn = await dataSource.OpenConnectionAsync(ct);
@@ -90,8 +90,8 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
         var now = clock.GetUtcNow();
         await using (var ins = new NpgsqlCommand(
             $"""
-            INSERT INTO cad.bom_proposal (id, number, title, source_format, source_system, root_ref, status, apply_removals, {MarkingColumns.InsertColumns}, created_at, created_by)
-            VALUES (@id, @number, @title, @format, @system, @root, 'draft', @removals, {MarkingColumns.InsertValues}, @at, @by)
+            INSERT INTO cad.bom_proposal (id, number, title, source_format, source_system, root_ref, status, apply_removals, {MarkingColumns.InsertColumns}, created_at, created_by, length_unit, length_unit_mm)
+            VALUES (@id, @number, @title, @format, @system, @root, 'draft', @removals, {MarkingColumns.InsertValues}, @at, @by, @unit, @unitmm)
             """, conn, tx))
         {
             ins.Parameters.AddWithValue("id", id);
@@ -104,6 +104,8 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
             foreach (var (k, v) in MarkingColumns.Parameters(request.Markings)) ins.Parameters.AddWithValue(k, v);
             ins.Parameters.AddWithValue("at", now);
             ins.Parameters.AddWithValue("by", subject.Username ?? subject.Id);
+            ins.Parameters.AddWithValue("unit", (object?)model.LengthUnit ?? DBNull.Value);
+            ins.Parameters.Add(new NpgsqlParameter("unitmm", NpgsqlDbType.Double) { Value = (object?)model.LengthUnitMm ?? DBNull.Value });
             await ins.ExecuteNonQueryAsync(ct);
         }
         await using (var batch = new NpgsqlBatch(conn, tx))
@@ -112,8 +114,8 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
             {
                 var cmd = new NpgsqlBatchCommand(
                     """
-                    INSERT INTO cad.bom_proposal_part (proposal_id, ref, cad_number, name, part_type, unit, source, attributes, match_on, match_kind, matched_master_id, candidate_ids, decision)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                    INSERT INTO cad.bom_proposal_part (proposal_id, ref, cad_number, name, part_type, unit, source, attributes, match_on, match_kind, matched_master_id, candidate_ids, decision, bbox)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                     """);
                 cmd.Parameters.AddWithValue(id);
                 cmd.Parameters.AddWithValue(p.Ref);
@@ -128,6 +130,7 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
                 cmd.Parameters.AddWithValue((object?)p.MatchedId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue(p.Candidates.ToArray());
                 cmd.Parameters.AddWithValue(p.Decision);
+                cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Double, Value = p.Box is { } b ? new[] { b.MinX, b.MinY, b.MinZ, b.MaxX, b.MaxY, b.MaxZ } : DBNull.Value });
                 batch.BatchCommands.Add(cmd);
             }
             if (batch.BatchCommands.Count > 0) await batch.ExecuteNonQueryAsync(ct);
@@ -156,8 +159,30 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
             }
             if (batch.BatchCommands.Count > 0) await batch.ExecuteNonQueryAsync(ct);
         }
+        await using (var batch = new NpgsqlBatch(conn, tx))
+        {
+            var seqNo = 0;
+            foreach (var o in model.Occurrences)
+            {
+                var cmd = new NpgsqlBatchCommand(
+                    """
+                    INSERT INTO cad.bom_proposal_occurrence (proposal_id, seq, parent_ref, child_ref, occurrence_id, name, transform)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    """);
+                cmd.Parameters.AddWithValue(id);
+                cmd.Parameters.AddWithValue(++seqNo);
+                cmd.Parameters.AddWithValue(o.ParentRef);
+                cmd.Parameters.AddWithValue(o.ChildRef);
+                cmd.Parameters.AddWithValue(o.OccurrenceId);
+                cmd.Parameters.AddWithValue((object?)o.Name ?? DBNull.Value);
+                cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Double, Value = o.Transform is null ? DBNull.Value : o.Transform.ToArray() });
+                batch.BatchCommands.Add(cmd);
+            }
+            if (batch.BatchCommands.Count > 0) await batch.ExecuteNonQueryAsync(ct);
+        }
         await audit.AppendAsync(tx, CadGraphService.Entry(subject, "cad.bom_proposal.create", AuditOutcome.Success, number, correlationId,
             ("format", request.Format), ("source", model.SourceSystem), ("parts", rows.Count.ToString(CultureInfo.InvariantCulture)), ("lines", model.Lines.Count.ToString(CultureInfo.InvariantCulture)),
+            ("occurrences", model.Occurrences.Count.ToString(CultureInfo.InvariantCulture)), ("placed", model.Occurrences.Count(o => o.Transform is not null).ToString(CultureInfo.InvariantCulture)),
             ("matched", rows.Count(r => r.Decision == "match").ToString(CultureInfo.InvariantCulture)), ("new", rows.Count(r => r.MatchKind == "new").ToString(CultureInfo.InvariantCulture)),
             ("ambiguous", rows.Count(r => r.MatchKind == "ambiguous").ToString(CultureInfo.InvariantCulture)), ("markings", request.Markings.BannerText())), ct);
         await tx.CommitAsync(ct);
@@ -235,7 +260,7 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
             return new ProposalPartView(p.Ref, p.CadNumber, p.Name, p.PartType, p.Unit, p.Source, p.MatchKind, p.Decision,
                 matchedInfo?.Number, matchedInfo?.Name, [.. p.Candidates.Where(c => context.Infos.ContainsKey(c)).Select(c => context.Infos[c].Number)],
                 p.CreatedId is { } cid && context.Infos.TryGetValue(cid, out var ci) ? ci.Number : null, parentRefs.Contains(p.Ref))
-            { MatchHidden = matchedId is not null && matchedInfo is null };
+            { MatchHidden = matchedId is not null && matchedInfo is null, Box = p.Box };
         }).ToList();
         var any = context.EditsByParent.Values.Any(e => e.Count > 0) || partRows.Any(p => p.Decision == "create" && p.CreatedId is null && (parentRefs.Contains(p.Ref) || lines.Any(l => l.ChildRef == p.Ref)));
         var canApply = row.Status == "draft" && undecided == 0 && any && blockers.Count == 0 && modify;
@@ -246,9 +271,70 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
         if (audited)
             await audit.AppendAsync(CadGraphService.Entry(subject, "cad.bom_proposal.read", AuditOutcome.Success, number, correlationId,
                 ("parts", partRows.Count.ToString(CultureInfo.InvariantCulture)), ("lines", lines.Count.ToString(CultureInfo.InvariantCulture)), ("banner", banner)), ct);
+        var (occurrenceCount, placedCount, lengthUnit, _) = await LoadPlacementFactsAsync(conn, row.Id, ct);
         return Outcome<ProposalDetail>.Ok(new ProposalDetail(row.Id, row.Number, row.Title, row.Status, row.Format, row.System, row.RootRef, row.ApplyRemovals, banner, row.Markings,
             row.CreatedAt, row.CreatedBy, row.DecidedAt, row.DecidedBy, views, [.. lines.Select((l, i) => new ProposalLineView(i + 1, l.ParentRef, l.ChildRef, l.FindNumber, l.Quantity, l.Unit, l.ReferenceDesignators, l.Notes))],
-            context.Parents, context.Rows, context.Truncated, undecided, canApply, modify && row.Status == "draft", blockers, last));
+            context.Parents, context.Rows, context.Truncated, undecided, canApply, modify && row.Status == "draft", blockers, last)
+        { Occurrences = occurrenceCount, PlacedOccurrences = placedCount, LengthUnit = lengthUnit });
+    }
+
+    // ---------------------------------------------------------------- placements (ADR-0052)
+
+    /// <summary>
+    /// The placements and boxes stored with the structure of a proposal, with the instances expanded to world coordinates. Same authorization as reading the proposal
+    /// (Read on its markings, 404 otherwise, a denial is audited); the names it returns are the ones <see cref="GetAsync"/> already shows. Audited as a view.
+    /// </summary>
+    public async Task<Outcome<ProposalPlacements>> GetPlacementsAsync(Subject subject, string number, string? correlationId, CancellationToken ct = default)
+    {
+        await using var conn = await dataSource.OpenConnectionAsync(ct);
+        var row = await LoadRowAsync(conn, number, ct);
+        if (row is null) return Outcome<ProposalPlacements>.NotFound();
+        var read = AccessPolicy.Evaluate(subject, row.Markings, PlmAction.Read);
+        if (!read.Permitted)
+        {
+            await audit.AppendAsync(CadGraphService.Entry(subject, "cad.bom_proposal.placements", AuditOutcome.Denied, number, correlationId, ("reasons", string.Join(",", read.Reasons))), ct);
+            return Outcome<ProposalPlacements>.NotFound();
+        }
+        var partRows = await LoadPartsAsync(conn, row.Id, ct);
+        var lines = await LoadLinesAsync(conn, row.Id, ct);
+        var (_, _, unit, unitMm) = await LoadPlacementFactsAsync(conn, row.Id, ct);
+        var occurrences = new List<PlacementOccurrence>();
+        await using (var cmd = new NpgsqlCommand("SELECT parent_ref, child_ref, occurrence_id, name, transform FROM cad.bom_proposal_occurrence WHERE proposal_id = @p ORDER BY seq", conn))
+        {
+            cmd.Parameters.AddWithValue("p", row.Id);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                occurrences.Add(new PlacementOccurrence(r.GetString(0), r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3), r.IsDBNull(4) ? null : (double[])r.GetValue(4)));
+        }
+        var parentRefs = lines.Select(l => l.ParentRef).ToHashSet(StringComparer.Ordinal);
+        var model = new StructureModel(row.System, row.RootRef,
+            [.. partRows.Select(p => new StructurePart(p.Ref, p.CadNumber, p.Name, p.PartType, p.Unit, p.Source, p.Attributes, p.MatchOn, p.Box))],
+            [.. lines.Select(l => new StructureLine(l.ParentRef, l.ChildRef, l.Quantity, l.Unit, l.FindNumber, l.ReferenceDesignators, l.Notes))])
+        {
+            Occurrences = [.. occurrences.Select(o => new StructureOccurrence(o.ParentRef, o.ChildRef, o.OccurrenceId, o.Name, o.Transform))],
+            LengthUnit = unit,
+            LengthUnitMm = unitMm,
+        };
+        var layout = AssemblyLayouts.Expand(model);
+        await audit.AppendAsync(CadGraphService.Entry(subject, "cad.bom_proposal.placements", AuditOutcome.Success, number, correlationId,
+            ("occurrences", occurrences.Count.ToString(CultureInfo.InvariantCulture)), ("instances", layout.Instances.Count.ToString(CultureInfo.InvariantCulture)), ("banner", row.Markings.BannerText())), ct);
+        return Outcome<ProposalPlacements>.Ok(new ProposalPlacements(row.Number, row.RootRef, unit, unitMm, row.Markings.BannerText(), row.Markings,
+            [.. partRows.Select(p => new PlacementPart(p.Ref, p.CadNumber, p.Name, parentRefs.Contains(p.Ref), p.Box))], occurrences, layout.Instances, layout.Unplaced, layout.Truncated, layout.WorldBox));
+    }
+
+    private static async Task<(int Occurrences, int Placed, string? Unit, double? UnitMm)> LoadPlacementFactsAsync(NpgsqlConnection conn, Guid proposalId, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(
+            """
+            SELECT (SELECT count(*) FROM cad.bom_proposal_occurrence o WHERE o.proposal_id = p.id),
+                   (SELECT count(o.transform) FROM cad.bom_proposal_occurrence o WHERE o.proposal_id = p.id),
+                   p.length_unit, p.length_unit_mm
+            FROM cad.bom_proposal p WHERE p.id = @p
+            """, conn);
+        cmd.Parameters.AddWithValue("p", proposalId);
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        await r.ReadAsync(ct);
+        return ((int)r.GetInt64(0), (int)r.GetInt64(1), r.IsDBNull(2) ? null : r.GetString(2), r.IsDBNull(3) ? null : r.GetDouble(3));
     }
 
     // ---------------------------------------------------------------- decisions
@@ -500,6 +586,8 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
 
     private static string Trunc(string s) => s.Length <= 40 ? s : s[..40] + "...";
 
+    private static BoundingBox ToBox(double[] a) => new(a[0], a[1], a[2], a[3], a[4], a[5]);
+
     private static async Task<Row?> LoadRowAsync(NpgsqlConnection conn, string number, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand(
@@ -521,7 +609,7 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
         var list = new List<PartRow>();
         await using var cmd = new NpgsqlCommand(
             """
-            SELECT ref, cad_number, name, part_type, unit, source, attributes::text, match_on::text, match_kind, matched_master_id, candidate_ids, decision, decision_master_id, created_master_id
+            SELECT ref, cad_number, name, part_type, unit, source, attributes::text, match_on::text, match_kind, matched_master_id, candidate_ids, decision, decision_master_id, created_master_id, bbox
             FROM cad.bom_proposal_part WHERE proposal_id = @p ORDER BY ref
             """, conn);
         cmd.Parameters.AddWithValue("p", proposalId);
@@ -529,7 +617,8 @@ public sealed class CadBomProposalService(NpgsqlDataSource dataSource, IAuditLog
         while (await r.ReadAsync(ct))
             list.Add(new PartRow(r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5),
                 JsonSerializer.Deserialize<List<MatchRule>>(r.GetString(7), Json) ?? [], JsonSerializer.Deserialize<Dictionary<string, string>>(r.GetString(6), Json) ?? [],
-                r.GetString(8), r.IsDBNull(9) ? null : r.GetGuid(9), (Guid[])r.GetValue(10), r.GetString(11), r.IsDBNull(12) ? null : r.GetGuid(12), r.IsDBNull(13) ? null : r.GetGuid(13)));
+                r.GetString(8), r.IsDBNull(9) ? null : r.GetGuid(9), (Guid[])r.GetValue(10), r.GetString(11), r.IsDBNull(12) ? null : r.GetGuid(12), r.IsDBNull(13) ? null : r.GetGuid(13),
+                r.IsDBNull(14) ? null : ToBox((double[])r.GetValue(14))));
         return list;
     }
 

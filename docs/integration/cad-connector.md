@@ -122,6 +122,8 @@ All paths are below `/api/v1/cad`. Bodies are JSON unless stated.
 | `POST /bom-proposals` (multipart) | Create a proposal. Field `metadata` (JSON, first), field `file`. |
 | `GET /bom-proposals?status=` / `GET /bom-proposals/{number}` | List; read with parts, lines and the diff. |
 | `PUT /bom-proposals/{number}/decisions` `{decisions[{ref, decision, matchNumber?}], applyRemovals?}` | `decision` is `match`, `create` or `skip`. |
+| `GET /bom-proposals/{number}/placements` | Placements stored with a STEP proposal (ADR-0052): parts with their own boxes (`box`: min and max x, y, z in `lengthUnit`), every occurrence with its child-to-parent `transform` (16 numbers, row-major, column vectors, `null` when the file has none), and the expanded instances with `world` matrices and `worldBox`. |
+| `GET /documents/{number}/placements?fileId=&revision=` | The same for the STEP file of a document, derived from the verified stored bytes. Needs read and download rights; a refusal is a plain 404. 422 `cad.no_placements` for a file that is not STEP. |
 | `POST /bom-proposals/{number}/apply` / `.../discard` | Apply to the engineering BOMs; or discard. |
 | `GET /schemas/structure-v1` | The JSON Schema of the neutral structure. |
 
@@ -209,6 +211,8 @@ keel-cad checkin --dir ./work --comment "Wall thickness" [--skip-unchanged] [--r
 keel-cad undo --dir ./work
 keel-cad watch --dir ./work --interval 5              # uploads changed files; never checks in
 keel-cad bom push ./gimbal.stp --title "Gimbal" --markings-from D-000123 [--root P-000123]
+keel-cad bom placements CBP-000007 [--json]           # placements and boxes stored with a proposal
+keel-cad placements D-000123 [--file <file-id>] [--revision A] [--json]   # placed structure of a document's STEP file
 ```
 
 `--server` (or `KEEL_CAD_URL`) names the Keel host and `--token`/`--token-file`/`KEEL_CAD_TOKEN` carries the bearer token. Exit codes: 0 done, 1 usage, 2 refused by the server (the code is printed), 3 integrity check failed, 4 server not reachable. State lives in `<dir>/.keel-cad/state.json`. The tool runs on Windows, macOS and Linux with the .NET runtime. A package folder is flat, so file names must be unique inside a package; the tool refuses a package that would overwrite a file.

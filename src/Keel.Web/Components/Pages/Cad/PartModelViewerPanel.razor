@@ -1,0 +1,71 @@
+@* The Viewer tab of a part page: the CAD models associated with the part ("model of"), each shown by the same viewer as on its document page. A model the viewer may not
+   see is a placeholder that names nothing (the association graph already redacts it); the model chosen here is read through the file viewer's access checks. *@
+@using Keel.Web.Services
+@inject CurrentUser Users
+@inject CadGraphService Graph
+
+<div class="stack" data-testid="part-model-viewer">
+    @if (notFound)
+    {
+        <section class="panel"><p class="muted">The CAD models of this part are not available.</p></section>
+    }
+    else if (models is null)
+    {
+        <section class="panel"><Skeleton Lines="3" Label="Loading the CAD models of the part" /></section>
+    }
+    else if (models.Count == 0 && redacted == 0)
+    {
+        <section class="panel">
+            <EmptyState Title="No CAD model is attached to this part" IconName="part">Associate a model document with this part from the CAD tab of the document, or check one in with a CAD connector.</EmptyState>
+        </section>
+    }
+    else
+    {
+        @if (redacted > 0)
+        {
+            <p class="muted small" data-testid="viewer-redacted">@redacted model@(redacted == 1 ? " is" : "s are") attached to this part but not shown because you are not authorized to see @(redacted == 1 ? "it" : "them").</p>
+        }
+        @if (models.Count > 1)
+        {
+            <label class="mv-choose">Model
+                <select @bind="chosen" @bind:after="Chosen" data-testid="viewer-model-select">
+                    @foreach (var m in models) { <option value="@m.DocumentNumber">@m.DocumentNumber · @m.DocumentName</option> }
+                </select>
+            </label>
+        }
+        @if (chosen is not null)
+        {
+            <ModelViewerPanel Number="@chosen" OnBanner="b => OnBanner.InvokeAsync(BannerMerge.Union(listBanner, b))" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required string PartNumber { get; set; }
+    /// <summary>The banner of the models listed and shown, so the page banner covers the whole tab.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    private List<AssociationView>? models;
+    private int redacted;
+    private bool notFound;
+    private string? chosen;
+    private string? listBanner;
+    private string? loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == PartNumber) return;
+        loadedFor = PartNumber;
+        models = null;
+        var outcome = await Graph.ListForPartAsync(await Users.GetAsync(), PartNumber, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        var all = outcome.Value?.Where(a => a.Kind == AssociationKinds.ModelOf).ToList() ?? [];
+        redacted = all.Count(a => a.Redacted);
+        models = [.. all.Where(a => !a.Redacted).DistinctBy(a => a.DocumentNumber)];
+        chosen = models.Count > 0 ? models[0].DocumentNumber : null;
+        listBanner = models.Count == 0 ? null : BannerMerge.Union([.. models.Select(m => m.Banner)]);
+        if (listBanner is not null) await OnBanner.InvokeAsync(listBanner);
+    }
+
+    private Task Chosen() => Task.CompletedTask;
+}

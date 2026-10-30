@@ -1,0 +1,250 @@
+@* The Viewer tab of a document or part page (increment 9.5, ADR-0052). STEP assemblies are shown as the structure the file places (every part as its bounding box at the
+   position and orientation the file gives it); STL, OBJ and 3MF models as triangles. The picture is never the only way in: the structure list beside it carries every fact.
+   The file is read through the viewer's file source (Read and Download on the markings, verified bytes, audit), so the tab shows nothing the file viewer would refuse. *@
+@using System.Globalization
+@using Keel.Core.Viewing
+@using Keel.Web.Services
+@implements IAsyncDisposable
+@inject CurrentUser Users
+@inject AssemblyViewService Views
+@inject IJSRuntime JS
+
+<section class="panel stack" aria-labelledby="@HeadingId" data-testid="model-viewer">
+    <h3 id="@HeadingId">3D viewer</h3>
+    @if (result is null)
+    {
+        <Skeleton Lines="4" Label="Loading the model" />
+    }
+    else if (!result.IsOk)
+    {
+        <p class="@(result.Status == AssemblyViewStatus.NotFound ? "muted" : "notice")" role="status" data-testid="viewer-unavailable">@Unavailable(result)</p>
+        @if (result.File is { } blocked)
+        {
+            <p><a class="button secondary" href="@ViewerUi.PageUrl(blocked.DocumentNumber, blocked.FileId)" target="_top" data-enhance-nav="false">Open in the file viewer</a></p>
+        }
+    }
+    else
+    {
+        var file = result.File!;
+        <p class="muted">
+            <strong>@file.FileName</strong> · version @file.IterationLabel · @FormatLabel
+            · <a href="@ViewerUi.PageUrl(file.DocumentNumber, file.FileId)" target="_top" data-enhance-nav="false" data-testid="open-full-viewer">Open in the full file viewer</a>
+        </p>
+        @if (result.Kind == AssemblyViewKinds.Other)
+        {
+            <p class="notice" role="status" data-testid="viewer-other">The tab cannot draw @FormatLabel files. The full file viewer shows them.</p>
+        }
+        else
+        {
+            <div class="mv-split">
+                <div class="mv-stage">
+                    <div class="toolbar mv-toolbar" role="toolbar" aria-label="View controls" data-mv-toolbar>
+                        <button type="button" class="secondary" data-mv-action="left" aria-label="Orbit left">&#8592;</button>
+                        <button type="button" class="secondary" data-mv-action="right" aria-label="Orbit right">&#8594;</button>
+                        <button type="button" class="secondary" data-mv-action="up" aria-label="Orbit up">&#8593;</button>
+                        <button type="button" class="secondary" data-mv-action="down" aria-label="Orbit down">&#8595;</button>
+                        <button type="button" class="secondary" data-mv-action="zoom-in" aria-label="Zoom in">+</button>
+                        <button type="button" class="secondary" data-mv-action="zoom-out" aria-label="Zoom out">&#8722;</button>
+                        <button type="button" class="secondary" data-mv-action="reset">Reset view</button>
+                    </div>
+                    <div class="mv-view" @ref="host" tabindex="0" role="application" aria-roledescription="3D view" aria-label="@(ViewLabel)"
+                         aria-describedby="@HintId" data-testid="viewer-canvas" data-viewer-state="loading" data-kind="@result.Kind">
+                        <canvas aria-hidden="true"></canvas>
+                    </div>
+                    <p id="@HintId" class="muted small">Keyboard: arrow keys orbit, Shift with arrow keys pans, + and - zoom, 0 or Home resets. Drag to orbit, right-drag or Shift-drag to pan, scroll to zoom@(result.Kind == AssemblyViewKinds.Assembly ? ", click a part to select it" : "").</p>
+                    <p class="muted small" role="status" aria-live="polite" data-mv-status data-testid="viewer-status"></p>
+                </div>
+
+                @if (result.Kind == AssemblyViewKinds.Assembly && result.Layout is { } lay)
+                {
+                    <div class="mv-side">
+                        <h4 id="@TreeId">Structure</h4>
+                        <p class="muted small" data-testid="viewer-summary">
+                            @lay.Instances.Count instance@(lay.Instances.Count == 1 ? "" : "s") of @result.Model!.Parts.Count part@(result.Model.Parts.Count == 1 ? "" : "s").
+                            @if (lay.Unplaced > 0) { <span>@lay.Unplaced occurrence@(lay.Unplaced == 1 ? " has" : "s have") no placement in the file and sit@(lay.Unplaced == 1 ? "s" : "") at the parent's origin.</span> }
+                            @if (lay.Truncated) { <span>The list stops at @AssemblyLayouts.DefaultMaxInstances.ToString("N0", CultureInfo.InvariantCulture) instances.</span> }
+                        </p>
+                        <ul class="mv-tree" aria-labelledby="@TreeId" data-testid="viewer-tree">
+                            @Node(0)
+                        </ul>
+                        @if (selected is { } s)
+                        {
+                            <div class="mv-facts" data-testid="viewer-selection">
+                                <h4>Selected</h4>
+                                <dl class="facts compact">
+                                    <dt>Part</dt><dd>@(s.Number ?? "(no number)")</dd>
+                                    <dt>Name</dt><dd>@s.Name</dd>
+                                    <dt>Path</dt><dd>@s.Path</dd>
+                                    @if (s.OccurrenceId.Length > 0) { <dt>Occurrence</dt><dd>@s.OccurrenceId</dd> }
+                                    <dt>Placement</dt><dd>@(s.Index == 0 ? "The root (the origin of the file)." : s.Placed ? "As given by the file." : "None in the file; shown at its parent's origin.")</dd>
+                                    <dt>Position</dt><dd>@Position(s)</dd>
+                                    <dt>Own box</dt><dd>@Size(s.LocalBox)</dd>
+                                    @if (s.IsAssembly) { <dt>Whole</dt><dd>@Size(s.WorldBox)</dd> }
+                                </dl>
+                                @if (s.Placed && s.Index > 0)
+                                {
+                                    <details>
+                                        <summary>Placement matrix (to the root, @UnitLabel)</summary>
+                                        <table class="data mv-matrix">
+                                            <caption class="sr-only">Four by four placement matrix of @(s.Number ?? s.Name)</caption>
+                                            <tbody>
+                                                @for (var row = 0; row < 4; row++)
+                                                {
+                                                    <tr>
+                                                        @for (var col = 0; col < 4; col++)
+                                                        {
+                                                            <td>@Num(s.World[row * 4 + col])</td>
+                                                        }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </details>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            @if (result.Kind == AssemblyViewKinds.Assembly)
+            {
+                <p class="muted small" data-testid="viewer-limits">
+                    Each part is drawn as the bounding box derived from its geometry in the file (vertices, arcs, ellipses and B-spline control points), not as its surface, and positions are the
+                    ones the file states. Lengths are in @UnitLabel.@(result.Model!.LengthUnit is null ? " The file does not state a length unit." : "")
+                    For the surface of a STEP part, open the full file viewer.
+                </p>
+            }
+        }
+    }
+</section>
+
+@code {
+    private static int nextId;
+    private readonly int id = Interlocked.Increment(ref nextId);
+    private string HeadingId => $"mv-heading-{id}";
+    private string HintId => $"mv-hint-{id}";
+    private string TreeId => $"mv-tree-{id}";
+
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    [Parameter] public Guid? FileId { get; set; }
+    [Parameter] public string? Revision { get; set; }
+    /// <summary>The banner of the file shown, so the page banner covers the whole tab.</summary>
+    [Parameter] public EventCallback<string> OnBanner { get; set; }
+
+    private AssemblyViewResult? result;
+    private ElementReference host;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<ModelViewerPanel>? self;
+    private string? loadedKey;
+    private bool needInit;
+    private int selectedIndex = -1;
+    private Dictionary<int, List<int>> children = [];
+
+    private PlacedInstance? selected => result?.Layout is { } l && selectedIndex >= 0 && selectedIndex < l.Instances.Count ? l.Instances[selectedIndex] : null;
+    private string FormatLabel => result?.Format is { } f ? Keel.Core.Geometry.ModelFormats.Label(f) : "";
+    private string UnitLabel => result?.Model?.LengthUnit ?? "file units";
+    private string ViewLabel => result?.Kind == AssemblyViewKinds.Assembly ? "3D view of the assembly as bounding boxes. The structure list is the text equivalent." : "3D view of the model.";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = $"{Number}|{FileId}|{Revision}";
+        if (key == loadedKey) return;
+        loadedKey = key;
+        result = null;
+        selectedIndex = -1;
+        var opened = await Views.OpenAsync(await Users.GetAsync(), Number, FileId, Revision, CurrentUser.NewCorrelationId());
+        result = opened;
+        children = [];
+        if (opened.Layout is { } built)
+            foreach (var i in built.Instances.Where(i => i.ParentIndex >= 0))
+            {
+                if (!children.TryGetValue(i.ParentIndex, out var list)) children[i.ParentIndex] = list = [];
+                list.Add(i.Index);
+            }
+        needInit = opened.IsOk && opened.Kind != AssemblyViewKinds.Other;
+        if (opened.IsOk && opened.File is { } f) await OnBanner.InvokeAsync(f.Banner);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!needInit || result is not { IsOk: true } r) return;
+        needInit = false;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Keel.Web/Components/Pages/Cad/ModelViewerPanel.razor.js");
+            self ??= DotNetObjectReference.Create(this);
+            object payload = r.Kind == AssemblyViewKinds.Assembly
+                ? new
+                {
+                    kind = "assembly",
+                    instances = r.Layout!.Instances.Select(i => new
+                    {
+                        index = i.Index, parent = i.ParentIndex, assembly = i.IsAssembly, placed = i.Placed, world = i.World,
+                        box = i.LocalBox is { } b ? new[] { b.MinX, b.MinY, b.MinZ, b.MaxX, b.MaxY, b.MaxZ } : null,
+                    }).ToArray(),
+                }
+                : new { kind = "mesh", meshUrl = ViewerCompareUi.MeshUrl(r.File!.DocumentNumber, r.File.FileId) };
+            await module.InvokeVoidAsync("init", host, payload, self);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnPicked(int index)
+    {
+        await SelectAsync(index);
+        StateHasChanged();
+    }
+
+    private async Task SelectAsync(int index)
+    {
+        selectedIndex = index;
+        if (module is not null)
+            try { await module.InvokeVoidAsync("select", host, index); } catch (JSDisconnectedException) { }
+    }
+
+    private RenderFragment Node(int index) => __builder =>
+    {
+        var inst = result!.Layout!.Instances[index];
+        var kids = children.GetValueOrDefault(index);
+        <li>
+            <button type="button" class="mv-node" aria-pressed="@(selectedIndex == index ? "true" : "false")" data-index="@index" data-testid="viewer-node"
+                    @onclick="() => SelectAsync(index)">
+                <span class="mv-node-number">@(inst.Number ?? "(no number)")</span> <span class="mv-node-name">@inst.Name</span>
+            </button>
+            <span class="muted small mv-node-facts">@(inst.Placed || index == 0 ? "" : "no placement · ")@Position(inst)@(inst.LocalBox is null && !inst.IsAssembly ? " · no box" : "")</span>
+            @if (kids is { Count: > 0 })
+            {
+                <ul>
+                    @foreach (var child in kids) { @Node(child) }
+                </ul>
+            }
+        </li>
+    };
+
+    private string Position(PlacedInstance i) => $"at {Num(i.World[3])}, {Num(i.World[7])}, {Num(i.World[11])} {UnitLabel}";
+    private string Size(BoundingBox? b) => b is null ? "Not derived from the file." : $"{Num(b.SizeX)} × {Num(b.SizeY)} × {Num(b.SizeZ)} {UnitLabel}";
+    private static string Num(double v) => (Math.Abs(v) < 5e-7 ? 0 : v).ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static string Unavailable(AssemblyViewResult r) => r.Status switch
+    {
+        AssemblyViewStatus.NotFound => "The 3D view is not available for this document.",
+        AssemblyViewStatus.Busy => r.Message ?? "The viewer is busy. Try again in a moment.",
+        _ => r.Message ?? "This model cannot be shown.",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (module is not null)
+            {
+                await module.InvokeVoidAsync("dispose", host);
+                await module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+        self?.Dispose();
+    }
+}

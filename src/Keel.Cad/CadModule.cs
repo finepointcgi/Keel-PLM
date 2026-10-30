@@ -14,6 +14,7 @@ public static class CadModule
         services.AddSingleton<CadGraphService>();
         services.AddSingleton<CadPackageService>();
         services.AddSingleton<CadBomProposalService>();
+        services.AddSingleton<AssemblyViewService>(); // 9.5: placed structure of STEP files for the Viewer tab (needs Keel.Core.Viewing.IViewableFileSource)
         services.AddSingleton<Keel.Core.Geometry.IStepProductCounter, Structure.StepProductCounter>(); // 9.1: product count in the model version history
         return services;
     }
