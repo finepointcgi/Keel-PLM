@@ -13,6 +13,9 @@
     <PackageReference Include="PdfPig" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\Keel.UnitTests\Fixtures\cad\*.step" CopyToOutputDirectory="PreserveNewest" LinkBase="Fixtures\cad" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
     <ProjectReference Include="..\..\src\Keel.Security\Keel.Security.csproj" />
     <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />

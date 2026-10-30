@@ -16,7 +16,7 @@ This guide is for the person who connects a CAD system to Keel: a vendor plug-in
 - No plug-in for NX, Creo, SolidWorks, CATIA or any other CAD system. Each needs the vendor's SDK and licence, which we do not have. Nothing in this repository has been run against a real CAD system.
 - No reading of CAD native files. Keel never opens a `.prt`, `.asm`, `.sldprt`, `.CATPart` and so on. It stores the bytes, hashes them, scans them for malware and hands them back. All meaning (which file references which) is declared by the connector.
 - No geometry, no PMI, no thumbnails, no viewer support for native files (the existing viewer shows STEP, PDF and images only).
-- STEP: explicit quantity entities (`QUANTIFIED_ASSEMBLY_COMPONENT_USAGE`), placements and complex-entity instances are not read. The quantity of a child is the number of usage occurrences under its parent.
+- STEP: placements (positions) are not read. An explicit count quantity (`QUANTIFIED_ASSEMBLY_COMPONENT_USAGE`, simple or complex instance) is read since increment 9.2; otherwise the quantity of a child is the number of usage occurrences under its parent. Open-source connectors and recipes: [freecad-addon.md](freecad-addon.md), [watch-folder-recipes.md](watch-folder-recipes.md); commercial vendors (nothing built): [cad-plugins.md](cad-plugins.md).
 - No automatic release: nothing in this protocol releases, signs or approves anything.
 
 **What a plug-in author needs to implement** (the plug-in is a thin client of the API below):
@@ -177,7 +177,7 @@ A proposal is created from one of four formats; the format is named in the `meta
 
 ### STEP (ISO 10303-21; AP242, AP214, AP203)
 
-Keel reads the product structure only: `PRODUCT` (id becomes the number, name the name), `PRODUCT_DEFINITION_FORMATION` (a `make_or_buy` value becomes Make or Buy), `PRODUCT_DEFINITION` and `NEXT_ASSEMBLY_USAGE_OCCURRENCE`. Occurrences of the same child under the same parent are counted into one line with that quantity. The occurrence id is the find number when it is a unique whole number under its parent; the reference designator is kept when it has the shape of one, and goes to the line's notes otherwise. When the file has several top-level products, name the one to import as `rootNumber`. The reader is written for Keel (no third-party parser and no geometry kernel); everything else in the file is skipped without being read.
+Keel reads the product structure only: `PRODUCT` (id becomes the number, name the name), `PRODUCT_DEFINITION_FORMATION` (a `make_or_buy` value becomes Make or Buy), `PRODUCT_DEFINITION` and `NEXT_ASSEMBLY_USAGE_OCCURRENCE`. Occurrences of the same child under the same parent are counted into one line with that quantity (an explicit `COUNT_MEASURE` quantity counts as that many; other measures are noted, not applied). Several products with the same id are one part. Names are read as UTF-8 when valid, else ISO 8859-1. The occurrence id is the find number when it is a unique whole number under its parent; the reference designator is kept when it has the shape of one, and goes to the line's notes otherwise. When the file has several top-level products, name the one to import as `rootNumber`. The reader is written for Keel (no third-party parser and no geometry kernel); everything else in the file is skipped without being read.
 
 ### CSV
 

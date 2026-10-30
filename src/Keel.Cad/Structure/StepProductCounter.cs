@@ -14,7 +14,7 @@ public sealed class StepProductCounter : IStepProductCounter
         if (content.Length == 0 || content.Length > StructureLimits.MaxBytes) return null;
         try
         {
-            return StepStructureReader.Read(Encoding.Latin1.GetString(content.Span), new StructureReadOptions()).Parts.Count;
+            return StepStructureReader.Read(StructureReader.DecodeStep(content.Span), new StructureReadOptions()).Parts.Count;
         }
         catch (Exception e) when (e is StructureFormatException or ArgumentException or FormatException or InvalidOperationException or IndexOutOfRangeException or OverflowException)
         {

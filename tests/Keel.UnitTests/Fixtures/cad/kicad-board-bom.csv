@@ -1,0 +1,7 @@
+"Refs","Value","Footprint","Qty","KeelPN","DNP"
+"C1, C2, C3","100nF","Capacitor_SMD:C_0603_1608Metric","3","KC-0603-100N",""
+"R1, R2","10k","Resistor_SMD:R_0603_1608Metric","2","KR-0603-10K",""
+"R3","10k","Resistor_SMD:R_0603_1608Metric","1","KR-0603-10K",""
+"U1","STM32L011","Package_QFP:LQFP-32_7x7mm_P0.8mm","1","KU-STM32L011",""
+"J1","Conn_01x04","Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical","1","KJ-PH-1X04",""
+"TP1","TestPoint","TestPoint:TestPoint_Pad_D1.0mm","1","KT-PAD-1",DNP

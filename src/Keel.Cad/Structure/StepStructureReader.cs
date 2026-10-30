@@ -20,10 +20,12 @@ public static partial class StepStructureReader
 
     private sealed record Ref(int Id);
     private sealed record Enumeration(string Name);
+    private sealed record Typed(string Name, List<object?> Args);
+    private sealed record Measure(string Type, decimal? Value);
 
     private sealed record Product(string Id, string Name);
     private sealed record Formation(int ProductId, string? MakeOrBuy);
-    private sealed record Occurrence(string Id, int ParentDefinition, int ChildDefinition, string? Designator);
+    private sealed record Occurrence(string Id, int ParentDefinition, int ChildDefinition, string? Designator, int? QuantityRef = null);
 
     private const int MaxEntities = 5_000_000;
     private const int MaxNesting = 32;
@@ -36,16 +38,15 @@ public static partial class StepStructureReader
         var dataAt = IndexOfKeyword(text, "DATA", start);
         if (dataAt < 0) throw new StructureFormatException("The STEP file has no DATA section.");
         var header = text.Substring(start, Math.Min(dataAt - start, 20_000));
-        var protocol = header.Contains("AP242", StringComparison.OrdinalIgnoreCase) || header.Contains("442", StringComparison.Ordinal) ? "STEP AP242"
-            : header.Contains("AP214", StringComparison.OrdinalIgnoreCase) || header.Contains("AUTOMOTIVE_DESIGN", StringComparison.OrdinalIgnoreCase) ? "STEP AP214"
-            : header.Contains("CONFIG_CONTROL_DESIGN", StringComparison.OrdinalIgnoreCase) ? "STEP AP203" : "STEP";
+        var protocol = ProtocolOf(header);
 
         var products = new Dictionary<int, Product>();
         var formations = new Dictionary<int, Formation>();
         var definitions = new Dictionary<int, int>(); // product definition -> formation
+        var measures = new Dictionary<int, Measure>();
         var occurrences = new List<Occurrence>();
 
-        var pos = text.IndexOf(';', dataAt) + 1;
+        var pos = SkipStatement(text, dataAt); // "DATA;" or the edition 3 form "DATA('name',(schema));"
         var entities = 0;
         while (true)
         {
@@ -53,7 +54,14 @@ public static partial class StepStructureReader
             if (pos >= text.Length) throw new StructureFormatException("The STEP DATA section is not closed (ENDSEC missing).");
             if (text[pos] != '#')
             {
-                if (string.CompareOrdinal(text, pos, "ENDSEC", 0, 6) == 0) break;
+                if (string.CompareOrdinal(text, pos, "ENDSEC", 0, 6) == 0)
+                {
+                    // Edition 3 files may carry more than one DATA section (with ANCHOR or REFERENCE sections between them).
+                    var next = NextDataSection(text, SkipStatement(text, pos));
+                    if (next < 0) break;
+                    pos = SkipStatement(text, next);
+                    continue;
+                }
                 throw new StructureFormatException($"Unexpected text in the STEP DATA section near entity {entities + 1}.");
             }
             if (++entities > MaxEntities) throw new StructureFormatException("The STEP file has too many entities.");
@@ -65,7 +73,18 @@ public static partial class StepStructureReader
             pos = SkipBlank(text, pos);
             if (pos >= text.Length || text[pos] != '=') throw new StructureFormatException($"Entity #{id} has no '='.");
             pos = SkipBlank(text, pos + 1);
-            if (pos < text.Length && text[pos] == '(') { pos = SkipStatement(text, pos); continue; } // complex entity instance: not used for structure here
+            if (pos < text.Length && text[pos] == '(')
+            {
+                // Complex entity instance. Nearly all are geometry (skipped unread); one that carries a usage is parsed.
+                var end = SkipStatement(text, pos);
+                var slice = text.AsSpan(pos, end - pos);
+                if (slice.Contains("PRODUCT_DEFINITION_RELATIONSHIP", StringComparison.Ordinal)
+                    && (slice.Contains("ASSEMBLY_COMPONENT_USAGE", StringComparison.Ordinal) || slice.Contains("NEXT_ASSEMBLY_USAGE_OCCURRENCE", StringComparison.Ordinal))
+                    && ComplexUsage(text.Substring(pos, end - pos), id) is { } complex)
+                    occurrences.Add(complex);
+                pos = end;
+                continue;
+            }
             var kwStart = pos;
             while (pos < text.Length && (char.IsAsciiLetterOrDigit(text[pos]) || text[pos] == '_')) pos++;
             var keyword = text.AsSpan(kwStart, pos - kwStart);
@@ -88,42 +107,62 @@ public static partial class StepStructureReader
                 case "PRODUCT_DEFINITION":
                     if (Reference(args, 2) is { } f) definitions[id] = f;
                     break;
-                default: // NEXT_ASSEMBLY_USAGE_OCCURRENCE, SPECIFIED_HIGHER_USAGE_OCCURRENCE, ASSEMBLY_COMPONENT_USAGE
+                case "MEASURE_WITH_UNIT":
+                    if (args.Count > 0 && args[0] is Typed t) measures[id] = new Measure(t.Name.ToUpperInvariant(), t.Args.Count > 0 && t.Args[0] is string v ? ParseNumber(v) : null);
+                    break;
+                default: // NEXT_ASSEMBLY_USAGE_OCCURRENCE, SPECIFIED_HIGHER_USAGE_OCCURRENCE, ASSEMBLY_COMPONENT_USAGE, QUANTIFIED_ASSEMBLY_COMPONENT_USAGE (quantity: 7th argument)
                     if (Reference(args, 3) is { } parent && Reference(args, 4) is { } child)
-                        occurrences.Add(new Occurrence(Text(args, 0) ?? "", parent, child, Text(args, 5)));
+                        occurrences.Add(new Occurrence(Text(args, 0) ?? "", parent, child, Text(args, 5), name == "QUANTIFIED_ASSEMBLY_COMPONENT_USAGE" ? Reference(args, 6) : null));
                     break;
             }
         }
         if (products.Count == 0) throw new StructureFormatException("The STEP file has no PRODUCT entities.");
 
-        int? ProductOf(int definition) =>
-            definitions.TryGetValue(definition, out var fm) && formations.TryGetValue(fm, out var fo) && products.ContainsKey(fo.ProductId) ? fo.ProductId : null;
+        // Several PRODUCT entities with the same id are one part number (an exporter writes one product per configuration or per copied shape):
+        // they are merged into the first of them, so the BOM gets one line and one part, not two parts with one number.
+        var canonical = new Dictionary<int, int>();
+        var firstWithId = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (k, pr) in products.OrderBy(kv => kv.Key))
+        {
+            var key = pr.Id.Trim();
+            canonical[k] = key.Length > 0 && !firstWithId.TryAdd(key, k) ? firstWithId[key] : k;
+        }
 
-        // Aggregate occurrences: one line per (parent product, child product).
-        var lineMap = new Dictionary<(int, int), (int Count, List<string> Refs, List<string> Notes, string? Find, List<string> Ids)>();
+        int? ProductOf(int definition) =>
+            definitions.TryGetValue(definition, out var fm) && formations.TryGetValue(fm, out var fo) && products.ContainsKey(fo.ProductId) ? canonical[fo.ProductId] : null;
+
+        // Aggregate occurrences: one line per (parent product, child product). An explicit quantity (QUANTIFIED_ASSEMBLY_COMPONENT_USAGE) counts
+        // as that many pieces when it is a count; any other measure is not a piece count, so it is noted and the occurrence counts as one.
+        var lineMap = new Dictionary<(int, int), (decimal Count, List<string> Refs, List<string> Notes, string? Find, List<string> Ids)>();
         var order = new List<(int, int)>();
         foreach (var o in occurrences)
         {
             if (ProductOf(o.ParentDefinition) is not { } pp || ProductOf(o.ChildDefinition) is not { } cp) continue;
-            if (!lineMap.TryGetValue((pp, cp), out var agg)) { agg = (0, [], [], null, []); order.Add((pp, cp)); }
+            if (!lineMap.TryGetValue((pp, cp), out var agg)) { agg = (0m, [], [], null, []); order.Add((pp, cp)); }
             var refs = agg.Refs; var notes = agg.Notes; var ids = agg.Ids;
             if (!string.IsNullOrWhiteSpace(o.Designator))
             {
                 var d = o.Designator.Trim();
                 if (DesignatorPattern().IsMatch(d)) refs.Add(d); else notes.Add(d.Length > 80 ? d[..80] : d);
             }
+            var pieces = 1m;
+            if (o.QuantityRef is { } qr && measures.TryGetValue(qr, out var measure) && measure.Value is { } value)
+            {
+                if (measure.Type == "COUNT_MEASURE" && value > 0) pieces = value;
+                else notes.Add($"quantity {value.ToString(CultureInfo.InvariantCulture)} ({measure.Type}) is not a piece count and was not applied");
+            }
             ids.Add(o.Id);
-            lineMap[(pp, cp)] = (agg.Count + 1, refs, notes, agg.Find, ids);
+            lineMap[(pp, cp)] = (agg.Count + pieces, refs, notes, agg.Find, ids);
         }
         var parents = order.Select(k => k.Item1).ToHashSet();
         var childrenSet = order.Select(k => k.Item2).ToHashSet();
 
         int rootId;
-        var roots = products.Keys.Where(k => (parents.Contains(k) || order.Count == 0) && !childrenSet.Contains(k)).OrderBy(k => k).ToList();
+        var roots = products.Keys.Where(k => canonical[k] == k).Where(k => (parents.Contains(k) || order.Count == 0) && !childrenSet.Contains(k)).OrderBy(k => k).ToList();
         if (!string.IsNullOrWhiteSpace(options.RootNumber))
         {
             var wantedRoot = options.RootNumber.Trim();
-            var hit = products.Where(kv => kv.Value.Id == wantedRoot && (parents.Contains(kv.Key) || order.Count == 0 || childrenSet.Contains(kv.Key))).Select(kv => kv.Key).ToList();
+            var hit = products.Where(kv => canonical[kv.Key] == kv.Key && kv.Value.Id.Trim() == wantedRoot && (parents.Contains(kv.Key) || order.Count == 0 || childrenSet.Contains(kv.Key))).Select(kv => kv.Key).ToList();
             rootId = hit.Count == 1 ? hit[0] : throw new StructureFormatException($"The STEP file has no single product with the number '{Trunc(wantedRoot)}'.");
         }
         else if (roots.Count == 1) rootId = roots[0];
@@ -140,7 +179,7 @@ public static partial class StepStructureReader
                 if (reachable.Add(c)) stack.Push(c);
 
         var makeOrBuy = new Dictionary<int, string?>();
-        foreach (var fo in formations.Values) makeOrBuy.TryAdd(fo.ProductId, fo.MakeOrBuy);
+        foreach (var fo in formations.Values.Where(f => products.ContainsKey(f.ProductId))) makeOrBuy.TryAdd(canonical[fo.ProductId], fo.MakeOrBuy);
         var parts = reachable.OrderBy(k => k).Select(k =>
         {
             var pr = products[k];
@@ -173,9 +212,75 @@ public static partial class StepStructureReader
         || keyword.Equals("PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE", StringComparison.OrdinalIgnoreCase)
         || keyword.Equals("NEXT_ASSEMBLY_USAGE_OCCURRENCE", StringComparison.OrdinalIgnoreCase)
         || keyword.Equals("SPECIFIED_HIGHER_USAGE_OCCURRENCE", StringComparison.OrdinalIgnoreCase)
-        || keyword.Equals("ASSEMBLY_COMPONENT_USAGE", StringComparison.OrdinalIgnoreCase);
+        || keyword.Equals("ASSEMBLY_COMPONENT_USAGE", StringComparison.OrdinalIgnoreCase)
+        || keyword.Equals("QUANTIFIED_ASSEMBLY_COMPONENT_USAGE", StringComparison.OrdinalIgnoreCase)
+        || keyword.Equals("MEASURE_WITH_UNIT", StringComparison.OrdinalIgnoreCase);
 
     private static string Trunc(string s) => s.Length <= 40 ? s : s[..40] + "...";
+
+    /// <summary>The protocol is decided by the FILE_SCHEMA entry only; other header text (file names, descriptions) must not decide it.</summary>
+    private static string ProtocolOf(string header)
+    {
+        var at = header.IndexOf("FILE_SCHEMA", StringComparison.Ordinal);
+        var schema = at < 0 ? "" : header[at..];
+        var end = schema.IndexOf(';', StringComparison.Ordinal);
+        if (end > 0) schema = schema[..end];
+        return schema.Contains("AP242", StringComparison.OrdinalIgnoreCase) || schema.Contains("MANAGED_MODEL_BASED_3D_ENGINEERING", StringComparison.OrdinalIgnoreCase) || Regex.IsMatch(schema, @"\b10303\s+442\b") ? "STEP AP242"
+            : schema.Contains("AP214", StringComparison.OrdinalIgnoreCase) || schema.Contains("AUTOMOTIVE_DESIGN", StringComparison.OrdinalIgnoreCase) ? "STEP AP214"
+            : schema.Contains("CONFIG_CONTROL_DESIGN", StringComparison.OrdinalIgnoreCase) || schema.Contains("AP203", StringComparison.OrdinalIgnoreCase) ? "STEP AP203" : "STEP";
+    }
+
+    /// <summary>The position of the next <c>DATA</c> section keyword after <paramref name="from"/> (skipping other sections), or -1.</summary>
+    private static int NextDataSection(string text, int from)
+    {
+        var pos = from;
+        while (true)
+        {
+            pos = SkipBlank(text, pos);
+            if (pos >= text.Length || text[pos] == '#') return -1;
+            var kwStart = pos;
+            while (pos < text.Length && (char.IsAsciiLetterOrDigit(text[pos]) || text[pos] == '_')) pos++;
+            var kw = text.AsSpan(kwStart, pos - kwStart);
+            if (kw.Equals("END-ISO-10303-21", StringComparison.Ordinal) || kw.Length == 0) return -1;
+            if (kw.Equals("DATA", StringComparison.Ordinal)) return kwStart;
+            // ANCHOR; REFERENCE; SIGNATURE; and other sections: skip to their ENDSEC;
+            var e = text.IndexOf("ENDSEC", pos, StringComparison.Ordinal);
+            if (e < 0) return -1;
+            pos = SkipStatement(text, e);
+        }
+    }
+
+    /// <summary>Reads a complex entity instance such as <c>(ASSEMBLY_COMPONENT_USAGE($) NEXT_ASSEMBLY_USAGE_OCCURRENCE() PRODUCT_DEFINITION_RELATIONSHIP('1','','',#2,#3) QUANTIFIED_ASSEMBLY_COMPONENT_USAGE(#4))</c>:
+    /// each partial entity lists only its own attributes, so the usage is put together from the ones present.</summary>
+    private static Occurrence? ComplexUsage(string statement, int entity)
+    {
+        var pos = 0;
+        pos = SkipBlank(statement, pos);
+        if (pos >= statement.Length || statement[pos] != '(') return null;
+        pos++;
+        var parts = new Dictionary<string, List<object?>>(StringComparer.Ordinal);
+        while (true)
+        {
+            pos = SkipBlank(statement, pos);
+            if (pos >= statement.Length) return null;
+            if (statement[pos] == ')') break;
+            var s = pos;
+            while (pos < statement.Length && (char.IsAsciiLetterOrDigit(statement[pos]) || statement[pos] == '_')) pos++;
+            if (pos == s) return null;
+            var name = statement.Substring(s, pos - s).ToUpperInvariant();
+            pos = SkipBlank(statement, pos);
+            parts[name] = ParseList(statement, ref pos, 0, entity);
+            if (parts.Count > 32) return null;
+        }
+        if (!parts.TryGetValue("PRODUCT_DEFINITION_RELATIONSHIP", out var rel)) return null;
+        if (Reference(rel, 3) is not { } parent || Reference(rel, 4) is not { } child) return null;
+        parts.TryGetValue("ASSEMBLY_COMPONENT_USAGE", out var acu);
+        parts.TryGetValue("QUANTIFIED_ASSEMBLY_COMPONENT_USAGE", out var qacu);
+        return new Occurrence(Text(rel, 0) ?? "", parent, child, acu is null ? null : Text(acu, 0), qacu is null ? null : Reference(qacu, 0));
+    }
+
+    private static decimal? ParseNumber(string token) =>
+        decimal.TryParse(token.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : null;
 
     private static string? Text(List<object?> args, int i) => i < args.Count ? args[i] as string : null;
     private static int? Reference(List<object?> args, int i) => i < args.Count && args[i] is Ref r ? r.Id : null;
@@ -187,7 +292,7 @@ public static partial class StepStructureReader
         {
             var end = at + keyword.Length;
             var before = at == 0 || !(char.IsAsciiLetterOrDigit(text[at - 1]) || text[at - 1] == '_');
-            var after = end < text.Length && SkipBlank(text, end) is var q && q < text.Length && text[q] == ';';
+            var after = end < text.Length && SkipBlank(text, end) is var q && q < text.Length && (text[q] == ';' || text[q] == '(');
             if (before && after) return at;
             at = end;
         }
@@ -269,7 +374,7 @@ public static partial class StepStructureReader
                 var s = pos;
                 while (pos < text.Length && text[pos] is not (',' or ')' or '(')) pos++;
                 var token = text.AsSpan(s, pos - s).Trim().ToString();
-                if (pos < text.Length && text[pos] == '(') { _ = ParseList(text, ref pos, depth + 1, entity); value = null; } // typed value such as LABEL('x'): not needed
+                if (pos < text.Length && text[pos] == '(') value = new Typed(token, ParseList(text, ref pos, depth + 1, entity)); // typed value such as COUNT_MEASURE(4.)
                 else value = token;
             }
             items.Add(value);
@@ -305,6 +410,13 @@ public static partial class StepStructureReader
                     pos = end + 4;
                     continue;
                 }
+            }
+            if (c == '\\' && pos + 3 < text.Length && text[pos + 1] == 'S' && text[pos + 2] == '\\')
+            {
+                // \S\c : the character c with the high bit set (ISO 8859-1 upper half), the escape of edition 1 and 2 files.
+                sb.Append((char)(text[pos + 3] + 128));
+                pos += 4;
+                continue;
             }
             if (c == '\\' && pos + 1 < text.Length && text[pos + 1] == '\\') { sb.Append('\\'); pos += 2; continue; }
             sb.Append(c);
