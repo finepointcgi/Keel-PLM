@@ -45,3 +45,14 @@ table.data td:has(a.row-name) { min-width: 13rem; }
 .action-bar button, .action-bar a.button { border-radius: var(--radius-pill); min-height: 38px; padding-inline: var(--sp-4); }
 .action-bar button.secondary { background: transparent; }
 article.stack > p.muted.small { font-size: var(--fs-sm); margin: 0; }
+
+/* ---- sidebar: quieter group headings, tighter items, one line per link where it fits */
+.app:not(.rail-collapsed) .rail button.rail-group-header { min-height: 36px; margin-top: var(--sp-2); }
+.app:not(.rail-collapsed) .rail .rail-group-title { font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-muted); }
+.app:not(.rail-collapsed) .rail .rail-link > a.mud-nav-link { min-height: 40px; padding-block: 2px; }
+.app:not(.rail-collapsed) .rail .rail-link > a.mud-nav-link .mud-nav-link-text { font-size: var(--fs-md); line-height: 1.2; }
+
+/* ---- tabs: a scrolling row that keeps scroll-snapped, with the edge softened so a cut-off tab reads as "more" */
+.tablist { scroll-snap-type: x proximity; scroll-padding-inline: var(--sp-4); }
+.tab { scroll-snap-align: start; }
+.tabs > .tablist { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-inline-end: 28px; }

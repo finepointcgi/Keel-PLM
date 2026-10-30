@@ -41,7 +41,7 @@
                         <td>@r.FindNumber</td>
                         <td>@r.Quantity.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)</td>
                         <td>@r.Unit</td>
-                        <td>@if (r.Banner is not null) { <MarkingChip Text="@r.Banner" /> }</td>
+                        <td>@if (r.Banner is not null) { <MarkingChip Text="@r.Banner" Compact="true" /> }</td>
                     </tr>
                 }
                 </tbody>

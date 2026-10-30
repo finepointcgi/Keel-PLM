@@ -81,7 +81,7 @@
         new() { Key = "configuration", Title = "Configuration", Text = b => b.SpecText, DefaultHidden = true },
         new() { Key = "items", Title = "Items", ServerSortKey = "items", Text = b => b.ItemCount.ToString(System.Globalization.CultureInfo.InvariantCulture) },
         new() { Key = "created", Title = "Created", ServerSortKey = "created", Text = b => $"{UiText.Utc(b.CreatedAt)} · {b.CreatedBy}" },
-        new() { Key = "markings", Title = "Markings", Required = true, Cell = b => @<MarkingChip Text="@b.Banner" /> },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = b => @<MarkingChip Text="@b.Banner" Compact="true" /> },
     ];
 
     protected override async Task OnInitializedAsync()

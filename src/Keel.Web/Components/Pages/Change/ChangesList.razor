@@ -100,7 +100,7 @@
         new() { Key = "priority", Title = "Priority", ServerSortKey = "priority", Text = c => c.Priority },
         new() { Key = "state", Title = "State", ServerSortKey = "state", Cell = c => @<span class="badge @ChangeUi.StateClass(c.State)">@c.StateLabel</span> },
         new() { Key = "requester", Title = "Requester", ServerSortKey = "requester", Text = c => c.RequesterName, DefaultHidden = false },
-        new() { Key = "markings", Title = "Markings", Required = true, Cell = c => @<MarkingChip Text="@c.Banner" /> },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = c => @<MarkingChip Text="@c.Banner" Compact="true" /> },
     ];
 
     // Union of the states of all three lifecycles, for the filter; the data-defined lifecycles stay the source of truth.

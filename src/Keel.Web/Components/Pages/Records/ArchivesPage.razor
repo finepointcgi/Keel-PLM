@@ -45,7 +45,7 @@
         new() { Key = "size", Title = "Size", Text = a => RecordsUi.Size(a.Size) },
         new() { Key = "worm", Title = "Protection", Text = a => RecordsUi.WormText(a.WormMode) },
         new() { Key = "created", Title = "Created", Text = a => UiText.Utc(a.CreatedAt) + " by " + a.CreatedBy },
-        new() { Key = "markings", Title = "Markings", Required = true, Cell = a => @<MarkingChip Text="@a.Banner" /> },
+        new() { Key = "markings", Title = "Markings", Required = true, Cell = a => @<MarkingChip Text="@a.Banner" Compact="true" /> },
     ];
 
     protected override async Task OnInitializedAsync() => await Load();
