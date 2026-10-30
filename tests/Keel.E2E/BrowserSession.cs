@@ -60,7 +60,7 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
         await page.GotoAsync(host + "/");
         await SubmitKeycloakAsync(page, user);
         await page.WaitForURLAsync(url => url.StartsWith(host, StringComparison.Ordinal));
-        await Expect(page.Locator("nav[aria-label='Main']")).ToBeAttachedAsync();
+        await Expect(page.Locator("nav#main-nav")).ToBeAttachedAsync();
         await Expect(page.Locator("main#main")).ToBeVisibleAsync();
         // The shell is rendered by the Blazor circuit, so the navigation in the page means the circuit is live (at phone width it is a drawer, not visible).
         up.SignedInAt = DateTimeOffset.UtcNow;

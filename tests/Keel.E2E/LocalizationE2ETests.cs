@@ -25,6 +25,15 @@ public sealed class LocalizationE2ETests(E2EFixture fx)
         await Expect(page.Locator("h1").First).ToBeVisibleAsync();
     }
 
+    /// <summary>Puts the language back to English even when the page is in a bad state: the preference is stored for the user and every later test signs in as the same people.</summary>
+    private async Task RestoreEnglishAsync(IPage page)
+    {
+        try { await ChooseLanguageAsync(page, "en"); }
+        catch (Exception e) when (e is PlaywrightException or TimeoutException or Xunit.Sdk.XunitException) { /* the stored value is reset below */ }
+        await using var cmd = fx.AppDb.CreateCommand("UPDATE ws.preference SET language = 'en' WHERE language <> 'en'");
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     private static async Task SettleAsync(IPage page)
     {
         try { await Expect(page.Locator(".skeleton")).ToHaveCountAsync(0, new LocatorAssertionsToHaveCountOptions { Timeout = 15_000 }); }
@@ -96,7 +105,7 @@ public sealed class LocalizationE2ETests(E2EFixture fx)
             }
             finally
             {
-                await ChooseLanguageAsync(page, "en");
+                await RestoreEnglishAsync(page);
             }
             await page.GotoAsync(fx.BaseUrl + "/parts");
             await Expect(page.Locator("h1")).ToHaveTextAsync("Parts");
@@ -149,7 +158,7 @@ public sealed class LocalizationE2ETests(E2EFixture fx)
             finally
             {
                 await page.SetViewportSizeAsync(1280, 900);
-                await ChooseLanguageAsync(page, "en");
+                await RestoreEnglishAsync(page);
             }
             Assert.True(audited >= 28, $"Only {audited} page states were audited.");
             Assert.True(findings.Count == 0, $"{findings.Count} finding(s) in {audited} page states:\n" + string.Join("\n", findings));
@@ -182,7 +191,7 @@ public sealed class LocalizationE2ETests(E2EFixture fx)
             }
             finally
             {
-                await ChooseLanguageAsync(page, "en");
+                await RestoreEnglishAsync(page);
             }
         });
     }

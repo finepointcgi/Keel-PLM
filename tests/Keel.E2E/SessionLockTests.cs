@@ -71,7 +71,7 @@ public sealed class SessionLockTests(E2EFixture fx)
             var html = await page.ContentAsync();
             foreach (var secret in new[] { m.GimbalBracket, "Gimbal bracket", "7075-T6", "ITAR", "USML", "ORCA", "Critical safety", "alice@", "Where used" })
                 Assert.DoesNotContain(secret, html, StringComparison.Ordinal);
-            Assert.Equal(0, await page.Locator("nav[aria-label='Main']").CountAsync());
+            Assert.Equal(0, await page.Locator("nav#main-nav").CountAsync());
             Assert.Equal(0, await page.Locator("[data-position]").CountAsync());
             Assert.Equal("true", await dialog.GetAttributeAsync("aria-modal"));
             await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Sign in to unlock" })).ToBeVisibleAsync();
@@ -159,7 +159,7 @@ public sealed class SessionLockTests(E2EFixture fx)
             var html = await page.ContentAsync();
             foreach (var secret in new[] { m.GimbalBracket, "Gimbal bracket", "7075-T6", "ITAR", "USML", "ORCA", "Critical safety", "alice@", "Where used" })
                 Assert.DoesNotContain(secret, html, StringComparison.Ordinal);
-            Assert.Equal(0, await page.Locator("nav[aria-label='Main']").CountAsync());
+            Assert.Equal(0, await page.Locator("nav#main-nav").CountAsync());
             Assert.Equal(0, await page.Locator("[data-position]").CountAsync());
             Assert.False(await page.Locator("#blazor-error-ui").IsVisibleAsync(), "the error banner of a dead circuit is not shown");
 

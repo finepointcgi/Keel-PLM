@@ -226,12 +226,12 @@ public sealed class UxTests(E2EFixture fx)
                 Assert.True(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"), $"{path} scrolls sideways at 375 px");
             }
             // The rail is a drawer behind the menu button.
-            await Expect(page.Locator("nav[aria-label='Main']")).ToBeHiddenAsync();
+            await Expect(page.Locator("nav#main-nav")).ToBeHiddenAsync();
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Menu" }).ClickAsync();
-            await Expect(page.Locator("nav[aria-label='Main']")).ToBeVisibleAsync();
-            await page.Locator("nav[aria-label='Main']").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Documents" }).ClickAsync();
+            await Expect(page.Locator("nav#main-nav")).ToBeVisibleAsync();
+            await page.Locator("nav#main-nav").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Documents" }).ClickAsync();
             await page.WaitForURLAsync(url => url.EndsWith("/documents", StringComparison.Ordinal));
-            await Expect(page.Locator("nav[aria-label='Main']")).ToBeHiddenAsync();
+            await Expect(page.Locator("nav#main-nav")).ToBeHiddenAsync();
 
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Search or jump to" }).ClickAsync();
             var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Command palette" });
