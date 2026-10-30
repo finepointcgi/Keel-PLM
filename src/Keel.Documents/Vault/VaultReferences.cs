@@ -8,7 +8,8 @@ namespace Keel.Documents.Vault;
 /// document disposed of under a retention schedule (and not under legal hold) stop counting as references and the existing sweeper, with its grace period and integrity
 /// checks, removes the content.
 /// </param>
-public sealed record VaultReferenceSource(string Schema, string Table, string Column, string Why, string? LivePredicate = null)
+/// <param name="SizeColumn">The column of the same row that holds the recorded size in bytes (the bulk verifier, <c>keel-vault verify</c>, checks size and hash against it).</param>
+public sealed record VaultReferenceSource(string Schema, string Table, string Column, string Why, string? LivePredicate = null, string SizeColumn = "size_bytes")
 {
     public string Qualified => $"{Schema}.{Table}.{Column}";
 }
@@ -33,7 +34,7 @@ public static class VaultReferences
             "NOT rec.iteration_content_released(r.iteration_id)"),
         new("plm", "document_checkout_file", "sha256", "files of working copies not yet checked in"),
         new("src", "response_file", "sha256", "files a supplier uploaded with a response in the supplier portal (immutable rows)"),
-        new("rec", "archive", "package_sha256", "WORM-style archive packages (8.6): immutable rows, never garbage"),
+        new("rec", "archive", "package_sha256", "WORM-style archive packages (8.6): immutable rows, never garbage", null, "package_size"),
         new("rpt", "artifact", "sha256", "generated release package PDFs (8.9): immutable rows, content addressed"),
     ];
 

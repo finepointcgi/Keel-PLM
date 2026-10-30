@@ -1,6 +1,6 @@
 # Integration runbook
 
-Applies to the outbox, ERP sinks and Technical Data Package export (ADR-0025). Settings are in [configuration.md](configuration.md#integration-keelintegration).
+Applies to the outbox, ERP sinks and Technical Data Package export (ADR-0025). Settings are in [configuration.md](configuration.md#integration-keelintegration-adr-0025-runbook).
 
 ## Enabling delivery
 1. Apply migrations (0012). Nothing is delivered until a sink exists and the dispatcher runs.

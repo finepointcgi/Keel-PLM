@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 # Regenerates docs/integration/openapi.json from the running host's /openapi/v1.json (through the integration test that compares them).
 # Run after an intended change to the integration API, review the diff, and commit it with the change.
+#
+#   scripts/update-openapi.sh            regenerate every committed OpenAPI document
+#   scripts/update-openapi.sh --check    drift check for CI: run the same comparison tests WITHOUT the update switch; exits non-zero (and the test output
+#                                        shows the difference) when the running host's documents differ from docs/**/openapi.json. Changes nothing. Needs Docker.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [[ "${1:-}" == "--check" ]]; then
+  filters=()
+  while read -r name; do filters+=(--filter-method "$name"); done < <(grep -E '^  --filter-method "' "$0" | sed 's/^  --filter-method "//; s/"$//')
+  [[ ${#filters[@]} -ge 22 ]] || { echo "could not read the test names from $0" >&2; exit 2; }
+  unset KEEL_UPDATE_OPENAPI
+  exec dotnet test --project tests/Keel.IntegrationTests "${filters[@]}"
+fi
 KEEL_UPDATE_OPENAPI=1 dotnet test --project tests/Keel.IntegrationTests \
   --filter-method "Keel.IntegrationTests.IntegrationApiTests.The_published_openapi_document_equals_the_committed_one_and_is_3_1"
 # The CAD connector API has its own document (docs/integration/cad-openapi.json).

@@ -1,0 +1,27 @@
+# Accessibility (axe-core, light/dark/high-contrast, 375 px) for pull requests that change the UI. It needs the browser stack, so it is path-filtered
+# instead of running on every pull request; main and nightly run it again as part of the full browser suite (e2e.yml).
+name: axe-on-ui-changes
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/Keel.Web/**"
+      - "tests/Keel.E2E/AccessibilityTests.cs"
+      - "tests/Keel.E2E/vendor/axe-core/**"
+      - ".github/workflows/axe.yml"
+      - ".github/workflows/e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  axe:
+    uses: ./.github/workflows/e2e.yml
+    with:
+      filter-class: "*AccessibilityTests"
+      timeout-minutes: 40
