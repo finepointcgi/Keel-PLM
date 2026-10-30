@@ -24,7 +24,7 @@ The rail is grouped. Which groups you see depends on your roles; hiding a link i
 | Programs | Programs |
 | Quality | Nonconformance reports, Corrective actions, Deviations and waivers |
 | Sourcing | Suppliers, Supplier requests |
-| Output | Reports, Release packages, BOM in Excel, Mass change |
+| Output | Reports, Release packages, Verify a package, BOM in Excel, Mass change |
 | Records | Records management, Retention schedules, Legal holds, Disposition, Archives (records managers, administrators and auditors) |
 | Configuration | Workflows, Lifecycles, Classification (administrators) |
 | Administration | Administration, Migration, Integration (administrators) |

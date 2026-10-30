@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Keel PLM output and bulk work API",
-    "description": "Release package PDFs (refused when any included object is unreadable, aggregate marking on every page), Excel and CSV BOM export and import proposals, mass change with preview, apply and undo, and the report builder over a fixed catalog of datasets. Every result is read-filtered for the caller and carries its marking banner.",
+    "description": "Release package PDFs (digitally signed when an administrator has configured a signing identity; refused when any included object is unreadable, aggregate marking on every page), Excel and CSV BOM export and import proposals, mass change with preview, apply and undo, and the report builder over a fixed catalog of datasets. Every result is read-filtered for the caller and carries its marking banner.",
     "version": "1"
   },
   "servers": [
@@ -79,6 +79,36 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/packages/verify": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Verifies the digital signature of a PDF you upload (the body is the file): byte ranges, integrity, signer, signing time, chain to a configured trust anchor. Reports tampering; names the Keel package only when you may read all of it.",
+        "requestBody": {
+          "content": {
+            "application/pdf": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -719,10 +749,187 @@
           }
         }
       }
+    },
+    "/api/v1/output/signing/identities": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Administrator: the signing identities (certificates and key references; never a private key or password).",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Administrator: registers a certificate bundle (signing certificate first, root last) and where its private key is. The key is loaded and proven to match before anything is stored.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSigningIdentity"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/signing/identities/development": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "DEVELOPMENT ONLY, administrator: generates a throw-away certificate chain and registers it. 403 on hosts that are not development or demo hosts.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevelopmentIdentityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/signing/identities/{id}/activate": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Administrator: makes this the identity that signs new packages (the previous one becomes standby).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/signing/identities/{id}/retire": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Administrator: retires an identity for good. Packages it signed still verify.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/signing/policy": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Administrator: whether signing is required and whether an identity is active.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Administrator: require signing. While required and no identity is active, packages are refused.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SigningPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddSigningIdentity": {
+        "required": [
+          "name",
+          "keySource",
+          "certificatePem",
+          "keyReference",
+          "passwordReference",
+          "reason",
+          "location"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "keySource": {
+            "type": "string"
+          },
+          "certificatePem": {
+            "type": "string"
+          },
+          "keyReference": {
+            "type": "string"
+          },
+          "passwordReference": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          }
+        }
+      },
       "DatasetFilter": {
         "required": [
           "column",
@@ -739,6 +946,20 @@
           },
           "value": {
             "type": "string"
+          }
+        }
+      },
+      "DevelopmentIdentityRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -885,6 +1106,17 @@
           "shared": {
             "type": "boolean",
             "default": false
+          }
+        }
+      },
+      "SigningPolicyRequest": {
+        "required": [
+          "required"
+        ],
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean"
           }
         }
       }

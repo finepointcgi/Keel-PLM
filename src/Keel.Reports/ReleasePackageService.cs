@@ -1,14 +1,18 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Keel.Audit;
 using Keel.Core;
 using Keel.Core.Reports;
 using Keel.Reports.Pdf;
+using Keel.Reports.Signing;
 using Npgsql;
 
 namespace Keel.Reports;
 
-public sealed record ArtifactView(string Number, string Kind, string SubjectKind, string SubjectKey, string Title, string Sha256, long SizeBytes, string Banner, DateTimeOffset CreatedAt, string CreatedBy);
+public sealed record ArtifactView(string Number, string Kind, string SubjectKind, string SubjectKey, string Title, string Sha256, long SizeBytes, string Banner, DateTimeOffset CreatedAt, string CreatedBy,
+    string? SignedBy = null, DateTimeOffset? SignedAt = null);
 
 public sealed record ArtifactDownload(string FileName, string Banner, string Sha256, long SizeBytes, Stream Content);
 
@@ -19,7 +23,7 @@ public sealed record ArtifactDownload(string FileName, string Banner, string Sha
 /// </summary>
 public sealed class ReleasePackageService(
     NpgsqlDataSource dataSource, IAuditLog audit, TimeProvider clock, IReleasePackageSource source, IContentStore store, IContentReader reader,
-    Func<Markings, IReadOnlyList<string>> notices, Action ensureFonts)
+    Func<Markings, IReadOnlyList<string>> notices, Action ensureFonts, PackageSigningService signing)
 {
     private static readonly SemaphoreSlim Slots = new(ReportsLimits.MaxConcurrentPackages);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -49,7 +53,27 @@ public sealed class ReleasePackageService(
             await using (var conn0 = await dataSource.OpenConnectionAsync(ct))
             await using (var cmd0 = new NpgsqlCommand("SELECT nextval('rpt.artifact_number_seq')", conn0)) seq = (long)(await cmd0.ExecuteScalarAsync(ct))!;
             var number = "RPK-" + seq.ToString("D6", CultureInfo.InvariantCulture);
-            var pdf = ReleasePackagePdf.Render(c, marking, new PackageIdentity(number, now, subject.DisplayName), ensureFonts);
+            // Signing is decided before the document is rendered, and never skipped silently: with signing required (or an identity active) a package that cannot be signed is refused.
+            var prepared = await signing.PrepareAsync(ct);
+            if (!prepared.IsOk)
+            {
+                await signing.AuditSigningFailureAsync(subject, kind, key, correlationId, "signing.unavailable", ct);
+                return Outcome<ArtifactView>.Unavailable(prepared.Errors[0]);
+            }
+            using var signer = prepared.Value;
+            var reservation = signer is null ? null : new SignatureReservation(signer.Reason, signer.Location, signer.Key.Certificate.GetNameInfo(X509NameType.SimpleName, false), now);
+            var pdf = ReleasePackagePdf.Render(c, marking, new PackageIdentity(number, now, subject.DisplayName), ensureFonts, reservation);
+            SignedPdf? signed = null;
+            if (signer is not null)
+            {
+                try { signed = PdfSigner.Sign(pdf, signer.Key, now); }
+                catch (Exception e) when (e is CryptographicException or InvalidOperationException)
+                {
+                    await signing.AuditSigningFailureAsync(subject, kind, key, correlationId, "signing.failed", ct);
+                    return Outcome<ArtifactView>.Unavailable("The package could not be signed: " + e.Message);
+                }
+                pdf = signed.Bytes;
+            }
             ContentInfo stored;
             try { stored = await store.PutAsync(new MemoryStream(pdf, writable: false), ct); }
             catch (ContentRejectedException e) { return Outcome<ArtifactView>.Unprocessable(e.Message); }
@@ -81,11 +105,13 @@ public sealed class ReleasePackageService(
                 ins.Parameters.AddWithValue("corr", (object?)correlationId ?? DBNull.Value);
                 await ins.ExecuteNonQueryAsync(ct);
             }
+            if (signed is not null && signer is not null) await signing.RecordAsync(conn, tx, id, number, subject, signer, signed, now, correlationId, ct);
             await audit.AppendAsync(tx, ReportsAudit.Entry(subject, "output.package.generate", AuditOutcome.Success, "output", number, correlationId,
                 ("kind", kind), ("subject", key), ("sha256", stored.Sha256), ("bytes", stored.SizeBytes.ToString(CultureInfo.InvariantCulture)),
-                ("objects", objects.Count.ToString(CultureInfo.InvariantCulture)), ("banner", marking.Banner)), ct);
+                ("objects", objects.Count.ToString(CultureInfo.InvariantCulture)), ("banner", marking.Banner), ("signed", signed is null ? "false" : "true")), ct);
             await tx.CommitAsync(ct);
-            return Outcome<ArtifactView>.Ok(new ArtifactView(number, "release_package", kind, key, Trim(c.Title, 300), stored.Sha256, stored.SizeBytes, marking.Banner, now, subject.Username ?? subject.DisplayName));
+            return Outcome<ArtifactView>.Ok(new ArtifactView(number, "release_package", kind, key, Trim(c.Title, 300), stored.Sha256, stored.SizeBytes, marking.Banner, now, subject.Username ?? subject.DisplayName,
+                signer?.Key.Certificate.Subject, signed is null ? null : now));
         }
         finally { Slots.Release(); }
     }
@@ -96,13 +122,14 @@ public sealed class ReleasePackageService(
         var rows = new List<(ArtifactView View, List<ObjRef> Objects)>();
         await using (var conn = await dataSource.OpenConnectionAsync(ct))
         await using (var cmd = new NpgsqlCommand(
-            "SELECT number, kind, subject_kind, subject_key, title, sha256, size_bytes, banner, created_at, created_by, objects::text FROM rpt.artifact WHERE subject_kind = @k AND subject_key = @key ORDER BY created_at DESC LIMIT 50", conn))
+            "SELECT a.number, a.kind, a.subject_kind, a.subject_key, a.title, a.sha256, a.size_bytes, a.banner, a.created_at, a.created_by, a.objects::text, s.subject_dn, s.signed_at FROM rpt.artifact a LEFT JOIN rpt.artifact_signature s ON s.artifact_id = a.id WHERE a.subject_kind = @k AND a.subject_key = @key ORDER BY a.created_at DESC LIMIT 50", conn))
         {
             cmd.Parameters.AddWithValue("k", (kind ?? "").Trim().ToLowerInvariant());
             cmd.Parameters.AddWithValue("key", (key ?? "").Trim());
             await using var r = await cmd.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct))
-                rows.Add((new ArtifactView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5), r.GetInt64(6), r.GetString(7), r.GetFieldValue<DateTimeOffset>(8), r.GetString(9)),
+                rows.Add((new ArtifactView(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5), r.GetInt64(6), r.GetString(7), r.GetFieldValue<DateTimeOffset>(8), r.GetString(9),
+                    r.IsDBNull(11) ? null : r.GetString(11), r.IsDBNull(12) ? null : r.GetFieldValue<DateTimeOffset>(12)),
                     JsonSerializer.Deserialize<List<ObjRef>>(r.GetString(10), Json) ?? []));
         }
         var list = new List<ArtifactView>();

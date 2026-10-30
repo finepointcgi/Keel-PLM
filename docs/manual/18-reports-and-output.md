@@ -1,6 +1,6 @@
 # 18. Reports, release packages, Excel BOM and mass change
 
-The **Output** group holds four tools.
+The **Output** group holds five tools: reports, release packages, verifying a package, BOM in Excel and mass change.
 
 ## Report builder
 
@@ -22,7 +22,29 @@ For a released part or assembly, an ECN or an established baseline, **Output > R
 - If any included object is unreadable to you, the package is **refused**, never redacted.
 - The result is stored in the vault, listed with its hash, and downloadable only while you may read every included object. Creating and downloading is audited.
 
-![Release packages](images/output-packages.png)
+- When an administrator has set up a signing identity ([chapter 23](23-administration.md)), the package is also **digitally signed**, and the **Signature** column says who signed and when ("Signed 2026-10-30 09:12 UTC by ..."). The signature changes nothing on the pages: the same banners and distribution notices are signed with them. If signing is required and cannot be done (no active identity, or its key is unavailable), the package is refused with a message instead of being made unsigned.
+
+![Release packages, with the signature of each package](images/output-packages.png)
+
+## Verify a package
+
+A recipient, an auditor or you can prove that a downloaded package is the one Keel made and that no byte has changed.
+
+1. Open **Output > Verify a package**.
+2. Under **Choose the file**, select the package PDF (at most 32 MB). Nothing is stored; the check is recorded in the audit log.
+3. Read the verdict:
+   - **Valid**: the signature is intact over the whole file and the signer's certificate chains to a root this server trusts.
+   - **Intact, but not trusted**: nothing was changed, but the certificate does not chain to a configured root, or was not valid when it signed.
+   - **Changed**: the file was altered after signing (even one byte, or bytes added), or the signature does not match it. Do not rely on it.
+   - **Not signed**: the file carries no signature. Treat it as unverified.
+   - **Unreadable**: the file is not a PDF Keel can check.
+4. The table shows who signed, who issued the certificate, the signing time, the reason and location, each check (bytes unchanged, signature names this certificate, certificate valid at signing time, chain reaches a trusted root) and the certificate chain.
+5. If the file is a package that Keel made and you may read every object in it, the result also names it (number, made when and by whom, markings). Otherwise it does not: verification never shows you what you could not already read.
+
+![A valid package](images/output-verify-valid.png)
+![A package with one changed byte](images/output-verify-changed.png)
+
+Limits to know: the signing time is the Keel server's clock and revocation is not checked, because the server has no network access to a time-stamping or revocation service. Without Keel, `scripts/verify-package-signature.sh package.pdf root.pem` checks the same signature with OpenSSL, and PDF readers such as Adobe Acrobat show it once your organization's root certificate is trusted there ([docs/ops/package-signing.md](../ops/package-signing.md)).
 
 ## BOM in Excel
 

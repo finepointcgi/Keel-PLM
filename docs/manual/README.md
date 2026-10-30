@@ -27,7 +27,7 @@ This manual is written from the user's point of view, with task-oriented steps. 
 | 15 | [Product compliance](15-compliance.md) | Substances, lists, declarations, roll-up |
 | 16 | [Records management](16-records.md) | Retention, legal holds, disposition, archives |
 | 17 | [Programs](17-programs.md) | Schedules, dependencies, deliverables, gates |
-| 18 | [Reports and output](18-reports-and-output.md) | Report builder, release package PDFs, Excel BOM, mass change |
+| 18 | [Reports and output](18-reports-and-output.md) | Report builder, signed release package PDFs and verifying them, Excel BOM, mass change |
 | 19 | [Notifications and activity](19-notifications-and-activity.md) | The bell, watching, comments, activity |
 | 20 | [Audit and integrity verification](20-audit-and-integrity.md) | Reading and verifying the audit log |
 | 21 | [Integration, ERP events and TDP](21-integration-and-tdp.md) | Outbox, sinks, pull API, technical data packages |
@@ -88,6 +88,7 @@ Stated in the chapter where it matters; collected here.
 - No message-broker sink for events ([chapter 21](21-integration-and-tdp.md)).
 - Migration has not been rehearsed against a real export ([chapter 22](22-migration.md)).
 - No high-availability automation; disaster-recovery targets are proposals ([chapter 24](24-administrator-and-operator-guide.md)).
+- Package signatures carry no trusted timestamp and no revocation evidence (no time-stamping or revocation service is reachable from an air-gapped host); the signing time is the Keel server clock ([chapter 18](18-reports-and-output.md)).
 - The legal and export-control review packets in [docs/review](../review/README.md) are pending sign-off and are not legal advice.
 
 ## Glossary

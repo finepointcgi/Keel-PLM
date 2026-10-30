@@ -65,6 +65,79 @@ public sealed class AccessibilityTests(E2EFixture fx)
     [E2EFact(Timeout = 1_500_000)]
     public Task Every_major_page_passes_the_audit_at_375_px_in_high_contrast() => AuditAsync("high-contrast", 375, nameof(Every_major_page_passes_the_audit_at_375_px_in_high_contrast));
 
+    /// <summary>The package signing pages in the states the page-by-page walk does not reach: an identity listed, a valid and a changed verification result (ADR-0051).</summary>
+    [E2EFact(Timeout = 900_000)]
+    public async Task The_signing_pages_and_verification_results_pass_the_audit_in_light_dark_and_at_375_px()
+    {
+        await using var session = new BrowserSession(fx, nameof(The_signing_pages_and_verification_results_pass_the_audit_in_light_dark_and_at_375_px));
+        await session.RunAsync(async () =>
+        {
+            string? leaf;
+            await using (var conn = await fx.AppDb.OpenConnectionAsync())
+            await using (var cmd = new Npgsql.NpgsqlCommand(
+                "SELECT m.number FROM plm.part_master m JOIN plm.part_revision r ON r.master_id = m.id AND r.is_latest WHERE r.lifecycle_state = 'Released' AND m.part_type <> 'Assembly' ORDER BY m.number LIMIT 1", conn))
+                leaf = (string?)await cmd.ExecuteScalarAsync();
+            Assert.NotNull(leaf);
+            var axe = await File.ReadAllTextAsync(AxePath());
+            var findings = new List<string>();
+            var audited = 0;
+            var ada = await session.SignInAsync("ada", 1280, 900);
+            var alice = await session.SignInAsync("alice", 1280, 900);
+            await ada.Page.GotoAsync(fx.BaseUrl + "/admin/signing");
+            await Expect(ada.Page.Locator("h1").First).ToBeVisibleAsync();
+            if (await ada.Page.Locator("[data-testid='signing-identities']").CountAsync() == 0)
+            {
+                await ada.Page.Locator("[data-testid='signing-generate-dev']").ClickAsync();
+                await Expect(ada.Page.Locator("[data-testid='signing-identities']")).ToBeVisibleAsync();
+            }
+            if (await ada.Page.Locator("[data-testid='signing-activate']").CountAsync() > 0)
+            {
+                await ada.Page.Locator("[data-testid='signing-activate']").First.ClickAsync();
+                await Expect(ada.Page.Locator("[data-testid='signing-state']")).ToContainTextAsync("Signing is on");
+            }
+            await alice.Page.GotoAsync(fx.BaseUrl + "/output/packages");
+            await BrowserSession.FillAsync(alice.Page.Locator("[data-testid='package-key']"), leaf!);
+            await alice.Page.Locator("[data-testid='package-generate']").ClickAsync();
+            await Expect(alice.Page.Locator("[data-testid='package-list']")).ToBeVisibleAsync();
+            var b64 = await alice.Page.EvaluateAsync<string>("async () => { const r = await fetch(document.querySelector('[data-testid=package-download]').href); const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s); }");
+            var pdf = Convert.FromBase64String(b64);
+            var changed = (byte[])pdf.Clone();
+            changed[64] ^= 0x20;
+            try
+            {
+                foreach (var (theme, width) in new[] { ("light", 1280), ("dark", 1280), ("light", 375) })
+                {
+                    foreach (var (up, name) in new[] { (ada, "ada"), (alice, "alice") })
+                    {
+                        await ChooseThemeAsync(up.Page, name, theme);
+                        await up.Page.SetViewportSizeAsync(width, width == 375 ? 812 : 900);
+                    }
+                    var label = $"{theme}/{width}px";
+                    audited += await AuditPageAsync(ada.Page, fx.BaseUrl + "/admin/signing", $"{label} ada /admin/signing", axe, findings, expectBanners: true);
+                    audited += await AuditPageAsync(alice.Page, fx.BaseUrl + "/output/packages?kind=part&key=" + leaf, $"{label} alice packages with a signed package", axe, findings, expectBanners: true);
+                    audited += await AuditPageAsync(alice.Page, fx.BaseUrl + "/output/verify", $"{label} alice /output/verify", axe, findings, expectBanners: true);
+                    await alice.Page.Locator("[data-testid='verify-file']").SetInputFilesAsync(new FilePayload { Name = "package.pdf", MimeType = "application/pdf", Buffer = pdf });
+                    await Expect(alice.Page.Locator("[data-testid='verify-verdict']")).ToHaveAttributeAsync("data-verdict", "valid");
+                    await BrowserSession.AssertBannersAsync(alice.Page);
+                    await RunAxeAsync(alice.Page, $"{label} alice verify result valid", axe, findings);
+                    await alice.Page.Locator("[data-testid='verify-file']").SetInputFilesAsync(new FilePayload { Name = "changed.pdf", MimeType = "application/pdf", Buffer = changed });
+                    await Expect(alice.Page.Locator("[data-testid='verify-verdict']")).ToHaveAttributeAsync("data-verdict", "tampered");
+                    await RunAxeAsync(alice.Page, $"{label} alice verify result changed", axe, findings);
+                    audited += 3;
+                }
+            }
+            finally
+            {
+                foreach (var (up, name) in new[] { (ada, "ada"), (alice, "alice") })
+                {
+                    try { await up.Page.SetViewportSizeAsync(1280, 900); await ChooseThemeAsync(up.Page, name, "system"); }
+                    catch (PlaywrightException) { /* best effort */ }
+                }
+            }
+            Assert.True(findings.Count == 0, $"{findings.Count} accessibility violation(s) in {audited} page states:\n" + string.Join("\n", findings));
+        });
+    }
+
     // ------------------------------------------------------------------------------------------------------------------------------
 
     private sealed record Target(string Path, string User, string? Wait = null);
@@ -92,7 +165,8 @@ public sealed class AccessibilityTests(E2EFixture fx)
         var cadProposal = CadE2ESeed.EnsureAsync(fx).GetAwaiter().GetResult();
         Add("alice", $"/documents/{m.SystemSpecification}?tab=cad", "/cad/bom-proposals", $"/cad/bom-proposals/{cadProposal}");
         // Output and bulk work (ADR-0044): reports, release packages, BOM exchange, mass change.
-        Add("alice", "/output/reports", "/output/packages", "/output/bom", "/output/mass");
+        Add("alice", "/output/reports", "/output/packages", "/output/bom", "/output/mass", "/output/verify");
+        Add("ada", "/admin/signing");
 
         foreach (var tab in new[] { "overview", "affected", "impact", "impactmap", "tasks", "review", "security", "history", "activity", "comments", "trace" })
             Add("alice", $"/changes/{m.EcnDraftInWork}?tab={tab}");

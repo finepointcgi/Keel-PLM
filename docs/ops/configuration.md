@@ -148,6 +148,16 @@ Outbox retention (`Keel:Integration:Retention`, `Keel:Integration:FileDropMaxPen
 | `Keel__Workflow__StepUpMaxAgeSeconds` | `300` | O | 30 to 900. How recently the signer must have authenticated for an e-signature (A9). |
 | `Keel__Workflow__DirectoryRefreshSeconds` | `300` | O | Minimum interval between user-directory writes for an unchanged user. |
 
+## Package signing (optional; ADR-0051)
+
+The signing identity itself is configured in the browser (Administration > Package signing); these settings only bound it. Guide: [package-signing.md](package-signing.md).
+
+| Setting | Default | Notes |
+|---|---|---|
+| `Keel__Reports__Signing__AllowedKeyDirectory` | unset | When set, key, PKCS#12 and password files must lie below this directory. Recommended in production (for example the mount of a Kubernetes Secret). |
+| `Keel__Reports__Signing__AllowDevelopmentCertificate` | `true` on Development and Demo hosts, ignored elsewhere | `false` hides the dev-only certificate generator on a development host; a production host never offers it. |
+| `Keel__Reports__Signing__DevelopmentKeyDirectory` | `keel-dev-signing` in the temp directory | Where the generator writes its key files (development hosts only). |
+
 ## Process and platform settings
 
 | Setting | Default (image) | Notes |

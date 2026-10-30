@@ -13,10 +13,15 @@ public static class ReportsModule
     /// <see cref="IContentReader"/>, the <see cref="IMassChangeTarget"/>s, the optional <see cref="IMassChangeBinder"/> and the <see cref="IReportDataset"/>s. <paramref name="notices"/> words the distribution notices of a marking (the host
     /// passes the one that stamps downloads) and <paramref name="ensureFonts"/> installs the PDF font resolver.
     /// </summary>
-    public static IServiceCollection AddKeelReports(this IServiceCollection services, Func<Markings, IReadOnlyList<string>> notices, Action ensureFonts)
+    public static IServiceCollection AddKeelReports(this IServiceCollection services, Func<Markings, IReadOnlyList<string>> notices, Action ensureFonts, Action<Signing.SigningOptions>? configureSigning = null)
     {
+        var signingOptions = new Signing.SigningOptions();
+        configureSigning?.Invoke(signingOptions);
+        services.AddSingleton(signingOptions);
+        services.AddSingleton(sp => new Signing.PackageSigningService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IReleasePackageSource>(), sp.GetRequiredService<Signing.SigningOptions>()));
         services.AddSingleton(sp => new ReleasePackageService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IReleasePackageSource>(), sp.GetRequiredService<IContentStore>(), sp.GetRequiredService<IContentReader>(), notices, ensureFonts));
+            sp.GetRequiredService<IReleasePackageSource>(), sp.GetRequiredService<IContentStore>(), sp.GetRequiredService<IContentReader>(), notices, ensureFonts, sp.GetRequiredService<Signing.PackageSigningService>()));
         services.AddSingleton(sp => new BomExchangeService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<IBomExchangeSource>(), sp.GetRequiredService<ICadPartPort>()));
         services.AddSingleton(sp => new MassChangeService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(),

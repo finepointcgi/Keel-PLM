@@ -55,3 +55,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0046](0046-model-versioning.md) | Model versioning for CAD and mesh files: versions are document iterations, one-step upload, measured geometry, compare, restore | Accepted |
 | [0048](0048-mudblazor-navigation.md) | MudBlazor navigation rail with collapsible groups (no theme provider, strict CSP kept) | Accepted |
 | [0050](0050-mass-change-beyond-parts.md) | Mass change beyond parts: documents, assembly structure with where-used, requirements, change notices and CSV/Excel upload | Accepted |
+| [0051](0051-signed-release-packages.md) | Digitally signed release packages: PAdES-style CMS signature, operator PKI key references, offline verification and tamper detection | Accepted |

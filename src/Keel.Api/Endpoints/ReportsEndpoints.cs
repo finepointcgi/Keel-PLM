@@ -3,10 +3,13 @@ using Keel.Api.Infrastructure;
 using Keel.Core;
 using Keel.Core.Reports;
 using Keel.Reports;
+using Keel.Reports.Signing;
 
 namespace Keel.Api.Endpoints;
 
 public sealed record GeneratePackageRequest(string Kind, string Key);
+public sealed record SigningPolicyRequest(bool Required);
+public sealed record DevelopmentIdentityRequest(string? Name);
 public sealed record MassPreviewRequest(string ObjectKind, string[] Keys, string Operation, JsonObject? Parameters, string? ChangeNumber = null);
 public sealed record ReportRunRequest(string Dataset, ReportSpec Spec);
 public sealed record SaveReportRequest(string Name, string Dataset, ReportSpec Spec, bool Shared = false);
@@ -40,6 +43,36 @@ public static class ReportsEndpoints
             .WithSummary("Generates a release package PDF. Refused (403) when any object it needs is unreadable; the package is never redacted.");
         g.MapGet("/packages/{number}/download", PackageDownload).WithSummary("Downloads a package. 404 unless you may read every object it includes.");
         app.MapGet(UiPackageRoute, PackageDownload).RequireAuthorization(Policies.AnyPlmRole).ExcludeFromDescription();
+
+        // ---- package signing (9.5, ADR-0051)
+        g.MapPost("/packages/verify", async (HttpContext c, PackageSigningService svc, CancellationToken ct) =>
+        {
+            using var ms = new MemoryStream();
+            var buffer = new byte[81920]; int n;
+            while ((n = await c.Request.Body.ReadAsync(buffer, ct)) > 0)
+            {
+                if (ms.Length + n > PdfSignatureVerifier.MaxBytes) return Outcome<VerifyResult>.Invalid(["The file is larger than 64 MB."]).ToHttp();
+                ms.Write(buffer, 0, n);
+            }
+            return Results.Ok(await svc.VerifyAsync(Who(c), ms.ToArray(), Corr(c), ct));
+        }).Accepts<byte[]>("application/pdf", "application/octet-stream")
+          .WithSummary("Verifies the digital signature of a PDF you upload (the body is the file): byte ranges, integrity, signer, signing time, chain to a configured trust anchor. Reports tampering; names the Keel package only when you may read all of it.");
+        var sg = g.MapGroup("/signing").RequireAuthorization(Policies.Admin);
+        sg.MapGet("/identities", async (HttpContext c, PackageSigningService svc, CancellationToken ct) => (await svc.ListIdentitiesAsync(Who(c), ct)).ToHttp())
+            .WithSummary("Administrator: the signing identities (certificates and key references; never a private key or password).");
+        sg.MapPost("/identities", async (AddSigningIdentity r, HttpContext c, PackageSigningService svc, CancellationToken ct) =>
+            (await svc.AddIdentityAsync(Who(c), r, Corr(c), ct)).ToHttp(v => Results.Created($"/api/v1/output/signing/identities/{v.Id}", v)))
+            .WithSummary("Administrator: registers a certificate bundle (signing certificate first, root last) and where its private key is. The key is loaded and proven to match before anything is stored.");
+        sg.MapPost("/identities/development", async (DevelopmentIdentityRequest r, HttpContext c, PackageSigningService svc, CancellationToken ct) =>
+            (await svc.GenerateDevelopmentIdentityAsync(Who(c), r.Name, Corr(c), ct)).ToHttp(v => Results.Created($"/api/v1/output/signing/identities/{v.Id}", v)))
+            .WithSummary("DEVELOPMENT ONLY, administrator: generates a throw-away certificate chain and registers it. 403 on hosts that are not development or demo hosts.");
+        sg.MapPost("/identities/{id:guid}/activate", async (Guid id, HttpContext c, PackageSigningService svc, CancellationToken ct) => (await svc.ActivateAsync(Who(c), id, Corr(c), ct)).ToHttp())
+            .WithSummary("Administrator: makes this the identity that signs new packages (the previous one becomes standby).");
+        sg.MapPost("/identities/{id:guid}/retire", async (Guid id, HttpContext c, PackageSigningService svc, CancellationToken ct) => (await svc.RetireAsync(Who(c), id, Corr(c), ct)).ToHttp())
+            .WithSummary("Administrator: retires an identity for good. Packages it signed still verify.");
+        sg.MapGet("/policy", async (PackageSigningService svc, CancellationToken ct) => Results.Ok(await svc.GetPolicyAsync(ct))).WithSummary("Administrator: whether signing is required and whether an identity is active.");
+        sg.MapPut("/policy", async (SigningPolicyRequest r, HttpContext c, PackageSigningService svc, CancellationToken ct) => (await svc.SetRequiredAsync(Who(c), r.Required, Corr(c), ct)).ToHttp())
+            .WithSummary("Administrator: require signing. While required and no identity is active, packages are refused.");
 
         // ---- BOM exchange
         g.MapGet("/bom/export", BomExport).WithSummary("Exports the resolved EBOM or MBOM as .xlsx or CSV (kind, number, variant, spec, depth, context, serial, lot, date, format).");
