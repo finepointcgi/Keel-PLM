@@ -114,7 +114,7 @@ Principle in the design: data leaves only through paths that apply either the us
 | 17 | Backups | database and vault copies | operator (documented as CUI) | `docs/ops/backup-restore.md` |
 | 18 | Logs and metrics | JSON logs with correlation ids; Prometheus metrics | metrics endpoint to be reachable from the monitoring network only; content of logs: whether marked text can reach logs is **unverified** | `docs/ops/hardening.md` |
 
-Not present (verified): a message broker sink throws `NotSupportedException` naming Phase 4b (ADR-0025); no automatic reporting to third parties; no telemetry from the product (the dev vault runs with telemetry off, `-master.telemetry=false`; .NET CLI telemetry opt-out is set in the images, `Dockerfile`). Whether any of the third-party containers phone home in a customer deployment is **unverified**.
+Message broker sink (ADR-0055): it is an ordinary sink, so the dispatcher evaluates the clearance profile before it is called and a withheld event is never published (tested against a real RabbitMQ with a broker-side message count); the broker host follows the webhook on-premises rules. Not present (verified): AMQP 1.0 and Kafka sinks (refused by name); no automatic reporting to third parties; no telemetry from the product (the dev vault runs with telemetry off, `-master.telemetry=false`; .NET CLI telemetry opt-out is set in the images, `Dockerfile`). Whether any of the third-party containers phone home in a customer deployment is **unverified**.
 
 ## 7. Facts relevant to classification, hosting and development
 

@@ -520,15 +520,12 @@ public sealed class SpoolSinkTests : IDisposable
     }
 
     [Fact]
-    public void The_spool_limit_is_validated_and_the_broker_stays_deferred_with_a_pointer_to_the_decision()
+    public void The_spool_limit_is_validated()
     {
         var sink = NewSink();
         Assert.Empty(sink.ValidateConfig(new JsonObject { ["directory"] = "a", ["maxPendingFiles"] = 5 }, enabled: false));
         Assert.NotEmpty(sink.ValidateConfig(new JsonObject { ["directory"] = "a", ["maxPendingFiles"] = -1 }, enabled: false));
         Assert.NotEmpty(sink.ValidateConfig(new JsonObject { ["directory"] = "a", ["maxPendingFiles"] = "many" }, enabled: false));
-        var e = Assert.Throws<NotSupportedException>(() => new BrokerSink().ValidateConfig(new JsonObject(), true));
-        Assert.Contains("Phase 4b", e.Message, StringComparison.Ordinal);
-        Assert.Contains("spool directory", e.Message, StringComparison.Ordinal);
         Assert.NotEmpty(new IntegrationOptions { FileDropMaxPendingFiles = -1 }.Validate());
     }
 

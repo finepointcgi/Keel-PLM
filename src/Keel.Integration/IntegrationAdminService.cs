@@ -137,7 +137,7 @@ public sealed class IntegrationAdminService(NpgsqlDataSource dataSource, IAuditL
         return Outcome<IReadOnlyList<SinkRecord>>.Ok(list);
     }
 
-    /// <summary>Creates or updates a sink by name. The configuration is validated (URL allow-list, secret names, directory) and the messages returned. A broker sink throws NotSupportedException (Phase 4b).</summary>
+    /// <summary>Creates or updates a sink by name. The configuration is validated (URL allow-list, secret names, directory) and the messages returned..</summary>
     public async Task<Outcome<SinkRecord>> SaveSinkAsync(Subject s, SinkInput input, string? corr, CancellationToken ct = default)
     {
         if (await RequireAdminAsync<SinkRecord>(s, "integration.sink.save", corr, ct) is { } denied) return denied;
@@ -149,7 +149,7 @@ public sealed class IntegrationAdminService(NpgsqlDataSource dataSource, IAuditL
         var types = Codes(input.EventTypes, false);
         foreach (var t in types)
             if (!EventTypes.Default.Contains(t)) errors.Add($"'{t}' is not an event type a sink can subscribe to; the full structure is the separate option.");
-        if (errors.Count == 0) errors.AddRange(sinks.For(input.Kind).ValidateConfig(input.Config, input.Enabled)); // throws NotSupportedException for broker
+        if (errors.Count == 0) errors.AddRange(sinks.For(input.Kind).ValidateConfig(input.Config, input.Enabled));
         if (errors.Count > 0) return Outcome<SinkRecord>.Invalid(errors);
 
         var now = clock.GetUtcNow();

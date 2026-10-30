@@ -78,7 +78,7 @@ public sealed class OutboxEventSink(IAuditLog audit, IntegrationOptions options,
             INSERT INTO integration.delivery (id, event_id, sink_id, status, next_attempt_at, created_at, updated_at)
             SELECT gen_random_uuid(), @id, s.id, 'pending', @now, @now, @now
             FROM integration.sink s
-            WHERE s.enabled AND s.kind <> 'broker'
+            WHERE s.enabled
               AND CASE WHEN @type = 'bom.structure.published' THEN s.full_structure
                        ELSE cardinality(s.event_types) = 0 OR @type = ANY(s.event_types) END
             """, c, t);

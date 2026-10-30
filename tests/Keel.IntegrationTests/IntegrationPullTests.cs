@@ -260,8 +260,8 @@ public sealed class IntegrationApiTests(PostgresFixture pg)
         {
             name = "bus", label = "Bus", kind = "broker", enabled = true, profileName = "dod-contractor", config = new { },
         });
-        Assert.Equal(HttpStatusCode.NotImplemented, saved.StatusCode);
-        Assert.Contains("Phase 4b", await saved.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.BadRequest, saved.StatusCode); // an empty broker configuration is refused with the messages
+        Assert.Contains("broker host is required", await saved.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
         var viewer = f.ClientFor(ApiFactory.Token(roles: ["plm-viewer", "plm-author"]));
         var export = await viewer.PostAsJsonAsync("/api/v1/tdp", new { objectType = "part", number = "P-000001", revision = (string?)null, recipientProfile = "dod-contractor" });

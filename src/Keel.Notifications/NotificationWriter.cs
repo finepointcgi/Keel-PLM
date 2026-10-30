@@ -62,7 +62,8 @@ public sealed class NotificationWriter(NotificationOptions options, TimeProvider
             INSERT INTO ntf.email_queue (id, recipient_sub, status, created_at, not_before)
             SELECT @id, @r, 'pending', @now,
                    GREATEST(@now, COALESCE((SELECT max(sent_at) FROM ntf.email_queue WHERE recipient_sub = @r AND status = 'sent'), '-infinity'::timestamptz) + @interval)
-            WHERE EXISTS (SELECT 1 FROM ntf.preference WHERE user_sub = @r AND email_enabled AND email_address IS NOT NULL)
+            WHERE EXISTS (SELECT 1 FROM ntf.preference p WHERE p.user_sub = @r AND p.email_enabled AND p.email_address IS NOT NULL AND lower(p.email_verified_address) = lower(p.email_address)
+                          AND NOT EXISTS (SELECT 1 FROM ntf.email_address_health h WHERE h.address = lower(p.email_address) AND h.suppressed_at IS NOT NULL))
               AND COALESCE((SELECT email FROM ntf.kind_preference WHERE user_sub = @r AND kind = @k), true)
             ON CONFLICT (recipient_sub) WHERE status = 'pending' DO NOTHING
             """, conn, tx);

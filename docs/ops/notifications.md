@@ -38,7 +38,7 @@ not in the audit log, exports or technical data packages. An auditor can read re
 
 ## E-mail channel (`Keel:Notifications:Email`)
 Off by default. A mail says only "You have a notification in Keel PLM" and links to `/notifications`; it never names an object, kind, person or marking. Users opt in on
-`/notifications/preferences` (their own address, a switch, and a per-kind column). Nothing is sent to anyone who did not.
+`/notifications/preferences` (their own address, a switch, and a per-kind column). Nothing is sent to anyone who did not, **and nothing is sent to an address the user has not confirmed** with a one-time link ([email-verification-and-bounces.md](email-verification-and-bounces.md), which also covers bounce handling and the suppression list).
 | Setting | Default | Meaning |
 |---|---|---|
 | `Enabled` | false | Turns the channel on. Then `Host`, `FromAddress`, `BaseUrl` and `AllowedRecipientDomains` are required, or startup fails. |
@@ -47,11 +47,11 @@ Off by default. A mail says only "You have a notification in Keel PLM" and links
 | `Username` / `Password` | empty | Optional AUTH PLAIN or LOGIN, sent only after TLS. Provide the password from the secrets directory (`Keel__Notifications__Email__Password`). |
 | `CaBundlePath` | empty (system store) | PEM file with the CA that signed the relay's certificate. Mount it read-only. TLS 1.2 or 1.3 only; no revocation lookups (air gap). |
 | `FromAddress` / `BaseUrl` | empty | Sender, and the address users reach Keel at (for example `https://keel.corp.example`). |
-| `AllowedRecipientDomains` | empty (required) | Domains users may receive mail at: exact or `*.suffix`. Users type their own address; it is not verified. |
+| `AllowedRecipientDomains` | empty (required) | Domains users may receive mail at: exact or `*.suffix`. Users type their own address; the user must then confirm it by link before any mail goes to it. |
 | `MinIntervalMinutes` | 10 | At most one mail per user in this time, however many notifications arrive. |
 | `MaxAttempts` / `TimeoutSeconds` / `PollSeconds` | 6 / 20 / 10 | Retries (backoff 1 min doubling to 1 h), connection and answer timeout, queue polling. |
 
 Operation: mails wait in `ntf.email_queue` (one pending row per user; any node may send; rows older than 30 days that are finished are removed). Audit actions: `notification.email.sent`,
-`notification.email.failed` (user id and attempts only) and `notification.email.preference` (the switch, never the address). Logs name the relay's answer with addresses removed.
+`notification.email.failed` (user id and attempts only) and `notification.email.preference` (the switch, never the address); verification and bounce actions are listed in [email-verification-and-bounces.md](email-verification-and-bounces.md). Logs name the relay's answer with addresses removed.
 A stuck queue shows as pending rows with a growing `attempts` and a `last_error` such as "does not offer STARTTLS" or "certificate". Typical fixes: the CA bundle, the relay name in the
 certificate, `AllowedHosts` for a relay outside the private ranges.

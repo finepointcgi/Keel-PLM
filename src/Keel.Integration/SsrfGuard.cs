@@ -52,30 +52,40 @@ public sealed class SsrfGuard(IntegrationOptions options)
         if (!string.IsNullOrEmpty(uri.Fragment)) errors.Add("The URL must not contain a fragment.");
         if (errors.Count > 0) return errors;
 
-        if (IPAddress.TryParse(uri.Host, out var literal))
+        return CheckHost(uri.Host, "webhooks");
+    }
+
+    /// <summary>
+    /// Configuration-time check of a host name or address (the target of a message broker sink, or the host of a URL): the same default-deny rules as for URLs.
+    /// <paramref name="what"/> names the thing that is refused, for the messages ("webhooks", "broker sinks").
+    /// </summary>
+    public IReadOnlyList<string> CheckHost(string host, string what)
+    {
+        var errors = new List<string>();
+        if (IPAddress.TryParse(host.Trim('[', ']'), out var literal))
         {
-            if (CheckAddress(uri.Host, literal) is { } problem) errors.Add(problem);
+            if (CheckAddress(host, literal) is { } problem) errors.Add(problem);
             return errors;
         }
-        if (HostMatches(uri.Host))
+        if (HostMatches(host))
         {
             // The name is allowed; dangerous addresses are still refused when the connection is made.
             return errors;
         }
         if (_networks.Length == 0)
         {
-            errors.Add($"The host '{uri.Host}' is not in Keel:Integration:AllowedHosts, and no allowed networks are configured: webhooks are refused by default.");
+            errors.Add($"The host '{host}' is not in Keel:Integration:AllowedHosts, and no allowed networks are configured: {what} are refused by default.");
             return errors;
         }
         try
         {
-            var addresses = Dns.GetHostAddresses(uri.Host);
+            var addresses = Dns.GetHostAddresses(host);
             foreach (var a in addresses)
-                if (CheckAddress(uri.Host, a) is { } problem) errors.Add(problem);
+                if (CheckAddress(host, a) is { } problem) errors.Add(problem);
         }
         catch (SocketException)
         {
-            errors.Add($"The host '{uri.Host}' is not in Keel:Integration:AllowedHosts and could not be resolved to check it against the allowed networks.");
+            errors.Add($"The host '{host}' is not in Keel:Integration:AllowedHosts and could not be resolved to check it against the allowed networks.");
         }
         return errors;
     }

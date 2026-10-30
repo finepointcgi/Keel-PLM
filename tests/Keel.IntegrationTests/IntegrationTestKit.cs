@@ -54,7 +54,7 @@ internal sealed class IntegrationEnv
         var config = await ConfigEnv.CreateAsync(pg, documents, (_, audit, clock) => new OutboxEventSink(audit, options, clock, new BomPublicationSource()));
         var timeProvider = config.Clock;
         var secrets = new SecretResolver(options);
-        var registry = new SinkRegistry([new WebhookSink(options, secrets, new SsrfGuard(options), timeProvider), new FileDropSink(options, timeProvider), new BrokerSink()]);
+        var registry = new SinkRegistry([new WebhookSink(options, secrets, new SsrfGuard(options), timeProvider), new FileDropSink(options, timeProvider), new BrokerSink(options, secrets, new SsrfGuard(options), timeProvider)]);
         var admin = new IntegrationAdminService(config.Ds, config.Audit, timeProvider, registry);
         TdpService? tdp = null;
         TdpSigner? signer = null;

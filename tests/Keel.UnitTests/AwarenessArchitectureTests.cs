@@ -33,7 +33,9 @@ public sealed partial class AwarenessArchitectureTests
     {
         // Notifications, watches and preferences belong to one user. A statement over them either filters on the user's id or is one of the system statements listed here
         // (the writer, which addresses a recipient it was given, and the fan-out and retention services, which have no signed-in user).
-        var systemFiles = new[] { "NotificationWriter.cs", "FanOutService.cs" };
+        // EmailBounces.cs: the bounce service works on an address the relay reported and on the administrator's overview, not on a signed-in user's own rows (ADR-0055); its
+        // writes and reads are administrator-only or system-driven and every method says so in its first lines.
+        var systemFiles = new[] { "NotificationWriter.cs", "FanOutService.cs", "EmailBounces.cs" };
         var checkedStatements = 0;
         foreach (var file in Sources("Keel.Notifications"))
         {

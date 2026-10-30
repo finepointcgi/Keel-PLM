@@ -5,6 +5,7 @@
     <ProjectReference Include="..\Keel.Security\Keel.Security.csproj" />
     <ProjectReference Include="..\Keel.Audit\Keel.Audit.csproj" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="RabbitMQ.Client" />
     <PackageReference Include="prometheus-net.AspNetCore" />
   </ItemGroup>
   <ItemGroup>

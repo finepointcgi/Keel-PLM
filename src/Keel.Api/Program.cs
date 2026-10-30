@@ -280,6 +280,7 @@ app.MapAdminEndpoints(); // 2.2 administration and classification
 app.MapMbomEndpoints(); // 2.3 EBOM / MBOM and reconciliation
 app.MapVisualEndpoints(); // UX-3 downloads of the relationship pictures
 app.MapIntegrationEndpoints(); // 4.0 integration pull API, TDP, integration administration
+app.MapNotificationEmailEndpoints(); // 9.6 e-mail bounce reports
 app.MapCadEndpoints(); // 8.0 CAD connector protocol
 app.MapSourcingEndpoints(); // 8.2 suppliers, approved lists, requests and the supplier portal
 app.MapVariantEndpoints(); // 8.4 options, variants, usage conditions and resolved structures

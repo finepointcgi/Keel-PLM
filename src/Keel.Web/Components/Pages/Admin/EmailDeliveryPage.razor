@@ -1,0 +1,109 @@
+@page "/admin/email"
+@attribute [Authorize(Policy = Policies.Admin)]
+@inject CurrentUser Users
+@inject EmailBounceService Bounces
+@inject ToastService Toasts
+
+@* Addresses are personal data: this page is for administrators only and the audit log keeps a short hash instead of an address. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: e-mail delivery">
+    <AdminNav />
+    <div class="stack">
+        <p>Notification e-mail goes only to an address its owner confirmed. When mail to an address bounces for good, or the recipient complains, Keel PLM stops sending to it so the relay's reputation is protected.
+            This page shows the addresses that are suppressed and the latest reports. Lifting a suppression makes every user of that address confirm it again before mail resumes.</p>
+        @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (health is null && error is null) { <Skeleton Lines="4" Label="Loading e-mail delivery" /> }
+        else if (health is not null)
+        {
+            @if (!health.ChannelAvailable) { <p class="muted" role="status">The e-mail channel is off on this system (Keel:Notifications:Email:Enabled). Reports are still listed.</p> }
+            <p class="muted small">An address is suppressed after @health.HardBounceThreshold hard bounce(s) or one complaint.
+                Reports arrive through the authenticated bounce endpoint@(health.MailboxReaderOn ? " and the bounce mailbox reader" : "").</p>
+            <section class="panel" aria-labelledby="suppressed-heading">
+                <h2 id="suppressed-heading">Suppressed addresses</h2>
+                @if (health.Suppressed.Count == 0) { <p class="muted" data-email="none-suppressed">No address is suppressed.</p> }
+                else
+                {
+                    <div class="table-wrap"><table class="data" data-email="suppressed">
+                        <caption class="visually-hidden">Suppressed addresses</caption>
+                        <thead><tr><th scope="col">Address</th><th scope="col">Reason</th><th scope="col">Hard bounces</th><th scope="col">Since</th><th scope="col">Users</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                        <tbody>
+                            @foreach (var s in health.Suppressed)
+                            {
+                                var address = s.Address;
+                                <tr>
+                                    <th scope="row">@address</th>
+                                    <td>@(s.Reason == "complaint" ? "Complaint" : "Hard bounces")</td>
+                                    <td>@s.HardBounces</td>
+                                    <td>@s.SuppressedAt.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) UTC</td>
+                                    <td>@s.Users</td>
+                                    <td class="actions-cell"><button type="button" class="secondary" data-email="clear" aria-label="@($"Lift the suppression of {address}")" @onclick="() => { pending = address; confirming = true; }">Lift suppression</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table></div>
+                }
+            </section>
+            <section class="panel" aria-labelledby="recent-heading">
+                <h2 id="recent-heading">Latest reports</h2>
+                @if (health.Recent.Count == 0) { <p class="muted" data-email="none-recent">No bounce or complaint has been reported for an address of this system.</p> }
+                else
+                {
+                    <div class="table-wrap"><table class="data" data-email="recent">
+                        <caption class="visually-hidden">Latest bounce and complaint reports</caption>
+                        <thead><tr><th scope="col">When</th><th scope="col">Address</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Source</th><th scope="col">Detail</th></tr></thead>
+                        <tbody>
+                            @foreach (var e in health.Recent)
+                            {
+                                <tr>
+                                    <td>@e.ReceivedAt.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) UTC</td>
+                                    <td>@e.Address</td>
+                                    <td>@e.Kind</td>
+                                    <td>@(e.Status ?? "")</td>
+                                    <td>@(e.Source == "api" ? "Bounce endpoint" : "Mailbox")</td>
+                                    <td>@(e.Diagnostic ?? "")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table></div>
+                }
+            </section>
+        }
+    </div>
+    <ConfirmDialog @bind-Open="confirming" Title="Lift this suppression?" ConfirmText="Lift suppression" OnConfirm="_ => ClearAsync()">
+        <p>Mail to <strong>@pending</strong> resumes only after each user of the address confirms it again. If the address still bounces it is suppressed again.</p>
+    </ConfirmDialog>
+</PageFrame>
+
+@code {
+    private EmailHealth? health;
+    private string? error;
+    private string? pending;
+    private bool confirming;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var o = await Bounces.GetHealthAsync(await Users.GetAsync());
+            error = o.IsOk ? null : UiText.Message(o);
+            health = o.Value;
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { error = "The e-mail delivery overview could not be loaded right now."; }
+    }
+
+    private async Task ClearAsync()
+    {
+        var address = pending; // the dialog has closed itself by now; the address it was opened for is still here
+        pending = null;
+        if (address is null) return;
+        try
+        {
+            var o = await Bounces.ClearSuppressionAsync(await Users.GetAsync(), address, CurrentUser.NewCorrelationId());
+            if (o.IsOk) Toasts.Success($"Suppression lifted. {o.Value} user(s) must confirm the address again.");
+            else Toasts.Warning(UiText.Message(o));
+            await LoadAsync();
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { Toasts.Error("The suppression could not be lifted right now."); }
+    }
+}

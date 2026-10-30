@@ -403,14 +403,18 @@ public sealed class EmailChannelTests(PostgresFixture pg) : IDisposable
         });
         var sender = new SmtpSender(env.Options.Email, new OnPremHostGuard(env.Options.Email));
         var channel = new EmailNotificationChannel(env.Ds, env.Options, sender);
-        return new Rig(env, smtp, new EmailDispatchService(env.Ds, channel, env.Options, env.Audit, env.Clock, NullLogger<EmailDispatchService>.Instance),
+        return new Rig(env, smtp, new EmailDispatchService(env.Ds, channel, env.Options, env.Audit, env.Clock, NullLogger<EmailDispatchService>.Instance, new EmailBounceService(env.Ds, env.Options, env.Audit, env.Clock)),
             new EmailPreferenceService(env.Ds, env.Options, env.Audit, env.Clock));
     }
 
     private static async Task<List<AuditRecord>> AuditAsync(AwarenessEnv env) => [.. await new AuditQueries(env.Ds).ListAsync(new AuditQuery(Limit: 5000))];
 
-    private static async Task OptInAsync(Rig rig, Subject who, string address = "rita@corp.example") =>
+    private static async Task OptInAsync(Rig rig, Subject who, string address = "rita@corp.example")
+    {
         Assert.Equal(EmailSaveResult.Saved, await rig.Prefs.SetAsync(who, true, address));
+        // These tests are about delivery, not about proving the mailbox (EmailVerificationTests does that): the address counts as confirmed.
+        await rig.Env.Db.ExecuteAsSuperuserAsync($"UPDATE ntf.preference SET email_verified_address = email_address, email_verified_at = now() WHERE user_sub = '{who.Id}'");
+    }
 
     private static async Task NotifyRitaAsync(Rig rig, string name = "Bracket, sensor") =>
         await rig.Env.StartReviewAsync(await rig.Env.NewPartAsync(name)); // alice submits: rita is asked to review

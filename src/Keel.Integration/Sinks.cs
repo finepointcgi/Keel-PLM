@@ -35,8 +35,8 @@ public sealed record DeliveryOutcome(DeliveryResult Result, string? Error = null
 public sealed record EnvelopeMessage(Guid EventId, string EventType, long Seq, DateTimeOffset OccurredAt, byte[] Body, int Attempt);
 
 /// <summary>
-/// A destination for events. A message broker sink is added later by implementing this interface (Phase 4b, deferred by ADR-0032); until then the
-/// broker kind refuses to be configured or to deliver. The durable spool directory of <see cref="FileDropSink"/> is the on-premises alternative.
+/// A destination for events: <see cref="WebhookSink"/>, <see cref="FileDropSink"/> and the AMQP 0-9-1 message broker <see cref="BrokerSink"/> (ADR-0055).
+/// Clearance, retry, backoff and dead letters are the dispatcher's job and identical for every sink.
 /// </summary>
 public interface IEventSink
 {
@@ -59,18 +59,6 @@ public sealed class SinkRegistry(IEnumerable<IEventSink> sinks)
     private readonly Dictionary<string, IEventSink> _byKind = sinks.ToDictionary(s => s.Kind, StringComparer.Ordinal);
 
     public IEventSink For(string kind) => _byKind.TryGetValue(kind, out var s) ? s : throw new NotSupportedException($"Sink kind '{kind}' is not supported.");
-}
-
-/// <summary>The message broker kind is part of the model so sinks can be defined for it later; it refuses to be configured or to deliver and names the phase that delivers it.</summary>
-public sealed class BrokerSink : IEventSink
-{
-    public const string Message = "Message broker sinks are delivered in Phase 4b. Use a webhook or file-drop (spool directory) sink until then.";
-
-    public string Kind => SinkKinds.Broker;
-
-    public IReadOnlyList<string> ValidateConfig(JsonObject config, bool enabled) => throw new NotSupportedException(Message);
-
-    public Task<DeliveryOutcome> DeliverAsync(SinkRecord sink, EnvelopeMessage message, CancellationToken ct) => throw new NotSupportedException(Message);
 }
 
 /// <summary>
@@ -248,7 +236,7 @@ public sealed class WebhookSink(IntegrationOptions options, SecretResolver secre
         };
     }
 
-    private static bool ValidateServer(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors, X509Certificate2Collection? customCa)
+    internal static bool ValidateServer(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors, X509Certificate2Collection? customCa)
     {
         if (certificate is null) return false;
         if ((errors & (SslPolicyErrors.RemoteCertificateNameMismatch | SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;

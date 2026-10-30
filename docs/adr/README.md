@@ -60,3 +60,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0052](0052-3d-viewer-and-assembly-placements.md) | Assembly placements from STEP and the Viewer tab: placed bounding boxes, stored and exposed through the CAD API and CLI, strict CSP kept | Accepted |
 | [0061](0061-simplified-flows.md) | Simplified flows: quick add part, one-step edit/save and add document, plain-language help, Simple view navigation | Accepted |
 | [0049](0049-program-resources-and-cost.md) | Program resources and cost loading: pools, roles, assignments, load, budget against actual against estimate to complete | Accepted |
+| [0055](0055-email-verification-bounces-and-broker-sink.md) | E-mail address verification, bounce handling and the AMQP 0-9-1 message-broker sink | Accepted |

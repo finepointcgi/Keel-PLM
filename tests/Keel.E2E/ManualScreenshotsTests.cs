@@ -120,6 +120,73 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
         });
     }
 
+    /// <summary>The e-mail verification and message broker shots (ADR-0055): preferences waiting for the link, the confirm page, the administrator's e-mail delivery page, the broker sink form.</summary>
+    private async Task EmailAndBrokerShotsAsync(BrowserSession session, UserPage alice, UserPage ada)
+    {
+        var address = $"manual-{Guid.NewGuid().ToString("N")[..6]}@corp.example";
+        var before = fx.Smtp.Mail.Count;
+        await GoAsync(session, alice, "/notifications/preferences", "email-verification-preferences", async p =>
+        {
+            await p.GetByLabel("Send me e-mail when I have a notification").CheckAsync();
+            await BrowserSession.FillAsync(p.GetByLabel("My e-mail address"), address);
+            await p.Locator("[data-pref=email-save]").ClickAsync();
+            await p.WaitForSelectorAsync("[data-pref=email-pending]");
+            await p.Locator("#email-heading").ScrollIntoViewIfNeededAsync();
+        });
+        if (await fx.Smtp.WaitForMailAsync(before + 1, TimeSpan.FromSeconds(15)))
+        {
+            var token = Regex.Match(fx.Smtp.Mail[^1].Data, @"/notifications/verify-email/([A-Za-z0-9_\-]+)").Groups[1].Value;
+            await GoAsync(session, alice, "/notifications/verify-email/" + token, "email-verification-confirm");
+        }
+        await using (var cmd = fx.AppDb.CreateCommand("INSERT INTO ntf.email_address_health (address, hard_bounces, last_event_at, suppressed_at, suppress_reason) VALUES ('former.colleague@corp.example', 2, now(), now(), 'hard_bounce') ON CONFLICT DO NOTHING"))
+            await cmd.ExecuteNonQueryAsync();
+        await using (var cmd = fx.AppDb.CreateCommand("INSERT INTO ntf.preference (user_sub, auto_watch, updated_at, email_enabled, email_address) VALUES ('manual-former', true, now(), true, 'former.colleague@corp.example') ON CONFLICT DO NOTHING"))
+            await cmd.ExecuteNonQueryAsync();
+        await using (var cmd = fx.AppDb.CreateCommand("INSERT INTO ntf.email_bounce_event (id, address, kind, source, status_code, diagnostic, received_at) VALUES (@id, 'former.colleague@corp.example', 'hard', 'api', '5.1.1', 'user unknown', now())"))
+        {
+            cmd.Parameters.AddWithValue("id", Guid.NewGuid());
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await GoAsync(session, ada, "/admin/email", "admin-email-delivery");
+        await GoAsync(session, ada, "/admin/integration/sinks", "admin-integration-sinks-broker", async p =>
+        {
+            await p.GetByLabel("Kind").SelectOptionAsync("broker");
+            await BrowserSession.FillAsync(p.GetByLabel("Name *", new PageGetByLabelOptions { Exact = true }), "plant-bus");
+            await BrowserSession.FillAsync(p.GetByLabel("Label *", new PageGetByLabelOptions { Exact = true }), "Plant message bus");
+            await BrowserSession.FillAsync(p.GetByLabel("Broker host (on-premises, allow-listed)"), "bus.plant.example");
+            await BrowserSession.FillAsync(p.GetByLabel("Exchange (empty = default exchange)"), "keel.events");
+            await BrowserSession.FillAsync(p.GetByLabel("User name secret name"), "bus-user");
+            await BrowserSession.FillAsync(p.GetByLabel("Password secret name"), "bus-password");
+            await BrowserSession.FillAsync(p.GetByLabel("CA bundle name"), "plant-ca");
+            await p.GetByLabel("Broker host (on-premises, allow-listed)").ScrollIntoViewIfNeededAsync();
+        });
+    }
+
+    [E2EFact(Timeout = 600_000)]
+    public async Task The_email_verification_and_broker_screenshots_are_written_on_request()
+    {
+        if (!On) return;
+        _dir = Path.Combine(fx.RepoRoot, "docs", "manual", "images");
+        Directory.CreateDirectory(_dir);
+        await using var session = new BrowserSession(fx, nameof(The_email_verification_and_broker_screenshots_are_written_on_request));
+        try
+        {
+            await session.RunAsync(async () =>
+            {
+                var alice = await session.SignInAsync("alice", 1440, 900);
+                var ada = await session.SignInAsync("ada", 1440, 900);
+                await EmailAndBrokerShotsAsync(session, alice, ada);
+            });
+        }
+        finally
+        {
+            _log.AppendLine($"E-mail and broker screenshots written: {_taken}");
+            Directory.CreateDirectory(fx.ResultsDir);
+            await File.WriteAllTextAsync(Path.Combine(fx.ResultsDir, "manual-shots-email.log"), _log.ToString());
+            Console.Error.WriteLine("[manual] " + _log);
+        }
+    }
+
     [E2EFact(Timeout = 600_000)]
     public async Task The_mass_change_screenshots_are_written_on_request()
     {
@@ -586,6 +653,7 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                 await GoAsync(session, alice, "/notifications", "awareness-notifications");
                 await GoAsync(session, alice, "/notifications/preferences", "awareness-preferences");
                 await GoAsync(session, alice, "/watching", "awareness-watching");
+                await EmailAndBrokerShotsAsync(session, alice, ada);
                 await GoAsync(session, alice, "/parts/" + m.GimbalBracket, "awareness-bell", async p =>
                 {
                     var bell = p.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Notifications", Exact = false }).First;

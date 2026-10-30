@@ -15,7 +15,7 @@ public sealed class SmtpTransportException(string message, bool permanent, Excep
 }
 
 /// <summary>One plain-text mail. The body must be ASCII and is sent as is (the builder of the pointer-only mail guarantees it).</summary>
-public sealed record OutgoingMail(string From, string To, string Subject, string Body);
+public sealed record OutgoingMail(string From, string To, string Subject, string Body, string? BounceTag = null);
 
 /// <summary>
 /// A small, strict SMTP client for an on-premises relay (RFC 5321, STARTTLS RFC 3207, AUTH PLAIN/LOGIN): no dependency, TLS 1.2/1.3 only, the relay's
@@ -75,7 +75,7 @@ public sealed class SmtpSender(EmailOptions options, OnPremHostGuard guard)
             Expect(await session.ReadAsync(ct), 250, "RCPT TO", also: 251);
             await session.WriteAsync("DATA", ct);
             Expect(await session.ReadAsync(ct), 354, "DATA");
-            await session.WriteRawAsync(Compose(mail), ct);
+            await session.WriteRawAsync(Compose(options.Bounces.TagSecret.Length > 0 ? mail with { BounceTag = BounceTags.Compute(options.Bounces.TagSecret, mail.To) } : mail), ct);
             Expect(await session.ReadAsync(ct), 250, "message");
             try
             {
@@ -184,7 +184,9 @@ public sealed class SmtpSender(EmailOptions options, OnPremHostGuard guard)
         sb.Append("Date: ").Append(DateTimeOffset.UtcNow.ToString("ddd, dd MMM yyyy HH:mm:ss 'GMT'", CultureInfo.InvariantCulture)).Append("\r\n");
         sb.Append("Message-ID: <").Append(Guid.NewGuid().ToString("N")).Append('@').Append(domain).Append(">\r\n");
         sb.Append("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\nContent-Transfer-Encoding: 7bit\r\n");
-        sb.Append("Auto-Submitted: auto-generated\r\nPrecedence: bulk\r\n\r\n");
+        sb.Append("Auto-Submitted: auto-generated\r\nPrecedence: bulk\r\n");
+        if (mail.BounceTag is not null) sb.Append(BounceTags.Header).Append(": ").Append(mail.BounceTag).Append("\r\n");
+        sb.Append("\r\n");
         foreach (var line in mail.Body.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
             sb.Append(line.StartsWith('.') ? "." + line : line).Append("\r\n");
         sb.Append(".\r\n");

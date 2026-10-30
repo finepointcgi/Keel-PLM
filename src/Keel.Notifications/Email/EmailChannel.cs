@@ -58,8 +58,14 @@ public sealed class EmailNotificationChannel(NpgsqlDataSource dataSource, Notifi
     {
         var email = options.Email;
         if (!email.Enabled) return ChannelResult.Skipped;
+        // Mail goes only to an address its owner verified (it equals the saved one) and that has not been suppressed after bounces or a complaint (ADR-0055).
         string? address;
-        await using (var cmd = dataSource.CreateCommand("SELECT email_address FROM ntf.preference WHERE user_sub = @u AND email_enabled"))
+        await using (var cmd = dataSource.CreateCommand(
+            """
+            SELECT p.email_address FROM ntf.preference p
+            WHERE p.user_sub = @u AND p.email_enabled AND lower(p.email_verified_address) = lower(p.email_address)
+              AND NOT EXISTS (SELECT 1 FROM ntf.email_address_health h WHERE h.address = lower(p.email_address) AND h.suppressed_at IS NOT NULL)
+            """))
         {
             cmd.Parameters.AddWithValue("u", recipientSub);
             address = await cmd.ExecuteScalarAsync(ct) as string;
@@ -75,7 +81,7 @@ public sealed class EmailNotificationChannel(NpgsqlDataSource dataSource, Notifi
 /// Sends the queued mails (<c>ntf.email_queue</c>, at most one pending per user). Any number of nodes may run it: a claim leases rows with SKIP LOCKED.
 /// Failures back off and end as <c>failed</c> after <c>MaxAttempts</c>; a sent mail and a final failure are audited without any address or text.
 /// </summary>
-public sealed class EmailDispatchService(NpgsqlDataSource dataSource, EmailNotificationChannel channel, NotificationOptions options, IAuditLog audit, TimeProvider clock, ILogger<EmailDispatchService> logger) : BackgroundService
+public sealed class EmailDispatchService(NpgsqlDataSource dataSource, EmailNotificationChannel channel, NotificationOptions options, IAuditLog audit, TimeProvider clock, ILogger<EmailDispatchService> logger, EmailBounceService bounces) : BackgroundService
 {
     private static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
     private DateTimeOffset _lastCleanup = DateTimeOffset.MinValue;
@@ -139,7 +145,7 @@ public sealed class EmailDispatchService(NpgsqlDataSource dataSource, EmailNotif
                 await FinishAsync(id, "sent", null, ct);
                 await AuditAsync(sub, "notification.email.sent", AuditOutcome.Success, ("attempts", attempts.ToString(CultureInfo.InvariantCulture)));
             }
-            else await FinishAsync(id, "skipped", "opted out, no usable address, or address outside the allowed domains", ct);
+            else await FinishAsync(id, "skipped", "opted out, address not verified or suppressed, or address outside the allowed domains", ct);
         }
         catch (SmtpTransportException e)
         {
@@ -195,16 +201,23 @@ public sealed class EmailDispatchService(NpgsqlDataSource dataSource, EmailNotif
         var now = clock.GetUtcNow();
         if (now - _lastCleanup < TimeSpan.FromHours(1)) return;
         _lastCleanup = now;
-        await using var cmd = dataSource.CreateCommand("DELETE FROM ntf.email_queue WHERE status <> 'pending' AND created_at < @cut");
-        cmd.Parameters.AddWithValue("cut", (now - TimeSpan.FromDays(30)).ToUniversalTime());
-        await cmd.ExecuteNonQueryAsync(ct);
+        await using (var cmd = dataSource.CreateCommand("DELETE FROM ntf.email_queue WHERE status <> 'pending' AND created_at < @cut"))
+        {
+            cmd.Parameters.AddWithValue("cut", (now - TimeSpan.FromDays(30)).ToUniversalTime());
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        await bounces.PurgeAsync(ct); // verification links, old bounce events and bounce counters that never led to suppression
     }
 
     private static string Truncate(string s) => s.Length <= 290 ? s : s[..290];
 }
 
 /// <summary>A user's e-mail settings as the preferences page shows them.</summary>
-public sealed record EmailSettings(bool ChannelAvailable, bool Enabled, string? Address, IReadOnlyList<string> AllowedDomains, IReadOnlySet<string> KindsOff, int MinIntervalMinutes);
+/// <param name="AddressVerified">The saved address is the one the user confirmed.</param>
+/// <param name="VerificationPending">A link was sent for the saved address and is still usable.</param>
+/// <param name="AddressSuppressed">The user's own verified address bounced or complained and is suppressed. Shown only for an address this user had verified, never for an address typed in, so the page cannot be used to probe other mailboxes.</param>
+public sealed record EmailSettings(bool ChannelAvailable, bool Enabled, string? Address, IReadOnlyList<string> AllowedDomains, IReadOnlySet<string> KindsOff, int MinIntervalMinutes,
+    bool AddressVerified = false, bool VerificationPending = false, bool AddressSuppressed = false);
 
 public enum EmailSaveResult { Saved, ChannelUnavailable, AddressRequired, InvalidAddress, DomainNotAllowed }
 
@@ -225,14 +238,32 @@ public sealed class EmailPreferenceService(NpgsqlDataSource dataSource, Notifica
     public async Task<EmailSettings> GetAsync(Subject subject, CancellationToken ct = default)
     {
         var enabled = false;
-        string? address = null;
+        string? address = null, verifiedAddress = null;
         var off = new HashSet<string>(StringComparer.Ordinal);
         await using var conn = await dataSource.OpenConnectionAsync(ct);
-        await using (var cmd = new NpgsqlCommand("SELECT email_enabled, email_address FROM ntf.preference WHERE user_sub = @u", conn))
+        await using (var cmd = new NpgsqlCommand("SELECT email_enabled, email_address, email_verified_address FROM ntf.preference WHERE user_sub = @u", conn))
         {
             cmd.Parameters.AddWithValue("u", subject.Id);
             await using var r = await cmd.ExecuteReaderAsync(ct);
-            if (await r.ReadAsync(ct)) { enabled = r.GetBoolean(0); address = r.IsDBNull(1) ? null : r.GetString(1); }
+            if (await r.ReadAsync(ct)) { enabled = r.GetBoolean(0); address = r.IsDBNull(1) ? null : r.GetString(1); verifiedAddress = r.IsDBNull(2) ? null : r.GetString(2); }
+        }
+        var verified = address is not null && string.Equals(address, verifiedAddress, StringComparison.OrdinalIgnoreCase);
+        var pending = false;
+        var suppressed = false;
+        if (address is not null)
+        {
+            await using var check = new NpgsqlCommand(
+                """
+                SELECT EXISTS (SELECT 1 FROM ntf.email_verification WHERE user_sub = @u AND lower(address) = lower(@a) AND consumed_at IS NULL AND invalidated_at IS NULL AND expires_at > @now),
+                       EXISTS (SELECT 1 FROM ntf.email_address_health WHERE address = lower(@a) AND suppressed_at IS NOT NULL)
+                """, conn);
+            check.Parameters.AddWithValue("u", subject.Id);
+            check.Parameters.AddWithValue("a", address);
+            check.Parameters.AddWithValue("now", clock.GetUtcNow().ToUniversalTime());
+            await using var cr = await check.ExecuteReaderAsync(ct);
+            await cr.ReadAsync(ct);
+            pending = cr.GetBoolean(0);
+            suppressed = verified && cr.GetBoolean(1);
         }
         await using (var cmd = new NpgsqlCommand("SELECT kind FROM ntf.kind_preference WHERE user_sub = @u AND NOT email", conn))
         {
@@ -240,7 +271,7 @@ public sealed class EmailPreferenceService(NpgsqlDataSource dataSource, Notifica
             await using var r = await cmd.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct)) off.Add(r.GetString(0));
         }
-        return new EmailSettings(options.Email.Enabled, enabled && options.Email.Enabled, address, options.Email.AllowedRecipientDomains, off, options.Email.MinIntervalMinutes);
+        return new EmailSettings(options.Email.Enabled, enabled && options.Email.Enabled, address, options.Email.AllowedRecipientDomains, off, options.Email.MinIntervalMinutes, verified && !suppressed, pending && !suppressed, suppressed);
     }
 
     public async Task<EmailSaveResult> SetAsync(Subject subject, bool enabled, string? address, CancellationToken ct = default)
@@ -257,7 +288,10 @@ public sealed class EmailPreferenceService(NpgsqlDataSource dataSource, Notifica
         await using var cmd = dataSource.CreateCommand(
             """
             INSERT INTO ntf.preference (user_sub, auto_watch, updated_at, email_enabled, email_address) VALUES (@u, true, @now, @e, @a)
-            ON CONFLICT (user_sub) DO UPDATE SET email_enabled = @e, email_address = @a, updated_at = @now
+            ON CONFLICT (user_sub) DO UPDATE SET email_enabled = @e, email_address = @a, updated_at = @now,
+                -- a changed address is not verified: the user confirms it again (the same address keeps its verification)
+                email_verified_address = CASE WHEN @a IS NOT NULL AND lower(ntf.preference.email_verified_address) = lower(@a) THEN ntf.preference.email_verified_address END,
+                email_verified_at = CASE WHEN @a IS NOT NULL AND lower(ntf.preference.email_verified_address) = lower(@a) THEN ntf.preference.email_verified_at END
             """);
         cmd.Parameters.AddWithValue("u", subject.Id);
         cmd.Parameters.AddWithValue("now", clock.GetUtcNow().ToUniversalTime());

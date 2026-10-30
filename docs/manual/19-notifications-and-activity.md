@@ -18,6 +18,19 @@ If something you were told about is no longer readable to you, the row says only
 
 ![Notification preferences](images/awareness-preferences.png)
 
+### Confirming your e-mail address
+
+E-mail is sent only to an address you have confirmed.
+
+1. Under **E-mail**, tick **Send me e-mail when I have a notification**, type your address and choose **Save e-mail settings**. Keel PLM sends a confirmation link to that address and the page says **We sent a link**.
+2. Open the link in the e-mail. You sign in, then press **Confirm my e-mail address**. Opening the link alone confirms nothing.
+3. The preferences page now says **Your address is confirmed**, and the short "you have a notification" e-mail (it never names or describes anything) is sent from then on.
+
+![E-mail settings waiting for the confirmation link](images/email-verification-preferences.png)
+![The confirmation page](images/email-verification-confirm.png)
+
+A link works once and for 24 hours; a newer link replaces it, and changing the address un-confirms it. If a link is not valid the page says so in one sentence and does not say why. If you ask for links too often the page asks you to wait. If mail to your confirmed address bounces or the recipient complains, Keel PLM stops sending to it and the preferences page tells you; ask an administrator to lift it (**Administration > E-mail delivery**), after which you confirm again.
+
 ## Watching
 
 Select **Watch** next to the star on a part, document, change, baseline or MBOM (and many other objects). Choose a level, for example **Decisions only**. **Notifications > Things I watch** (`/watching`) lists them, and Home has the card **Activity in things I watch**. Creating or changing something auto-watches it unless you turn that off.

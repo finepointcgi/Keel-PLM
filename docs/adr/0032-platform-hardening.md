@@ -58,6 +58,7 @@ dates, never an object) and an append-only `integration.retention_run` row, so a
   STARTTLS), with the existing throwaway CA.
 
 ### 4. Broker sink: deferred; the spool directory is hardened instead
+_Update: the AMQP 0-9-1 broker sink was delivered by [ADR-0055](0055-email-verification-bounces-and-broker-sink.md); the reasoning below explains why it waited, and Kafka and AMQP 1.0 remain unbuilt._
 No broker client is added. The candidates and why none is chosen now:
 
 | Option | Licence (to be confirmed by procurement at selection time) | Weight | Issue |

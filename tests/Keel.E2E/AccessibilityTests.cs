@@ -228,7 +228,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
         Add("alice", "/process/plans", $"/process/plans/{ProcessSeed.Plan}/shop-floor", "/process/tools", $"/process/tools/{ProcessSeed.Tool}", $"/process/tools/{ProcessSeed.Tool}?tab=calibration", $"/process/tools/{ProcessSeed.Tool}?tab=used");
         Add("ada", "/process/work-centers");
 
-        Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
+        Add("ada", "/admin", "/admin/attributes", "/admin/classification", "/admin/config", "/admin/email", "/admin/history", "/admin/integration/deliveries", "/admin/integration/outbox",
             "/admin/integration/profiles", "/admin/integration/sinks", "/admin/integration/tdp-categories", "/admin/lifecycles", "/admin/lists", "/admin/migration",
             "/admin/numbering", "/admin/reasons", "/admin/supply-types", "/admin/workflow-templates", "/audit", "/access", "/parts", "/");
         return t;

@@ -89,6 +89,7 @@ Stated in the chapter where it matters; collected here.
 - No conditions on MBOM lines of their own, nor in baselines ([chapter 4](04-boms-variants-mbom.md)).
 - No message-broker sink for events ([chapter 21](21-integration-and-tdp.md)).
 - No timesheet or ERP feed of actual program costs, one currency only, no holiday calendars ([chapter 17](17-programs.md)).
+- Message-broker sinks speak AMQP 0-9-1 (RabbitMQ and compatible) only; AMQP 1.0 and Kafka are not built ([chapter 21](21-integration-and-tdp.md)).
 - Migration has not been rehearsed against a real export ([chapter 22](22-migration.md)).
 - No high-availability automation; disaster-recovery targets are proposals ([chapter 24](24-administrator-and-operator-guide.md)).
 - Package signatures carry no trusted timestamp and no revocation evidence (no time-stamping or revocation service is reachable from an air-gapped host); the signing time is the Keel server clock ([chapter 18](18-reports-and-output.md)).
