@@ -195,6 +195,9 @@ public sealed partial class HappyPathTests(E2EFixture fx)
         var page = up.Page;
         await session.GotoAsync(up, "/parts/new");
         await BrowserSession.FillAsync(page.GetByLabel("Name *"), name);
+        // Type and the optional attributes are folded away on the quick form (ADR 0061): open them first.
+        await page.Locator("[data-kind-change]").ClickAsync();
+        await page.Locator("details[data-more-details] summary").ClickAsync();
         await page.Locator("label").Filter(new LocatorFilterOptions { HasTextRegex = new Regex(@"^\s*Type") }).Locator("select").SelectOptionAsync(type);
         await BrowserSession.FillAsync(page.GetByLabel("Material", new PageGetByLabelOptions { Exact = true }), material);
         await BrowserSession.ClickAsync(page, "Create part");
