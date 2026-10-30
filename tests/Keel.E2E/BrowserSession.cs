@@ -101,6 +101,22 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
         await Expect(tab).ToHaveAttributeAsync("aria-selected", "true");
     }
 
+    /// <summary>
+    /// A link of the navigation rail, opening its group first when the group is closed (the rail groups are disclosure buttons and a closed group renders no links;
+    /// the group of the current page and the first group are open by themselves). Pass the group's title as the rail shows it.
+    /// </summary>
+    public static async Task<ILocator> RailLinkAsync(IPage page, string group, string link)
+    {
+        var header = page.Locator($".rail-group[aria-label='{group}'] .rail-group-header");
+        await Expect(page.Locator("nav#main-nav")).ToBeVisibleAsync();
+        if (await header.CountAsync() > 0 && await header.GetAttributeAsync("aria-expanded") == "false")
+        {
+            await header.ClickAsync();
+            await Expect(header).ToHaveAttributeAsync("aria-expanded", "true");
+        }
+        return page.GetByRole(AriaRole.Navigation, new PageGetByRoleOptions { Name = "Main" }).GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = link, Exact = true });
+    }
+
     public static ILocator TopBanner(IPage page) => page.Locator("[data-position='top']");
     public static ILocator BottomBanner(IPage page) => page.Locator("[data-position='bottom']");
 

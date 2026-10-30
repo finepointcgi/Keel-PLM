@@ -23,7 +23,7 @@ public sealed class AdminTests(E2EFixture fx)
         {
             var ada = await session.SignInAsync("ada");
             var page = ada.Page;
-            await Expect(page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Administration" })).ToBeVisibleAsync();
+            await Expect(await BrowserSession.RailLinkAsync(page, "Administration", "Administration")).ToBeVisibleAsync();
 
             // ---- an attribute with a range
             await session.GotoAsync(ada, "/admin");
@@ -203,6 +203,8 @@ public sealed class AdminTests(E2EFixture fx)
         {
             var alice = await session.SignInAsync("alice");
             Assert.Equal(0, await alice.Page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Administration" }).CountAsync());
+            // A closed group renders no links, so the absence of the group itself is what proves the role gate.
+            Assert.Equal(0, await alice.Page.Locator(".rail-group[aria-label='Administration']").CountAsync());
             await alice.Page.GotoAsync(fx.BaseUrl + "/admin/attributes");
             await Expect(alice.Page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = "Not authorized" })).ToBeVisibleAsync();
             await using var conn = await fx.AppDb.OpenConnectionAsync();

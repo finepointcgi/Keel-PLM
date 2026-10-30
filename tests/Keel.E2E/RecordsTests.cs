@@ -20,7 +20,7 @@ public sealed class RecordsTests(E2EFixture fx)
             await RecordsSeed.EnsureAsync(fx);
             var rex = await session.SignInAsync("rex");
             var page = rex.Page;
-            await Expect(page.GetByRole(AriaRole.Navigation).GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Records management" })).ToBeVisibleAsync();
+            await Expect(await BrowserSession.RailLinkAsync(page, "Records", "Records management")).ToBeVisibleAsync();
             await session.GotoAsync(rex, "/records");
             await Expect(page.Locator("h1")).ToContainTextAsync("Records management");
             await BrowserSession.AssertBannersAsync(page);
@@ -79,6 +79,8 @@ public sealed class RecordsTests(E2EFixture fx)
             await Expect(alice.Page.Locator("h1")).ToBeVisibleAsync();
             await Expect(alice.Page.Locator("[data-records-chip]")).ToHaveCountAsync(0);
             await Expect(alice.Page.GetByRole(AriaRole.Navigation).GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Records management" })).ToHaveCountAsync(0);
+            // A closed group renders no links, so the absence of the group itself is what proves the role gate.
+            await Expect(alice.Page.Locator(".rail-group[aria-label='Records']")).ToHaveCountAsync(0);
             foreach (var path in new[] { "/records", "/records/holds", $"/records/holds/{RecordsSeed.Hold}", "/records/disposition", "/records/archives", "/records/schedules" })
             {
                 await alice.Page.GotoAsync(fx.BaseUrl + path);
