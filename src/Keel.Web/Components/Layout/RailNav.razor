@@ -1,16 +1,64 @@
-@* The grouped navigation rail. Icons come from the SVG sprite; when the rail is collapsed the labels are visually hidden (still read by assistive technology) and the
-   native tooltip (title) names each icon. The links shown depend on the user's roles (see NavModel); pages and services check the role again. *@
+@using MudBlazor
+@inject NavigationManager Nav
+@implements IDisposable
+@* The grouped navigation rail (MudBlazor links). Expanded, each group is a collapsible header (a disclosure button); the group of the current page opens by itself and the
+   others stay as the user left them. Collapsed to icons, the groups are flat icon stacks with the native tooltip (title) naming each icon, as before. Icons come from the
+   SVG sprite. The links shown depend on the user's roles (see NavModel); pages and services check the role again. *@
 <nav id="main-nav" class="rail" aria-label="Main">
-    @foreach (var group in Groups)
+    @if (Collapsed)
     {
-        <div class="rail-group" role="group" aria-label="@group.Title">
-            <span class="rail-heading" aria-hidden="true">@group.Title</span>
-            @foreach (var item in group.Items)
+        @foreach (var group in Groups)
+        {
+            <div class="rail-group" role="group" aria-label="@group.Title">
+                @foreach (var item in group.Items)
+                {
+                    <MudNavLink Href="@item.Href" Match="@Match(item)" Class="rail-link" title="@item.Label">
+                        <Icon Name="@item.Icon" />
+                        <span class="rail-label">@item.Label</span>
+                    </MudNavLink>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        @* Not MudNavGroup: its MudCollapse animates with inline style attributes, which the strict CSP (default-src 'self') blocks, so the group would not open. *@
+        <div class="rail-menu">
+            @foreach (var group in Groups)
             {
-                <NavLink class="rail-link" href="@item.Href" Match="@(item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix)" title="@item.Label">
-                    <Icon Name="@item.Icon" />
-                    <span class="rail-label">@item.Label</span>
-                </NavLink>
+                var title = group.Title;
+                @if (group.Items.Count == 1 && group.Items[0].Label == title)
+                {
+                    @* A group of one link that has the group's own name needs no header. *@
+                    var only = group.Items[0];
+                    <MudNavLink Href="@only.Href" Match="@Match(only)" Class="rail-link" title="@only.Label">
+                        <Icon Name="@only.Icon" />
+                        <span class="rail-label">@only.Label</span>
+                    </MudNavLink>
+                }
+                else
+                {
+                    var open = IsOpen(group);
+                    var id = "rail-g-" + Slug(title);
+                    <div class="rail-group @(open ? "open" : "closed")" role="group" aria-label="@title">
+                        <button type="button" class="rail-group-header" aria-expanded="@(open ? "true" : "false")" aria-controls="@id" @onclick="() => SetOpen(title, !open)">
+                            <span class="rail-group-title">@title</span>
+                            <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="rail-group-chevron" />
+                        </button>
+                        @if (open)
+                        {
+                            <div id="@id" class="rail-group-items">
+                                @foreach (var item in group.Items)
+                                {
+                                    <MudNavLink Href="@item.Href" Match="@Match(item)" Class="rail-link" title="@item.Label">
+                                        <Icon Name="@item.Icon" />
+                                        <span class="rail-label">@item.Label</span>
+                                    </MudNavLink>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
             }
         </div>
     }
@@ -21,7 +69,39 @@
 </nav>
 
 @code {
+    // Groups the user opened (true) or closed (false) by hand; a group not in here is open when it holds the current page, or when it is the first (Work) group.
+    private readonly Dictionary<string, bool> chosen = new();
+
     [Parameter, EditorRequired] public required IReadOnlyList<NavGroup> Groups { get; set; }
     [Parameter] public bool Collapsed { get; set; }
     [Parameter] public EventCallback<bool> OnToggle { get; set; }
+
+    protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        // Moving to a page opens its group (a group the user closed by hand stays closed until they go to a page inside it).
+        foreach (var g in Groups) if (HoldsCurrent(g)) chosen.Remove(g.Title);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private static string Slug(string title) => new string(title.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+
+    private static NavLinkMatch Match(NavItem item) => item.ExactMatch ? NavLinkMatch.All : NavLinkMatch.Prefix;
+
+    private bool IsOpen(NavGroup g) => chosen.TryGetValue(g.Title, out var open) ? open : HoldsCurrent(g) || ReferenceEquals(g, Groups[0]);
+
+    private void SetOpen(string title, bool open) => chosen[title] = open;
+
+    private bool HoldsCurrent(NavGroup g)
+    {
+        var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].TrimEnd('/');
+        return g.Items.Any(i =>
+        {
+            var href = "/" + i.Href.TrimEnd('/');
+            return i.ExactMatch || href == "/" ? path == href || (href == "/" && path == "/") : path == href || path.StartsWith(href + "/", StringComparison.Ordinal);
+        });
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 }

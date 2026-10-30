@@ -1,3 +1,4 @@
+using MudBlazor.Services;
 using Bunit;
 using Keel.Core;
 using Keel.TestSupport;
@@ -21,6 +22,7 @@ public sealed class ShellComponentTests : BunitContext
     {
         Register(this, Roles.Viewer);
         Services.AddSingleton<TimeProvider>(_clock);
+        Services.AddMudServices();
     }
 
     // ---------------------------------------------------------------- breadcrumbs
@@ -50,15 +52,18 @@ public sealed class ShellComponentTests : BunitContext
     {
         var viewer = Render<RailNav>(p => p.Add(x => x.Groups, NavModel.For([Roles.Viewer])));
         Assert.Equal("Main", viewer.Find("nav").GetAttribute("aria-label"));
-        Assert.Equal(["Work", "Product data", "Change", "Programs", "Quality", "Sourcing", "Output", "Tools"], viewer.FindAll("[role=group]").Select(g => g.GetAttribute("aria-label")));
+        // Expanded, every group with more than one link is a collapsible header (only "Programs", a single link named like its group, is a plain link).
+        Assert.Equal(["Work", "Product data", "Change", "Quality", "Sourcing", "Output", "Tools"], viewer.FindAll(".rail-group").Select(g => g.GetAttribute("aria-label")));
+        Assert.All(viewer.FindAll(".rail-group-header"), h => Assert.NotNull(h.GetAttribute("aria-expanded")));
         Assert.DoesNotContain("Administration", viewer.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Audit log", viewer.Markup, StringComparison.Ordinal);
 
         var admin = Render<RailNav>(p => p.Add(x => x.Groups, NavModel.For([Roles.Admin, Roles.Auditor])));
-        Assert.Contains("Administration", admin.FindAll("[role=group]").Select(g => g.GetAttribute("aria-label")));
+        while (admin.FindAll(".rail-group-header[aria-expanded=false]") is [var header, ..]) header.Click(); // a closed group does not render its links
+        Assert.Contains("Administration", admin.FindAll(".rail-group").Select(g => g.GetAttribute("aria-label")));
         Assert.Contains("Audit log", admin.Markup, StringComparison.Ordinal);
-        Assert.All(admin.FindAll("a.rail-link"), a => Assert.NotEmpty(a.QuerySelectorAll("svg.icon use")));
-        Assert.All(admin.FindAll("a.rail-link"), a => Assert.False(string.IsNullOrEmpty(a.GetAttribute("title")))); // the tooltip of a collapsed rail
+        Assert.All(admin.FindAll(".rail-link a"), a => Assert.NotEmpty(a.QuerySelectorAll("svg.icon use")));
+        Assert.All(admin.FindAll(".rail-link a"), a => Assert.False(string.IsNullOrEmpty(a.GetAttribute("title")))); // the tooltip of a collapsed rail
     }
 
     [Fact]

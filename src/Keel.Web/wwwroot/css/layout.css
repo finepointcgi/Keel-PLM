@@ -58,20 +58,8 @@
   position: sticky; top: var(--banner-h); align-self: start; max-height: calc(100vh - 2 * var(--banner-h)); overflow-y: auto;
   background: var(--c-surface); border-right: 1px solid var(--c-border); padding: var(--sp-4) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-4); scrollbar-width: thin;
 }
-.rail-group { display: flex; flex-direction: column; gap: 2px; }
-.rail-group > .rail-heading { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--c-muted); margin: 0 var(--sp-2) var(--sp-1); font-weight: 700; }
-.rail a.rail-link {
-  display: flex; align-items: center; gap: var(--sp-3); min-height: var(--target); padding: 4px var(--sp-2); border-radius: var(--radius-1);
-  color: var(--c-text); text-decoration: none; border: 1px solid transparent; border-left-width: 3px; font-weight: 500;
-
-}
-.rail a.rail-link:hover { background: var(--c-surface-2); }
-.rail a.rail-link[aria-current="page"], .rail a.rail-link.active { background: var(--c-accent-bg); border-left-color: var(--c-accent); font-weight: 700; color: var(--c-text); }
-.rail a.rail-link .icon { flex: none; color: var(--c-muted); }
-.rail a.rail-link[aria-current="page"] .icon, .rail a.rail-link.active .icon { color: var(--c-accent); }
 .rail .collapse-toggle { margin-top: auto; justify-content: flex-start; }
 .app.rail-collapsed .rail .rail-label, .app.rail-collapsed .rail .rail-heading, .app.rail-collapsed .rail .collapse-toggle .rail-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.app.rail-collapsed .rail a.rail-link { justify-content: center; padding: 4px; border-left-width: 1px; }
 .app.rail-collapsed .rail-group + .rail-group { border-top: 1px solid var(--c-border); padding-top: var(--sp-2); }
 
 main { padding: var(--sp-5) var(--sp-6) var(--sp-6); width: 100%; max-width: var(--content-max); min-width: 0; margin: 0 auto; }
@@ -120,7 +108,6 @@ nav.breadcrumbs li[aria-current="page"] { color: var(--c-muted); overflow-wrap: 
   }
   .app.rail-open .rail { transform: none; visibility: visible; transition: transform 160ms ease; }
   .app.rail-collapsed .rail .rail-label, .app.rail-collapsed .rail .rail-heading { position: static; width: auto; height: auto; clip: auto; }
-  .app.rail-collapsed .rail a.rail-link { justify-content: flex-start; padding: 4px var(--sp-2); border-left-width: 3px; }
   .rail .collapse-toggle { display: none; }
   .rail-backdrop { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, 0.45); border: 0; min-height: 0; padding: 0; border-radius: 0; }
   main { padding: var(--sp-4) var(--sp-4) var(--sp-5); }

@@ -1,3 +1,4 @@
+using MudBlazor.Services;
 using System.Globalization;
 using System.Security.Claims;
 using Keel.Audit;
@@ -59,6 +60,7 @@ public static class KeelUi
     {
         var services = auth.Services;
         services.AddRazorComponents().AddInteractiveServerComponents();
+        services.AddMudServices(c => { c.PopoverOptions.CheckForPopoverProvider = false; });
         services.AddCascadingAuthenticationState();
         services.AddScoped<AuthenticationStateProvider, SessionRevalidatingStateProvider>();
         services.AddScoped<CurrentUser>();

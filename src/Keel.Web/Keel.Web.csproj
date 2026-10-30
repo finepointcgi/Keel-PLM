@@ -27,6 +27,7 @@
     <ProjectReference Include="..\Keel.Requirements\Keel.Requirements.csproj" />
     <ProjectReference Include="..\Keel.Reports\Keel.Reports.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+    <PackageReference Include="MudBlazor" />
   </ItemGroup>
   <ItemGroup>
     <!-- Demo mode (ADR-0045): the demo sign-in people come from the dev realm itself, so they can never drift from what Keycloak issues. -->
