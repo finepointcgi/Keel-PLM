@@ -31,7 +31,7 @@ Administrators work under **Administration > Integration**.
 
 | Page | Use |
 |---|---|
-| Sinks (`/admin/integration/sinks`) | Create a **webhook** (HMAC-signed, optionally mutual TLS) or **file drop** sink, choose events and a profile, validate, then enable |
+| Sinks (`/admin/integration/sinks`) | Create a **webhook** (HMAC-signed, optionally mutual TLS), **file drop** or **message broker** sink, choose events and a profile, validate, then enable |
 | Profiles | Clearance profiles |
 | Outbox | Every event; its payload is visible only if you may read the event's markings |
 | Deliveries | Each attempt, with its status (pending, failed, delivered, withheld, dead) and error; **Requeue** a dead letter after fixing the cause |
@@ -47,7 +47,15 @@ In the demo data the file-drop sink `erp-staging-drop` is **disabled**, because 
 
 Preconditions for real delivery (operator): the dispatcher enabled in at least one replica, an allow-list of hosts or networks, secrets for HMAC, a file-drop root for file sinks. See [ops/integration.md](../ops/integration.md).
 
-Not shipped: a message-broker sink (deferred); webhooks and file drops are the shipped sinks.
+### Message broker sink
+
+A **message broker** sink publishes each event to an on-premises AMQP 0-9-1 broker (RabbitMQ and compatible) and waits for the broker to confirm it. Choose **Kind: Message broker**, name the broker host (it must be on the operator's allow-list), the exchange and, if you need one, a routing key (it defaults to the event type, such as `part.released`). User name, password and signing key are entered as the **names** of secrets the operator provides on the server; Keel PLM never stores or shows the secret values. TLS is on by default and verified against the CA bundle you name; plain connections need an explicit confirmation. Optionally tick **Create the exchange** to make a durable topic exchange when it is missing.
+
+![A message broker sink](images/admin-integration-sinks-broker.png)
+
+Delivery is at least once. Every message carries the event's identifier as its message id and as the header `x-keel-idempotency-key`, the same on every retry, so the receiving system should ignore an identifier it has seen. Events the sink's clearance profile does not clear are withheld and never published. If the broker is down, events wait and are retried; after the configured attempts a delivery becomes a dead letter that you **Requeue** from Deliveries once the cause is fixed. Messages that no queue accepts are retried too, with the error "could not route": bind a queue to the exchange. Details for the operator: [ops/integration.md](../ops/integration.md).
+
+Not shipped: AMQP 1.0 and Kafka (the settings refuse them by name); webhooks, file drops and AMQP 0-9-1 brokers are the shipped sinks.
 
 ## Pull API
 

@@ -10,7 +10,7 @@ public static class IntegrationModule
 {
     /// <summary>
     /// Registers the outbox sink (the <see cref="IDomainEventSink"/> the other modules write to), the dispatcher (runs only when
-    /// <c>Keel:Integration:DispatcherEnabled</c>), the webhook and file-drop sinks, administration, the pull queries and the TDP service (ADR-0025).
+    /// <c>Keel:Integration:DispatcherEnabled</c>), the webhook, file-drop and AMQP broker sinks, administration, the pull queries and the TDP service (ADR-0025).
     /// The host must also register <see cref="IBomPublicationSource"/> and the Tdp source interfaces from the owning modules.
     /// </summary>
     public static IServiceCollection AddKeelIntegration(this IServiceCollection services, IConfiguration configuration)
@@ -23,7 +23,7 @@ public static class IntegrationModule
         services.AddSingleton<SsrfGuard>();
         services.AddSingleton<IEventSink, WebhookSink>(sp => new WebhookSink(sp.GetRequiredService<IntegrationOptions>(), sp.GetRequiredService<SecretResolver>(), sp.GetRequiredService<SsrfGuard>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IEventSink, FileDropSink>();
-        services.AddSingleton<IEventSink, BrokerSink>();
+        services.AddSingleton<IEventSink, BrokerSink>(sp => new BrokerSink(sp.GetRequiredService<IntegrationOptions>(), sp.GetRequiredService<SecretResolver>(), sp.GetRequiredService<SsrfGuard>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<SinkRegistry>();
         services.AddSingleton<DeliveryStore>();
         services.AddSingleton<DeliveryDispatcher>();

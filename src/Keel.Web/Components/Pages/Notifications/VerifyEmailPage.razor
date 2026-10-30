@@ -1,0 +1,45 @@
+@page "/notifications/verify-email/{Token}"
+@inject CurrentUser Users
+@inject IEmailVerification Verification
+
+@* The link in the verification mail lands here. Opening a link never confirms by itself (mail scanners open links): the person presses the button. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Confirm your e-mail address" Crumbs="@Crumbs">
+    <section class="panel" aria-labelledby="verify-heading">
+        <h2 id="verify-heading">Confirm your e-mail address</h2>
+        @if (result is null)
+        {
+            <p>Press the button to confirm that the e-mail address you saved in your notification preferences is yours. After that Keel PLM sends you the short "you have a notification" e-mail.</p>
+            @if (error is not null) { <p class="error" role="alert">@error</p> }
+            <button type="button" class="btn" data-verify="confirm" disabled="@busy" @onclick="ConfirmAsync">Confirm my e-mail address</button>
+        }
+        else if (result == VerificationConfirmResult.Confirmed)
+        {
+            <p class="permit" role="status" data-verify="confirmed">Your e-mail address is confirmed. E-mail notifications are sent to it from now on, according to your preferences.</p>
+            <p><a href="notifications/preferences">Go to your notification preferences</a></p>
+        }
+        else
+        {
+            <p class="error" role="alert" data-verify="invalid">This link is not valid. It may have expired, been used already, been replaced by a newer link, or belong to another person or address.</p>
+            <p><a href="notifications/preferences">Go to your notification preferences</a> to ask for a new link.</p>
+        }
+    </section>
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Notifications", "notifications"), new("Preferences", "notifications/preferences"), new("Confirm e-mail")];
+
+    [Parameter] public string Token { get; set; } = "";
+
+    private VerificationConfirmResult? result;
+    private string? error;
+    private bool busy;
+
+    private async Task ConfirmAsync()
+    {
+        busy = true;
+        error = null;
+        try { result = await Verification.ConfirmAsync(await Users.GetAsync(), Token); }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { error = "Your e-mail address could not be confirmed right now. Try again in a moment."; }
+        finally { busy = false; }
+    }
+}

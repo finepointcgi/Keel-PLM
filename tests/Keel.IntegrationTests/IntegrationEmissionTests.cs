@@ -328,10 +328,13 @@ public sealed class IntegrationEmissionTests(PostgresFixture pg)
         Assert.Equal(OutcomeKind.Forbidden, (await env.Admin.ListSinksAsync(ConfigEnv.Alice)).Kind);
         Assert.Equal(OutcomeKind.Forbidden, (await env.Admin.RequeueDeadAsync(ConfigEnv.Alice, null, "x", null)).Kind);
         Assert.Contains(await env.Config.AuditAsync(), a => a.Action == "integration.profile.save" && a.Outcome == AuditOutcome.Denied);
-        // A broker sink cannot be configured until Phase 4b.
+        // A broker sink is validated like the others: an empty configuration and the protocols this release does not deliver are refused with messages.
         await env.SaveProfileAsync(IntegrationEnv.Profile("erp"));
-        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () => await env.Admin.SaveSinkAsync(IntegrationEnv.Ada, new SinkInput("bus", "Bus", "broker", true, "erp", new JsonObject()), null));
-        Assert.Contains("Phase 4b", ex.Message, StringComparison.Ordinal);
+        var empty = await env.Admin.SaveSinkAsync(IntegrationEnv.Ada, new SinkInput("bus", "Bus", "broker", true, "erp", new JsonObject()), null);
+        Assert.Equal(OutcomeKind.Invalid, empty.Kind);
+        Assert.Contains(empty.Errors, e => e.Contains("broker host is required", StringComparison.Ordinal));
+        var kafka = await env.Admin.SaveSinkAsync(IntegrationEnv.Ada, new SinkInput("bus", "Bus", "broker", true, "erp", new JsonObject { ["protocol"] = "kafka" }), null);
+        Assert.Contains(kafka.Errors, e => e.Contains("not available", StringComparison.Ordinal));
         // Profile edits are validated: statement F cannot be listed.
         var bad = await env.Admin.SaveProfileAsync(IntegrationEnv.Ada, IntegrationEnv.Profile("bad", statements: ["A", "F"]), null);
         Assert.Equal(OutcomeKind.Invalid, bad.Kind);

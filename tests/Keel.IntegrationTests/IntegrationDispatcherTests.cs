@@ -472,7 +472,7 @@ public sealed class IntegrationDispatcherTests(PostgresFixture pg)
     }
 
     [Fact]
-    public async Task A_broker_kind_delivery_is_a_dead_letter_naming_phase_4b_if_such_a_row_exists_and_the_loop_survives()
+    public async Task A_broker_row_without_a_host_is_a_dead_letter_with_the_reason_and_the_loop_survives()
     {
         await using var rig = await StartAsync();
         await rig.Webhook();
@@ -483,7 +483,7 @@ public sealed class IntegrationDispatcherTests(PostgresFixture pg)
         var d = rig.Env.NewDispatcher();
         await d.RunOnceAsync(CancellationToken.None);
         var dead = Assert.Single(await rig.Env.DeliveriesAsync("dead"));
-        Assert.Contains("Phase 4b", dead.LastError, StringComparison.Ordinal);
+        Assert.Contains("no broker host", dead.LastError, StringComparison.Ordinal);
     }
 
     // ---------------------------------------------------------------- file sink and operations

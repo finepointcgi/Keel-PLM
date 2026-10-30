@@ -130,5 +130,5 @@ Said plainly, from the existing documents:
 - **CAC/PIV sign-in** is the site identity provider's job; the development realm uses passwords.
 - **Commercial CAD plug-ins** (SolidWorks, NX, Creo, CATIA) were not built ([integration/cad-plugins.md](../integration/cad-plugins.md)).
 - **The legal and export-control review packets** (`docs/review/`) are all pending reviewer sign-off and are not legal advice.
-- **A broker sink** for the outbox is deferred; webhooks and file drops are shipped ([increments/7.5-platform.md](../increments/7.5-platform.md)).
+- **AMQP 1.0 and Kafka sinks** for the outbox are not built; webhooks, file drops and AMQP 0-9-1 brokers are shipped ([ops/integration.md](../ops/integration.md)).
 - **A formal accessibility report** (VPAT/ACR) needs a human tester; the automated audit is a self-assessment ([ux/accessibility.md](../ux/accessibility.md)).

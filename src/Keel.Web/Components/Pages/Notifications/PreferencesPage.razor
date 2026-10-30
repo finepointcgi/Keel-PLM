@@ -2,6 +2,7 @@
 @inject CurrentUser Users
 @inject INotificationCenter Center
 @inject IEmailPreferences EmailPrefs
+@inject IEmailVerification EmailVerify
 @inject ToastService Toasts
 
 <PageFrame Banner="@UiText.Unclassified" Title="Notification preferences" Crumbs="@Crumbs">
@@ -33,6 +34,19 @@
                     <input id="email-address" type="email" autocomplete="email" maxlength="254" value="@emailAddress" data-pref="email-address" @onchange="e => emailAddress = e.Value?.ToString()" />
                 </div>
                 <button type="button" class="btn" data-pref="email-save" @onclick="SaveEmailAsync">Save e-mail settings</button>
+                @if (!string.IsNullOrEmpty(email.Address))
+                {
+                    <div class="stack" data-pref="email-verification">
+                        @if (email.AddressVerified) { <p class="permit" role="status" data-pref="email-verified">Your address is confirmed.</p> }
+                        else if (email.AddressSuppressed) { <p class="error" role="alert" data-pref="email-suppressed">Mail to your confirmed address bounced, so Keel PLM stopped sending to it. Ask an administrator to lift this, or save another address.</p> }
+                        else if (email.VerificationPending) { <p role="status" data-pref="email-pending">We sent a link to your address. Open it and press Confirm; until then no e-mail notifications are sent.</p> }
+                        else { <p role="status" data-pref="email-unverified">Your address is not confirmed yet, so no e-mail notifications are sent to it.</p> }
+                        @if (!email.AddressVerified && !email.AddressSuppressed)
+                        {
+                            <button type="button" class="secondary" data-pref="email-verify" @onclick="SendVerificationAsync">@(email.VerificationPending ? "Send a new link" : "Send me a confirmation link")</button>
+                        }
+                    </div>
+                }
             </section>
         }
         <section class="panel" aria-labelledby="kinds-heading">
@@ -123,7 +137,12 @@
             var result = await EmailPrefs.SetAsync(await Users.GetAsync(), emailEnabled, emailAddress);
             switch (result)
             {
-                case EmailSaveResult.Saved: Toasts.Success(emailEnabled ? "E-mail notifications are on." : "E-mail notifications are off."); await ReloadAsync(); break;
+                case EmailSaveResult.Saved:
+                    Toasts.Success(emailEnabled ? "E-mail notifications are on." : "E-mail notifications are off.");
+                    await ReloadAsync();
+                    // A new or changed address is confirmed before it gets mail: the link goes out now (the same limits as a request on the button).
+                    if (!string.IsNullOrWhiteSpace(emailAddress) && email is { AddressVerified: false, VerificationPending: false, AddressSuppressed: false }) await SendVerificationAsync();
+                    break;
                 case EmailSaveResult.AddressRequired: emailError = "Enter your e-mail address to turn e-mail on."; break;
                 case EmailSaveResult.InvalidAddress: emailError = "That is not a valid e-mail address."; break;
                 case EmailSaveResult.DomainNotAllowed: emailError = "Mail can only go to addresses at " + string.Join(", ", email?.AllowedDomains ?? []) + "."; break;
@@ -131,6 +150,26 @@
             }
         }
         catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { Toasts.Error("Your e-mail settings could not be saved right now."); }
+    }
+
+    private async Task SendVerificationAsync()
+    {
+        emailError = null;
+        try
+        {
+            var result = await EmailVerify.RequestAsync(await Users.GetAsync());
+            switch (result)
+            {
+                case VerificationRequestResult.Sent: Toasts.Success("If the address can receive mail, a confirmation link is on its way."); break;
+                case VerificationRequestResult.AlreadyVerified: Toasts.Success("Your address is already confirmed."); break;
+                case VerificationRequestResult.RateLimited: emailError = "A link was sent recently or you asked too often. Wait a few minutes and try again."; break;
+                case VerificationRequestResult.SendFailed: emailError = "The confirmation link could not be sent right now. Try again later or ask an administrator."; break;
+                case VerificationRequestResult.AddressRequired: emailError = "Save an e-mail address first."; break;
+                default: emailError = "E-mail is not set up on this system."; break;
+            }
+            await ReloadAsync();
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException) { Toasts.Error("The confirmation link could not be requested right now."); }
     }
 
     private async Task SetKindEmailAsync(KindPreference kind, bool send)

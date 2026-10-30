@@ -45,6 +45,11 @@ public static class NotificationsModule
         services.AddSingleton<SmtpSender>(sp => new SmtpSender(options.Email, sp.GetRequiredService<OnPremHostGuard>()));
         services.AddSingleton<EmailNotificationChannel>();
         services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<EmailNotificationChannel>());
+        services.AddSingleton<EmailBounceService>();
+        services.AddSingleton<EmailVerificationService>();
+        services.AddSingleton<IEmailVerification>(sp => sp.GetRequiredService<EmailVerificationService>());
+        services.AddSingleton<BounceMailboxReader>();
+        services.AddHostedService(sp => sp.GetRequiredService<BounceMailboxReader>());
         services.AddSingleton<EmailDispatchService>();
         services.AddHostedService(sp => sp.GetRequiredService<EmailDispatchService>());
         services.AddSingleton<EmailPreferenceService>();

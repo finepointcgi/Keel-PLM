@@ -69,6 +69,12 @@ public sealed class E2EFixture : IAsyncLifetime
     /// </summary>
     public string ScaleHostUrl { get; private set; } = "";
     public SyntheticBom? ScaleBom { get; private set; }
+    /// <summary>
+    /// The relay of the e-mail notification channel (ADR-0055): an in-process SMTP server on loopback that the hosts send through, so the verification flow can be followed from the
+    /// mail to the page. Nothing leaves the machine.
+    /// </summary>
+    public Keel.TestSupport.TestSmtpServer Smtp => _smtp ??= new(Keel.TestSupport.TestSmtpMode.Plain);
+    private Keel.TestSupport.TestSmtpServer? _smtp;
     public string IdpUrl { get; private set; } = "";
     public DemoManifest Manifest { get; private set; } = null!;
     public IBrowser Browser { get; private set; } = null!;
@@ -153,7 +159,7 @@ public sealed class E2EFixture : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (!Enabled) return;
+        if (!Enabled) return; // nothing was started (the relay is created on first use)
         try { if (Browser is not null) await Browser.CloseAsync(); } catch (PlaywrightException) { }
         _playwright?.Dispose();
         if (_api is { HasExited: false })
@@ -174,6 +180,7 @@ public sealed class E2EFixture : IAsyncLifetime
         if (AppDb is not null) await AppDb.DisposeAsync();
         foreach (var c in _containers) { try { await c.DisposeAsync(); } catch (Exception e) { Log("container cleanup: " + e.Message); } }
         _containers.Clear();
+        if (_smtp is not null) await _smtp.DisposeAsync();
         _log?.Dispose();
         _log = null;
         try { if (_workDir.Length > 0) Directory.Delete(_workDir, recursive: true); } catch (IOException) { }
@@ -290,6 +297,18 @@ public sealed class E2EFixture : IAsyncLifetime
         ["Keel__Vault__Bucket"] = vault.Bucket,
         ["Keel__Workflow__StepUpMaxAgeSeconds"] = StepUpSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
         ["Logging__LogLevel__Default"] = "Warning",
+        // The e-mail channel sends through the in-process relay (plain on loopback, acknowledged), so e-mail verification can be exercised end to end.
+        ["Keel__Notifications__Email__Enabled"] = "true",
+        ["Keel__Notifications__Email__Host"] = "127.0.0.1",
+        ["Keel__Notifications__Email__Port"] = Smtp.Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ["Keel__Notifications__Email__Security"] = "None",
+        ["Keel__Notifications__Email__AcknowledgeInsecureTransport"] = "true",
+        ["Keel__Notifications__Email__FromAddress"] = "keel@corp.example",
+        ["Keel__Notifications__Email__BaseUrl"] = $"http://localhost:{port}",
+        ["Keel__Notifications__Email__AllowedRecipientDomains__0"] = "corp.example",
+        ["Keel__Notifications__Email__Verification__MinIntervalSeconds"] = "0",
+        ["Keel__Notifications__Email__Verification__MaxPerUserPerDay"] = "50",
+        ["Keel__Notifications__Email__Verification__MaxPerAddressPerDay"] = "50",
     };
 
     private async Task RunToCompletionAsync(string workDir, string[] args, Dictionary<string, string> env, string name)

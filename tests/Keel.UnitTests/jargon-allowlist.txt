@@ -10,4 +10,3 @@ src/Keel.Workflow/WorkflowService.Admin.cs | gateway | Same: internal configurat
 src/Keel.Workflow/WorkflowService.Queries.cs | gateway | Same: internal configuration fault, not user text.
 src/Keel.Admin/AttributeAdminService.cs | Phase | Message of a NotSupportedException naming the later wave that delivers the feature (project rule for out-of-scope work).
 src/Keel.Admin/AttributeAdminService.cs | increment | The same NotSupportedException message points at the increment notes for the plan.
-src/Keel.Integration/Sinks.cs | Phase | Message of the NotSupportedException for broker sinks, naming the later wave that delivers them (project rule).

@@ -24,5 +24,7 @@
     <!-- 1.7 end-to-end tests: real browser driven by Playwright (Apache-2.0); PdfPig (Apache-2.0) reads the text of downloaded, marked PDFs. -->
     <PackageVersion Include="Microsoft.Playwright" Version="1.61.0" />
     <PackageVersion Include="PdfPig" Version="0.1.16" />
+    <!-- 9.6 message-broker sink (ADR-0055): AMQP 0-9-1 client for on-premises RabbitMQ and compatible brokers. Dual-licensed Apache-2.0 OR MPL-2.0 (we use it under Apache-2.0). Managed code only. -->
+    <PackageVersion Include="RabbitMQ.Client" Version="7.2.0" />
   </ItemGroup>
 </Project>

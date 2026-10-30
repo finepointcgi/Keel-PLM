@@ -76,6 +76,7 @@ Direct references (project in brackets):
 | PDFsharp | 6.2.4 | `MIT` | `Keel.Documents`, `Keel.Reports` | managed assembly; the "Core" build (no GDI/WPF), no native code per ADR-0044 |
 | PdfPig (UglyToad.PdfPig and its Core, Fonts, Tokenization, Tokens and DocumentLayoutAnalysis assemblies, one package) | 0.1.16 | `Apache-2.0` | `Keel.Documents` | managed assembly, no native code; reads the text layer of PDFs for the redline comparison (ADR-0053, increment 9.5). Also used by the tests. Apache-2.0 notice and any NOTICE text to be carried: **unverified** whether the package ships a NOTICE file |
 | System.Security.Cryptography.Pkcs | 10.0.14 | `MIT` | `Keel.Documents`, `Keel.Reports` | pinned patched servicing version, transitive of PDFsharp (comment in `Directory.Packages.props`) |
+| RabbitMQ.Client | 7.2.0 | `Apache-2.0 OR MPL-2.0` (nuspec `license type="expression"`; we use it under Apache-2.0, the SBOM records the expression) | `Keel.Integration` | managed assembly, AMQP 0-9-1 client of the message-broker sink (ADR-0055); transitive MIT packages: System.IO.Pipelines 8.0.0, System.Threading.RateLimiting 8.0.0, Microsoft.Bcl.AsyncInterfaces 8.0.0, System.Diagnostics.DiagnosticSource 8.0.1, System.Threading.Channels 8.0.0, System.Memory 4.5.5 |
 
 Transitive packages found by the SBOM run, all `MIT`: Microsoft.Bcl.Cryptography 10.0.2, Microsoft.Extensions.DependencyInjection.Abstractions 10.0.0, Microsoft.Extensions.Logging.Abstractions 10.0.0, Microsoft.IdentityModel.Abstractions / JsonWebTokens / Logging / Protocols / Protocols.OpenIdConnect / Tokens 8.19.2, System.IdentityModel.Tokens.Jwt 8.19.2, Microsoft.OpenApi 2.12.2.
 
@@ -90,7 +91,7 @@ The Keel host also contains Keel's own modules (`src/Keel.*`) and three command-
 | xunit.v3 | 4.0.2 | `Apache-2.0` | developer NuGet cache nuspec | unit, integration, E2E test runner |
 | bunit | 2.13.3 | `MIT` | nuspec | Blazor component tests |
 | Microsoft.AspNetCore.Mvc.Testing | 10.0.14 | `MIT` | nuspec | host tests |
-| Testcontainers, Testcontainers.PostgreSql | 4.16.0 | `MIT` | nuspec | integration tests start PostgreSQL and SeaweedFS containers |
+| Testcontainers, Testcontainers.PostgreSql | 4.16.0 | `MIT` | nuspec | integration tests start PostgreSQL, SeaweedFS and (since ADR-0055) RabbitMQ containers; the `rabbitmq:4.1-alpine` image (broker: MPL-2.0 per the publisher; **unverified** here) is pulled by the tests only and is never shipped or listed in a bundle |
 | Microsoft.Playwright | 1.61.0 | `MIT` | nuspec | E2E browser tests (`tests/Keel.E2E`). Playwright downloads browser builds at set-up time; those browsers' licences are **unverified** and outside the repository |
 | PdfPig | 0.1.16 | `Apache-2.0` | nuspec | reads text of marked PDFs in tests (since 9.5 it is also a delivered package of `Keel.Documents`, see the delivered table) |
 | axe-core (Deque Systems) | 4.10.2 | `MPL-2.0` | `tests/Keel.E2E/vendor/axe-core/VENDOR.md` and `LICENSE` | accessibility audit, injected through the DevTools protocol |
@@ -195,7 +196,7 @@ See 3.2. Notice condition and rename condition read from `DejaVu-LICENSE.txt`. T
 | occt-import-js, OCCT (LGPL-2.1, OCCT exception) | licence text and notices in image and bundle (`/app/licenses`, `licenses/`) | source in `sources/` plus draft three-year written offer | two separate files replaceable by volume; manifest is a repo control only | `[Company]` contact placeholder; archive provenance |
 | Emscripten runtime | unconfirmed | none expected (unconfirmed) | n/a | confirm binary contents |
 | three.js, PDFsharp, ASP.NET Core packages, esbuild | MIT notice | none | none | none |
-| pdf.js, AWSSDK, xunit.v3, PdfPig | Apache-2.0 text and any NOTICE | none | none | state changes if modified (none known) |
+| pdf.js, AWSSDK, xunit.v3, PdfPig, RabbitMQ.Client (taken under Apache-2.0) | Apache-2.0 text and any NOTICE | none | none | state changes if modified (none known); for RabbitMQ.Client counsel may confirm the choice of the Apache-2.0 side of the dual licence |
 | Npgsql | PostgreSQL licence notice | none | none | |
 | DejaVu fonts | Bitstream Vera notice | none | rename if modified | |
 | axe-core (MPL-2.0) | licence file stays with the file | MPL source availability applies to distributed files; it is not distributed with the product (claim) | none | test-only |

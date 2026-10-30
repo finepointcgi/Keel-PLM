@@ -49,8 +49,36 @@ fan-out has not passed, or (unless `IncludeUnroutedEvents=true`) one that never 
 if the audit cannot be written nothing is deleted. Direct `DELETE` is refused for every role (database guard triggers); do not delete rows by hand. Receivers that backfill with the
 pull API must do so inside the retention window. If the fan-out is disabled on every node its cursor stalls and retention deletes nothing: check `ntf.fanout_cursor`.
 
-## File-drop spool and message brokers
-A broker sink is deferred (ADR-0032); the file-drop sink is the on-premises alternative. Contract for the receiver: read only files that have a `.manifest.json`, verify the SHA-256, process,
+## Message broker sink (AMQP 0-9-1)
+Design: [ADR-0055](../adr/0055-email-verification-bounces-and-broker-sink.md). A sink of kind **broker** publishes each event (the same signed envelope as a webhook body) to an on-premises
+RabbitMQ or compatible AMQP 0-9-1 broker. Configure it under **Administration > Integration > Sinks** (choose **Message broker**) or with `PUT /api/v1/admin/integration/sinks`. Clearance profile,
+event types, retry, backoff, dead letters and requeue work exactly as for webhooks and file drops: an event the sink's profile does not clear is withheld and never published.
+
+| Setting | Meaning |
+|---|---|
+| `protocol` | `amqp091` (the default). `amqp10` and `kafka` are refused: not built. |
+| `host`, `port` | The broker. The host must be allow-listed (`Keel:Integration:AllowedHosts` or `AllowedNetworks`), like a webhook host; loopback, link-local and metadata addresses are refused unless `AllowDangerousAddresses` (development only). Port 5671 with TLS, 5672 without. |
+| `virtualHost` | Default `/`. |
+| `exchange`, `routingKey` | Publish to `exchange` with `routingKey`; the routing key defaults to the event type (for example `part.released`), which suits a topic exchange. With the default (empty) exchange `routingKey` is the queue name. Publishing is **mandatory**: a message no queue accepts is retried (and finally dead-lettered), never silently dropped. |
+| `declareExchange` | `true` creates a durable topic exchange if it is missing (needs the permission to). Queues and bindings are yours: Keel never creates them. |
+| `usernameSecretName`, `passwordSecretName` | **Names** of secrets, provided as `Keel__Integration__Secrets__<name>` (secrets directory or environment). Never stored in the database or audit log. |
+| `clientCertName`, `caBundleName` | Names configured under `Keel:Integration:ClientCertificates` (PEM with certificate and key) and `CaBundles`. With a client certificate and **no** user name the sink authenticates with SASL EXTERNAL (the broker needs its certificate-login plugin). |
+| `signingSecretName` | Optional: adds `x-keel-timestamp` and `x-keel-signature` headers computed like the webhook signature. |
+| `tls` | `required` (default; TLS 1.2 or 1.3, certificate verified against the CA bundle or the system store, no revocation lookups) or `none`, which needs `acknowledgeInsecureTransport: true`. |
+| `timeoutSeconds` | 1 to 120 (default 10) for connect, publish and the broker's confirm. |
+
+**Delivery semantics.** At least once: each publish waits for the broker's publisher confirm; a negative acknowledgement, an unroutable return, a timeout or a dropped connection is a retry with the
+outbox's backoff, and the delivery is a dead letter after `MaxAttempts`. Messages are persistent. **Consumers must deduplicate**: the AMQP `message-id` and the header `x-keel-idempotency-key` are the
+event id, the same on every retry, requeue and duplicate, and the body bytes are identical for every attempt. Other headers: `x-keel-event-type`, `x-keel-seq`, `x-keel-delivery-attempt`; properties: `type` (event type),
+`app-id` `keel-plm`, `content-type` `application/json`, `timestamp` (event time). A retry can arrive after a later event; order by `x-keel-seq`. One connection per sink is kept and rebuilt after any failure;
+while the broker is down events wait in the outbox (the readiness check shows the lag and dead letters).
+
+Typical errors in a delivery's last error: "refused the credentials" (secrets or client certificate), "TLS handshake ... failed" (CA bundle or host name; the name in `host` must be in the broker certificate),
+"could not route" (no queue bound for the exchange and routing key), "ACCESS_REFUSED" (the user lacks permission), "NOT_FOUND" (the exchange does not exist). Tests run against a real RabbitMQ; other
+AMQP 0-9-1 brokers are expected to work but are untested.
+
+## File-drop spool
+The file-drop sink is the alternative where a broker is not wanted. Contract for the receiver: read only files that have a `.manifest.json`, verify the SHA-256, process,
 then **delete the data file and its manifest** (that is the acknowledgement). Files are named by sequence number; a retry rewrites the same name, so deduplicate on event ids. A sink stops writing when
 `maxPendingFiles` committed files are waiting (sink setting, default `Keel__Integration__FileDropMaxPendingFiles` = 10000, 0 = unlimited): its deliveries are deferred (no attempt counted, no dead
 letter, last error "spool directory holds ... files") and resume when the receiver catches up. Alert on `keel_integration_spool_files{sink}`. Stale `*.tmp` files left by a crash are removed after an hour.

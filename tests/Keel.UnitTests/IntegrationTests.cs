@@ -369,14 +369,6 @@ public sealed class SinkConfigurationTests
         Assert.Contains(noRoot.ValidateConfig(Config("""{"directory":"x"}"""), true), e => e.Contains("FileDropRoot", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void A_broker_sink_throws_NotSupportedException_naming_phase_4b()
-    {
-        var broker = new BrokerSink();
-        var e1 = Assert.Throws<NotSupportedException>(() => broker.ValidateConfig(new JsonObject(), true));
-        Assert.Contains("Phase 4b", e1.Message, StringComparison.Ordinal);
-        Assert.Throws<NotSupportedException>(() => { _ = broker.DeliverAsync(null!, null!, CancellationToken.None); });
-    }
 }
 
 public sealed class FileDropSinkTests

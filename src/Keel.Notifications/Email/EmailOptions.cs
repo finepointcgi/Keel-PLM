@@ -49,6 +49,10 @@ public sealed class EmailOptions
     public int MaxAttempts { get; set; } = 6;
     public int TimeoutSeconds { get; set; } = 20;
     public int PollSeconds { get; set; } = 10;
+    /// <summary>Address verification (<c>Keel:Notifications:Email:Verification</c>): mail goes only to an address its owner confirmed.</summary>
+    public EmailVerificationOptions Verification { get; set; } = new();
+    /// <summary>Bounce and complaint handling (<c>Keel:Notifications:Email:Bounces</c>).</summary>
+    public EmailBounceOptions Bounces { get; set; } = new();
 
     public IReadOnlyList<string> Validate()
     {
@@ -76,6 +80,8 @@ public sealed class EmailOptions
         if (MaxAttempts is < 1 or > 20) errors.Add(p + "MaxAttempts must be between 1 and 20.");
         if (TimeoutSeconds is < 5 or > 120) errors.Add(p + "TimeoutSeconds must be between 5 and 120.");
         if (PollSeconds is < 1 or > 300) errors.Add(p + "PollSeconds must be between 1 and 300.");
+        errors.AddRange(Verification.Validate());
+        errors.AddRange(Bounces.Validate());
         return errors;
     }
 

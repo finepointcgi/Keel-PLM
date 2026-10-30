@@ -7,7 +7,7 @@
     <AdminNav />
     <IntegrationNav />
     <div class="stack">
-        <p>A sink receives events from the outbox. A webhook posts a signed envelope to an on-premises HTTPS endpoint; a file drop writes files with manifests for batch import. Every sink has a clearance profile: events it is not cleared for are withheld, never delivered. Secrets are referenced by name and read from the secrets directory.</p>
+        <p>A sink receives events from the outbox. A webhook posts a signed envelope to an on-premises HTTPS endpoint; a file drop writes files with manifests for batch import; a message broker publishes each event to an on-premises AMQP 0-9-1 broker (RabbitMQ and compatible) and waits for the broker to confirm it. Every sink has a clearance profile: events it is not cleared for are withheld, never delivered. Secrets are referenced by name and read from the secrets directory.</p>
         @if (error is not null) { <p class="error" role="alert">@error</p> }
         @if (errors.Count > 0) { <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul> }
         @if (saved is not null) { <p role="status" class="permit">@saved</p> }
@@ -25,7 +25,7 @@
                             <tr>
                                 <td><code>@s.Name</code><br /><span class="muted small">@s.Label</span></td>
                                 <td>@s.Kind</td>
-                                <td>@(s.ConfigString("url") ?? s.ConfigString("directory"))</td>
+                                <td>@(s.ConfigString("url") ?? s.ConfigString("directory") ?? s.ConfigString("host"))</td>
                                 <td>@s.ProfileName</td>
                                 <td>@(s.EventTypes.Count == 0 ? "all" : string.Join(", ", s.EventTypes))@(s.FullStructure ? " + full structure" : "")</td>
                                 <td>@(s.Enabled ? "Enabled" : "Disabled")</td>
@@ -41,7 +41,7 @@
             <form class="grid-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <label>Name * <input @bind="name" maxlength="41" readonly="@editing" required /></label>
                 <label>Label * <input @bind="label" maxlength="120" required /></label>
-                <label>Kind <select @bind="kind" disabled="@editing"><option value="webhook">Webhook</option><option value="filedrop">File drop</option><option value="broker">Message broker (not available yet)</option></select></label>
+                <label>Kind <select @bind="kind" disabled="@editing"><option value="webhook">Webhook</option><option value="filedrop">File drop</option><option value="broker">Message broker (AMQP 0-9-1)</option></select></label>
                 <label>Clearance profile <select @bind="profile">@foreach (var p in profiles) { <option value="@p.Name">@p.Label (@p.Name)</option> }</select></label>
                 @if (kind == "webhook")
                 {
@@ -56,6 +56,23 @@
                 {
                     <label class="wide">Directory (relative to the file-drop root) <input @bind="directory" maxlength="200" /></label>
                     <label>Format <select @bind="format"><option value="json">One JSON file per event</option><option value="ndjson">One NDJSON file per batch</option></select></label>
+                }
+                else if (kind == "broker")
+                {
+                    <label>Broker host (on-premises, allow-listed) <input @bind="brokerHost" maxlength="253" /></label>
+                    <label>Port (empty = 5671 with TLS, 5672 without) <input type="number" @bind="brokerPort" min="1" max="65535" /></label>
+                    <label>Virtual host <input @bind="virtualHost" maxlength="255" /></label>
+                    <label>Exchange (empty = default exchange) <input @bind="exchange" maxlength="255" /></label>
+                    <label>Routing key (empty = the event type) <input @bind="routingKey" maxlength="255" /></label>
+                    <label>User name secret name <input @bind="userSecret" maxlength="41" /></label>
+                    <label>Password secret name <input @bind="passwordSecret" maxlength="41" /></label>
+                    <label>Signing secret name (optional) <input @bind="signingSecret" maxlength="41" /></label>
+                    <label>Client certificate name (mTLS, with no user name: SASL EXTERNAL) <input @bind="clientCert" maxlength="41" /></label>
+                    <label>CA bundle name <input @bind="caBundle" maxlength="41" /></label>
+                    <label>Transport <select @bind="brokerTls"><option value="required">TLS (required)</option><option value="none">No TLS (the network is protected another way)</option></select></label>
+                    <label>Timeout (seconds) <input type="number" @bind="timeout" min="1" max="120" /></label>
+                    <label class="checkbox"><input type="checkbox" @bind="declareExchange" /> Create the exchange (durable, topic) if it is missing</label>
+                    @if (brokerTls == "none") { <label class="checkbox"><input type="checkbox" @bind="ackInsecure" /> I confirm the link to the broker is protected another way</label> }
                 }
                 <label class="wide">Event types (comma separated, empty = all) <input @bind="types" /></label>
                 <label class="checkbox"><input type="checkbox" @bind="full" /> Also deliver the full-structure BOM event</label>
@@ -73,6 +90,9 @@
     private IReadOnlyList<SinkRecord> sinks = [];
     private IReadOnlyList<ProfileRecord> profiles = [];
     private string name = "", label = "", kind = "webhook", profile = "", url = "", secretName = "", secondarySecret = "", clientCert = "", caBundle = "", directory = "", format = "json", types = "";
+    private string brokerHost = "", virtualHost = "", exchange = "", routingKey = "", userSecret = "", passwordSecret = "", signingSecret = "", brokerTls = "required";
+    private int? brokerPort;
+    private bool declareExchange, ackInsecure;
     private int timeout = 10;
     private bool editing, busy, enabled, full;
     private string? error, saved;
@@ -104,6 +124,17 @@
         timeout = s.ConfigInt("timeoutSeconds") ?? 10;
         directory = s.ConfigString("directory") ?? "";
         format = s.ConfigString("format") ?? "json";
+        brokerHost = s.ConfigString("host") ?? "";
+        brokerPort = s.ConfigInt("port");
+        virtualHost = s.ConfigString("virtualHost") ?? "";
+        exchange = s.ConfigString("exchange") ?? "";
+        routingKey = s.ConfigString("routingKey") ?? "";
+        userSecret = s.ConfigString("usernameSecretName") ?? "";
+        passwordSecret = s.ConfigString("passwordSecretName") ?? "";
+        signingSecret = s.ConfigString("signingSecretName") ?? "";
+        brokerTls = s.ConfigString("tls") ?? "required";
+        declareExchange = s.Config["declareExchange"] is System.Text.Json.Nodes.JsonValue dv && dv.TryGetValue<bool>(out var dx) && dx;
+        ackInsecure = s.Config["acknowledgeInsecureTransport"] is System.Text.Json.Nodes.JsonValue av && av.TryGetValue<bool>(out var ax) && ax;
         errors = [];
     }
 
@@ -111,7 +142,8 @@
     {
         editing = false;
         name = label = url = secretName = secondarySecret = clientCert = caBundle = directory = types = "";
-        (kind, format, timeout, enabled, full) = ("webhook", "json", 10, false, false);
+        brokerHost = virtualHost = exchange = routingKey = userSecret = passwordSecret = signingSecret = "";
+        (kind, format, timeout, enabled, full, brokerTls, brokerPort, declareExchange, ackInsecure) = ("webhook", "json", 10, false, false, "required", null, false, false);
         errors = [];
     }
 
@@ -132,6 +164,24 @@
         {
             c["directory"] = N(directory);
             c["format"] = format;
+        }
+        else if (kind == "broker")
+        {
+            c["protocol"] = Keel.Integration.BrokerSink.Protocol;
+            c["host"] = N(brokerHost);
+            if (brokerPort is { } bp) c["port"] = bp;
+            if (N(virtualHost) is { } vh) c["virtualHost"] = vh;
+            if (N(exchange) is { } ex) c["exchange"] = ex;
+            if (N(routingKey) is { } rk) c["routingKey"] = rk;
+            if (N(userSecret) is { } us) c["usernameSecretName"] = us;
+            if (N(passwordSecret) is { } ps) c["passwordSecretName"] = ps;
+            if (N(signingSecret) is { } sg) c["signingSecretName"] = sg;
+            if (N(clientCert) is { } cc) c["clientCertName"] = cc;
+            if (N(caBundle) is { } ca) c["caBundleName"] = ca;
+            c["tls"] = brokerTls;
+            if (brokerTls == "none") c["acknowledgeInsecureTransport"] = ackInsecure;
+            if (declareExchange) c["declareExchange"] = true;
+            c["timeoutSeconds"] = timeout;
         }
         return c;
     }

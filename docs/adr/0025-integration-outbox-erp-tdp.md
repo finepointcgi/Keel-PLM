@@ -37,7 +37,7 @@ question: how do we make sure data leaves only toward a receiver that is cleared
 - **Ordering:** per aggregate within a sink (a delivery is not claimed while an earlier event of the same aggregate is pending or failed for that sink). No
   global ordering is promised. A dead letter stops blocking its aggregate; a requeue can then deliver out of order, so consumers compare `occurredAt` and the
   revision.
-- Sinks: webhook (signed HTTPS POST), file drop (atomic files with a manifest and SHA-256 per file), and the `IEventSink` interface. A broker sink is Phase 4b
+- Sinks: webhook (signed HTTPS POST), file drop (atomic files with a manifest and SHA-256 per file), and the `IEventSink` interface. A broker sink (AMQP 0-9-1) was delivered by ADR-0055; it was Phase 4b
   and throws `NotSupportedException` naming it until then.
 
 ### Outbound release check

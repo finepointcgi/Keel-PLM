@@ -428,7 +428,12 @@ public static partial class ActivityCatalog
         "mbom.plant_save", "mbom.supply_type_save", "tdp.too_many_documents", "tdp.too_many_parts", "bom.published", "bom.structure.published", "mbom.released",
         "workflow.task_skip", "workflow.list", "workflow.tasks_list", "workflow.templates_list", "workflow.template_upload", "workflow.users_search",
         "workspace.read", "workspace.saved_search.create", "workspace.saved_search.delete", "workspace.saved_search.replace", "activity.read", "comment.read", "watch.set",
-        "integration.event_skipped", "quality.my_actions", "quality.dashboard", "process.work_center_save",
+        "integration.event_skipped",
+        // E-mail channel (ADR-0032, ADR-0055): the system's mail bookkeeping, the user's own verification steps and the administrator's bounce handling. Never an object's story.
+        "notification.email.sent", "notification.email.failed", "notification.email.preference", "notification.email.verification_sent", "notification.email.verification_throttled",
+        "notification.email.verified", "notification.email.verify_failed", "notification.email.bounce_report", "notification.email.suppressed", "notification.email.suppression_cleared",
+        "notification.email.health_list",
+        "quality.my_actions", "quality.dashboard", "process.work_center_save",
         // Product compliance (8.5) reference data and list publication: administration, not events of one object a person can open.
         "compliance.substance_create", "compliance.substance_update", "compliance.substance_read", "compliance.substance_search", "compliance.material_create", "compliance.material_update",
         "compliance.material_read", "compliance.list_create", "compliance.list_read", "compliance.list_draft_create", "compliance.list_draft_save", "compliance.list_draft_discard",
