@@ -6,7 +6,7 @@ It is an engineering inventory read from the repository's own files (project ass
 
 Hash column: SHA-256 of the file for files; for NuGet and npm packages the first 32 hex characters of the registry's SHA-512 of the package archive (the SBOM carries all 128); the digest of the manifest for container images. A dash means the source gives none.
 
-## 1. Delivered with the product (36)
+## 1. Delivered with the product (37)
 
 NuGet packages of `Keel.Api`, `Keel.AuditCli` and `Keel.VaultTool` and everything they pull in (for example MudBlazor, PdfPig, PDFsharp, AWSSDK.S3, Npgsql), the vendored browser files (three.js, pdf.js, occt-import-js with OpenCascade), the npm packages those files came from, the embedded DejaVu fonts, and the components compiled into the wasm file.
 
@@ -41,6 +41,7 @@ NuGet packages of `Keel.Api`, `Keel.AuditCli` and `Keel.VaultTool` and everythin
 | PDFsharp | 6.2.4 | MIT | nuget | sha512:1a14ebf45d6e3985c708810e0793d722 |
 | prometheus-net | 8.2.1 | MIT | nuget | sha512:df05607443ce08117be76b36c69b394f |
 | prometheus-net.AspNetCore | 8.2.1 | MIT | nuget | sha512:ff84df4ef6f0203aa968a4e25af12c8d |
+| RabbitMQ.Client | 7.2.0 | Apache-2.0 OR MPL-2.0 | nuget | sha512:3cf43b705ee5c1b86a0b8ba9e9e9f56d |
 | System.IdentityModel.Tokens.Jwt | 8.19.2 | MIT | nuget | sha512:82a8430bf89c072284badca0a6bf8e16 |
 | System.Security.Cryptography.Pkcs | 10.0.14 | MIT | nuget | sha512:5b3f8880bdb1a60f0a2788b65568fabb |
 | viewer/vendor/occt-import-js.js |  | LGPL-2.1 | vendored-file | sha256:3fb44ce11d00611f9b3f3c5775d520ebab48930c1f08279b7b1316f05f0d3379 |
@@ -49,7 +50,7 @@ NuGet packages of `Keel.Api`, `Keel.AuditCli` and `Keel.VaultTool` and everythin
 | viewer/vendor/pdf.worker.min.mjs |  | Apache-2.0 | vendored-file | sha256:1baa1844c89c80a5b2797c916e75ab29254be46d8e9cb53cb6364d7aad84be36 |
 | viewer/vendor/three-bundle.js |  | MIT | vendored-file | sha256:1b5e810aa9149dcccff96fd1a4246290f3753aad64b88ce10236a1a65b09f99e |
 
-## 2. Used to build, test and maintain, not delivered (163)
+## 2. Used to build, test and maintain, not delivered (164)
 
 Test and tooling NuGet packages, the viewer vendoring tool's build dependencies, the Python packages of the add-on's tests and fixture generator, the FreeCAD host application, and the test-only axe-core. The SBOM marks them with scope `excluded`.
 
@@ -202,6 +203,7 @@ Test and tooling NuGet packages, the viewer vendoring tool's build dependencies,
 | System.ComponentModel.Annotations | 5.0.0 | MIT | nuget | sha512:74c92a7f2d9e97c03cfc8efa9f61e2d6 |
 | System.Diagnostics.EventLog | 10.0.14 | MIT | nuget | sha512:3bf4733705a80f37a190b9401bd851f3 |
 | System.Security.AccessControl | 6.0.1 | MIT | nuget | sha512:210e0d5cffc1dc0cb3bf0d2b0d0cd54d |
+| System.Threading.RateLimiting | 8.0.0 | MIT | nuget | sha512:ee6bbdbf4403bfae9aaf70e919264783 |
 | Testcontainers | 4.16.0 | MIT | nuget | sha512:266314664e995d0a2f6c642368c07e63 |
 | Testcontainers.PostgreSql | 4.16.0 | MIT | nuget | sha512:42abc54bc3a3fa2e9d787dd024e31dee |
 | xunit.analyzers | 2.2.0 | Apache-2.0 | nuget | sha512:757308233b62a5c0322f76b5f60b54ae |
@@ -244,12 +246,13 @@ First-party code that is delivered but is not third-party software (listed so th
 | Licence | Delivered | Not delivered |
 |---|---|---|
 | Apache-2.0 | 6 | 19 |
+| Apache-2.0 OR MPL-2.0 | 1 | 0 |
 | Bitstream-Vera | 2 | 0 |
 | LGPL-2.0-or-later | 0 | 1 |
 | LGPL-2.1 | 3 | 0 |
 | LGPL-2.1-only WITH OCCT-exception-1.0 | 1 | 0 |
 | LGPL-3.0-only | 0 | 1 |
-| MIT | 22 | 141 |
+| MIT | 22 | 142 |
 | MIT AND Apache-2.0 WITH LLVM-exception | 1 | 0 |
 | MPL-2.0 | 0 | 1 |
 | PostgreSQL | 1 | 0 |
