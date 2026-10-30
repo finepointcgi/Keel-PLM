@@ -126,5 +126,5 @@ internal static class NoticesWriter
     private static string Cell(string? v) => string.IsNullOrEmpty(v) ? "" : (v.Length > 40 ? v[..12] : v);
 
     private static string LicenseCell(SbomComponent c) =>
-        c.Licenses.Count == 0 ? "not declared" : string.Join(" ", c.Licenses.Select(l => l.StartsWith("LicenseRef-url:", StringComparison.Ordinal) ? l["LicenseRef-url:".Length..] : l.StartsWith("LicenseRef-", StringComparison.Ordinal) ? "license file in package" : l));
+        c.Kind == "first-party" ? "first-party (Keel)" : c.Licenses.Count == 0 ? "not declared" : string.Join(" ", c.Licenses.Select(l => l.StartsWith("LicenseRef-url:", StringComparison.Ordinal) ? l["LicenseRef-url:".Length..] : l.StartsWith("LicenseRef-", StringComparison.Ordinal) ? "license file in package" : l));
 }

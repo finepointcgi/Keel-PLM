@@ -11,7 +11,10 @@
       "url": "https://github.com/kovacsv/occt-import-js/archive/refs/tags/0.0.23.tar.gz",
       "sha256": "89d1b75def80be77cec271da46cefced9614add5448d3408c705f2f440083dde",
       "size": 4397808,
-      "covers": ["viewer/vendor/occt-import-js.js", "viewer/vendor/occt-import-js.wasm"],
+      "covers": [
+        "viewer/vendor/occt-import-js.js",
+        "viewer/vendor/occt-import-js.wasm"
+      ],
       "purpose": "Source at tag 0.0.23: the occt-import-js C++ wrapper, CMake files and the build scripts (tools/) used to compile the WebAssembly module. It references OpenCascade Technology as a git submodule, which this archive does not contain: see occt-source."
     },
     {
@@ -23,7 +26,9 @@
       "url": "https://github.com/Open-Cascade-SAS/OCCT/archive/d2abb6d844231cb8f29be6894440874a4700e4a5.tar.gz",
       "sha256": "2715d89a1bc44dfd34dab88f729c445ea93f6b57d6539b0c89614a80ae144a6c",
       "size": 48218968,
-      "covers": ["viewer/vendor/occt-import-js.wasm"],
+      "covers": [
+        "viewer/vendor/occt-import-js.wasm"
+      ],
       "purpose": "OpenCascade Technology at the commit that the occt submodule of occt-import-js tag 0.0.23 pins (gitlink d2abb6d844231cb8f29be6894440874a4700e4a5), including LICENSE_LGPL_21.txt and OCCT_LGPL_EXCEPTION.txt."
     },
     {
@@ -35,7 +40,10 @@
       "url": "https://registry.npmjs.org/occt-import-js/-/occt-import-js-0.0.23.tgz",
       "sha256": "eaab9ca7bf02799360d8fc70468dc8bf78eb2073c3fafb1ff982006e558fc1f3",
       "size": 4382337,
-      "covers": ["viewer/vendor/occt-import-js.js", "viewer/vendor/occt-import-js.wasm"],
+      "covers": [
+        "viewer/vendor/occt-import-js.js",
+        "viewer/vendor/occt-import-js.wasm"
+      ],
       "purpose": "The npm package the two shipped files were copied from (dist/occt-import-js.js and dist/occt-import-js.wasm), so a recipient can compare the shipped bytes with the upstream build output. It also carries the wrapper source and the licence files."
     }
   ],
@@ -46,7 +54,9 @@
       "license": "LGPL-2.1-only WITH OCCT-exception-1.0",
       "supplier": "Open Cascade SAS",
       "url": "https://dev.opencascade.org/",
-      "intoFiles": ["viewer/vendor/occt-import-js.wasm"],
+      "intoFiles": [
+        "viewer/vendor/occt-import-js.wasm"
+      ],
       "sourceId": "occt-source",
       "note": "Compiled into occt-import-js.wasm. The pinned revision comes from the occt submodule entry of occt-import-js 0.0.23."
     },
@@ -56,12 +66,86 @@
       "license": "MIT AND Apache-2.0 WITH LLVM-exception",
       "supplier": "Emscripten contributors and LLVM Project",
       "url": "https://emscripten.org/",
-      "intoFiles": ["viewer/vendor/occt-import-js.js", "viewer/vendor/occt-import-js.wasm"],
+      "intoFiles": [
+        "viewer/vendor/occt-import-js.js",
+        "viewer/vendor/occt-import-js.wasm"
+      ],
       "sourceId": null,
       "note": "Status: unconfirmed. Listed because the files were built with Emscripten 3.1.69, whose runtime pieces (JavaScript glue, musl libc, libc++) are normally linked in. The binary was not inspected to confirm which of them it contains. Permissive licences only; no source offer is needed for them."
     }
   ],
   "osLayers": {
     "statement": "The container images (UBI 9 base of the application image, the PostgreSQL, SeaweedFS and Caddy images) contain Linux distribution packages under GPL and LGPL (for example glibc, bash, coreutils). Their corresponding source is distributed by the image publishers (Red Hat for UBI 9, the upstream projects for the others). Source archives of those packages are NOT in the bundle unless the release engineer passes --os-sources-dir to scripts/package-offline.sh. This is a recorded open item (docs/third-party/legal-review.md)."
-  }
+  },
+  "development": [
+    {
+      "name": "pytest",
+      "kind": "python",
+      "specifier": ">=8",
+      "license": "MIT",
+      "supplier": "pytest-dev",
+      "url": "https://pypi.org/project/pytest/",
+      "note": "runs the add-on tests (tools/freecad-keel, requirements-dev.txt); not delivered",
+      "licenseBasis": "catalogue entry from the upstream project's published licence; not read from an installed package, verify when pinning"
+    },
+    {
+      "name": "jsonschema",
+      "kind": "python",
+      "specifier": ">=4",
+      "license": "MIT",
+      "supplier": "Julian Berman",
+      "url": "https://pypi.org/project/jsonschema/",
+      "note": "validates add-on output against the CAD structure schema in the add-on tests (requirements-dev.txt); not delivered",
+      "licenseBasis": "catalogue entry from the upstream project's published licence; not read from an installed package, verify when pinning"
+    },
+    {
+      "name": "cadquery",
+      "kind": "python",
+      "specifier": "unpinned",
+      "license": "Apache-2.0",
+      "supplier": "CadQuery contributors",
+      "url": "https://pypi.org/project/cadquery/",
+      "note": "imported by tools/freecad-keel/make_fixtures.py only (maintainers regenerate the STEP fixtures; no script of the repository installs it); not delivered",
+      "licenseBasis": "catalogue entry from the upstream project's published licence; not read from an installed package, verify when pinning"
+    },
+    {
+      "name": "OCP",
+      "kind": "python",
+      "specifier": "unpinned",
+      "license": "Apache-2.0",
+      "supplier": "CadQuery contributors (cadquery-ocp)",
+      "url": "https://pypi.org/project/cadquery-ocp/",
+      "note": "imported by tools/freecad-keel/make_fixtures.py only; the binary wheel contains OpenCascade Technology (LGPL-2.1 with exception), which is why it is never delivered",
+      "licenseBasis": "catalogue entry from the upstream project's published licence for the Python bindings; the bundled OCCT is LGPL; not read from an installed package"
+    },
+    {
+      "name": "FreeCAD",
+      "kind": "host-application",
+      "license": "LGPL-2.0-or-later",
+      "supplier": "FreeCAD contributors",
+      "url": "https://www.freecad.org/",
+      "note": "the application the add-on runs inside (installed by the CAD user, FreeCAD 1.0 or later); not delivered with Keel",
+      "licenseBasis": "catalogue entry from the upstream project's published licence; not checked against an installed copy"
+    },
+    {
+      "name": "PySide",
+      "kind": "host-application",
+      "license": "LGPL-3.0-only",
+      "supplier": "The Qt Company / Qt for Python (bundled with FreeCAD)",
+      "url": "https://doc.qt.io/qtforpython/",
+      "note": "imported by tools/freecad-keel/keel_plm/gui.py inside FreeCAD, which provides it; Qt for Python is also offered upstream under GPL terms, Keel relies on the LGPL option; not delivered with Keel",
+      "licenseBasis": "catalogue entry from the upstream project's published licence; not checked against an installed copy"
+    },
+    {
+      "name": "axe-core",
+      "kind": "vendored-file",
+      "version": "4.10.2",
+      "license": "MPL-2.0",
+      "supplier": "Deque Systems",
+      "url": "https://github.com/dequelabs/axe-core",
+      "note": "test-only accessibility audit script of tests/Keel.E2E (tests/Keel.E2E/vendor/axe-core/VENDOR.md); not referenced by any src/ project, not in the image or bundle",
+      "licenseBasis": "read from tests/Keel.E2E/vendor/axe-core/VENDOR.md and LICENSE",
+      "file": "tests/Keel.E2E/vendor/axe-core/axe.min.js"
+    }
+  ]
 }
