@@ -214,7 +214,11 @@ public sealed class ProgramResourceTests(PostgresFixture pg)
         var money = audit.Where(a => a.Action is "program.budget_set" or "program.actual_add" or "program.role_rate_set" or "program.cost").ToList();
         Assert.True(money.Count >= 8);
         foreach (var a in money)
-            foreach (var amount in new[] { "22000", "20000", "1000", "400", "200" }) Assert.DoesNotContain(amount, a.Payload.Replace("1000-", "", StringComparison.Ordinal), StringComparison.Ordinal);
+        {
+            // a timestamp inside the payload can contain digit runs such as "400"; the amounts are looked for in the details only
+            var details = System.Text.RegularExpressions.Regex.Replace(a.Payload, @"\d{4}-\d{2}-\d{2}T[\d:.]+Z", "").Replace("1000-", "", StringComparison.Ordinal);
+            foreach (var amount in new[] { "22000", "20000", "1000", "400", "200" }) Assert.DoesNotContain(amount, details, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

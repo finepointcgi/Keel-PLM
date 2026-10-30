@@ -12,10 +12,10 @@ namespace Keel.IntegrationTests;
 [Collection(PostgresCollection.Name)]
 public sealed class CadApiTests(PostgresFixture pg)
 {
-    internal static readonly string Alice = ApiFactory.Token(sub: "u-alice", roles: ["plm-viewer", "plm-author"]);
-    internal static readonly string Bob = ApiFactory.Token(sub: "u-bob", roles: ["plm-viewer", "plm-author"]);
-    internal static readonly string Lena = ApiFactory.Token(sub: "u-lena", usPerson: false, roles: ["plm-viewer", "plm-author"]);
-    internal static readonly string Viewer = ApiFactory.Token(sub: "u-vic", roles: ["plm-viewer"]);
+    internal static string Alice => ApiFactory.Token(sub: "u-alice", roles: ["plm-viewer", "plm-author"]); // minted per use: other classes read these long after this one starts, and a token lives five minutes
+    internal static string Bob => ApiFactory.Token(sub: "u-bob", roles: ["plm-viewer", "plm-author"]); // minted per use: other classes read these long after this one starts, and a token lives five minutes
+    internal static string Lena => ApiFactory.Token(sub: "u-lena", usPerson: false, roles: ["plm-viewer", "plm-author"]); // minted per use: other classes read these long after this one starts, and a token lives five minutes
+    internal static string Viewer => ApiFactory.Token(sub: "u-vic", roles: ["plm-viewer"]); // minted per use: other classes read these long after this one starts, and a token lives five minutes
 
     internal const string Itar = """{"exportJurisdiction":"Itar","distributionStatement":"D","owningOrg":"ENG","usmlCategory":"XI(d)","cuiCategories":["EXPT"],"controllingOffice":"ACME","distributionReason":"Critical technology","program":"ORCA"}""";
     internal const string Open = """{"exportJurisdiction":"None","distributionStatement":"A","owningOrg":"ENG"}""";

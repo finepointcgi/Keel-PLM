@@ -74,6 +74,7 @@ public static class VaultReferences
         new("proc", "plan_revision", "bound_mbom_sha", "content digest of the released MBOM revision a plan revision is written against (ADR-0042), not a vault object"),
         new("proc", "review_binding", "review_sha256", "hash binding a process plan review to its content and MBOM revision (ADR-0042), not a vault object"),
         new("rpt", "artifact_signature", "signed_digest", "SHA-256 of the signed byte ranges of a signed package PDF (ADR-0051); the artifact row is the vault reference, a signature record never keeps bytes alive"),
+        new("ntf", "email_verification", "token_hash", "SHA-256 of a one-time e-mail confirmation token (ADR-0055); a token never refers to a vault object"),
         new("rdl", "review", "left_sha256", "names the bytes of the left document file that were compared; the document_file row is the reference, a review never keeps bytes alive (ADR-0053)"),
         new("rdl", "review", "right_sha256", "names the bytes of the right document file that were compared; the document_file row is the reference, a review never keeps bytes alive (ADR-0053)"),
         new("rdl", "annotation", "change_digest", "SHA-256 over the deleted and inserted text of one change of a word diff (WordDiff.ChangeDigest); not a vault object (ADR-0053)"),
