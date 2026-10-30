@@ -232,12 +232,14 @@
   --sp-5: 24px;
   --sp-6: 32px;
 
-  --radius-1: 6px;
-  --radius-2: 10px;
-  --radius-3: 14px;
+  --radius-1: 8px;           /* Material 3 shape scale: small 8, medium 12, large 16, extra large 28, full */
+  --radius-2: 12px;
+  --radius-3: 16px;
+  --radius-xl: 28px;
+  --radius-field: 4px;
   --radius-pill: 999px;
 
-  --target: 32px;          /* minimum height of an interactive control (WCAG 2.2 target size is 24 px) */
+  --target: 40px;          /* Material 3 control height (compact density: 32 px); minimum height of an interactive control (WCAG 2.2 target size is 24 px) */
   --row-pad-y: 9px;        /* table row padding: density */
   --row-pad-x: 14px;
   --rail-w: 236px;
@@ -260,7 +262,7 @@
 }
 
 :root[data-density="compact"] {
-  --target: 28px;
+  --target: 32px;
   --row-pad-y: 3px;
   --row-pad-x: 10px;
   --fs-md: 0.875rem;

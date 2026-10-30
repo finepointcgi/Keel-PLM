@@ -1,0 +1,65 @@
+/* Material 3 (ADR-0048): shape, type, elevation and state layers for the whole app, on the Keel colour tokens (tokens.css stays the only source of colour, so every theme keeps
+   its contrast). Shapes: buttons are stadium-shaped, fields are outlined with a 4 px corner, cards 12 px, dialogs and menus 16-28 px. Hover and press are state layers
+   mixed from the text colour. No web font: the system font stack stays (air-gapped). */
+:root {
+  --m3-state-hover: color-mix(in srgb, var(--c-text) 8%, transparent);
+  --m3-state-press: color-mix(in srgb, var(--c-text) 12%, transparent);
+  --m3-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ---- type: M3 headline / title / body scale */
+h1 { font-size: 1.75rem; font-weight: 400; letter-spacing: 0; line-height: 2.25rem; }
+h2 { font-size: 1.375rem; font-weight: 400; letter-spacing: 0; line-height: 1.75rem; }
+h3 { font-size: 1rem; font-weight: 500; letter-spacing: 0.009em; }
+h4 { font-size: 0.875rem; font-weight: 500; letter-spacing: 0.006em; }
+
+/* ---- buttons: filled (default), outlined (.secondary), text (.link), danger. Stadium shape, flat, elevation only on hover. */
+button, a.button {
+  border-radius: var(--radius-pill); padding: 4px 24px; font-size: 0.875rem; font-weight: 500; letter-spacing: 0.006em; box-shadow: none;
+  transition: box-shadow 200ms var(--m3-ease), transform 120ms var(--m3-ease); /* no colour transition: axe reads mid-transition colours */
+}
+button:hover:not(:disabled), a.button:hover:not(.secondary) { filter: none; box-shadow: var(--shadow-1); }
+/* Only plain filled buttons: tabs, segmented and pressed toggles set their own colours. */
+button:hover:not(:disabled):not([class]):not([aria-pressed]):not([role]) { background: color-mix(in srgb, var(--c-accent), var(--c-on-accent) 8%); }
+button.secondary, a.button.secondary { background: transparent; color: var(--c-link); border-color: var(--c-border-strong); }
+button.secondary:hover:not(:disabled), a.button.secondary:hover { background: color-mix(in srgb, var(--c-accent) 10%, transparent); box-shadow: none; border-color: var(--c-border-strong); }
+button.link { box-shadow: none; padding: 0 4px; border-radius: var(--radius-1); }
+button.link:hover:not(:disabled) { box-shadow: none; background: var(--m3-state-hover); }
+.icon-button { border-radius: 50%; padding: 0; min-width: var(--target); }
+.icon-button:hover:not(:disabled) { background: var(--m3-state-hover); box-shadow: none; }
+.icon-button.bordered { border-radius: var(--radius-pill); }
+.segmented { gap: 0; }
+.segmented button { border-radius: 0; padding: 0 16px; margin-left: -1px; }
+.segmented button:first-child { border-radius: var(--radius-pill) 0 0 var(--radius-pill); margin-left: 0; }
+.segmented button:last-child { border-radius: 0 var(--radius-pill) var(--radius-pill) 0; }
+.segmented button:only-child { border-radius: var(--radius-pill); }
+.segmented button[aria-pressed="true"] { background: var(--c-accent-bg); color: var(--c-text); border-color: var(--c-border-strong); }
+.segmented button:hover:not(:disabled) { box-shadow: none; }
+
+/* ---- fields: outlined text fields */
+input, select, textarea { border-radius: var(--radius-field); padding: 4px 14px; border-color: var(--c-border-strong); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--c-focus); box-shadow: 0 0 0 1px var(--c-focus); }
+input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; padding: 0; border-radius: 2px; }
+input[type="radio"] { border-radius: 50%; }
+.search-trigger { transition: none; border: 0; border-radius: var(--radius-xl); min-height: 48px; padding: 4px 20px; background: var(--c-surface-2); }
+.search-trigger:hover:not(:disabled) { background: color-mix(in srgb, var(--c-surface-2), var(--c-text) 6%); box-shadow: none; border-color: transparent; }
+
+/* ---- surfaces: top app bar, cards (outlined), chips, badges, notices, menus, popups */
+.topbar { min-height: 64px; background: var(--c-surface); border-bottom: 0; box-shadow: var(--shadow-1); }
+.panel { border-radius: var(--radius-2); box-shadow: none; }
+.page-header { border-top-width: 1px; border-radius: var(--radius-2); box-shadow: none; }
+.chip { border-radius: var(--radius-1); }
+.badge { border-radius: var(--radius-1); }
+.count { border-radius: var(--radius-1); }
+.notice { border-left-width: 0; border-radius: var(--radius-2); padding: var(--sp-3) var(--sp-4); }
+.toast { border-radius: var(--radius-1); }
+.user-menu-panel { border-radius: var(--radius-1); box-shadow: var(--shadow-2); }
+.dialog, .lock-panel { border-radius: var(--radius-xl); }
+details.admin { border-radius: var(--radius-2); }
+.admin-nav a { border-radius: var(--radius-pill); }
+.admin-nav a.active { background: var(--c-accent-bg); }
+
+/* ---- tables: no heavy frame, a tonal header, hairline row dividers */
+table.data, table.bom-grid, .bom-grid table { border-collapse: separate; border-spacing: 0; }
+table th { font-weight: 500; letter-spacing: 0.006em; }
+tbody tr:hover { background: var(--m3-state-hover); }
