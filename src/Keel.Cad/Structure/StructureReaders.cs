@@ -18,12 +18,22 @@ public static class StructureReader
         var model = format switch
         {
             StructureFormats.Json => JsonStructureReader.Read(content.Span),
-            StructureFormats.Step => StepStructureReader.Read(Encoding.Latin1.GetString(content.Span), options),
+            StructureFormats.Step => StepStructureReader.Read(DecodeStep(content.Span), options),
             StructureFormats.Csv => CsvStructureReader.Read(DecodeText(content.Span), options),
             StructureFormats.Xml => XmlStructureReader.Read(content),
             _ => throw new StructureFormatException($"Format must be one of: {string.Join(", ", StructureFormats.All)}."),
         };
         return StructureValidator.Validate(model);
+    }
+
+    /// <summary>
+    /// STEP text is ASCII with escapes in editions 1 and 2, but writers such as Open CASCADE (and so FreeCAD and CadQuery) put UTF-8 bytes straight into names.
+    /// Bytes that are valid UTF-8 are read as UTF-8; anything else (a stray 8-bit file) is read as ISO 8859-1, as before. Pure ASCII reads the same either way.
+    /// </summary>
+    internal static string DecodeStep(ReadOnlySpan<byte> bytes)
+    {
+        try { return new UTF8Encoding(false, true).GetString(bytes); }
+        catch (DecoderFallbackException) { return Encoding.Latin1.GetString(bytes); }
     }
 
     internal static string DecodeText(ReadOnlySpan<byte> bytes)

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>Keel PLM</name>
+  <description>Check out, check in and send product structure (BOM) to Keel PLM from FreeCAD. A client of the Keel CAD API; talks to the Keel server only.</description>
+  <version>0.1.0</version>
+  <date>2026-10-29</date>
+  <maintainer email="plm-admin@example.invalid">Keel PLM team</maintainer>
+  <license file="LICENSE">LicenseRef-Proprietary</license>
+  <url type="documentation">https://example.invalid/keel/docs/integration/cad-plugins.md</url>
+  <content>
+    <workbench>
+      <classname>KeelWorkbench</classname>
+      <subdirectory>./</subdirectory>
+      <freecadmin>1.0.0</freecadmin>
+      <tag>PLM</tag>
+      <tag>BOM</tag>
+    </workbench>
+  </content>
+</package>

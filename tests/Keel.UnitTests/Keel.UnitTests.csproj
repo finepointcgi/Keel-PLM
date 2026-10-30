@@ -10,6 +10,9 @@
     <PackageReference Include="bunit" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Fixtures\cad\*.step;Fixtures\cad\*.csv" CopyToOutputDirectory="PreserveNewest" LinkBase="Fixtures\cad" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
     <ProjectReference Include="..\..\src\Keel.SbomTool\Keel.SbomTool.csproj" />
     <ProjectReference Include="..\..\src\Keel.Security\Keel.Security.csproj" />

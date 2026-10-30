@@ -11,3 +11,6 @@ deploy/compose/prod-example/secrets/
 deploy/compose/prod-example/test/verify.env
 deploy/offline/out/
 *.env.local
+__pycache__/
+.pytest_cache/
+.venv-addons/
