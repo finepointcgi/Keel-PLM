@@ -89,6 +89,92 @@ public sealed class OutputTests(E2EFixture fx)
     }
 
     [E2EFact]
+    public async Task Alice_selects_assemblies_by_where_used_and_documents_and_reads_a_file_into_a_mass_change_preview()
+    {
+        await using var session = new BrowserSession(fx, nameof(Alice_selects_assemblies_by_where_used_and_documents_and_reads_a_file_into_a_mass_change_preview));
+        await session.RunAsync(async () =>
+        {
+            var alice = await session.SignInAsync("alice");
+            var page = alice.Page;
+            var m = fx.Manifest;
+            await session.GotoAsync(alice, "/output/mass");
+
+            // The kind offers the four kinds of object, and the operations follow the kind.
+            await Id(page, "mass-kind").SelectOptionAsync("assembly");
+            await Expect(Id(page, "mass-operation")).ToContainTextAsync("Replace a component");
+            await Expect(Id(page, "mass-operation")).Not.ToContainTextAsync("Change an attribute");
+
+            // Where-used fills the selection with the assemblies that use the component.
+            await BrowserSession.FillAsync(Id(page, "mass-where-used-part"), m.GimbalBracket);
+            await Id(page, "mass-where-used").ClickAsync();
+            await Expect(Id(page, "mass-selection-note")).ToContainTextAsync("use " + m.GimbalBracket);
+            await Expect(Id(page, "mass-numbers")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex(System.Text.RegularExpressions.Regex.Escape(m.GimbalAssembly)));
+
+            // Replace needs both part numbers; the preview says, per assembly, what would happen.
+            await Id(page, "mass-operation").SelectOptionAsync("replace_component");
+            await BrowserSession.FillAsync(Id(page, "mass-component"), m.GimbalBracket);
+            await BrowserSession.FillAsync(Id(page, "mass-replacement"), m.GimbalBracket);
+            await Id(page, "mass-preview").ClickAsync();
+            await Expect(Id(page, "mass-error")).ToContainTextAsync("same part");
+            await BrowserSession.FillAsync(Id(page, "mass-replacement"), m.OpenFastener);
+            await Expect(Id(page, "mass-change-order")).ToBeVisibleAsync();
+            await Id(page, "mass-preview").ClickAsync();
+            await Expect(Id(page, "mass-result")).ToBeVisibleAsync();
+            await Expect(Id(page, "mass-source")).ToContainTextAsync("Selected from where-used");
+            await Expect(Id(page, "mass-items")).ToContainTextAsync(m.GimbalAssembly);
+            await BrowserSession.AssertBannersAsync(page);
+
+            // A change notice that does not exist is refused in words, before anything is previewed.
+            await BrowserSession.FillAsync(Id(page, "mass-change-order"), "ECN-999999");
+            await Id(page, "mass-preview").ClickAsync();
+            await Expect(Id(page, "mass-error")).ToContainTextAsync("change order was not found");
+
+            // Documents: favorites can be added and undone for any readable document; an unknown number is refused like an unreadable one.
+            await session.GotoAsync(alice, "/output/mass");
+            await Id(page, "mass-kind").SelectOptionAsync("document");
+            await Expect(Id(page, "mass-operation")).ToContainTextAsync("Change the description");
+            await BrowserSession.FillAsync(Id(page, "mass-numbers"), $"{m.TorqueStandard}\nD-999999");
+            await Id(page, "mass-operation").SelectOptionAsync("favorite");
+            await Id(page, "mass-preview").ClickAsync();
+            await Expect(Id(page, "mass-items")).ToContainTextAsync("Not found, or you may not read it.");
+            await Id(page, "mass-apply").ClickAsync();
+            await Expect(Id(page, "mass-status")).ToHaveTextAsync("Applied");
+            await Id(page, "mass-undo").ClickAsync();
+            await Expect(Id(page, "mass-status")).ToHaveTextAsync("Undone");
+
+            // A CSV names the parts and their own values; the template is a header row only.
+            await session.GotoAsync(alice, "/output/mass");
+            await page.Locator("details > summary").First.ClickAsync();
+            var download = await page.RunAndWaitForDownloadAsync(() => Id(page, "mass-template").ClickAsync());
+            Assert.EndsWith(".csv", download.SuggestedFilename, StringComparison.Ordinal);
+            await Id(page, "mass-upload-file").SetInputFilesAsync(new FilePayload
+            {
+                Name = "materials.csv", MimeType = "text/csv",
+                Buffer = System.Text.Encoding.UTF8.GetBytes($"Part,Name,Value\r\n{m.GimbalBracket},material,7075-T6\r\nP-999999,material,6061-T6\r\n"),
+            });
+            await Id(page, "mass-operation").SelectOptionAsync("set_attribute");
+            await Id(page, "mass-upload-preview").ClickAsync();
+            await Expect(Id(page, "mass-source")).ToContainTextAsync("Read from a file (materials.csv)");
+            await Expect(Id(page, "mass-items")).ToContainTextAsync(m.GimbalBracket);
+            await Expect(Id(page, "mass-items")).ToContainTextAsync("Not found, or you may not read it.");
+
+            // A file with a column it may not have is refused in words.
+            await session.GotoAsync(alice, "/output/mass");
+            await page.Locator("details > summary").First.ClickAsync();
+            await Id(page, "mass-upload-file").SetInputFilesAsync(new FilePayload { Name = "bad.csv", MimeType = "text/csv", Buffer = System.Text.Encoding.UTF8.GetBytes($"Part,Markings\r\n{m.GimbalBracket},ITAR\r\n") });
+            await Id(page, "mass-operation").SelectOptionAsync("favorite");
+            await Id(page, "mass-upload-preview").ClickAsync();
+            await Expect(Id(page, "mass-error")).ToContainTextAsync("not one of the columns");
+
+            await page.SetViewportSizeAsync(375, 800);
+            await session.GotoAsync(alice, "/output/mass");
+            await BrowserSession.AssertBannersAsync(page);
+            Assert.False(await page.EvaluateAsync<bool>("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1"), "no horizontal page scroll at 375 px");
+            await page.SetViewportSizeAsync(1280, 800);
+        });
+    }
+
+    [E2EFact]
     public async Task The_bom_exchange_page_offers_export_and_template_and_reports_a_bad_workbook_in_words()
     {
         await using var session = new BrowserSession(fx, nameof(The_bom_exchange_page_offers_export_and_template_and_reports_a_bad_workbook_in_words));

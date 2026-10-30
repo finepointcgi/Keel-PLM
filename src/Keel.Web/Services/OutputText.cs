@@ -22,6 +22,15 @@ public static class OutputText
         "pending" => "Waiting", "applied" => "Changed", "failed" => "Failed", "undone" => "Undone", "undo_failed" => "Undo failed", "skipped" => "Skipped", _ => result,
     };
 
+    public static string KindLabel(string kind) => kind switch
+    {
+        MassKinds.Document => "Documents", MassKinds.Assembly => "Assembly structure (BOM lines)", MassKinds.Requirement => "Requirements", _ => "Parts",
+    };
+
+    public static string KindNoun(string kind) => kind switch { MassKinds.Document => "Document", MassKinds.Assembly => "Assembly", MassKinds.Requirement => "Requirement", _ => "Part" };
+
+    public static string SourceLabel(string source) => source switch { "where_used" => "Selected from where-used", "upload" => "Read from a file", _ => "Typed" };
+
     public static string OperationLabel(string op) => op switch
     {
         MassOperations.SetAttribute => "Change an attribute",
@@ -30,6 +39,11 @@ public static class OutputText
         MassOperations.SubmitReview => "Submit for review",
         MassOperations.Watch => "Watch",
         MassOperations.Favorite => "Add to favorites",
+        MassOperations.SetDescription => "Change the description",
+        MassOperations.AddComponent => "Add a component",
+        MassOperations.ReplaceComponent => "Replace a component",
+        MassOperations.RemoveComponent => "Remove a component",
+        MassOperations.SetRequirementField => "Change a requirement field",
         _ => op,
     };
 }

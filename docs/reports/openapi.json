@@ -348,6 +348,142 @@
         }
       }
     },
+    "/api/v1/output/mass/select": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Fills a selection: the assemblies that directly use a component (kind assembly, selector where_used), those you may read. Changes nothing.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "selector",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/mass/upload": {
+      "post": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "Reads a CSV or workbook (the body is the file) into a mass change preview: the file names the objects and, per row, their values. Changes nothing until you apply.",
+        "parameters": [
+          {
+            "name": "fileName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "changeNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            },
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            },
+            "text/csv": {
+              "schema": {
+                "type": "string",
+                "format": "byte"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/output/mass/template.csv": {
+      "get": {
+        "tags": [
+          "Output and bulk work"
+        ],
+        "summary": "An empty CSV template (header row only) for a kind of object and an operation.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/output/mass": {
       "get": {
         "tags": [
@@ -653,6 +789,12 @@
               {
                 "$ref": "#/components/schemas/JsonObject"
               }
+            ]
+          },
+          "changeNumber": {
+            "type": [
+              "null",
+              "string"
             ]
           }
         }

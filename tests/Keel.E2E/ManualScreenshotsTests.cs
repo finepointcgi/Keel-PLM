@@ -77,6 +77,73 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
         await page.WaitForTimeoutAsync(1200);
     }
 
+    /// <summary>The mass change chapter's shots: documents, where-used selection of assemblies, the file upload. Shared by the full run and <see cref="The_mass_change_screenshots_are_written_on_request"/>.</summary>
+    private async Task MassChangeShotsAsync(BrowserSession session, UserPage alice, Keel.Seed.DemoManifest m)
+    {
+        await GoAsync(session, alice, "/output/mass", "output-mass-documents", async p =>
+        {
+            await p.Locator("[data-testid='mass-kind']").SelectOptionAsync("document");
+            await p.Locator("[data-testid='mass-numbers']").FillAsync($"{m.TorqueStandard}\n{m.BracketDrawing}\nD-999999");
+            await p.Locator("[data-testid='mass-operation']").SelectOptionAsync("favorite");
+            await p.Locator("[data-testid='mass-preview']").ClickAsync();
+            await p.WaitForSelectorAsync("[data-testid='mass-result']");
+            await p.Locator("[data-testid='mass-result']").ScrollIntoViewIfNeededAsync();
+            await p.Mouse.MoveAsync(700, 600); await p.Mouse.WheelAsync(0, 250); await p.WaitForTimeoutAsync(400);
+        });
+        await GoAsync(session, alice, "/output/mass", "output-mass-where-used", async p =>
+        {
+            await p.Locator("[data-testid='mass-kind']").SelectOptionAsync("assembly");
+            await p.Locator("[data-testid='mass-where-used-part']").FillAsync(m.GimbalBracket);
+            await p.Locator("[data-testid='mass-where-used']").ClickAsync();
+            await p.WaitForSelectorAsync("[data-testid='mass-selection-note']");
+            await p.Locator("[data-testid='mass-operation']").SelectOptionAsync("replace_component");
+            await p.Locator("[data-testid='mass-component']").FillAsync(m.GimbalBracket);
+            await p.Locator("[data-testid='mass-replacement']").FillAsync(m.OpenFastener);
+            await p.Locator("[data-testid='mass-preview']").ClickAsync();
+            await p.WaitForSelectorAsync("[data-testid='mass-result']");
+            await p.Locator("[data-testid='mass-source']").ScrollIntoViewIfNeededAsync();
+            await p.Mouse.MoveAsync(700, 600); await p.Mouse.WheelAsync(0, 200); await p.WaitForTimeoutAsync(400);
+        });
+        await GoAsync(session, alice, "/output/mass", "output-mass-upload", async p =>
+        {
+            await p.Locator("details > summary").First.ClickAsync();
+            await p.Locator("[data-testid='mass-upload-file']").SetInputFilesAsync(new FilePayload
+            {
+                Name = "materials.csv", MimeType = "text/csv",
+                Buffer = Encoding.UTF8.GetBytes($"Part,Name,Value\r\n{m.GimbalBracket},material,7075-T6\r\n{m.EndCap},material,6061-T6\r\nP-999999,material,6061-T6\r\n"),
+            });
+            await p.Locator("[data-testid='mass-operation']").SelectOptionAsync("set_attribute");
+            await p.Locator("[data-testid='mass-upload-preview']").ClickAsync();
+            await p.WaitForSelectorAsync("[data-testid='mass-result']");
+            await p.Locator("[data-testid='mass-source']").ScrollIntoViewIfNeededAsync();
+            await p.Mouse.MoveAsync(700, 600); await p.Mouse.WheelAsync(0, 200); await p.WaitForTimeoutAsync(400);
+        });
+    }
+
+    [E2EFact(Timeout = 600_000)]
+    public async Task The_mass_change_screenshots_are_written_on_request()
+    {
+        if (!On) return;
+        _dir = Path.Combine(fx.RepoRoot, "docs", "manual", "images");
+        Directory.CreateDirectory(_dir);
+        await using var session = new BrowserSession(fx, nameof(The_mass_change_screenshots_are_written_on_request));
+        try
+        {
+            await session.RunAsync(async () =>
+            {
+                var alice = await session.SignInAsync("alice", 1440, 900);
+                await MassChangeShotsAsync(session, alice, fx.Manifest);
+            });
+        }
+        finally
+        {
+            _log.AppendLine($"Mass change screenshots written: {_taken}");
+            Directory.CreateDirectory(fx.ResultsDir);
+            await File.WriteAllTextAsync(Path.Combine(fx.ResultsDir, "manual-shots-mass.log"), _log.ToString());
+            Console.Error.WriteLine("[manual] " + _log);
+        }
+    }
+
     [E2EFact(Timeout = 1_800_000)]
     public async Task The_manual_screenshots_are_written_on_request()
     {
@@ -387,6 +454,7 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                     await p.Locator("[data-testid='mass-result']").ScrollIntoViewIfNeededAsync();
                     await p.Mouse.MoveAsync(700, 600); await p.Mouse.WheelAsync(0, 250); await p.WaitForTimeoutAsync(400);
                 });
+                await MassChangeShotsAsync(session, alice, m);
                 await GoAsync(session, alice, "/tdp", "tdp-history");
 
                 // ---- notifications and activity

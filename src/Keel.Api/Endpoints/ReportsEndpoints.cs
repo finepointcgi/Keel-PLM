@@ -7,7 +7,7 @@ using Keel.Reports;
 namespace Keel.Api.Endpoints;
 
 public sealed record GeneratePackageRequest(string Kind, string Key);
-public sealed record MassPreviewRequest(string ObjectKind, string[] Keys, string Operation, JsonObject? Parameters);
+public sealed record MassPreviewRequest(string ObjectKind, string[] Keys, string Operation, JsonObject? Parameters, string? ChangeNumber = null);
 public sealed record ReportRunRequest(string Dataset, ReportSpec Spec);
 public sealed record SaveReportRequest(string Name, string Dataset, ReportSpec Spec, bool Shared = false);
 
@@ -17,8 +17,14 @@ public static class ReportsEndpoints
     public const string UiPackageRoute = "/ui/output/packages/{number}";
     public const string UiBomExportRoute = "/ui/output/bom-export";
     public const string UiBomTemplateRoute = "/ui/output/bom-template";
+    public const string UiMassTemplateRoute = "/ui/output/mass-template";
     public const string UiReportExportRoute = "/ui/output/report-export";
     public const int MaxImportBytes = 5 * 1024 * 1024;
+
+    private static IResult MassTemplate(string kind, string operation) =>
+        MassKinds.All.Contains(kind) && MassChangeService.AllOperations.Contains(operation)
+            ? Results.File(MassUpload.Template(kind, operation), "text/csv; charset=utf-8", $"mass-change-{kind}-{operation}.csv")
+            : Outcome<string>.Invalid(["Choose a kind of object and an operation the page offers."]).ToHttp();
 
     public static void MapReportsEndpoints(this IEndpointRouteBuilder app)
     {
@@ -60,8 +66,25 @@ public static class ReportsEndpoints
 
         // ---- mass change
         g.MapPost("/mass/preview", async (MassPreviewRequest r, HttpContext c, MassChangeService svc, CancellationToken ct) =>
-            (await svc.PreviewAsync(Who(c), new MassRequest(r.ObjectKind, r.Keys ?? [], r.Operation, r.Parameters), Corr(c), ct)).ToHttp(v => Results.Created($"/api/v1/output/mass/{v.Number}", v)))
+            (await svc.PreviewAsync(Who(c), new MassRequest(r.ObjectKind, r.Keys ?? [], r.Operation, r.Parameters, r.ChangeNumber), Corr(c), ct)).ToHttp(v => Results.Created($"/api/v1/output/mass/{v.Number}", v)))
             .WithSummary("Shows which objects an operation would change and which are refused, and why. Changes nothing.");
+        g.MapGet("/mass/select", async (string kind, string selector, string value, HttpContext c, MassChangeService svc, CancellationToken ct) =>
+            (await svc.SelectAsync(Who(c), kind, selector, value, Corr(c), ct)).ToHttp())
+            .WithSummary("Fills a selection: the assemblies that directly use a component (kind assembly, selector where_used), those you may read. Changes nothing.");
+        g.MapPost("/mass/upload", async (string? fileName, string? kind, string? operation, string? changeNumber, HttpContext c, MassChangeService svc, CancellationToken ct) =>
+        {
+            using var ms = new MemoryStream();
+            var buffer = new byte[81920]; int n;
+            while ((n = await c.Request.Body.ReadAsync(buffer, ct)) > 0)
+            {
+                if (ms.Length + n > MaxImportBytes) return Outcome<MassPreview>.Invalid(["The file is larger than 5 MB."]).ToHttp();
+                ms.Write(buffer, 0, n);
+            }
+            return (await svc.PreviewUploadAsync(Who(c), new MassUploadRequest(fileName ?? "mass-change.csv", ms.ToArray(), kind, operation, null, changeNumber), Corr(c), ct)).ToHttp(v => Results.Created($"/api/v1/output/mass/{v.Number}", v));
+        }).Accepts<byte[]>("application/octet-stream", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv")
+          .WithSummary("Reads a CSV or workbook (the body is the file) into a mass change preview: the file names the objects and, per row, their values. Changes nothing until you apply.");
+        g.MapGet("/mass/template.csv", (string kind, string operation) => MassTemplate(kind, operation)).WithSummary("An empty CSV template (header row only) for a kind of object and an operation.");
+        app.MapGet(UiMassTemplateRoute, (string kind, string operation) => MassTemplate(kind, operation)).RequireAuthorization(Policies.AnyPlmRole).ExcludeFromDescription();
         g.MapGet("/mass", async (HttpContext c, MassChangeService svc, CancellationToken ct) => Results.Ok(await svc.ListAsync(Who(c), ct))).WithSummary("Your mass change numbers, newest first.");
         g.MapGet("/mass/{number}", async (string number, HttpContext c, MassChangeService svc, CancellationToken ct) => (await svc.GetAsync(Who(c), number, ct)).ToHttp());
         g.MapPost("/mass/{number}/apply", async (string number, HttpContext c, MassChangeService svc, CancellationToken ct) => (await svc.ApplyAsync(Who(c), number, Corr(c), ct)).ToHttp())

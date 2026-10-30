@@ -54,3 +54,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0047](0047-open-source-cad-connector.md) | Open-source CAD connector: FreeCAD add-on, watch-folder recipes, real STEP fixtures | Accepted |
 | [0046](0046-model-versioning.md) | Model versioning for CAD and mesh files: versions are document iterations, one-step upload, measured geometry, compare, restore | Accepted |
 | [0048](0048-mudblazor-navigation.md) | MudBlazor navigation rail with collapsible groups (no theme provider, strict CSP kept) | Accepted |
+| [0050](0050-mass-change-beyond-parts.md) | Mass change beyond parts: documents, assembly structure with where-used, requirements, change notices and CSV/Excel upload | Accepted |

@@ -2,29 +2,60 @@
 @inject CurrentUser Users
 @inject MassChangeService Mass
 @inject PartService Parts
+@using Keel.Documents
+@inject DocumentService Documents
 
-@* Mass change of parts: choose objects, preview exactly what would change and what is refused, apply object by object, undo what can be undone (ADR-0044). *@
+@* Mass change of parts, documents, assembly structure and requirements: choose objects (typed, where-used or a file), preview exactly what would change, apply object by object, undo what can be undone (ADR-0044, ADR-0050). *@
 <PageFrame Banner="@(banner ?? UiText.Unclassified)" Title="Mass change" Crumbs="@Crumbs">
-    <p class="muted">Change many parts in one go. You see first which parts will change and which are refused, and why. Each part is changed through its normal rules: released parts are refused, every change is recorded one part at a time, and most operations can be undone.</p>
+    <p class="muted">Change many objects in one go. You see first which objects will change and which are refused, and why. Each object is changed through its normal rules: released objects are refused unless the change is attached to a change notice, every change is recorded one object at a time, and most operations can be undone.</p>
+
+    <section class="panel stack" aria-labelledby="kind-heading">
+        <h2 id="kind-heading">1. What do you want to change?</h2>
+        <label>Kind of object
+            <select value="@kind" @onchange="OnKindChanged" data-testid="mass-kind">
+                @foreach (var k in MassKinds.All) { <option value="@k" selected="@(k == kind)">@OutputText.KindLabel(k)</option> }
+            </select>
+        </label>
+    </section>
 
     <section class="panel stack" aria-labelledby="select-heading">
-        <h2 id="select-heading">1. Choose parts</h2>
-        <label>Part numbers, one per line (at most @ReportsLimits.MaxMassObjects)
+        <h2 id="select-heading">2. Choose @KindPlural</h2>
+        <label>@KeyHelp (at most @ReportsLimits.MaxMassObjects)
             <textarea @bind="numbersText" @bind:event="oninput" rows="6" data-testid="mass-numbers"></textarea>
         </label>
-        <div class="grid-form">
-            <label>Or find parts by text <input @bind="searchText" maxlength="100" data-testid="mass-search" /></label>
-            <div class="toolbar"><button type="button" class="secondary" @onclick="AddFromSearch" disabled="@busy" data-testid="mass-search-add">Add up to 200 results</button></div>
-        </div>
+        @if (kind is MassKinds.Part or MassKinds.Assembly or MassKinds.Document)
+        {
+            <div class="grid-form">
+                <label>Or find @KindPlural by text <input @bind="searchText" maxlength="100" data-testid="mass-search" /></label>
+                <div class="toolbar"><button type="button" class="secondary" @onclick="AddFromSearch" disabled="@busy" data-testid="mass-search-add">Add up to 200 results</button></div>
+            </div>
+        }
+        @if (kind == MassKinds.Assembly)
+        {
+            <div class="grid-form">
+                <label>Or find the assemblies that use a component (part number) <input @bind="whereUsedPart" maxlength="64" data-testid="mass-where-used-part" /></label>
+                <div class="toolbar"><button type="button" class="secondary" @onclick="SelectWhereUsedAsync" disabled="@busy" data-testid="mass-where-used">Select assemblies that use it</button></div>
+            </div>
+            @if (selectionNote is not null) { <p class="muted" role="status" data-testid="mass-selection-note">@selectionNote</p> }
+        }
+        <details>
+            <summary>Or read the objects (and their values) from a CSV or Excel file</summary>
+            <div class="stack">
+                <p class="muted">The first row names the columns. One column names the @KindPlural; the other columns are values for the chosen change (for example <code>name</code> and <code>value</code> to give each part its own attribute value). Nothing changes until you apply the preview.</p>
+                <p><a href="@TemplateHref" download data-testid="mass-template">Download an empty template for this change</a></p>
+                <label>File (.csv or .xlsx, up to 5 MB) <InputFile OnChange="PickFile" accept=".xlsx,.csv" data-testid="mass-upload-file" /></label>
+                <div class="toolbar"><button type="button" class="secondary" @onclick="PreviewFileAsync" disabled="@(busy || file is null)" data-testid="mass-upload-preview">Preview from file</button></div>
+            </div>
+        </details>
     </section>
 
     <section class="panel stack" aria-labelledby="op-heading">
-        <h2 id="op-heading">2. Choose the change</h2>
+        <h2 id="op-heading">3. Choose the change</h2>
         <fieldset class="grid-form">
             <legend>Operation</legend>
             <label>Operation
                 <InputSelect @bind-Value="operation" data-testid="mass-operation">
-                    @foreach (var o in MassChangeService.AllOperations) { <option value="@o">@OutputText.OperationLabel(o)</option> }
+                    @foreach (var o in OperationsForKind) { <option value="@o">@OutputText.OperationLabel(o)</option> }
                 </InputSelect>
             </label>
             @switch (operation)
@@ -32,6 +63,9 @@
                 case MassOperations.SetAttribute:
                     <label>Attribute name * <InputText @bind-Value="attrName" maxlength="60" data-testid="mass-attr-name" /></label>
                     <label>New value * <InputText @bind-Value="attrValue" maxlength="500" data-testid="mass-attr-value" /></label>
+                    break;
+                case MassOperations.SetDescription:
+                    <label class="wide">New description * <InputTextArea @bind-Value="description" maxlength="4000" rows="3" data-testid="mass-description" /></label>
                     break;
                 case MassOperations.ChangeMarkings:
                     <label class="wide">Reason * <InputText @bind-Value="reason" maxlength="500" /></label>
@@ -46,6 +80,35 @@
                     <label>Review slot name * <InputText @bind-Value="slot" maxlength="60" /></label>
                     <label>Reviewers (login names, comma separated) * <InputText @bind-Value="reviewers" maxlength="300" /></label>
                     break;
+                case MassOperations.AddComponent:
+                    <label>Component (part number) * <InputText @bind-Value="component" maxlength="64" data-testid="mass-component" /></label>
+                    <label>Quantity * <InputText @bind-Value="quantity" maxlength="20" data-testid="mass-quantity" /></label>
+                    <label>Unit <InputText @bind-Value="unit" maxlength="10" /></label>
+                    <label>Find number <InputText @bind-Value="findNumber" maxlength="6" /></label>
+                    break;
+                case MassOperations.ReplaceComponent:
+                    <label>Component to replace (part number) * <InputText @bind-Value="component" maxlength="64" data-testid="mass-component" /></label>
+                    <label>Replacement (part number) * <InputText @bind-Value="replacement" maxlength="64" data-testid="mass-replacement" /></label>
+                    <label>New quantity (empty keeps each line's) <InputText @bind-Value="quantity" maxlength="20" /></label>
+                    break;
+                case MassOperations.RemoveComponent:
+                    <label>Component to remove (part number) * <InputText @bind-Value="component" maxlength="64" data-testid="mass-component" /></label>
+                    break;
+                case MassOperations.SetRequirementField:
+                    <label>Field *
+                        <InputSelect @bind-Value="reqField" data-testid="mass-req-field">
+                            <option value="priority">Priority</option><option value="method">Verification method</option><option value="status">Status</option><option value="type">Type</option><option value="rationale">Rationale</option>
+                        </InputSelect>
+                    </label>
+                    <label>New value * <InputText @bind-Value="attrValue" maxlength="4000" data-testid="mass-req-value" /></label>
+                    break;
+            }
+            @if (MassChangeService.CanAttachToChange(kind, operation))
+            {
+                <label class="wide">Attach to a change notice (optional, for example ECN-000012)
+                    <InputText @bind-Value="changeOrder" maxlength="64" data-testid="mass-change-order" />
+                </label>
+                <p class="muted wide">With a change notice, a released @OutputText.KindNoun(kind).ToLowerInvariant() is revised through the notice first (a new revision in work) and then changed; every object changed is listed on the notice.</p>
             }
         </fieldset>
         @if (operation == MassOperations.ChangeMarkings)
@@ -60,13 +123,14 @@
     {
         <section class="panel stack" aria-labelledby="preview-heading" data-testid="mass-result">
             <h2 id="preview-heading">@v.Number: @OutputText.OperationLabel(v.Operation)</h2>
+            <p class="muted" data-testid="mass-source">@OutputText.KindLabel(v.ObjectKind). @OutputText.SourceLabel(v.Source)@(v.SourceDetail is null ? "" : $" ({v.SourceDetail})").@if (v.ChangeNumber is not null) { <text> Attached to change notice <a href="changes/@v.ChangeNumber" data-testid="mass-change-link">@v.ChangeNumber</a>.</text> }</p>
             <p aria-live="polite">
                 <span class="badge" data-testid="mass-status">@Status(v)</span>
                 @v.WillChange will change, @v.Refused refused@(v.Applied > 0 ? $", {v.Applied} changed" : "")@(v.Failed > 0 ? $", {v.Failed} failed" : "")@(v.Undone > 0 ? $", {v.Undone} undone" : "").
             </p>
             <div class="table-wrap"><table class="data" data-testid="mass-items">
-                <caption class="sr-only">Parts and what happens to each</caption>
-                <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">State</th><th scope="col">Outcome</th><th scope="col">Why</th></tr></thead>
+                <caption class="sr-only">@OutputText.KindLabel(v.ObjectKind) and what happens to each</caption>
+                <thead><tr><th scope="col">@OutputText.KindNoun(v.ObjectKind)</th><th scope="col">Name</th><th scope="col">State</th><th scope="col">Outcome</th><th scope="col">Why</th></tr></thead>
                 <tbody>
                 @foreach (var i in v.Items)
                 {
@@ -80,7 +144,7 @@
             </table></div>
             @if (applyMessage is not null) { <p class="error" role="alert">@applyMessage</p> }
             <div class="toolbar">
-                @if (v.CanApply) { <button type="button" @onclick="ApplyAsync" disabled="@busy" data-testid="mass-apply">Apply to @v.Items.Count(i => i.CanApply && i.Result is "pending" or "failed") part(s)</button> }
+                @if (v.CanApply) { <button type="button" @onclick="ApplyAsync" disabled="@busy" data-testid="mass-apply">Apply to @v.Items.Count(i => i.CanApply && i.Result is "pending" or "failed") object(s)</button> }
                 @if (v.CanUndo) { <button type="button" class="secondary" @onclick="UndoAsync" disabled="@busy" data-testid="mass-undo">Undo</button> }
             </div>
         </section>
@@ -94,12 +158,25 @@
 @code {
     private static readonly IReadOnlyList<Crumb> Crumbs = [new("Mass change")];
     [SupplyParameterFromQuery(Name = "change")] public string? ChangeNumber { get; set; }
-    private string numbersText = "", searchText = "", operation = MassOperations.SetAttribute, attrName = "", attrValue = "", reason = "", proposalName = "", watchLevel = "all", slot = "reviewers", reviewers = "";
+    private string kind = MassKinds.Part, numbersText = "", searchText = "", operation = MassOperations.SetAttribute, attrName = "", attrValue = "", reason = "", proposalName = "", watchLevel = "all", slot = "reviewers", reviewers = "";
+    private string description = "", component = "", replacement = "", quantity = "", unit = "", findNumber = "", reqField = "priority", changeOrder = "", whereUsedPart = "";
     private readonly MarkingsInput markings = new();
     private MassPreview? view;
     private IReadOnlyList<string>? recent, errors;
-    private string? applyMessage, banner;
+    private string? applyMessage, banner, selectionNote, source, sourceDetail;
+    private IBrowserFile? file;
     private bool busy;
+
+    private IEnumerable<string> OperationsForKind => MassChangeService.AllOperations.Where(o => Mass.KindsFor(o).Contains(kind));
+    private string KindPlural => kind switch { MassKinds.Document => "documents", MassKinds.Assembly => "assemblies", MassKinds.Requirement => "requirements", _ => "parts" };
+    private string KeyHelp => kind switch
+    {
+        MassKinds.Document => "Document numbers, one per line",
+        MassKinds.Assembly => "Assembly part numbers, one per line",
+        MassKinds.Requirement => "Requirements as specification number, a slash and the requirement key (for example SPEC-000001/R-0001), one per line",
+        _ => "Part numbers, one per line",
+    };
+    private string TemplateHref => $"ui/output/mass-template?kind={Uri.EscapeDataString(kind)}&operation={Uri.EscapeDataString(operation)}";
 
     private static string Status(MassPreview v) => v.Status switch { "previewed" => v.Applied > 0 ? "Partly applied" : "Preview", "applied" => "Applied", "undone" => "Undone", _ => v.Status };
 
@@ -110,20 +187,60 @@
         recent = await Mass.ListAsync(who);
     }
 
+    private void OnKindChanged(ChangeEventArgs e)
+    {
+        kind = e.Value?.ToString() ?? MassKinds.Part;
+        if (!OperationsForKind.Contains(operation)) operation = OperationsForKind.First();
+        selectionNote = null; source = null; sourceDetail = null;
+    }
+
+    private IReadOnlyList<string> TypedKeys => numbersText.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private void AddKeys(IEnumerable<string> keys)
+    {
+        var existing = TypedKeys.ToHashSet(StringComparer.Ordinal);
+        foreach (var k in keys) existing.Add(k);
+        numbersText = string.Join("\n", existing);
+    }
+
     private async Task AddFromSearch()
     {
-        var r = await Parts.SearchAsync(await Users.GetAsync(), searchText, null, 200, 0, CurrentUser.NewCorrelationId());
-        var existing = numbersText.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
-        foreach (var p in r.Items) existing.Add(p.Number);
-        numbersText = string.Join("\n", existing);
-        banner = r.PageBanner;
+        var who = await Users.GetAsync();
+        if (kind == MassKinds.Document)
+        {
+            var d = await Documents.SearchAsync(who, searchText, null, null, 200, 0, CurrentUser.NewCorrelationId());
+            AddKeys(d.Items.Select(i => i.Number)); banner = d.PageBanner;
+        }
+        else
+        {
+            var r = await Parts.SearchAsync(who, searchText, null, 200, 0, CurrentUser.NewCorrelationId());
+            AddKeys(r.Items.Select(p => p.Number)); banner = r.PageBanner;
+        }
     }
+
+    private async Task SelectWhereUsedAsync()
+    {
+        errors = null; busy = true;
+        try
+        {
+            var r = await Mass.SelectAsync(await Users.GetAsync(), MassKinds.Assembly, MassSelectors.WhereUsed, whereUsedPart, CurrentUser.NewCorrelationId());
+            if (!r.IsOk) { errors = r.Kind == OutcomeKind.Invalid ? r.Errors : [r.Kind == OutcomeKind.NotFound ? "That part was not found, or you may not read it." : OutputText.Message(r)]; selectionNote = null; return; }
+            AddKeys(r.Value!.Keys);
+            source = "where_used"; sourceDetail = whereUsedPart.Trim();
+            selectionNote = r.Value.Keys.Count == 0 ? $"No assembly that you may read uses {whereUsedPart.Trim()}."
+                : $"{r.Value.Keys.Count} assembly(ies) use {whereUsedPart.Trim()} directly{(r.Value.Truncated ? $"; only the first {ReportsLimits.MaxMassObjects} are listed" : "")}. Remove any you do not want to change.";
+        }
+        finally { busy = false; }
+    }
+
+    private void PickFile(InputFileChangeEventArgs e) => file = e.File;
 
     private JsonObject? Parameters()
     {
         switch (operation)
         {
             case MassOperations.SetAttribute: return new JsonObject { ["name"] = attrName.Trim(), ["value"] = attrValue };
+            case MassOperations.SetDescription: return new JsonObject { ["description"] = description };
             case MassOperations.ChangeMarkings:
                 var m = markings.ToMarkings();
                 if (!m.IsSuccess) { errors = m.Errors; return null; }
@@ -132,9 +249,32 @@
             case MassOperations.Watch: return new JsonObject { ["level"] = watchLevel };
             case MassOperations.SubmitReview:
                 return new JsonObject { ["participants"] = new JsonObject { [slot.Trim()] = new JsonArray([.. reviewers.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => (JsonNode?)x)]) } };
+            case MassOperations.AddComponent:
+            case MassOperations.ReplaceComponent:
+            case MassOperations.RemoveComponent:
+                var p = new JsonObject { ["component"] = component.Trim() };
+                if (operation == MassOperations.ReplaceComponent) p["replacement"] = replacement.Trim();
+                if (quantity.Trim().Length > 0)
+                {
+                    if (!decimal.TryParse(quantity.Trim(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var q)) { errors = ["The quantity must be a number."]; return null; }
+                    p["quantity"] = q;
+                }
+                if (operation == MassOperations.AddComponent)
+                {
+                    if (unit.Trim().Length > 0) p["unit"] = unit.Trim();
+                    if (findNumber.Trim().Length > 0)
+                    {
+                        if (!int.TryParse(findNumber.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var f)) { errors = ["The find number must be a whole number."]; return null; }
+                        p["find_number"] = f;
+                    }
+                }
+                return p;
+            case MassOperations.SetRequirementField: return new JsonObject { ["field"] = reqField, ["value"] = attrValue };
             default: return [];
         }
     }
+
+    private string? ChangeOrderOrNull => MassChangeService.CanAttachToChange(kind, operation) && changeOrder.Trim().Length > 0 ? changeOrder.Trim() : null;
 
     private async Task PreviewAsync()
     {
@@ -143,11 +283,37 @@
         {
             var p = Parameters();
             if (p is null) return;
-            var keys = numbersText.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var r = await Mass.PreviewAsync(await Users.GetAsync(), new MassRequest("part", keys, operation, p), CurrentUser.NewCorrelationId());
-            if (r.IsOk) { view = r.Value; banner = string.Join(" | ", r.Value!.Items.Select(i => i.Banner).Where(b => b is not null).Distinct()); if (banner.Length == 0) banner = null; recent = await Mass.ListAsync(await Users.GetAsync()); } else errors = r.Kind == OutcomeKind.Invalid ? r.Errors : [OutputText.Message(r)];
+            var keys = TypedKeys;
+            var r = await Mass.PreviewAsync(await Users.GetAsync(), new MassRequest(kind, keys, operation, p, ChangeOrderOrNull, null, source ?? "typed", sourceDetail), CurrentUser.NewCorrelationId());
+            await ShowAsync(r);
         }
         finally { busy = false; }
+    }
+
+    private async Task PreviewFileAsync()
+    {
+        errors = null; applyMessage = null; busy = true;
+        try
+        {
+            var p = Parameters() ?? [];
+            if (errors is not null && errors.Count > 0) return;
+            using var ms = new MemoryStream();
+            await using (var s = file!.OpenReadStream(5 * 1024 * 1024)) await s.CopyToAsync(ms);
+            var r = await Mass.PreviewUploadAsync(await Users.GetAsync(), new MassUploadRequest(file.Name, ms.ToArray(), kind, operation, p, ChangeOrderOrNull), CurrentUser.NewCorrelationId());
+            await ShowAsync(r);
+        }
+        catch (IOException e) { errors = [e.Message]; }
+        finally { busy = false; }
+    }
+
+    private async Task ShowAsync(Outcome<MassPreview> r)
+    {
+        if (r.IsOk)
+        {
+            view = r.Value; banner = string.Join(" | ", r.Value!.Items.Select(i => i.Banner).Where(b => b is not null).Distinct()); if (banner.Length == 0) banner = null;
+            recent = await Mass.ListAsync(await Users.GetAsync());
+        }
+        else errors = r.Kind == OutcomeKind.Invalid ? r.Errors : [OutputText.Message(r)];
     }
 
     private async Task ApplyAsync()
