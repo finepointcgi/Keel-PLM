@@ -81,6 +81,7 @@
     private bool locked, railOpen, supplier, ready; // ready: the user is known, so the internal-only parts (search, palette, bell) are never rendered for a supplier even for a moment; // supplier: an external supplier user (8.2): portal navigation only, no search, no notification bell
     private string displayName = "";
     private IReadOnlyList<NavGroup> groups = [];
+    private IReadOnlyList<string> roles = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -92,8 +93,9 @@
         var user = (await Auth.GetAuthenticationStateAsync()).User;
         displayName = user.FindFirst("name")?.Value ?? user.Identity?.Name ?? "Account";
         supplier = NavModel.RolesOf(user).Contains(Roles.Supplier);
-        groups = supplier ? NavModel.ForSupplier() : NavModel.For(NavModel.RolesOf(user));
+        roles = NavModel.RolesOf(user);
         if (!locked) await Shell.LoadAsync();
+        groups = supplier ? NavModel.ForSupplier() : NavModel.For(roles, Shell.Preferences.SimpleView);
         ready = true;
     }
 
@@ -103,7 +105,11 @@
         if (firstRender && !locked) await Js.InvokeVoidAsync("applyPreferences", Shell.Preferences.Theme, Shell.Preferences.Density);
     }
 
-    private void OnShellChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnShellChanged() => _ = InvokeAsync(() =>
+    {
+        if (!supplier && ready) groups = NavModel.For(roles, Shell.Preferences.SimpleView); // Simple view (ADR 0061)
+        StateHasChanged();
+    });
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => _ = InvokeAsync(() =>
     {

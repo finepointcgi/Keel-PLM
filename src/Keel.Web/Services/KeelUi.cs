@@ -70,6 +70,7 @@ public static class KeelUi
         services.AddScoped<LifecycleSteps>();
         services.AddScoped<ShellState>();
         services.AddScoped<PaletteState>();
+        services.AddScoped<SimpleFlows>(); // ADR 0061: one-step edit, add-document and quick-create flows
         services.AddScoped<WorkspaceReads>();
         services.AddScoped<CommentDrafts>(); // UX-4: comment drafts live in the circuit only
         services.AddKeelVisuals(); // UX-3 relationship pictures (ADR-0029)

@@ -1,80 +1,10 @@
 @page "/parts/new"
-@inject CurrentUser Users
-@inject PartService Parts
-@inject NpgsqlDataSource Db
-@inject NavigationManager Nav
-@inject IReferenceData Refs
-@using Npgsql
 
-@* A blank form shows no controlled data; the markings being entered appear on the created part. *@
-<PageFrame Banner="@UiText.Unclassified" Title="New part">
-    @if (defs is not null)
-    {
-        <EditForm Model="this" OnSubmit="Create" FormName="new-part" class="stack">
-            <fieldset class="grid-form">
-                <legend>Part</legend>
-                <label>Name * <InputText @bind-Value="name" maxlength="200" required /></label>
-                <label>
-                    Type
-                    <InputSelect @bind-Value="partType">@foreach (var t in partTypes) { <option value="@t">@t</option> }</InputSelect>
-                </label>
-                <label>
-                    Unit of measure
-                    <InputSelect @bind-Value="unit">@foreach (var u in units) { <option value="@u">@u</option> }</InputSelect>
-                </label>
-                <label>
-                    Source
-                    <InputSelect @bind-Value="source">@foreach (var s in sources) { <option value="@s">@s</option> }</InputSelect>
-                </label>
-                <label class="wide">Description <InputTextArea @bind-Value="description" rows="3" maxlength="4000" /></label>
-            </fieldset>
-            <fieldset class="grid-form">
-                <legend>Attributes</legend>
-                <AttributeFields Definitions="defs" Value="attributes" />
-            </fieldset>
-            <fieldset class="grid-form">
-                <legend>Security markings</legend>
-                <MarkingsFields Value="markings" />
-            </fieldset>
-            @if (errors is not null)
-            {
-                <ul class="error" role="alert">@foreach (var e in errors) { <li>@e</li> }</ul>
-            }
-            <div class="toolbar">
-                <button type="submit" disabled="@busy">Create part</button>
-                <a class="button secondary" href="parts">Cancel</a>
-            </div>
-        </EditForm>
-    }
+@* A blank form shows no controlled data; the markings being entered appear on the created part. The form itself is the shared quick form (ADR 0061). *@
+<PageFrame Banner="@UiText.Unclassified" Title="Create part" Crumbs="@Crumbs">
+    <QuickPartForm />
 </PageFrame>
 
 @code {
-    private IReadOnlyList<AttributeDefinition>? defs;
-    private IReadOnlyList<string> partTypes = [], units = [], sources = []; // 2.2: administrator data
-    private string name = "", partType = "Component", unit = UnitsOfMeasure.Each, source = "Make", description = "";
-    private readonly AttributeInput attributes = new();
-    private readonly MarkingsInput markings = new();
-    private IReadOnlyList<string>? errors;
-    private bool busy;
-
-    protected override async Task OnInitializedAsync()
-    {
-        await using var conn = await Db.OpenConnectionAsync();
-        defs = await AttributeValidator.LoadAsync(conn, null, PartService.ObjectType, CancellationToken.None);
-        partTypes = await Refs.CodesAsync(RefLists.PartType);
-        units = await Refs.CodesAsync(RefLists.Unit);
-        sources = await Refs.CodesAsync(RefLists.PartSource);
-    }
-
-    private async Task Create()
-    {
-        var m = markings.Effective().ToMarkings();
-        if (!m.IsSuccess) { errors = m.Errors; return; }
-        busy = true;
-        var outcome = await Parts.CreateAsync(await Users.GetAsync(),
-            new CreatePartCommand(name, partType, unit, source, m.Value, description, attributes.ToJson(defs!)), CurrentUser.NewCorrelationId());
-        busy = false;
-        if (outcome.IsOk) Nav.NavigateTo($"parts/{Uri.EscapeDataString(outcome.Value!.Number)}");
-        else errors = outcome.Kind == OutcomeKind.Invalid ? outcome.Errors : [UiText.Message(outcome)];
-    }
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Parts", "parts"), new("Create part")];
 }

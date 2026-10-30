@@ -14,7 +14,7 @@
         </select>
         <button type="submit">Search</button>
         <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
-            <a class="button secondary" href="parts/new">New part</a>
+            <a class="button" href="parts/new" data-action="create-part">Create part</a>
         </AuthorizeView>
         <a class="button secondary" href="parts/classification">By classification</a>
     </form>
@@ -25,8 +25,8 @@
         <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="Parts" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
                 <EmptyState Title="@(query.Length > 0 || state != "" ? "No parts match" : "No parts yet")" IconName="part"
-                            ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="New part">
-                    @(query.Length > 0 || state != "" ? "Try a different number or name, or choose Any state." : "Create the first part to start building products.")
+                            ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="Create part">
+                    @(query.Length > 0 || state != "" ? "Try a different number or name, or choose Any state." : "Create the first part to start building products. All it needs is a name.")
                 </EmptyState>
             </Empty>
         </DataTable>

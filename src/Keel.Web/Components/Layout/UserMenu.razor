@@ -37,6 +37,14 @@
                     }
                 </div>
             </div>
+            <div class="group" role="group" aria-labelledby="simple-label">
+                <span class="label" id="simple-label">Navigation</span>
+                <div class="segmented">
+                    <button type="button" aria-pressed="@(Shell.Preferences.SimpleView ? "true" : "false")" data-simple-view-choice="simple" @onclick="() => Shell.SetSimpleViewAsync(true)">Simple</button>
+                    <button type="button" aria-pressed="@(Shell.Preferences.SimpleView ? "false" : "true")" data-simple-view-choice="all" @onclick="() => Shell.SetSimpleViewAsync(false)">All areas</button>
+                </div>
+                <span class="muted small">Simple shows parts, documents and changes. Everything else is still found by search (Ctrl + K).</span>
+            </div>
             <div class="group">
                 @if (Lock is { Enabled: true, View: { Phase: SessionPhase.Active } })
                 {

@@ -1,0 +1,81 @@
+@* A type-ahead picker for one object (a part or a document) by number or name (ADR 0061). The search is supplied by the page and runs through the module's own read
+   filter, so only objects the person may read are offered; a candidate that cannot be chosen stays in the list with the reason. The choice is shown as one line with a
+   Change button. No tooltips: everything the person needs to read is on the page. *@
+@{
+    var inputId = $"{Id}-input";
+    var statusId = $"{Id}-status";
+}
+<div class="picker" data-picker="@Id">
+    @if (Selected is { } s)
+    {
+        <div class="picker-selected">
+            <span class="picker-label" id="@($"{Id}-label")">@Label</span>
+            <div class="picker-chosen" role="group" aria-labelledby="@($"{Id}-label")"><strong>@s.Number</strong> <span>@s.Name</span> <MarkingChip Text="@s.Banner" /></div>
+            <button type="button" class="secondary small" data-picker-change @onclick="Clear">Change</button>
+        </div>
+    }
+    else
+    {
+        <label for="@inputId">@Label</label>
+        <input id="@inputId" type="search" autocomplete="off" placeholder="@Placeholder" aria-describedby="@statusId" @bind="query" @bind:event="oninput" @bind:after="SearchAsync" />
+        <p id="@statusId" class="muted small" role="status">@Status</p>
+        @if (results.Count > 0)
+        {
+            <ul class="picker-results" aria-label="@($"Matching {Noun}")">
+                @foreach (var r in results)
+                {
+                    var item = r;
+                    <li>
+                        <button type="button" class="picker-option" data-picker-option="@item.Number" disabled="@item.Disabled" @onclick="() => ChooseAsync(item)">
+                            <span class="picker-number">@item.Number</span> <span class="picker-name">@item.Name</span>
+                            @if (item.Note is not null) { <span class="muted small">@item.Note</span> }
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</div>
+
+@code {
+    private string query = "";
+    private IReadOnlyList<PickItem> results = [];
+    private bool searched;
+    private long ticket; // a slower answer to an older query never replaces the answer to the newest one
+
+    [Parameter, EditorRequired] public required string Id { get; set; }
+    [Parameter, EditorRequired] public required string Label { get; set; }
+    /// <summary>Plural noun for the results list name, for example "parts".</summary>
+    [Parameter] public string Noun { get; set; } = "results";
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter, EditorRequired] public required Func<string, Task<IReadOnlyList<PickItem>>> Search { get; set; }
+    [Parameter] public PickItem? Selected { get; set; }
+    [Parameter] public EventCallback<PickItem?> SelectedChanged { get; set; }
+
+    private string Status => !searched ? "Type a number or part of a name." : results.Count == 0 ? $"No {Noun} match. You may only see {Noun} you are allowed to read." : $"{results.Count} found. Choose one.";
+
+    private async Task SearchAsync()
+    {
+        var mine = ++ticket;
+        if (string.IsNullOrWhiteSpace(query)) { results = []; searched = false; return; }
+        var found = await Search(query.Trim());
+        if (mine != ticket) return;
+        results = found;
+        searched = true;
+    }
+
+    private async Task ChooseAsync(PickItem item)
+    {
+        Selected = item;
+        results = [];
+        query = "";
+        searched = false;
+        await SelectedChanged.InvokeAsync(item);
+    }
+
+    private async Task Clear()
+    {
+        Selected = null;
+        await SelectedChanged.InvokeAsync(null);
+    }
+}

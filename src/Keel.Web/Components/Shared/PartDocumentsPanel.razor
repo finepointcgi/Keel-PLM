@@ -5,14 +5,15 @@
    editor appears only for the user who has the part checked out. *@
 <section class="panel" aria-labelledby="linked-docs-heading">
     <h3 id="linked-docs-heading">Linked documents (@(links?.IterationLabel ?? IterationLabel))</h3>
+    @if (OnAddDocument is not null) { <p><button type="button" class="secondary" data-action="add-document-panel" @onclick="OnAddDocument">Add document</button></p> }
     @if (error is not null) { <p class="error" role="alert">@error</p> }
     @if (links is not null)
     {
         <DocumentLinkList Links="links.Links" />
         @if (links.WorkingLinks is { } working)
         {
-            <h4>Working copy (applied at check-in)</h4>
-            <DocumentLinkList Links="working" OnRemove="Remove" Busy="busy" Empty="The working copy has no document links." />
+            <h4>Your draft (applied when you save or check in)</h4>
+            <DocumentLinkList Links="working" OnRemove="Remove" Busy="busy" Empty="Your draft has no document links." />
             <div class="toolbar">
                 <input aria-label="Document number" placeholder="Document number, e.g. D-000001" @bind="documentNumber" />
                 <select aria-label="Link type" @bind="linkType">
@@ -36,6 +37,8 @@
     /// <summary>Iteration label shown by the page; a change (check-in, check-out) reloads the links.</summary>
     [Parameter, EditorRequired] public required string IterationLabel { get; set; }
     [Parameter] public bool CheckedOutByMe { get; set; }
+    /// <summary>When set, the panel offers the one-step "Add document" (the page opens its dialog).</summary>
+    [Parameter] public Action? OnAddDocument { get; set; }
 
     private PartDocumentLinks? links;
     private string? error;

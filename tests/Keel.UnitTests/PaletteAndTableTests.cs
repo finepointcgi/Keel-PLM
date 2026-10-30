@@ -62,7 +62,7 @@ public sealed class PaletteAndTableTests : BunitContext
         Assert.Contains("Toggle theme", Labels(cut));
         Assert.Contains("Sign out", Labels(cut));
         // a viewer can neither create things nor administer
-        Assert.DoesNotContain("New part", Labels(cut));
+        Assert.DoesNotContain("Create part", Labels(cut));
         Assert.DoesNotContain("Go to Administration", Labels(cut));
         Assert.DoesNotContain("Go to Audit log", Labels(cut));
     }
@@ -71,8 +71,8 @@ public sealed class PaletteAndTableTests : BunitContext
     public void Authors_see_the_create_actions()
     {
         var author = OpenPalette([Roles.Author]);
-        Assert.Contains("New part", Labels(author));
-        Assert.Contains("New document", Labels(author));
+        Assert.Contains("Create part", Labels(author));
+        Assert.Contains("Create document", Labels(author));
         Assert.Contains("New change request", Labels(author));
     }
 

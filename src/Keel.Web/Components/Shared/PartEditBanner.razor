@@ -1,0 +1,24 @@
+@using Keel.Change
+@using Keel.Web.Components.Pages.Change
+@* One line that says why a part cannot simply be edited, with the way forward (ADR 0061). A released part is changed through a change order: the button starts one with this part
+   already filled in. Other reasons (somebody else is editing, no right to change) are shown by the page next to the actions. *@
+@if (Part.Revision.IsLatest && advice.State is PartEditState.NeedsChange)
+{
+    <div class="notice edit-banner" role="status" data-edit-banner>
+        <p>@advice.Message</p>
+        @if (Part.Permissions.CanModify)
+        {
+            <a class="button" href="@($"{ChangeUi.NewHref(ChangeTypes.Ecn)}?part={Uri.EscapeDataString(Part.Number)}")" data-action="start-change">Start change</a>
+        }
+    </div>
+}
+else if (!Part.Revision.IsLatest)
+{
+    <p class="notice" role="status" data-edit-banner>@advice.Message</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public required PartDetail Part { get; set; }
+
+    private PartEditAdvice advice => SimpleFlows.Advise(Part);
+}

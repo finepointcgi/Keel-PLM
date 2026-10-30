@@ -1,0 +1,184 @@
+@* "Add document" on a part (ADR 0061): attach an existing document, or create a new one, in one dialog. When the person is not already editing the part the part is checked
+   out, linked and checked in again for them as one action (a new version of the part with a note naming the document); when they are editing it, the link joins their draft.
+   Every step is the module's own call, so release locks, access rules and the audit trail are the same as with the advanced controls; a refusal is shown in plain words. *@
+@implements IAsyncDisposable
+@using Keel.Documents
+@using Keel.Documents.Vault
+@inject CurrentUser Users
+@inject SimpleFlows Flows
+@inject DocumentService Docs
+@inject VaultOptions Vault
+@inject LastChoiceStore Last
+@inject IReferenceData Refs
+@inject ShellJs Shell
+@inject NavigationManager Nav
+
+@if (Open)
+{
+    <div class="dialog-backdrop center">
+        <div @ref="dialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="add-doc-title" tabindex="-1" data-add-document-dialog @onkeydown="OnKey">
+            <div class="dialog-head"><h2 id="add-doc-title">Add a document to @Part.Number</h2></div>
+            <div class="dialog-body stack">
+                <fieldset class="inline-fieldset" data-add-mode>
+                    <legend class="visually-hidden">What do you want to do?</legend>
+                    <label class="inline-check"><input type="radio" name="add-mode" checked="@(!createNew)" @onchange="() => SetMode(false)" /> Attach an existing document</label>
+                    <label class="inline-check"><input type="radio" name="add-mode" checked="@createNew" @onchange="() => SetMode(true)" /> Create a new document</label>
+                </fieldset>
+
+                @if (!createNew)
+                {
+                    <ObjectPicker Id="add-doc-existing" Label="Document" Noun="documents" Placeholder="Document number or name" Search="q => Flows.FindDocumentsAsync(subject!, q)" @bind-Selected="picked" />
+                }
+                else
+                {
+                    <div class="grid-form">
+                        <label class="wide">Name * <input @bind="newName" @bind:event="oninput" maxlength="200" aria-required="true" data-add-doc-name /></label>
+                        <label>Type <InputSelect @bind-Value="newType">@foreach (var t in docTypes) { <option value="@t.Code">@t.Label</option> }</InputSelect></label>
+                        <label class="wide">File (optional, up to @DocumentUi.Size(Vault.MaxUploadBytes)) <InputFile OnChange="Pick" /></label>
+                    </div>
+                    <MarkingsDefaultPicker Value="newMarkings" Hint="Starts with the markings of this part. Change them if the document is controlled differently." />
+                }
+
+                <label>
+                    How is it related to the part?
+                    <select @bind="linkType" data-add-link-type>
+                        @foreach (var c in QuickDefaults.LinkChoices) { <option value="@c.Value">@c.Label</option> }
+                    </select>
+                    <span class="muted small">@QuickDefaults.LinkChoices.First(c => c.Value == linkType).Help</span>
+                </label>
+
+                <p class="muted small" data-add-explain>
+                    @if (Part.Checkout?.IsMine == true)
+                    {
+                        <text>You are editing this part, so the document is added to your changes and applied when you save.</text>
+                    }
+                    else
+                    {
+                        <text>Keel saves a new version of the part with the link, and records who did it and why. You do not need to check anything out.</text>
+                    }
+                </p>
+                @if (blocker is not null) { <p class="notice" role="status" data-add-blocked>@blocker</p> }
+                @if (error is not null) { <p class="error" role="alert" data-add-error>@error</p> }
+            </div>
+            <div class="dialog-foot">
+                <button type="button" class="secondary" data-add-cancel @onclick="CloseAsync">Cancel</button>
+                <button type="button" disabled="@(busy || blocker is not null)" data-add-ok @onclick="SubmitAsync">@(createNew ? "Create and add" : "Add document")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ElementReference dialog;
+    private Subject? subject;
+    private bool trapped, createNew, busy, loaded;
+    private PickItem? picked;
+    private string newName = "", newType = QuickDefaults.DocumentType, linkType = Keel.Documents.LinkTypes.Describes;
+    private IReadOnlyList<RefItem> docTypes = [];
+    private MarkingsInput newMarkings = new();
+    private IBrowserFile? file;
+    private string? error, blocker;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public required PartDetail Part { get; set; }
+    /// <summary>Raised after the document was added (the page reloads the part and shows the message).</summary>
+    [Parameter] public EventCallback<AddDocumentResult> OnAdded { get; set; }
+    /// <summary>Start in the create-new mode.</summary>
+    [Parameter] public bool StartCreate { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Open) { loaded = false; trapped = false; return; }
+        blocker = SimpleFlows.LinkBlocker(Part);
+        if (loaded) return;
+        loaded = true;
+        subject = await Users.GetAsync();
+        createNew = StartCreate;
+        picked = null; file = null; error = null; newName = "";
+        docTypes = await Refs.ListAsync(RefLists.DocumentType);
+        IReadOnlyDictionary<string, string> last = new Dictionary<string, string>();
+        try { last = await Last.GetAsync(subject); } catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException) { /* defaults apply */ }
+        newType = QuickDefaults.Pick([.. docTypes.Select(t => t.Code)], last, LastChoiceKeys.DocumentType, QuickDefaults.DocumentType);
+        linkType = QuickDefaults.DefaultLinkType(last);
+        newMarkings = MarkingsInput.From(Part.Markings);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open && !trapped)
+        {
+            trapped = true;
+            await Shell.InvokeVoidAsync("trapFocus", dialog, "[data-add-ok]");
+        }
+    }
+
+    private void SetMode(bool create) { createNew = create; error = null; }
+    private void Pick(InputFileChangeEventArgs e) => file = e.File;
+
+    private async Task CloseAsync()
+    {
+        Open = false;
+        await Shell.InvokeVoidAsync("releaseTrap", dialog, true);
+        trapped = false;
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
+
+    private async Task SubmitAsync()
+    {
+        error = null;
+        if (createNew ? string.IsNullOrWhiteSpace(newName) : picked is null)
+        {
+            error = createNew ? "Enter a name for the new document." : "Choose the document to add. Search by its number or name.";
+            return;
+        }
+        busy = true;
+        AddDocumentResult result;
+        string? documentNumber = picked?.Number;
+        if (createNew)
+        {
+            var m = newMarkings.Effective().ToMarkings();
+            if (!m.IsSuccess) { error = "Security markings: " + string.Join(" ", m.Errors); busy = false; return; }
+            await using var content = file?.OpenReadStream(Vault.MaxUploadBytes);
+            var upload = file is null ? null : new FileUpload(file.Name, file.ContentType, content!);
+            var (doc, link) = await Flows.CreateDocumentAndLinkAsync(subject!, new CreateDocumentCommand(newName.Trim(), newType, m.Value), upload, Part.Number, linkType, CurrentUser.NewCorrelationId());
+            if (!doc.IsOk)
+            {
+                busy = false;
+                error = doc.Kind == OutcomeKind.Invalid ? string.Join(" ", doc.Errors) : UiText.Message(doc);
+                return;
+            }
+            documentNumber = doc.Value!.Number;
+            result = link ?? new(false, "The document was created but not linked.", false, null);
+            if (!result.IsOk) result = result with { Message = $"{documentNumber} was created, but it could not be linked: {result.Message}" };
+        }
+        else
+        {
+            result = await Flows.AddDocumentAsync(subject!, Part.Number, picked!.Number, linkType, null, CurrentUser.NewCorrelationId());
+        }
+        busy = false;
+        await RememberAsync();
+        if (!result.IsOk && !createNew) { error = result.Message; return; }
+        // A document that was created stays created: close the dialog and let the page say it was not linked, so it is not created a second time.
+        await CloseAsync();
+        await OnAdded.InvokeAsync(result);
+    }
+
+    private async Task RememberAsync()
+    {
+        try
+        {
+            var map = new Dictionary<string, string> { [LastChoiceKeys.LinkType] = linkType };
+            if (createNew) map[LastChoiceKeys.DocumentType] = newType;
+            await Last.SetAsync(subject!, map);
+        }
+        catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException) { /* remembering is a convenience */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (trapped) await Shell.InvokeVoidAsync("releaseTrap", dialog, false);
+    }
+}

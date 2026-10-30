@@ -22,10 +22,10 @@ public sealed class WorkspaceService(NpgsqlDataSource dataSource, IAuditLog audi
     public async Task<UserPreferences> GetPreferencesAsync(Subject subject, CancellationToken ct = default)
     {
         await using var conn = await dataSource.OpenConnectionAsync(ct);
-        await using var cmd = new NpgsqlCommand("SELECT theme, density, nav_collapsed FROM ws.preference WHERE user_sub = @u", conn);
+        await using var cmd = new NpgsqlCommand("SELECT theme, density, nav_collapsed, simple_view FROM ws.preference WHERE user_sub = @u", conn);
         cmd.Parameters.AddWithValue("u", subject.Id);
         await using var r = await cmd.ExecuteReaderAsync(ct);
-        return await r.ReadAsync(ct) ? UserPreferences.Normalize(r.GetString(0), r.GetString(1), r.GetBoolean(2)) : UserPreferences.Default;
+        return await r.ReadAsync(ct) ? UserPreferences.Normalize(r.GetString(0), r.GetString(1), r.GetBoolean(2), r.GetBoolean(3)) : UserPreferences.Default;
     }
 
     /// <summary>Same lookup by the bare subject id, for the static page shell, which has the id from the session cookie but no <see cref="Subject"/>.</summary>
@@ -33,25 +33,26 @@ public sealed class WorkspaceService(NpgsqlDataSource dataSource, IAuditLog audi
     {
         if (string.IsNullOrEmpty(userSub) || userSub.Length > 200) return UserPreferences.Default;
         await using var conn = await dataSource.OpenConnectionAsync(ct);
-        await using var cmd = new NpgsqlCommand("SELECT theme, density, nav_collapsed FROM ws.preference WHERE user_sub = @u", conn);
+        await using var cmd = new NpgsqlCommand("SELECT theme, density, nav_collapsed, simple_view FROM ws.preference WHERE user_sub = @u", conn);
         cmd.Parameters.AddWithValue("u", userSub);
         await using var r = await cmd.ExecuteReaderAsync(ct);
-        return await r.ReadAsync(ct) ? UserPreferences.Normalize(r.GetString(0), r.GetString(1), r.GetBoolean(2)) : UserPreferences.Default;
+        return await r.ReadAsync(ct) ? UserPreferences.Normalize(r.GetString(0), r.GetString(1), r.GetBoolean(2), r.GetBoolean(3)) : UserPreferences.Default;
     }
 
     public async Task<UserPreferences> SetPreferencesAsync(Subject subject, UserPreferences preferences, CancellationToken ct = default)
     {
-        var p = UserPreferences.Normalize(preferences.Theme, preferences.Density, preferences.NavCollapsed);
+        var p = UserPreferences.Normalize(preferences.Theme, preferences.Density, preferences.NavCollapsed, preferences.SimpleView);
         await using var conn = await dataSource.OpenConnectionAsync(ct);
         await using var cmd = new NpgsqlCommand(
             """
-            INSERT INTO ws.preference (user_sub, theme, density, nav_collapsed, updated_at) VALUES (@u, @t, @d, @n, @at)
-            ON CONFLICT (user_sub) DO UPDATE SET theme = @t, density = @d, nav_collapsed = @n, updated_at = @at
+            INSERT INTO ws.preference (user_sub, theme, density, nav_collapsed, simple_view, updated_at) VALUES (@u, @t, @d, @n, @sv, @at)
+            ON CONFLICT (user_sub) DO UPDATE SET theme = @t, density = @d, nav_collapsed = @n, simple_view = @sv, updated_at = @at
             """, conn);
         cmd.Parameters.AddWithValue("u", subject.Id);
         cmd.Parameters.AddWithValue("t", p.Theme);
         cmd.Parameters.AddWithValue("d", p.Density);
         cmd.Parameters.AddWithValue("n", p.NavCollapsed);
+        cmd.Parameters.AddWithValue("sv", p.SimpleView);
         cmd.Parameters.AddWithValue("at", clock.GetUtcNow());
         await cmd.ExecuteNonQueryAsync(ct);
         return p;
@@ -349,5 +350,6 @@ public static class WorkspaceModule
 {
     public static IServiceCollection AddKeelWorkspace(this IServiceCollection services) =>
         services.AddSingleton(sp => new WorkspaceService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>()))
-            .AddSingleton<IPreferenceStore>(sp => sp.GetRequiredService<WorkspaceService>());
+            .AddSingleton<IPreferenceStore>(sp => sp.GetRequiredService<WorkspaceService>())
+            .AddSingleton(sp => new LastChoiceStore(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<TimeProvider>())); // ADR 0061
 }

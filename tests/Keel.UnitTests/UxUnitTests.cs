@@ -231,7 +231,7 @@ public sealed class UxLogicTests
         Assert.Contains(author, a => a.Id == "new:part");
         Assert.Contains(author, a => a.Id == PaletteActions.LockNow);
 
-        Assert.Equal(["New part"], PaletteActions.Filter(author, "new part").Select(a => a.Label));
+        Assert.Equal(["Create part"], PaletteActions.Filter(author, "new part").Select(a => a.Label));
         Assert.Contains("Toggle theme", PaletteActions.Filter(author, "dark").Select(a => a.Label)); // keywords match too
         Assert.Empty(PaletteActions.Filter(author, "zebra"));
         Assert.Equal(author.Count, PaletteActions.Filter(author, "").Count);
