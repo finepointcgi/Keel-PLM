@@ -35,6 +35,21 @@ Select **View** next to **Download** on a file. The viewer opens in its own page
 
 Viewing needs read and download rights and is itself audited. Limits: 100 MiB for 3D, 50 MiB for PDF and images. A PDF that cannot be stamped is refused rather than shown unmarked.
 
+### The Viewer tab (3D models on the page)
+
+For CAD documents and any document whose primary file is a 3D model, the **Viewer** tab shows the model without leaving the page. It reads the file through the same checks as **View**: you need read and download rights, the page banner is the document's, and every view is audited.
+
+1. Open the document and select the **Viewer** tab.
+2. **A STEP assembly** is drawn as the structure the file places: every part as its bounding box at the position and orientation the file gives it. The list beside the picture is the same structure as text: every instance with its position. Select a name in the list (or click a box) to highlight that part, or the whole sub-assembly, and to see its path, placement, box size and 4 by 4 matrix.
+3. **An STL, OBJ or 3MF model** is drawn as its triangles.
+4. **glTF, GLB and IGES files** are not drawn in the tab; select **Open in the full file viewer** for them, and for the surface of a STEP part.
+5. Move around with the keyboard: click the picture or tab to it, then use the arrow keys to orbit, **Shift** with the arrow keys to pan, **+** and **-** to zoom, **0** or **Home** to reset. The buttons above the picture do the same (**Orbit left**, **Orbit right**, **Orbit up**, **Orbit down**, **Zoom in**, **Zoom out**, **Reset view**). With a mouse: drag to orbit, right-drag or Shift-drag to pan, scroll to zoom.
+
+![A STEP assembly in the Viewer tab, one part selected](images/documents-viewer-assembly.png)
+![An STL model in the Viewer tab](images/documents-viewer-mesh.png)
+
+What the boxes are: each is derived from the part's geometry in the STEP file (vertices, arcs, ellipses and spline control points), so it is a viewing aid, not a measurement. An occurrence the file gives no placement for is shown at its parent's origin and the list says "no placement". A file with several top-level products is refused with a message; send it as a structure with a root number instead ([chapter 11](11-cad-connector-and-freecad.md)). If you may not view the document, the tab shows nothing about it, not even a part name.
+
 ### Download with markings
 
 **Download (marked)** delivers the file with its markings: PDFs get the banner stamped on every page; other files come in a ZIP with a cover sheet and a markings text. Downloading is audited.

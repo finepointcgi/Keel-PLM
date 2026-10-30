@@ -18,14 +18,14 @@ public static partial class StepStructureReader
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9\-_./]{0,39}$")]
     private static partial Regex DesignatorPattern();
 
-    private sealed record Ref(int Id);
-    private sealed record Enumeration(string Name);
-    private sealed record Typed(string Name, List<object?> Args);
+    internal sealed record Ref(int Id);
+    internal sealed record Enumeration(string Name);
+    internal sealed record Typed(string Name, List<object?> Args);
     private sealed record Measure(string Type, decimal? Value);
 
     private sealed record Product(string Id, string Name);
     private sealed record Formation(int ProductId, string? MakeOrBuy);
-    private sealed record Occurrence(string Id, int ParentDefinition, int ChildDefinition, string? Designator, int? QuantityRef = null);
+    private sealed record Occurrence(string Id, int ParentDefinition, int ChildDefinition, string? Designator, int? QuantityRef = null, int Entity = 0, string? Name = null);
 
     private const int MaxEntities = 5_000_000;
     private const int MaxNesting = 32;
@@ -45,6 +45,7 @@ public static partial class StepStructureReader
         var definitions = new Dictionary<int, int>(); // product definition -> formation
         var measures = new Dictionary<int, Measure>();
         var occurrences = new List<Occurrence>();
+        var geo = options.Placements ? new StepGeometry() : null;
 
         var pos = SkipStatement(text, dataAt); // "DATA;" or the edition 3 form "DATA('name',(schema));"
         var entities = 0;
@@ -82,12 +83,27 @@ public static partial class StepStructureReader
                     && (slice.Contains("ASSEMBLY_COMPONENT_USAGE", StringComparison.Ordinal) || slice.Contains("NEXT_ASSEMBLY_USAGE_OCCURRENCE", StringComparison.Ordinal))
                     && ComplexUsage(text.Substring(pos, end - pos), id) is { } complex)
                     occurrences.Add(complex);
+                else if (geo is not null && slice.Contains("REPRESENTATION_RELATIONSHIP", StringComparison.Ordinal) && slice.Contains("WITH_TRANSFORMATION", StringComparison.Ordinal))
+                    geo.AddRelationship(id, ComplexParts(text.Substring(pos, end - pos), id));
+                else if (geo is not null && slice.Contains("LENGTH_UNIT", StringComparison.Ordinal))
+                    geo.AddLengthUnit(ComplexParts(text.Substring(pos, end - pos), id));
                 pos = end;
                 continue;
             }
             var kwStart = pos;
             while (pos < text.Length && (char.IsAsciiLetterOrDigit(text[pos]) || text[pos] == '_')) pos++;
             var keyword = text.AsSpan(kwStart, pos - kwStart);
+            if (geo is not null && StepGeometry.Wants(keyword))
+            {
+                var geoName = keyword.ToString().ToUpperInvariant();
+                pos = SkipBlank(text, pos);
+                var geoArgs = ParseList(text, ref pos, 0, id);
+                pos = SkipBlank(text, pos);
+                if (pos >= text.Length || text[pos] != ';') throw new StructureFormatException($"Entity #{id} is not terminated by ';'.");
+                pos++;
+                geo.Add(id, geoName, geoArgs);
+                continue;
+            }
             var wanted = Wanted(keyword);
             if (!wanted) { pos = SkipStatement(text, pos); continue; }
             pos = SkipBlank(text, pos);
@@ -112,7 +128,7 @@ public static partial class StepStructureReader
                     break;
                 default: // NEXT_ASSEMBLY_USAGE_OCCURRENCE, SPECIFIED_HIGHER_USAGE_OCCURRENCE, ASSEMBLY_COMPONENT_USAGE, QUANTIFIED_ASSEMBLY_COMPONENT_USAGE (quantity: 7th argument)
                     if (Reference(args, 3) is { } parent && Reference(args, 4) is { } child)
-                        occurrences.Add(new Occurrence(Text(args, 0) ?? "", parent, child, Text(args, 5), name == "QUANTIFIED_ASSEMBLY_COMPONENT_USAGE" ? Reference(args, 6) : null));
+                        occurrences.Add(new Occurrence(Text(args, 0) ?? "", parent, child, Text(args, 5), name == "QUANTIFIED_ASSEMBLY_COMPONENT_USAGE" ? Reference(args, 6) : null, id, Text(args, 1)));
                     break;
             }
         }
@@ -180,6 +196,12 @@ public static partial class StepStructureReader
 
         var makeOrBuy = new Dictionary<int, string?>();
         foreach (var fo in formations.Values.Where(f => products.ContainsKey(f.ProductId))) makeOrBuy.TryAdd(canonical[fo.ProductId], fo.MakeOrBuy);
+        // Placements and boxes (ADR-0052): resolved after the whole file is read, because the entities that carry them may come in any order.
+        var productDefinitions = new Dictionary<int, List<int>>(); // canonical product -> its product definitions
+        foreach (var (pd, fm) in definitions)
+            if (formations.TryGetValue(fm, out var fo2) && products.ContainsKey(fo2.ProductId)) { var cp2 = canonical[fo2.ProductId]; if (!productDefinitions.TryGetValue(cp2, out var l2)) productDefinitions[cp2] = l2 = []; l2.Add(pd); }
+        var placed = geo?.Resolve(occurrences.Where(o => ProductOf(o.ParentDefinition) is { } a && reachable.Contains(a) && ProductOf(o.ChildDefinition) is not null)
+            .Select(o => (o.Entity, o.ParentDefinition, o.ChildDefinition)).ToList());
         var parts = reachable.OrderBy(k => k).Select(k =>
         {
             var pr = products[k];
@@ -187,7 +209,7 @@ public static partial class StepStructureReader
             var name = string.IsNullOrWhiteSpace(pr.Name) ? number ?? $"Product #{k}" : pr.Name.Trim();
             var source = makeOrBuy.GetValueOrDefault(k) switch { { } s when s.Contains("BOUGHT", StringComparison.Ordinal) => "Buy", { } s when s.Contains("MADE", StringComparison.Ordinal) => "Make", _ => null };
             return new StructurePart("#" + k.ToString(CultureInfo.InvariantCulture), number, name.Length > 200 ? name[..200] : name, byParent.ContainsKey(k) ? "Assembly" : null, null, source,
-                new Dictionary<string, string>(), []);
+                new Dictionary<string, string>(), [], geo?.BoxOf(productDefinitions.GetValueOrDefault(k) ?? []));
         }).ToList();
 
         var lines = new List<StructureLine>();
@@ -203,7 +225,22 @@ public static partial class StepStructureReader
                     [.. agg.Refs.Distinct(StringComparer.Ordinal)], agg.Notes.Count == 0 ? null : string.Join("; ", agg.Notes.Distinct(StringComparer.Ordinal))));
             }
         }
-        return new StructureModel(protocol, "#" + rootId.ToString(CultureInfo.InvariantCulture), parts, lines);
+        var occurrenceList = new List<StructureOccurrence>();
+        if (placed is not null)
+            foreach (var o in occurrences.OrderBy(o => o.Entity))
+            {
+                if (ProductOf(o.ParentDefinition) is not { } pp2 || !reachable.Contains(pp2) || ProductOf(o.ChildDefinition) is not { } cp3) continue;
+                if (occurrenceList.Count >= StructureLimits.MaxLines) break;
+                var occName = string.IsNullOrWhiteSpace(o.Name) ? null : o.Name.Trim();
+                occurrenceList.Add(new StructureOccurrence("#" + pp2.ToString(CultureInfo.InvariantCulture), "#" + cp3.ToString(CultureInfo.InvariantCulture),
+                    o.Id.Length > 100 ? o.Id[..100] : o.Id, occName is { Length: > 200 } ? occName[..200] : occName, placed.GetValueOrDefault(o.Entity)));
+            }
+        return new StructureModel(protocol, "#" + rootId.ToString(CultureInfo.InvariantCulture), parts, lines)
+        {
+            Occurrences = occurrenceList,
+            LengthUnit = geo?.UnitLabel,
+            LengthUnitMm = geo?.UnitMm,
+        };
     }
 
     private static bool Wanted(ReadOnlySpan<char> keyword) =>
@@ -254,6 +291,17 @@ public static partial class StepStructureReader
     /// each partial entity lists only its own attributes, so the usage is put together from the ones present.</summary>
     private static Occurrence? ComplexUsage(string statement, int entity)
     {
+        if (ComplexParts(statement, entity) is not { } parts) return null;
+        if (!parts.TryGetValue("PRODUCT_DEFINITION_RELATIONSHIP", out var rel)) return null;
+        if (Reference(rel, 3) is not { } parent || Reference(rel, 4) is not { } child) return null;
+        parts.TryGetValue("ASSEMBLY_COMPONENT_USAGE", out var acu);
+        parts.TryGetValue("QUANTIFIED_ASSEMBLY_COMPONENT_USAGE", out var qacu);
+        return new Occurrence(Text(rel, 0) ?? "", parent, child, acu is null ? null : Text(acu, 0), qacu is null ? null : Reference(qacu, 0), entity, Text(rel, 1));
+    }
+
+    /// <summary>The partial entities of a complex instance by upper-case name, each with its own attributes; null when the instance is not well formed.</summary>
+    private static Dictionary<string, List<object?>>? ComplexParts(string statement, int entity)
+    {
         var pos = 0;
         pos = SkipBlank(statement, pos);
         if (pos >= statement.Length || statement[pos] != '(') return null;
@@ -272,14 +320,10 @@ public static partial class StepStructureReader
             parts[name] = ParseList(statement, ref pos, 0, entity);
             if (parts.Count > 32) return null;
         }
-        if (!parts.TryGetValue("PRODUCT_DEFINITION_RELATIONSHIP", out var rel)) return null;
-        if (Reference(rel, 3) is not { } parent || Reference(rel, 4) is not { } child) return null;
-        parts.TryGetValue("ASSEMBLY_COMPONENT_USAGE", out var acu);
-        parts.TryGetValue("QUANTIFIED_ASSEMBLY_COMPONENT_USAGE", out var qacu);
-        return new Occurrence(Text(rel, 0) ?? "", parent, child, acu is null ? null : Text(acu, 0), qacu is null ? null : Reference(qacu, 0));
+        return parts;
     }
 
-    private static decimal? ParseNumber(string token) =>
+    internal static decimal? ParseNumber(string token) =>
         decimal.TryParse(token.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : null;
 
     private static string? Text(List<object?> args, int i) => i < args.Count ? args[i] as string : null;

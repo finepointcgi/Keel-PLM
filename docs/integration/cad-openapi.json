@@ -543,6 +543,67 @@
         }
       }
     },
+    "/api/v1/cad/bom-proposals/{number}/placements": {
+      "get": {
+        "tags": [
+          "CAD"
+        ],
+        "operationId": "CadGetProposalPlacements",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/cad/documents/{number}/placements": {
+      "get": {
+        "tags": [
+          "CAD"
+        ],
+        "operationId": "CadGetDocumentPlacements",
+        "parameters": [
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/cad/bom-proposals/{number}/decisions": {
       "put": {
         "tags": [

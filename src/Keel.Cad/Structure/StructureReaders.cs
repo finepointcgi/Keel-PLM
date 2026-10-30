@@ -5,7 +5,9 @@ using System.Xml.Linq;
 
 namespace Keel.Cad.Structure;
 
-public sealed record StructureReadOptions(string? RootNumber = null);
+/// <param name="RootNumber">The product to import as the root when a file has several top-level products.</param>
+/// <param name="Placements">Read placements and bounding boxes (STEP). Off for callers that only need the product structure.</param>
+public sealed record StructureReadOptions(string? RootNumber = null, bool Placements = true);
 
 /// <summary>Entry point of the importers: bytes and a format in, the validated neutral model out.</summary>
 public static class StructureReader

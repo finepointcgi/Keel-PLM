@@ -232,7 +232,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
         });
     }
 
-    private static async Task ChooseThemeAsync(IPage page, string user, string theme)
+    internal static async Task ChooseThemeAsync(IPage page, string user, string theme)
     {
         // A supplier user has no Home page (it needs a PLM role): "/" answers with the static access-denied page, which has no circuit, so the menu there never
         // opens. Go to the page the user lands on: the portal for a supplier, Home for everyone else.
@@ -423,7 +423,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
         return created.Value!.Number;
     }
 
-    private static string AxePath()
+    internal static string AxePath()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Keel.slnx"))) dir = dir.Parent;

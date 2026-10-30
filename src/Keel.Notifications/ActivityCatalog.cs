@@ -312,6 +312,7 @@ public static partial class ActivityCatalog
         ["document.download"] = "{actor} downloaded a file",
         ["document.model_history"] = "{actor} viewed the version history",
         ["document.model_compare"] = "{actor} compared two versions",
+        ["cad.bom_proposal.placements"] = "{actor} read the placements of a CAD structure",
         ["document.versions_download"] = "{actor} downloaded versions as a ZIP",
         ["document.read_part_links"] = "{actor} viewed the part links",
         ["change.read"] = "{actor} viewed the change",

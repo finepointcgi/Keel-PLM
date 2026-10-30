@@ -131,6 +131,25 @@ public static partial class CadEndpoints
         cad.MapGet("/bom-proposals/{number}", async (string number, HttpContext ctx, CadBomProposalService svc, CancellationToken ct) =>
             (await svc.GetAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToCad()).WithName("CadGetProposal");
 
+        cad.MapGet("/bom-proposals/{number}/placements", async (string number, HttpContext ctx, CadBomProposalService svc, CancellationToken ct) =>
+            (await svc.GetPlacementsAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToCad()).WithName("CadGetProposalPlacements");
+
+        // The placed structure of the STEP file of a document, derived from the verified stored bytes. Needs Read and Download, like the file viewer; audited as document.view.
+        cad.MapGet("/documents/{number}/placements", async (string number, Guid? fileId, string? revision, HttpContext ctx, AssemblyViewService svc, CancellationToken ct) =>
+        {
+            var result = await svc.OpenAsync(SubjectFactory.Require(ctx), number, fileId, revision, CorrelationId.Get(ctx), ct);
+            return result.Status switch
+            {
+                AssemblyViewStatus.Ok when result.Kind == AssemblyViewKinds.Assembly => Results.Ok(DocumentPlacements.From(result)),
+                AssemblyViewStatus.Ok => Results.Problem(statusCode: 422, title: "This model carries no placed structure (only STEP files are read for placements).", extensions: new Dictionary<string, object?> { ["code"] = "cad.no_placements" }),
+                AssemblyViewStatus.NotFound => Outcome<object>.NotFound().ToHttp(),
+                AssemblyViewStatus.TooLarge => Results.Problem(statusCode: 413, title: result.Message),
+                AssemblyViewStatus.Blocked => Results.Problem(statusCode: 409, title: result.Message),
+                AssemblyViewStatus.Busy => Results.Problem(statusCode: 503, title: result.Message),
+                _ => Results.Problem(statusCode: 422, title: result.Message, extensions: new Dictionary<string, object?> { ["code"] = CadErrors.Proposal }),
+            };
+        }).WithName("CadGetDocumentPlacements");
+
         cad.MapPut("/bom-proposals/{number}/decisions", async (string number, CadDecisionsRequest req, HttpContext ctx, CadBomProposalService svc, CancellationToken ct) =>
             (await svc.DecideAsync(SubjectFactory.Require(ctx), number, req.Decisions ?? [], req.ApplyRemovals, CorrelationId.Get(ctx), ct)).ToCad()).WithName("CadDecideProposal");
 

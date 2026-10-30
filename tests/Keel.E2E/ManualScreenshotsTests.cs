@@ -207,6 +207,27 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                         await ShotAsync(ap, "documents-model-visual-compare");
                     });
                 }
+                // ---- the Viewer tab (9.5): a real STEP assembly as placed boxes with a part selected, an STL model, and the tab of a part with a model attached
+                await TryAsync("viewer-tab", async () =>
+                {
+                    var viewerTests = new ModelViewerTests(fx);
+                    var step = await viewerTests.CreateStepDocumentAsync("Frame assembly model (STEP)");
+                    await viewerTests.AssociateAsync(step, m.GimbalAssembly);
+                    await session.GotoAsync(alice, $"/documents/{step}?tab=viewer");
+                    await ap.GetByTestId("viewer-canvas").And(ap.Locator("[data-viewer-state=ready]")).WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+                    await ap.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "KP-1002" }).ClickAsync();
+                    await ap.GetByTestId("viewer-selection").WaitForAsync();
+                    await ShotAsync(ap, "documents-viewer-assembly");
+                    if (m.Models is { } vm)
+                    {
+                        await session.GotoAsync(alice, $"/documents/{vm.BracketModel}?tab=viewer");
+                        await ap.GetByTestId("viewer-canvas").And(ap.Locator("[data-viewer-state=ready]")).WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+                        await ShotAsync(ap, "documents-viewer-mesh");
+                    }
+                    await session.GotoAsync(alice, $"/parts/{m.GimbalAssembly}?tab=viewer");
+                    await ap.GetByTestId("viewer-canvas").And(ap.Locator("[data-viewer-state=ready]")).WaitForAsync(new LocatorWaitForOptions { Timeout = 60_000 });
+                    await ShotAsync(ap, "parts-viewer-tab");
+                });
                 await GoAsync(session, alice, "/cad/bom-proposals", "cad-proposals-list");
                 await GoAsync(session, alice, "/cad/bom-proposals/" + proposal, "cad-proposal-review");
 

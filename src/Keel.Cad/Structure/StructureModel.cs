@@ -9,13 +9,39 @@ public sealed record MatchRule(string Attribute, string Value);
 /// <summary>One part of a CAD structure. <see cref="Ref"/> is the CAD system's own key, unique inside the structure.</summary>
 public sealed record StructurePart(
     string Ref, string? Number, string Name, string? PartType, string? Unit, string? Source,
-    IReadOnlyDictionary<string, string> Attributes, IReadOnlyList<MatchRule> MatchOn);
+    IReadOnlyDictionary<string, string> Attributes, IReadOnlyList<MatchRule> MatchOn, BoundingBox? Box = null);
+
+/// <summary>
+/// An axis-aligned box in the part's own coordinates, in the file's length unit. For STEP it is derived from the part's own B-rep topology (vertex
+/// points, full circle and ellipse edges and B-spline control points), so it can be slightly larger than the true shape (control points) or, for
+/// shapes bounded only by other curve or surface types, smaller; it is a viewing aid, never a measurement (ADR-0052, A68).
+/// </summary>
+public sealed record BoundingBox(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
+{
+    public double SizeX => MaxX - MinX;
+    public double SizeY => MaxY - MinY;
+    public double SizeZ => MaxZ - MinZ;
+}
 
 /// <summary>A usage: <see cref="ParentRef"/> contains <see cref="Quantity"/> of <see cref="ChildRef"/>.</summary>
 public sealed record StructureLine(
     string ParentRef, string ChildRef, decimal Quantity, string? Unit, int? FindNumber, IReadOnlyList<string> ReferenceDesignators, string? Notes);
 
-public sealed record StructureModel(string? SourceSystem, string RootRef, IReadOnlyList<StructurePart> Parts, IReadOnlyList<StructureLine> Lines);
+/// <summary>
+/// One occurrence of a child under a parent (one NEXT_ASSEMBLY_USAGE_OCCURRENCE in STEP). <see cref="Transform"/> is the 4x4 matrix that maps child
+/// coordinates to parent coordinates, row-major (<c>M[row*4+col]</c>, translation in elements 3, 7 and 11, last row 0 0 0 1, column vectors:
+/// <c>p_parent = M * p_child</c>), in the file's length unit; null when the file carries no usable placement for the occurrence (A67).
+/// </summary>
+public sealed record StructureOccurrence(string ParentRef, string ChildRef, string OccurrenceId, string? Name, IReadOnlyList<double>? Transform);
+
+public sealed record StructureModel(string? SourceSystem, string RootRef, IReadOnlyList<StructurePart> Parts, IReadOnlyList<StructureLine> Lines)
+{
+    /// <summary>Per-occurrence placements (STEP only). Empty for formats that carry none.</summary>
+    public IReadOnlyList<StructureOccurrence> Occurrences { get; init; } = [];
+    /// <summary>The file's length unit (<c>mm</c>, <c>m</c>, <c>in</c>, ...) and its size in millimetres, or null when the file did not say.</summary>
+    public string? LengthUnit { get; init; }
+    public double? LengthUnitMm { get; init; }
+}
 
 /// <summary>The structure could not be read or is not a valid structure. The message is safe to show (it never echoes file content beyond a line or entity number).</summary>
 public sealed class StructureFormatException(string message) : Exception(message);

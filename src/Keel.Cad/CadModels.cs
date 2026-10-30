@@ -1,3 +1,4 @@
+using Keel.Cad.Structure;
 using Keel.Core;
 
 namespace Keel.Cad;
@@ -95,6 +96,8 @@ public sealed record ProposalPartView(
 {
     /// <summary>A Keel part was matched or chosen but the caller may not read it: nothing about it is shown.</summary>
     public bool MatchHidden { get; init; }
+    /// <summary>The part's own box in the file's length unit, when the structure file allowed one to be derived (ADR-0052).</summary>
+    public BoundingBox? Box { get; init; }
 }
 
 public sealed record ProposalLineView(int Seq, string ParentRef, string ChildRef, int? FindNumber, decimal Quantity, string? Unit, IReadOnlyList<string> ReferenceDesignators, string? Notes);
@@ -113,8 +116,45 @@ public sealed record ProposalDetail(
     Guid Id, string Number, string Title, string Status, string SourceFormat, string? SourceSystem, string RootRef, bool ApplyRemovals,
     string Banner, Markings Markings, DateTimeOffset CreatedAt, string CreatedBy, DateTimeOffset? DecidedAt, string? DecidedBy,
     IReadOnlyList<ProposalPartView> Parts, IReadOnlyList<ProposalLineView> Lines, IReadOnlyList<DiffParent> Parents, IReadOnlyList<DiffRow> Diff,
-    bool DiffTruncated, int Undecided, bool CanApply, bool CanDecide, IReadOnlyList<string> ApplyBlockers, ApplyReport? LastResult);
+    bool DiffTruncated, int Undecided, bool CanApply, bool CanDecide, IReadOnlyList<string> ApplyBlockers, ApplyReport? LastResult)
+{
+    /// <summary>Usage occurrences in the structure file and how many of them have a placement (ADR-0052); both 0 for formats that carry none.</summary>
+    public int Occurrences { get; init; }
+    public int PlacedOccurrences { get; init; }
+    public string? LengthUnit { get; init; }
+}
 
 public sealed record ApplyNodeResult(string Parent, bool Ok, string? Iteration, string? Error, int Edits);
 
 public sealed record ApplyReport(IReadOnlyList<string> CreatedParts, IReadOnlyList<ApplyNodeResult> Parents, bool Complete);
+
+// ---------------------------------------------------------------- placements (ADR-0052)
+
+/// <summary>The placements stored with a proposal's structure: parts with their own boxes, every occurrence with its child-to-parent matrix, and the expanded instances.</summary>
+public sealed record ProposalPlacements(
+    string Number, string RootRef, string? LengthUnit, double? LengthUnitMm, string Banner, Markings Markings,
+    IReadOnlyList<PlacementPart> Parts, IReadOnlyList<PlacementOccurrence> Occurrences, IReadOnlyList<PlacedInstance> Instances,
+    int Unplaced, bool Truncated, BoundingBox? WorldBox);
+
+public sealed record PlacementPart(string Ref, string? CadNumber, string Name, bool IsAssembly, BoundingBox? Box);
+
+/// <summary><see cref="Transform"/>: 16 numbers, row-major, child to parent, column vectors, in the file's length unit; null when the file has no placement for the occurrence.</summary>
+public sealed record PlacementOccurrence(string ParentRef, string ChildRef, string OccurrenceId, string? Name, IReadOnlyList<double>? Transform);
+
+/// <summary>The placed structure of the STEP file of a document, derived by the server from the verified stored bytes on request (ADR-0052). Banner and markings are the document's.</summary>
+public sealed record DocumentPlacements(
+    string DocumentNumber, string FileName, string IterationLabel, string Format, string? SourceSystem, string Banner, Markings Markings, string RootRef, string? LengthUnit, double? LengthUnitMm,
+    IReadOnlyList<PlacementPart> Parts, IReadOnlyList<PlacementOccurrence> Occurrences, IReadOnlyList<PlacedInstance> Instances, int Unplaced, bool Truncated, BoundingBox? WorldBox)
+{
+    public static DocumentPlacements From(AssemblyViewResult r)
+    {
+        var file = r.File!;
+        var model = r.Model!;
+        var layout = r.Layout!;
+        var parents = model.Lines.Select(l => l.ParentRef).ToHashSet(StringComparer.Ordinal);
+        return new DocumentPlacements(file.DocumentNumber, file.FileName, file.IterationLabel, r.Format!, model.SourceSystem, file.Banner, file.Markings, model.RootRef, model.LengthUnit, model.LengthUnitMm,
+            [.. model.Parts.Select(p => new PlacementPart(p.Ref, p.Number, p.Name, parents.Contains(p.Ref), p.Box))],
+            [.. model.Occurrences.Select(o => new PlacementOccurrence(o.ParentRef, o.ChildRef, o.OccurrenceId, o.Name, o.Transform))],
+            layout.Instances, layout.Unplaced, layout.Truncated, layout.WorldBox);
+    }
+}

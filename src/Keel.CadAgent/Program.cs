@@ -22,6 +22,8 @@ namespace Keel.CadAgent
               keel-cad checkin --dir <folder> [--comment text] [--skip-unchanged] [--refs-file refs.json]
               keel-cad undo --dir <folder>
               keel-cad watch --dir <folder> [--interval seconds]
+              keel-cad bom placements <proposal-number> [--json]       placements and boxes stored with a structure proposal
+              keel-cad placements <document-number> [--file <file-id>] [--revision A] [--json]   placed structure of a document's STEP file
               keel-cad bom push <file> --title <text> (--markings-from <document> | --markings-file <json>) [--format step|csv|xml|json] [--root <number>] [--apply-removals]
 
             Connection: --server <url> or KEEL_CAD_URL; token: --token, --token-file or KEEL_CAD_TOKEN (a JWT bearer token of your Keel identity provider).
@@ -75,6 +77,17 @@ namespace Keel.CadAgent
                             await agent.WatchAsync(Dir(), TimeSpan.FromSeconds(double.Parse(Opt(options, "interval") ?? "5", System.Globalization.CultureInfo.InvariantCulture)), cts.Token);
                         }
                         return 0;
+                    case "bom" when positional.ElementAtOrDefault(1) == "placements":
+                        await agent.PrintPlacementsAsync($"/api/v1/cad/bom-proposals/{Uri.EscapeDataString(positional.ElementAtOrDefault(2) ?? throw new UsageException("The proposal number is required."))}/placements",
+                            options.ContainsKey("json"), @out, ct);
+                        return 0;
+                    case "placements":
+                        var query = new List<string>();
+                        if (Opt(options, "file") is { } fileId) query.Add("fileId=" + Uri.EscapeDataString(fileId));
+                        if (Opt(options, "revision") is { } rev) query.Add("revision=" + Uri.EscapeDataString(rev));
+                        await agent.PrintPlacementsAsync($"/api/v1/cad/documents/{Uri.EscapeDataString(positional.ElementAtOrDefault(1) ?? throw new UsageException("The document number is required."))}/placements" + (query.Count == 0 ? "" : "?" + string.Join('&', query)),
+                            options.ContainsKey("json"), @out, ct);
+                        return 0;
                     case "bom" when positional.ElementAtOrDefault(1) == "push":
                         var file = positional.ElementAtOrDefault(2) ?? throw new UsageException("The structure file is required.");
                         var format = Opt(options, "format") ?? CadConnector.FormatFromExtension(file) ?? throw new UsageException("--format is required (step, csv, xml or json).");
@@ -105,7 +118,7 @@ namespace Keel.CadAgent
         {
             var positional = new List<string>();
             var options = new Dictionary<string, string?>(StringComparer.Ordinal);
-            string[] flags = ["allow-partial", "skip-unchanged", "apply-removals"];
+            string[] flags = ["allow-partial", "skip-unchanged", "apply-removals", "json"];
             for (var i = 0; i < args.Length; i++)
             {
                 if (!args[i].StartsWith("--", StringComparison.Ordinal)) { positional.Add(args[i]); continue; }

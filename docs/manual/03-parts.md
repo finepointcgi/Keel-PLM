@@ -31,6 +31,7 @@ The part page has these tabs:
 |---|---|
 | Overview | The version, its description and attributes |
 | Structure | The bill of materials ([chapter 4](04-boms-variants-mbom.md)) |
+| Viewer | The 3D view of the CAD model attached to the part; shown only when a model is attached ([chapter 5](05-documents-and-vault.md#the-viewer-tab-3d-models-on-the-page)) |
 | Documents | Linked documents ([chapter 5](05-documents-and-vault.md)) |
 | Changes | Change notices that affect the part ([chapter 7](07-change-management.md)) |
 | Review & release | The review workflow and its history ([chapter 6](06-lifecycles-workflow-signatures.md)) |

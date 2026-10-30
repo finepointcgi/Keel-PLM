@@ -411,6 +411,24 @@ public sealed class CadGraphService(NpgsqlDataSource dataSource, IAuditLog audit
         return Outcome<IReadOnlyList<AssociationView>>.Ok(list);
     }
 
+    /// <summary>
+    /// Whether the part has a model associated with it (so its page offers the Viewer tab). Not audited: it reads no content, only whether the tab is useful, and it
+    /// answers nothing for a part the caller may not read. Models the caller may not read count (the tab then shows a placeholder, like the CAD tab does).
+    /// </summary>
+    public async Task<bool> HasModelAsync(Subject subject, string partNumber, CancellationToken ct = default)
+    {
+        await using var conn = await dataSource.OpenConnectionAsync(ct);
+        await using var cmd = new NpgsqlCommand(
+            $"""
+            SELECT EXISTS (SELECT 1 FROM cad.association a WHERE a.part_master_id = p.id AND a.kind = 'model-of'), {MarkingColumns.Select("p")}
+            FROM plm.part_master p WHERE p.number = @n
+            """, conn);
+        cmd.Parameters.AddWithValue("n", partNumber);
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        if (!await r.ReadAsync(ct)) return false;
+        return r.GetBoolean(0) && AccessPolicy.Evaluate(subject, MarkingColumns.Read(r, 1), PlmAction.Read).Permitted;
+    }
+
     private static async Task<List<AssociationView>> AssociationsOfDocumentAsync(NpgsqlConnection conn, Subject subject, Guid documentId, bool stale, CancellationToken ct)
     {
         var filter = AccessPolicy.BuildReadFilter(subject, "pm");

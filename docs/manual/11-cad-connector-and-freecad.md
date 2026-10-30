@@ -7,7 +7,8 @@ Keel does not open native CAD files. It stores them in the vault, hashes them, s
 | Shipped | Not shipped |
 |---|---|
 | REST API `/api/v1/cad` (package check-out and check-in, dependencies, stale detection, associations, structure proposals) | Plug-ins for NX, Creo, SolidWorks, CATIA or any commercial system; nothing was run against one |
-| Importers for STEP product structure (AP203, AP214, AP242), CSV, XML and neutral JSON | Reading of native CAD files, geometry or PMI from them |
+| Importers for STEP product structure (AP203, AP214, AP242), CSV, XML and neutral JSON | Reading of native CAD files, or colours and PMI from STEP |
+| Placements of every occurrence and bounding boxes of the parts of a STEP assembly, stored with the structure proposal and served by the API and `keel-cad` | Surfaces of STEP parts in the Viewer tab (the file viewer draws them); placements through mapped items |
 | `keel-cad` reference tool, a watch-folder mode and recipes | Automatic release or signing from CAD |
 | FreeCAD add-on (verified in real FreeCAD 1.1.4 and against the real server) | |
 
@@ -41,6 +42,19 @@ To review a proposal:
 3. Choose whether **removals** are applied (off by default), then **Apply**. The change goes through the normal part and BOM services: working copy, check-in, release locks, audit. **Discard** drops the proposal.
 
 ![Reviewing a structure proposal](images/cad-proposal-review.png)
+
+### Placements and the Viewer tab
+
+When a STEP file is sent as a structure, Keel also keeps where each occurrence sits (a 4 by 4 matrix from parent to child, in the file's length unit) and the box of each part. The proposal page and the proposal's JSON show how many occurrences have a placement. The **Viewer** tab of the model's document and of the part draws them ([chapter 5](05-documents-and-vault.md#the-viewer-tab-3d-models-on-the-page)).
+
+To read them from a script or the command line:
+
+```
+keel-cad bom placements CBP-000007          # the placements stored with a proposal, as a table
+keel-cad placements D-000123 [--json]       # the placed structure of a document's STEP file, derived on request
+```
+
+Each line is an instance: indentation shows the level, then number, name, path, position of the part's origin and its world-space box. Both commands need the same access as reading the proposal or viewing the document, and say "no placement" for an occurrence the file gives none for.
 
 ## The FreeCAD add-on
 
@@ -77,7 +91,7 @@ Tips from the real runs: keep work folders off symlinked paths (on macOS, `/var`
 
 ### `keel-cad`
 
-The command-line tool (`checkout`, `add`, `push`, `checkin`, `undo`, `watch`, `bom push`) shares its work folder format with the add-on. Watch-folder recipes for other tools (for example KiCad) are in [watch-folder-recipes.md](../integration/watch-folder-recipes.md).
+The command-line tool (`checkout`, `add`, `push`, `checkin`, `undo`, `watch`, `bom push`, `bom placements`, `placements`) shares its work folder format with the add-on. Watch-folder recipes for other tools (for example KiCad) are in [watch-folder-recipes.md](../integration/watch-folder-recipes.md).
 
 ### Screenshots of the FreeCAD interface
 
