@@ -2,6 +2,8 @@
 
 **Status: legal review pending. There is no legal sign-off on anything in this directory, in `THIRD-PARTY-NOTICES.md` of an offline bundle, or in ADR-0027 and ADR-0033.** The engineering work below makes the delivery technically able to meet LGPL obligations; whether the wording and the arrangement meet them is a question for counsel.
 
+Review packets for counsel (inventory, copyleft analysis, questions, evidence locations): [docs/review/README.md](../review/README.md), [legal-open-source.md](../review/legal-open-source.md), and for the export-control official [export-control.md](../review/export-control.md). They keep every outcome at pending.
+
 ## What engineering has done (increment 7.6, ADR-0033)
 
 | Obligation (engineering reading, not advice) | How the offline bundle meets it | Where it is checked |
