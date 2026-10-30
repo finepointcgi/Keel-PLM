@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- keel-load: a small closed-loop HTTP load client for the load smoke (scripts/ops/load-smoke.sh, docs/ops/performance.md, ADR-0060).
+       Standard library only (no third-party load tool: k6 is AGPL and nothing here may add a dependency to the delivered product). Never shipped. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>keel-load</AssemblyName>
+    <RootNamespace>Keel.LoadTool</RootNamespace>
+    <NoWarn>$(NoWarn);CA1515;CA2000;CA1812;CA1303;CA1031;CA1819;CA5394</NoWarn>
+  </PropertyGroup>
+</Project>

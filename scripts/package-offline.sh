@@ -140,9 +140,36 @@ if $COMPLIANCE; then
 fi
 
 # 6. scripts, version, build info -----------------------------------------------------------------------------------------
-cp deploy/offline/{lib.sh,verify.sh,install.sh,upgrade.sh} "$STAGE/"
+cp deploy/offline/{lib.sh,verify.sh,install.sh,upgrade.sh,preflight.sh} "$STAGE/"
 chmod +x "$STAGE"/*.sh "$STAGE"/compose/prod-example/*.sh "$STAGE"/compose/prod-example/initdb/*.sh
 echo "$VERSION" > "$STAGE/VERSION"
+
+# versions manifest: machine-readable record of exactly what this bundle contains (covered by the signed SHA256SUMS, shown by preflight.sh, quoted in release notes)
+command -v jq >/dev/null || die "jq is required to write versions.json"
+{
+  for f in "$STAGE"/images/*.tar; do
+    name=$(basename "$f" .tar)
+    case $name in
+      keel-api-*) ref=$APP_REF; id=$(docker image inspect "$APP_REF" --format '{{.Id}}') ;;
+      postgres) ref=$KEEL_POSTGRES_IMAGE; id=$(docker image inspect "$(repo_tag "$KEEL_POSTGRES_IMAGE")" --format '{{.Id}}') ;;
+      vault) ref=$KEEL_VAULT_IMAGE; id=$(docker image inspect "$(repo_tag "$KEEL_VAULT_IMAGE")" --format '{{.Id}}') ;;
+      proxy) ref=$KEEL_PROXY_IMAGE; id=$(docker image inspect "$(repo_tag "$KEEL_PROXY_IMAGE")" --format '{{.Id}}') ;;
+      *) ref=unknown; id=unknown ;;
+    esac
+    jq -n --arg name "$name" --arg ref "$ref" --arg id "$id" --arg file "images/$(basename "$f")" --arg sha "$(sha256_of "$f")" --argjson bytes "$(wc -c < "$f" | tr -d ' ')" \
+      '{name:$name, reference:$ref, imageId:$id, archive:$file, archiveSha256:$sha, archiveBytes:$bytes}'
+  done
+} | jq -s . > "$STAGE/.images.json"
+{
+  for m in db/migrations/*.sql; do jq -n --arg f "$(basename "$m")" --arg sha "$(sha256_of "$m")" '{file:$f, sha256:$sha}'; done
+} | jq -s . > "$STAGE/.migrations.json"
+CHART_FILE=$(ls "$STAGE"/chart/keel-*.tgz | head -1)
+jq -n --arg version "$VERSION" --arg rev "$(git rev-parse HEAD 2>/dev/null || echo unknown)" --arg built "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg chart "chart/$(basename "$CHART_FILE")" --arg chartSha "$(sha256_of "$CHART_FILE")" --arg helm "$(helm version --short)" --arg docker "$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown)" \
+  --arg sdk "$SDK_IMAGE" --arg runtime "$RUNTIME_IMAGE" --slurpfile images "$STAGE/.images.json" --slurpfile migrations "$STAGE/.migrations.json" \
+  '{schema:"keel-offline-versions/1", bundle:{version:$version, gitRevision:$rev, builtAt:$built}, build:{helm:$helm, docker:$docker, baseSdkImage:$sdk, baseRuntimeImage:$runtime},
+    chart:{file:$chart, sha256:$chartSha}, images:$images[0], migrations:{count:($migrations[0]|length), latest:($migrations[0]|last|.file), files:$migrations[0]}}' > "$STAGE/versions.json"
+rm -f "$STAGE/.images.json" "$STAGE/.migrations.json"
 {
   echo "keel-offline $VERSION"
   echo "git-revision $(git rev-parse HEAD 2>/dev/null || echo unknown)"

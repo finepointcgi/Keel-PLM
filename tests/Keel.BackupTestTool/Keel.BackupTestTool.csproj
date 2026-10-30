@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Populates a migrated database with synthetic parts, audit events and a signed checkpoint, and prints per-table row counts.
-       Used only by scripts/backup-restore-test.sh (docs/ops/backup-restore.md). Synthetic data only. -->
+       Used by scripts/backup-restore-test.sh and scripts/ops/backup-restore-drill.sh (docs/ops/backup-restore.md). Synthetic data only. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
@@ -11,5 +11,6 @@
     <ProjectReference Include="..\..\src\Keel.Core\Keel.Core.csproj" />
     <ProjectReference Include="..\..\src\Keel.Audit\Keel.Audit.csproj" />
     <ProjectReference Include="..\..\src\Keel.Parts\Keel.Parts.csproj" />
+    <ProjectReference Include="..\..\src\Keel.Documents\Keel.Documents.csproj" />
   </ItemGroup>
 </Project>

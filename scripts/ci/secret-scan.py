@@ -132,11 +132,22 @@ def main() -> int:
     for rule, glob, reason, no in stale:
         print(f"STALE allow-list entry (.secret-scan-allowlist:{no}): {rule} {glob} matches nothing; remove it")
     if a.history:
-        out = subprocess.run(["git", "-C", str(root), "log", "-p", "--all", "--no-color", "-U0"], capture_output=True).stdout.decode("utf-8", errors="replace")
-        hist = {(r) for r, _, _ in scan_text("history", "\n".join(l[1:] for l in out.splitlines() if l.startswith("+") and not l.startswith("+++")))} - {"connection-string-password", "password-assignment"}
-        for r in sorted(hist):
-            print(f"SECRET? in git history [{r}] (review with: git log -p -S ...)")
-        findings += [("history", r, 0) for r in hist]
+        # every line ever added, with the path it was added to, judged by the same rules and the same allow-list (a secret that was committed and later removed is still leaked)
+        out = subprocess.run(["git", "-C", str(root), "log", "-p", "HEAD", "--no-color", "-U0"], capture_output=True).stdout.decode("utf-8", errors="replace")
+        path = ""
+        hist: set[tuple[str, str]] = set()
+        for line in out.splitlines():
+            if line.startswith("+++ "):
+                path = line[6:] if line.startswith("+++ b/") else ""
+                continue
+            if not line.startswith("+") or not path or Path(path).suffix.lower() in SKIP_SUFFIX or Path(path).name in SKIP_NAMES:
+                continue
+            for rule, _, _ in scan_text(path, line[1:]):
+                if not any(e[0] == rule and fnmatch.fnmatch(path, e[1]) for e in allow):
+                    hist.add((rule, path))
+        for rule, hp in sorted(hist):
+            print(f"SECRET? in git history [{rule}] {hp} (review with: git log -p -S ...)")
+        findings += [("history", r, 0) for r, _ in hist]
     print(f"secret scan: {len(findings)} finding(s), {len(allow)} allow-list entries ({len(used)} used), {len(stale)} stale")
     return 1 if findings or stale else 0
 

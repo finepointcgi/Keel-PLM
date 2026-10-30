@@ -1,0 +1,220 @@
+{
+  "startedAt": "2026-10-30T15:46:33.022098+00:00",
+  "api": "http://127.0.0.1:50718",
+  "user": "alice",
+  "partsVisible": 36362,
+  "bomRoot": "LR-000041",
+  "durationSeconds": 20,
+  "results": [
+    {
+      "operation": "list",
+      "concurrency": 1,
+      "requests": 311,
+      "errors": 0,
+      "rps": 15.510610030297558,
+      "p50": 66.1368,
+      "p95": 75.1217,
+      "p99": 80.0187,
+      "max": 85.0255,
+      "avgBytes": 25536.40836012862,
+      "statuses": {
+        "200": 311
+      }
+    },
+    {
+      "operation": "list",
+      "concurrency": 8,
+      "requests": 525,
+      "errors": 0,
+      "rps": 26.063565620981358,
+      "p50": 304.6322,
+      "p95": 392.44,
+      "p99": 400.2482,
+      "max": 492.2453,
+      "avgBytes": 25533.205714285716,
+      "statuses": {
+        "200": 525
+      }
+    },
+    {
+      "operation": "list",
+      "concurrency": 32,
+      "requests": 506,
+      "errors": 0,
+      "rps": 24.481590112758575,
+      "p50": 1206.2815,
+      "p95": 2301.3105,
+      "p99": 2693.9888,
+      "max": 2986.9057,
+      "avgBytes": 25520.06324110672,
+      "statuses": {
+        "200": 506
+      }
+    },
+    {
+      "operation": "search",
+      "concurrency": 1,
+      "requests": 6104,
+      "errors": 0,
+      "rps": 305.17053578477,
+      "p50": 1.9907,
+      "p95": 4.184,
+      "p99": 45.4028,
+      "max": 56.9795,
+      "avgBytes": 1474.775884665793,
+      "statuses": {
+        "200": 6104
+      }
+    },
+    {
+      "operation": "search",
+      "concurrency": 8,
+      "requests": 17791,
+      "errors": 0,
+      "rps": 886.7284787506816,
+      "p50": 3.7155,
+      "p95": 52.855,
+      "p99": 95.533,
+      "max": 177.9391,
+      "avgBytes": 1360.735428025406,
+      "statuses": {
+        "200": 17791
+      }
+    },
+    {
+      "operation": "search",
+      "concurrency": 32,
+      "requests": 16747,
+      "errors": 0,
+      "rps": 833.6160627635891,
+      "p50": 19.9027,
+      "p95": 82.8913,
+      "p99": 119.7195,
+      "max": 260.723,
+      "avgBytes": 1417.788678569296,
+      "statuses": {
+        "200": 16747
+      }
+    },
+    {
+      "operation": "create-part",
+      "concurrency": 1,
+      "requests": 3828,
+      "errors": 0,
+      "rps": 191.3576410725722,
+      "p50": 4.7497,
+      "p95": 8.0439,
+      "p99": 15.3789,
+      "max": 53.8315,
+      "avgBytes": 2129.30329153605,
+      "statuses": {
+        "201": 3828
+      }
+    },
+    {
+      "operation": "create-part",
+      "concurrency": 8,
+      "requests": 9276,
+      "errors": 0,
+      "rps": 463.5246061257625,
+      "p50": 15.3443,
+      "p95": 27.3746,
+      "p99": 35.1234,
+      "max": 60.9638,
+      "avgBytes": 2129.714424320828,
+      "statuses": {
+        "201": 9276
+      }
+    },
+    {
+      "operation": "create-part",
+      "concurrency": 32,
+      "requests": 10825,
+      "errors": 0,
+      "rps": 539.8294253713996,
+      "p50": 54.368,
+      "p95": 86.8977,
+      "p99": 112.19,
+      "max": 134.3796,
+      "avgBytes": 2130.219491916859,
+      "statuses": {
+        "201": 10825
+      }
+    },
+    {
+      "operation": "bom-expand-1",
+      "concurrency": 1,
+      "requests": 6004,
+      "errors": 0,
+      "rps": 300.17907001434327,
+      "p50": 3.0594,
+      "p95": 4.95,
+      "p99": 6.8148,
+      "max": 14.86,
+      "avgBytes": 10555,
+      "statuses": {
+        "200": 6004
+      }
+    },
+    {
+      "operation": "bom-expand-1",
+      "concurrency": 8,
+      "requests": 17724,
+      "errors": 0,
+      "rps": 885.935348962881,
+      "p50": 5.0834,
+      "p95": 46.8959,
+      "p99": 54.232,
+      "max": 65.3712,
+      "avgBytes": 10555,
+      "statuses": {
+        "200": 17724
+      }
+    },
+    {
+      "operation": "bom-expand-1",
+      "concurrency": 32,
+      "requests": 17626,
+      "errors": 0,
+      "rps": 880.4953021359485,
+      "p50": 23.0044,
+      "p95": 69.5512,
+      "p99": 76.681,
+      "max": 98.5695,
+      "avgBytes": 10555,
+      "statuses": {
+        "200": 17626
+      }
+    },
+    {
+      "operation": "bom-expand-all",
+      "concurrency": 1,
+      "requests": 22,
+      "errors": 0,
+      "rps": 1.0676972209661275,
+      "p50": 935.0066,
+      "p95": 981.2567,
+      "p99": 1016.6898,
+      "max": 1016.6898,
+      "avgBytes": 46348062,
+      "statuses": {
+        "200": 22
+      }
+    },
+    {
+      "operation": "bom-expand-all",
+      "concurrency": 8,
+      "requests": 38,
+      "errors": 0,
+      "rps": 1.7139573200631901,
+      "p50": 4983.5215,
+      "p95": 5430.398,
+      "p99": 5467.6769,
+      "max": 5467.6769,
+      "avgBytes": 46348062,
+      "statuses": {
+        "200": 38
+      }
+    }
+  ]
+}

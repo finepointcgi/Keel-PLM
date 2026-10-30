@@ -10,6 +10,8 @@ namespace Keel.UnitTests;
 /// independent of the generator (project assets, Directory.Packages.props, the npm lock file, the vendored manifest, fonts, image pins, the Python add-on's requirements and imports),
 /// so a dependency added without regenerating the document makes these tests fail.
 /// </summary>
+// Shares a collection with ClamdScannerTests, which measures process-wide managed memory: this class parses every project.assets.json and must not allocate beside it.
+[Collection("process-memory")]
 public sealed partial class ThirdPartyLicensesTests
 {
     private static string Root
@@ -27,7 +29,11 @@ public sealed partial class ThirdPartyLicensesTests
     private static string Row(string name, string? version) => $"| {name.Replace("|", "\\|", StringComparison.Ordinal)} | {version} |";
 
     /// <summary>Every (kind, name, version) the repository depends on, enumerated without the generator.</summary>
-    private static List<(string What, string Name, string? Version)> RequiredDependencies()
+    private static readonly Lazy<List<(string What, string Name, string? Version)>> Required = new(ComputeRequiredDependencies);
+
+    private static List<(string What, string Name, string? Version)> RequiredDependencies() => Required.Value;
+
+    private static List<(string What, string Name, string? Version)> ComputeRequiredDependencies()
     {
         var list = new List<(string, string, string?)>();
 

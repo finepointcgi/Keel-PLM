@@ -25,18 +25,14 @@ x-hardened: &hardened
 # guidance. Override per site in .env (KEEL_<SERVICE>_MEMORY, KEEL_<SERVICE>_CPUS). A container that exceeds its memory limit is killed and restarted by the
 # restart policy rather than taking the host down; the limits also make a runaway upload or query visible as one service, not as a sick machine.
 x-limits-app: &limits-app
-  pids_limit: 512
-  deploy: { resources: { limits: { cpus: "${KEEL_APP_CPUS:-2}", memory: "${KEEL_APP_MEMORY:-2g}" } } }
+  deploy: { resources: { limits: { pids: 512, cpus: "${KEEL_APP_CPUS:-2}", memory: "${KEEL_APP_MEMORY:-2g}" } } }
 x-limits-small: &limits-small
-  pids_limit: 128
-  deploy: { resources: { limits: { cpus: "${KEEL_PROXY_CPUS:-1}", memory: "${KEEL_PROXY_MEMORY:-256m}" } } }
+  deploy: { resources: { limits: { pids: 128, cpus: "${KEEL_PROXY_CPUS:-1}", memory: "${KEEL_PROXY_MEMORY:-256m}" } } }
 x-limits-db: &limits-db
-  pids_limit: 512
   shm_size: 256m
-  deploy: { resources: { limits: { cpus: "${KEEL_POSTGRES_CPUS:-2}", memory: "${KEEL_POSTGRES_MEMORY:-4g}" } } }
+  deploy: { resources: { limits: { pids: 512, cpus: "${KEEL_POSTGRES_CPUS:-2}", memory: "${KEEL_POSTGRES_MEMORY:-4g}" } } }
 x-limits-vault: &limits-vault
-  pids_limit: 512
-  deploy: { resources: { limits: { cpus: "${KEEL_VAULT_CPUS:-1}", memory: "${KEEL_VAULT_MEMORY:-2g}" } } }
+  deploy: { resources: { limits: { pids: 512, cpus: "${KEEL_VAULT_CPUS:-1}", memory: "${KEEL_VAULT_MEMORY:-2g}" } } }
 
 x-app-env: &app-env
   ASPNETCORE_ENVIRONMENT: Production
@@ -114,8 +110,7 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: "no"
-    pids_limit: 256
-    deploy: { resources: { limits: { cpus: "1", memory: "${KEEL_MIGRATE_MEMORY:-1g}" } } }
+    deploy: { resources: { limits: { pids: 256, cpus: "1", memory: "${KEEL_MIGRATE_MEMORY:-1g}" } } }
     command: ["--migrate"]
     environment:
       ASPNETCORE_ENVIRONMENT: Production

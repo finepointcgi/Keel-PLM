@@ -23,7 +23,13 @@ cp prod-example/env.example .env && $EDITOR .env
 # 4. start (images come from deploy/images.env; the Keel image from the offline bundle or a local build)
 docker compose --env-file ../images.env --env-file .env -f compose.prod-example.yaml up -d
 ```
-Start order is enforced: postgres healthy, then `migrate` exits 0, then app healthy, then proxy.
+Start order is enforced: postgres healthy, vault healthy, then `migrate` exits 0, then app healthy, then proxy (healthy when its TLS listener answers the application's liveness endpoint).
+
+## Production properties (ADR-0060; `scripts/verify-packaging.sh` asserts them)
+- **Resource limits** on every service (`deploy.resources.limits` and `pids_limit`): app 2 CPUs and 2 GiB, PostgreSQL 2 CPUs and 4 GiB (`shm_size` 256 MB), vault 1 CPU and 2 GiB, proxy 1 CPU and 256 MiB, migration job 1 GiB. Override in `.env` with `KEEL_APP_MEMORY`, `KEEL_APP_CPUS`, `KEEL_POSTGRES_MEMORY`, `KEEL_POSTGRES_CPUS`, `KEEL_VAULT_MEMORY`, `KEEL_VAULT_CPUS`, `KEEL_PROXY_MEMORY`, `KEEL_PROXY_CPUS`, `KEEL_MIGRATE_MEMORY` (`env.example`). These are starting values, see [performance.md](performance.md) for what one machine measured with the application at these limits.
+- **Healthchecks** on postgres (`pg_isready`), vault (the store's master `/cluster/status`), app (the image's own probe) and proxy.
+- Non-root users for app, migration job and proxy, read-only root filesystems (PostgreSQL's data and the vault's `/data` are volumes; the vault is the one documented read-write root), all capabilities dropped (the few the stock images need are added back explicitly), `no-new-privileges`, no core dumps, secrets only as files, only the proxy publishes a port, the backend network has no route out.
+- Install and upgrade with one command and preflight checks: [offline-install.md](offline-install.md).
 
 ## Malware scanning, SIEM, session lock (increment 5.0; ClamAV override NOT RUN)
 With `KEEL_REQUIRE_FIPS=true` the app refuses to start unless scanning is configured: `KEEL_SCAN_MODE=Required` plus the override `-f compose.clamav.yaml` (clamav on the internal backend network, signatures from your offline mirror into the `clamav-db` volume, `KEEL_CLAMAV_IMAGE` pinned by digest),

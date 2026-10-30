@@ -9,6 +9,7 @@ namespace Keel.UnitTests;
 /// The clamd INSTREAM client and the scanning policy over a protocol-faithful test server (real TCP, no mocks): framing, EICAR detection across
 /// chunk boundaries, timeouts, drops, size limits, the Required / BestEffort / Disabled modes and bounded memory for large streams.
 /// </summary>
+[Collection("process-memory")]   // the bounded-memory test below reads process-wide managed memory; ThirdPartyLicensesTests allocates heavily and shares this collection so they never overlap
 public sealed class ClamdScannerTests
 {
     private static ScanningOptions Options(FakeClamd server, ScanMode mode = ScanMode.Required) => new()

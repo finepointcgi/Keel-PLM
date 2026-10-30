@@ -32,4 +32,4 @@ IdP reachable, then PostgreSQL, then vault, then Keel (the migration job is a no
 database: the audit chain would fork and verification fails.
 
 ## Gaps to close in Phase 5
-Failover automation and its tests, a bulk vault verifier, load-tested RTO figures, and a written site runbook with named custodians.
+Failover automation and its tests, load-tested RTO figures at the real data size (the restore drill measures a small synthetic set; the bulk vault verifier `keel-vault verify` exists since ADR-0060), and a written site runbook with named custodians.

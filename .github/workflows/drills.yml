@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0   # the upgrade rehearsal reads the previous migration set from git history
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
@@ -27,6 +29,13 @@ jobs:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
+      - name: Production image (the drills run the real migrator, keel-audit and keel-vault from it)
+        run: |
+          set -a; source deploy/images.env; set +a
+          docker build --target runtime -t keel/api:prodready \
+            --build-arg SDK_IMAGE="$SDK_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" .
+          docker pull "$KEEL_POSTGRES_IMAGE" "$KEEL_VAULT_IMAGE" >/dev/null
+          docker pull quay.io/keycloak/keycloak:26.4 >/dev/null
       - name: Backup and restore drill
         run: scripts/ops/backup-restore-drill.sh --report drill-reports/backup-restore.md
       - name: Upgrade rehearsal

@@ -17,7 +17,8 @@ keel-offline-<version>/
   docs/                       docs/ops/*.md
   signing/release-public.pem  public key of this release
   SHA256SUMS, SHA256SUMS.sig  manifest of every file and its detached ECDSA P-256 / SHA-256 signature
-  verify.sh install.sh upgrade.sh lib.sh   VERSION BUILD-INFO
+  versions.json               machine-readable record of the bundle: version, git revision, every image (reference, image id, archive hash and size), chart, base images, tool versions, every migration file with its SHA-256
+  verify.sh preflight.sh install.sh upgrade.sh lib.sh   VERSION BUILD-INFO
 ```
 
 ## Build (connected machine)
@@ -66,6 +67,21 @@ and `upgrade.sh` run it first and stop on any failure; nothing is loaded before 
 `scripts/verify-offline.sh <bundle.tar>` proves the checks work: modified chart, compose file, script and pins, edited manifest, a
 manifest signed by another key, extra file, missing file, missing signature, wrong fingerprint and a foreign public key are all refused.
 
+## Preflight
+`preflight.sh` (ADR-0060) checks the host and the inputs before anything is loaded or written. `install.sh` and `upgrade.sh` run it after the signature check; run it by hand ahead of the maintenance window, or use `./install.sh ... --preflight-only`. It is read-only and prints `ok`, `WARN` or `FAIL` per check; any FAIL stops the install or upgrade (`--skip-preflight` exists for sites that ran it separately and says so in the output).
+
+| Check (compose) | Fails when |
+|---|---|
+| Bundle | `VERSION` or fewer than four image archives are missing (`versions.json` missing is a warning) |
+| Runtime | no docker/podman, the daemon is not reachable by this user, Compose v2 older than 2.20, less than 4 GiB memory for containers (a warning below 6 GiB), less than 10 GiB free under the container storage and the target directory (`--min-disk-gb`) |
+| Install state | install: the target already holds an installation, or the HTTPS port is in use; upgrade: the target is not an installation |
+| FIPS | `KEEL_REQUIRE_FIPS` is true (default) and the host is not in FIPS mode (the application would refuse to start) |
+| Certificates | a file is missing; a certificate does not parse, is expired (a warning under 30 days left), does not match its key, does not chain to `ca.crt`; `proxy.crt` has no name for `--public-host`; `postgres.crt` or `vault.crt` lack `DNS:postgres` / `DNS:vault` (the application verifies by service name) |
+| Secrets and IdP | the OIDC client secret file is empty; the authority is not https; the discovery document is unreachable from this host (a warning: the containers' route may differ) |
+| Running stack (upgrade) | warnings when the application container is not healthy before the upgrade, with the number of applied migrations |
+
+Kubernetes mode (`--k8s`) checks helm, kubectl, that the cluster answers, and that the values file renders against the chart and its schema. It does not check storage classes, ingress controllers or registry reachability. `scripts/verify-packaging.sh` proves each failure above is caught by running the script against throwaway certificates (including an expired one, a mismatched key, a wrong host, a busy port).
+
 ## Install, compose
 ```bash
 ./verify.sh --fingerprint <hex>
@@ -76,7 +92,7 @@ manifest signed by another key, extra file, missing file, missing signature, wro
 Steps: verify, `docker load` (or podman/nerdctl/`ctr`; `KEEL_RUNTIME` overrides), install files into `/opt/keel`, certificates from
 `--certs-dir` (`ca.crt proxy.* postgres.* vault.*`; `--test-pki` generates throwaway ones for a trial), secrets via `gen-secrets.sh`
 (random credentials, your OIDC secret, new audit checkpoint key), `.env`, `compose config` validation, then
-`up -d --pull never --wait` (migration job runs first). `--no-start` stops before starting. Afterwards: back up
+`up -d --pull never --wait` (migration job runs first). The preflight runs before the images are loaded. `--no-start` stops before starting. Afterwards: back up
 `prod-example/secrets/`, especially `audit_checkpoint_key.pem` (offline), see backup-restore.md.
 
 ## Install, Kubernetes

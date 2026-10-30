@@ -100,8 +100,10 @@ jobs:
         run: |
           scripts/ci/secret-scan.py --self-test
           scripts/ci/secret-scan.py --history
-      - name: Workflow lint
-        run: scripts/ci/lint-workflows.rb
+      - name: Workflow lint (and its self-test)
+        run: |
+          scripts/ci/test-lint-workflows.sh
+          scripts/ci/lint-workflows.rb
       - name: Licence inventory is current and the licence policy holds
         run: scripts/generate-sbom.sh --check
       - name: Known-vulnerable dependencies (NuGet and npm advisories)

@@ -59,3 +59,5 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0053](0053-document-compare-and-redline.md) | Cross-document compare and redline review: word diff, honest non-text compare, anchored review threads, marked HTML/PDF export | Accepted |
 | [0052](0052-3d-viewer-and-assembly-placements.md) | Assembly placements from STEP and the Viewer tab: placed bounding boxes, stored and exposed through the CAD API and CLI, strict CSP kept | Accepted |
 | [0061](0061-simplified-flows.md) | Simplified flows: quick add part, one-step edit/save and add document, plain-language help, Simple view navigation | Accepted |
+| [0059](0059-ci-and-supply-chain.md) | CI pipeline, supply-chain checks, SBOM and the committed licence inventory with an enforcing test | Accepted |
+| [0060](0060-packaging-backup-restore-and-upgrade.md) | Production packaging, preflight, versions manifest and the operations proof: backup and restore drill, upgrade rehearsal, load smoke, `keel-vault verify` | Accepted |

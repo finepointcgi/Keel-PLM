@@ -25,7 +25,7 @@ Three supported shapes, in order of size. All three are described step by step i
 | Shape | Use it for | Document |
 |---|---|---|
 | Development stack (Docker Compose: PostgreSQL, Keycloak, SeaweedFS) and `dotnet run` | A developer or demo machine. Synthetic data and dev-only credentials only | [setup.md](../setup.md) |
-| Compose production example (proxy, application, one-shot migration job, PostgreSQL, vault; external IdP) | A small site on one host | [ops/compose-example.md](../ops/compose-example.md) |
+| Compose production bundle (proxy, application, one-shot migration job, PostgreSQL, vault; external IdP; limits, healthchecks, non-root, read-only roots) | A small site on one host | [ops/compose-example.md](../ops/compose-example.md) |
 | Helm chart (`deploy/helm/keel`; PostgreSQL, vault and IdP external) | A Kubernetes site | [ops/kubernetes.md](../ops/kubernetes.md) |
 
 Things to know before you start:
@@ -40,6 +40,20 @@ Things to know before you start:
 - **Verification status.** The Helm chart was validated by `scripts/verify-helm.sh` but not installed on a cluster; the UBI image build and the
   FIPS-enabled startup on a real FIPS host were not run in the build environment ([increments/1.7-packaging.md](../increments/1.7-packaging.md),
   [ops/hardening.md](../ops/hardening.md)). Treat both as items for your own acceptance test.
+
+### One command to install, one to upgrade
+
+From an unpacked and verified offline bundle (the same commands, with exact flags, are in [ops/offline-install.md](../ops/offline-install.md)):
+
+```bash
+./preflight.sh --compose --target /opt/keel --public-host keel.example.mil --certs-dir /secure/certs \
+               --oidc-authority https://idp.example.mil/realms/keel --oidc-client-secret-file /secure/keel-web.secret   # read-only checks, change nothing
+./install.sh   --compose --target /opt/keel --public-host keel.example.mil --certs-dir /secure/certs \
+               --oidc-authority https://idp.example.mil/realms/keel --oidc-client-secret-file /secure/keel-web.secret --fingerprint <hex>
+./upgrade.sh   --compose --target /opt/keel --backup-done --fingerprint <hex>
+```
+
+`install.sh` and `upgrade.sh` run the preflight themselves after the signature check and stop on any `FAIL` before anything is loaded or written (`install.sh --preflight-only` runs nothing else). The preflight checks the container runtime and Compose version, memory and disk, whether the HTTPS port is free, the FIPS state against `KEEL_REQUIRE_FIPS`, the certificates (expiry, key match, chain, names for the public host, `postgres` and `vault`), the OIDC secret and, for an upgrade, the state of the running installation. The bundle's `versions.json` lists exactly which images, chart and migration files it contains.
 
 ## Configuration
 
@@ -72,15 +86,16 @@ Register `https://<public host>/signin-oidc` and `https://<public host>/signout-
 | Task | Where it is described |
 |---|---|
 | Health and readiness (`/health/live`, `/health/ready`), metrics (`/metrics`, reachable only from the monitoring network) | [ops/configuration.md](../ops/configuration.md), [ops/hardening.md](../ops/hardening.md) |
-| Upgrades: forward-only SQL migrations, job before rollout, rollback means restoring the backup taken just before | [ops/upgrade.md](../ops/upgrade.md) |
-| Backup and restore: PostgreSQL base backup plus WAL, the vault, and the keys, all together | [ops/backup-restore.md](../ops/backup-restore.md) |
+| Upgrades: forward-only SQL migrations, job before rollout, rollback means restoring the backup taken just before; the rehearsal against the previous migration set and its recorded result | [ops/upgrade.md](../ops/upgrade.md), [drill-results/upgrade-rehearsal.md](../ops/drill-results/upgrade-rehearsal.md) |
+| Backup and restore: PostgreSQL base backup plus WAL (or a logical dump), the vault, and the keys, all together; `keel-vault verify` after every restore; the executable drill and its recorded result | [ops/backup-restore.md](../ops/backup-restore.md), [drill-results/backup-restore.md](../ops/drill-results/backup-restore.md) |
 | Disaster recovery options and proposed targets (proposals for the product owner to confirm, not agreed targets) | [ops/disaster-recovery.md](../ops/disaster-recovery.md) |
 | Audit chain verification after every restore | [chapter 20](20-audit-and-integrity.md), `keel-audit verify` |
-| Vault garbage collection (`keel-vault gc`, dry run by default) and archive verification (`keel-vault verify-archive`) | [ops/compliance-features.md](../ops/compliance-features.md), [ops/records-management.md](../ops/records-management.md) |
+| Vault garbage collection (`keel-vault gc`, dry run by default), the bulk integrity check (`keel-vault verify`, read-only) and archive verification (`keel-vault verify-archive`) | [ops/compliance-features.md](../ops/compliance-features.md), [ops/records-management.md](../ops/records-management.md) |
 | SIEM forwarding of audit events (TLS syslog or NDJSON file; UDP is refused) | [ops/siem-onboarding.md](../ops/siem-onboarding.md) |
 | ERP outbox, webhooks, file drops, dead letters | [ops/integration.md](../ops/integration.md), [chapter 21](21-integration-and-tdp.md) |
 | E-mail notifications over an on-premises SMTP relay | [ops/notifications.md](../ops/notifications.md) |
-| Performance measurements and the scale tests | [ops/performance.md](../ops/performance.md) |
+| Performance measurements, the scale tests and the end-to-end load smoke with its limits | [ops/performance.md](../ops/performance.md), [drill-results/load-smoke.md](../ops/drill-results/load-smoke.md) |
+| Third-party licences, the SBOM and the CI pipeline | [THIRD-PARTY-LICENSES.md](../../THIRD-PARTY-LICENSES.md), [ops/ci.md](../ops/ci.md) |
 | Security hardening mapping and what the operator must still do | [ops/hardening.md](../ops/hardening.md), [ops/nist-800-171-mapping.md](../ops/nist-800-171-mapping.md) |
 
 ### The three things to back up together
@@ -126,7 +141,8 @@ Full description: [ops/offline-install.md](../ops/offline-install.md). Other air
 
 Said plainly, from the existing documents:
 
-- **High availability and failover automation**, a bulk vault integrity verifier and load-tested recovery figures are open items ([ops/disaster-recovery.md](../ops/disaster-recovery.md)).
+- **High availability and failover automation** and recovery times at your real data size are open items ([ops/disaster-recovery.md](../ops/disaster-recovery.md)); the backup and restore drill and the load smoke measure small synthetic data on one machine and say so.
+- **The Helm chart and `install.sh --k8s`** were rendered and linted but not installed into a cluster; **the GitHub workflows** were checked structurally and by running every script they call, but not run on GitHub; **`actionlint`** was not run.
 - **CAC/PIV sign-in** is the site identity provider's job; the development realm uses passwords.
 - **Commercial CAD plug-ins** (SolidWorks, NX, Creo, CATIA) were not built ([integration/cad-plugins.md](../integration/cad-plugins.md)).
 - **The legal and export-control review packets** (`docs/review/`) are all pending reviewer sign-off and are not legal advice.
