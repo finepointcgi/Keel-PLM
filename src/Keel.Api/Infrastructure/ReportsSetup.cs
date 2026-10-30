@@ -11,7 +11,7 @@ public static class ReportsSetup
 {
     public const string OpenApiDocument = "reports";
 
-    public static IServiceCollection AddKeelReportsHost(this IServiceCollection services)
+    public static IServiceCollection AddKeelReportsHost(this IServiceCollection services, IConfiguration? configuration = null, bool developmentHost = false)
     {
         services.AddSingleton<IReleasePackageSource, ReleasePackageSource>();
         services.AddSingleton<IBomExchangeSource, BomExchangeSource>();
@@ -24,7 +24,11 @@ public static class ReportsSetup
         services.AddSingleton<IReportDataset, DeclarationsDataset>();
         services.AddSingleton<IReportDataset, SchedulesDataset>();
         services.AddSingleton<IReportDataset, BomDataset>();
-        Keel.Reports.ReportsModule.AddKeelReports(services, MarkingStatements.Notices, EmbeddedFontResolver.EnsureInstalled);
+        Keel.Reports.ReportsModule.AddKeelReports(services, MarkingStatements.Notices, EmbeddedFontResolver.EnsureInstalled, o =>
+        {
+            configuration?.GetSection(Keel.Reports.Signing.SigningOptions.Section).Bind(o); // 9.5 package signing (ADR-0051)
+            o.AllowDevelopmentCertificate = developmentHost && o.AllowDevelopmentCertificate;
+        });
         services.AddOpenApi(OpenApiDocument, o =>
         {
             o.OpenApiVersion = OpenApiSpecVersion.OpenApi3_1;
@@ -36,7 +40,7 @@ public static class ReportsSetup
                 {
                     Title = "Keel PLM output and bulk work API",
                     Version = "1",
-                    Description = "Release package PDFs (refused when any included object is unreadable, aggregate marking on every page), Excel and CSV BOM export and import proposals, mass change with preview, apply and undo, and the report builder over a fixed catalog of datasets. Every result is read-filtered for the caller and carries its marking banner.",
+                    Description = "Release package PDFs (digitally signed when an administrator has configured a signing identity; refused when any included object is unreadable, aggregate marking on every page), Excel and CSV BOM export and import proposals, mass change with preview, apply and undo, and the report builder over a fixed catalog of datasets. Every result is read-filtered for the caller and carries its marking banner.",
                 };
                 return Task.CompletedTask;
             });

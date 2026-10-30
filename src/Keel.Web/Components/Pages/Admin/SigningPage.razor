@@ -1,0 +1,168 @@
+@page "/admin/signing"
+@attribute [Authorize(Policy = Policies.Admin)]
+@using Keel.Reports.Signing
+@inject CurrentUser Users
+@inject PackageSigningService Signing
+
+@* The signing identity of release packages (ADR-0051). Shows certificates and where the private key is kept, never a key or a password. *@
+<PageFrame Banner="@UiText.Unclassified" Title="Administration: package signing">
+    <AdminNav />
+    <div class="stack">
+        <p>Release packages are digitally signed with the certificate of your organization's PKI, so a recipient can prove who produced a package and that no byte changed. Keel keeps the certificate here and only a <em>reference</em> to the private key (a file, a PKCS#12 file, a certificate store or an HSM key); the key and its password never enter the database. Signing changes nothing on the pages: the same banners and notices are signed with them.</p>
+        @if (error is not null) { <p class="error" role="alert" data-testid="signing-error">@error</p> }
+        @if (saved is not null) { <p role="status" class="permit" data-testid="signing-saved">@saved</p> }
+
+        <section class="panel stack" aria-labelledby="policy-heading">
+            <h2 id="policy-heading">Policy</h2>
+            @if (policy is not null)
+            {
+                <p data-testid="signing-state">@(policy.ActiveIdentity ? "Signing is on: new packages are signed with the active identity." : "No identity is active: packages are made unsigned.") @(policy.Required ? "Signing is required: while no identity is active, packages are refused." : "")</p>
+                <div class="toolbar">
+                    <button type="button" class="secondary" @onclick="() => SetRequired(!policy.Required)" disabled="@busy" data-testid="signing-require">@(policy.Required ? "Stop requiring signatures" : "Require signatures")</button>
+                </div>
+            }
+        </section>
+
+        <section class="panel">
+            <h2>Signing identities</h2>
+            @if (identities.Count == 0) { <p class="muted" data-testid="signing-none">No identity yet. Add one below.</p> }
+            else
+            {
+                <div class="table-wrap"><table class="data" data-testid="signing-identities">
+                    <caption class="visually-hidden">Signing identities</caption>
+                    <thead><tr><th scope="col">Name</th><th scope="col">Certificate</th><th scope="col">Algorithm</th><th scope="col">Valid until</th><th scope="col">Key kept in</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody>
+                    @foreach (var i in identities)
+                    {
+                        <tr class="@(i.Status == "Retired" ? "retired" : "")">
+                            <td>@i.Name @if (i.IsDevelopment) { <strong data-testid="signing-dev-flag">DEVELOPMENT ONLY</strong> }</td>
+                            <td>@i.Subject<br /><code class="small" title="SHA-256 of the certificate">@i.Thumbprint[..16]…</code></td>
+                            <td>@i.Algorithm</td>
+                            <td>@UiText.Utc(i.NotAfter)</td>
+                            <td>@SigningKeySources.Label(i.KeySource)</td>
+                            <td>@i.Status</td>
+                            <td class="actions-cell">
+                                @if (i.Status == "Standby") { <button type="button" class="secondary" @onclick="() => Activate(i)" disabled="@busy" data-testid="signing-activate">Activate</button> }
+                                @if (i.Status != "Retired") { <button type="button" class="secondary" @onclick="() => AskRetire(i)" disabled="@busy">Retire</button> }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table></div>
+            }
+        </section>
+
+        <ConfirmDialog @bind-Open="confirmingRetire" Title="@($"Retire {retiring?.Name}?")" Destructive="true" ConfirmText="Retire" OnConfirm="ConfirmRetire" OnCancel="() => retiring = null">
+            <p>A retired identity never signs again and cannot be activated again. Packages it already signed still verify. This is recorded in the audit log.</p>
+        </ConfirmDialog>
+
+        <section class="panel" aria-labelledby="add-heading">
+            <h2 id="add-heading">Add an identity</h2>
+            <form class="grid-form" @onsubmit="AddAsync" @onsubmit:preventDefault>
+                <label>Name * <input @bind="name" maxlength="120" required data-testid="signing-name" /></label>
+                <label>Private key is kept in *
+                    <select @bind="source" data-testid="signing-source">
+                        @foreach (var s in SigningKeySources.All) { <option value="@s">@SigningKeySources.Label(s)</option> }
+                    </select>
+                </label>
+                <label class="wide">Certificate bundle (PEM): the signing certificate first, then the certificates above it, the root last *
+                    <textarea @bind="pem" rows="8" required spellcheck="false" data-testid="signing-pem"></textarea>
+                </label>
+                <label class="wide">Key reference *
+                    <input @bind="keyReference" maxlength="1000" required data-testid="signing-keyref" />
+                    <span class="small muted">@KeyHint()</span>
+                </label>
+                <label>Password reference (optional)
+                    <input @bind="passwordReference" maxlength="500" placeholder="env:KEEL_SIGNING_KEY_PASSWORD" data-testid="signing-passref" />
+                    <span class="small muted">Name an environment variable (env:NAME) or a file (file:/path). The password itself is never typed here.</span>
+                </label>
+                <label>What a signature means * <input @bind="reason" maxlength="200" required data-testid="signing-reason" /></label>
+                <label>Signing location * <input @bind="location" maxlength="200" required data-testid="signing-location" /></label>
+                <div class="toolbar wide"><button type="submit" disabled="@busy" data-testid="signing-add">Add identity</button></div>
+            </form>
+        </section>
+
+        @if (policy?.DevelopmentCertificatesAllowed == true)
+        {
+            <section class="panel" aria-labelledby="dev-heading" data-testid="signing-dev-section">
+                <h2 id="dev-heading">Development certificate (development hosts only)</h2>
+                <p class="warning-box"><strong>DEVELOPMENT ONLY.</strong> This creates a throw-away root and signing certificate (valid 90 days) and a key file on this host so you can see signing work. Never use it for real packages: it proves nothing about who made them. A production host does not offer this.</p>
+                <div class="toolbar"><button type="button" class="secondary" @onclick="GenerateDev" disabled="@busy" data-testid="signing-generate-dev">Generate a development certificate</button></div>
+            </section>
+        }
+    </div>
+</PageFrame>
+
+@code {
+    private IReadOnlyList<SigningIdentityView> identities = [];
+    private SigningPolicyView? policy;
+    private string name = "", source = SigningKeySources.PemFile, pem = "", keyReference = "", passwordReference = "", reason = "Approved for release", location = "";
+    private string? error, saved;
+    private bool busy, confirmingRetire;
+    private SigningIdentityView? retiring;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        var user = await Users.GetAsync();
+        var list = await Signing.ListIdentitiesAsync(user);
+        identities = list.Value ?? [];
+        if (!list.IsOk) error = OutputText.Message(list);
+        policy = await Signing.GetPolicyAsync();
+    }
+
+    private string KeyHint() => source switch
+    {
+        SigningKeySources.PemFile => "Absolute path of the PKCS#8 PEM private key file readable by the Keel service account, for example /etc/keel/signing/package.key.pem.",
+        SigningKeySources.PfxFile => "Absolute path of the PKCS#12 (.pfx) file. Give its password as a password reference.",
+        SigningKeySources.X509Store => "Store of the service account: CurrentUser/My or LocalMachine/My. The certificate is found by its fingerprint; the key stays in the store or HSM driver.",
+        _ => "provider|key-uri, for example pkcs11|pkcs11:token=Keel;object=package-signing (OpenSSL 3 provider; the key never leaves the HSM).",
+    };
+
+    private async Task Run(Func<Subject, Task<string?>> action)
+    {
+        busy = true; error = saved = null;
+        try { var user = await Users.GetAsync(); saved = await action(user); await Load(); }
+        finally { busy = false; }
+    }
+
+    private Task AddAsync() => Run(async user =>
+    {
+        var o = await Signing.AddIdentityAsync(user, new AddSigningIdentity(name, source, pem, keyReference, string.IsNullOrWhiteSpace(passwordReference) ? null : passwordReference, reason, location), CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = OutputText.Message(o); return null; }
+        name = pem = keyReference = passwordReference = "";
+        return $"Added {o.Value!.Name}. It is on standby: activate it to sign new packages.";
+    });
+
+    private Task Activate(SigningIdentityView i) => Run(async user =>
+    {
+        var o = await Signing.ActivateAsync(user, i.Id, CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = OutputText.Message(o); return null; }
+        return $"{i.Name} is now the active identity.";
+    });
+
+    private void AskRetire(SigningIdentityView i) => (retiring, confirmingRetire) = (i, true);
+
+    private Task ConfirmRetire(string? _) => Run(async user =>
+    {
+        var o = await Signing.RetireAsync(user, retiring!.Id, CurrentUser.NewCorrelationId());
+        var n = retiring.Name; retiring = null;
+        if (!o.IsOk) { error = OutputText.Message(o); return null; }
+        return $"{n} is retired.";
+    });
+
+    private Task SetRequired(bool required) => Run(async user =>
+    {
+        var o = await Signing.SetRequiredAsync(user, required, CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = OutputText.Message(o); return null; }
+        return required ? "Signatures are now required." : "Signatures are no longer required.";
+    });
+
+    private Task GenerateDev() => Run(async user =>
+    {
+        var o = await Signing.GenerateDevelopmentIdentityAsync(user, null, CurrentUser.NewCorrelationId());
+        if (!o.IsOk) { error = OutputText.Message(o); return null; }
+        return $"Created {o.Value!.Name} (development only). Activate it to sign packages.";
+    });
+}

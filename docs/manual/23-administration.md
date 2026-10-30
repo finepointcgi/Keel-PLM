@@ -8,7 +8,7 @@ Administrators change configuration but get no bypass of markings. Every change 
 
 ## Page by page
 
-The Administration page has a tab bar: **Overview, Attributes, Lifecycles, Types and lists, Workflow templates, Classification, Numbering, Supply types, Requirement links, Reasons and meanings, Integration, Export and import, Change history**. Every change is validated, recorded with its before and after values, and shown under Change history. Each page shows the effect before you confirm.
+The Administration page has a tab bar: **Overview, Attributes, Lifecycles, Types and lists, Workflow templates, Classification, Numbering, Supply types, Requirement links, Reasons and meanings, Package signing, Integration, Export and import, Change history**. Every change is validated, recorded with its before and after values, and shown under Change history. Each page shows the effect before you confirm.
 
 | Page | What you do there |
 |---|---|
@@ -21,6 +21,7 @@ The Administration page has a tab bar: **Overview, Attributes, Lifecycles, Types
 | **Supply types** | How MBOM lines are supplied (Make, Buy, Consume and your own); retire with a reason |
 | **Requirement links** | Link types for requirement traceability (five are built in) |
 | **Reasons and meanings** | Signature meanings and change reason codes |
+| **Package signing** | The certificate that digitally signs release packages, where its private key is kept, whether signatures are required ([below](#package-signing)) |
 | **Integration** | Sinks, profiles, outbox, deliveries, TDP categories ([chapter 21](21-integration-and-tdp.md)) |
 | **Export and import** | Export the whole configuration as a file and import it elsewhere; every import is a confirmed, audited step |
 | **Change history** | Who changed which configuration, when and why |
@@ -55,3 +56,17 @@ Other administrator tasks live elsewhere: supplier **Portal access** on a suppli
 ## Limits
 
 Only parts store attribute values today; document and change attributes are not shipped. Lifecycles of PR, ECR, ECN, CT, MBOM and quality records are view-only. Server-side sorting is available on the main lists. Roles themselves (viewer, author, approver, admin, auditor, records, supplier, integration) come from the identity provider, not from Keel.
+
+## Package signing
+
+**Administration > Package signing** sets up the digital signature on release packages ([chapter 18](18-reports-and-output.md)). Keel keeps the certificate and only a *reference* to the private key; the key and its password never enter the database, the audit log or the screen.
+
+1. Have your PKI's certificate bundle ready: the signing certificate first, then the certificates above it, the root last (RSA 2048 bits or more, or ECDSA P-256, P-384 or P-521; SHA-256 or stronger).
+2. Under **Add an identity** fill in the name, **Private key is kept in** (PEM file, PKCS#12 file, certificate store, or OpenSSL provider key for an HSM), the **Certificate bundle**, the **Key reference** (a path, a store name or a key URI; the hint under the field says which) and, if the key has a password, a **Password reference** (`env:NAME` or `file:/path`, never the password itself). Add **What a signature means** (for example "Approved for release") and the **Signing location**. Select **Add identity**. Keel loads the key and proves that it belongs to the certificate before storing anything, and says in words what is wrong when it does not.
+3. In the table, select **Activate** on the identity. New packages are signed from then on.
+4. Optional: **Require signatures**. While required, a package that cannot be signed is refused, never made unsigned.
+5. To change certificates, add the new one, **Activate** it and **Retire** the old one. A retired identity never signs again, and packages it signed still verify.
+
+On a development host only, **Generate a development certificate** creates a throw-away certificate marked DEVELOPMENT ONLY so you can see signing work. Production hosts do not show it. Setup details, key sources, rotation and verification with standard tools: [docs/ops/package-signing.md](../ops/package-signing.md).
+
+![Package signing](images/admin-package-signing.png)

@@ -5,7 +5,7 @@
 
 @* Release package PDFs of a released part, ECN or baseline. The page banner is the aggregate of the packages listed (ADR-0044). *@
 <PageFrame Banner="@(banner ?? UiText.Unclassified)" Title="Release packages" Crumbs="@Crumbs">
-    <p class="muted">A release package is one PDF: cover sheet, bill of materials, documents with file hashes, signatures and change summary. It carries the combined marking of everything in it on every page. It is made only when you can read every object it needs, and it is never made with parts left out.</p>
+    <p class="muted">A release package is one PDF: cover sheet, bill of materials, documents with file hashes, signatures and change summary. It carries the combined marking of everything in it on every page. It is made only when you can read every object it needs, and it is never made with parts left out. When an administrator has set up a signing identity the package is also digitally signed, and you can check any downloaded copy under <a href="output/verify">Verify a package</a>.</p>
 
     <section class="panel stack" aria-labelledby="make-heading">
         <h2 id="make-heading">Make a package</h2>
@@ -37,7 +37,7 @@
         {
             <div class="table-wrap"><table class="data" data-testid="package-list">
                 <caption class="sr-only">Release packages</caption>
-                <thead><tr><th scope="col">Package</th><th scope="col">Made</th><th scope="col">Size</th><th scope="col">SHA-256</th><th scope="col">Markings</th></tr></thead>
+                <thead><tr><th scope="col">Package</th><th scope="col">Made</th><th scope="col">Size</th><th scope="col">SHA-256</th><th scope="col">Signature</th><th scope="col">Markings</th></tr></thead>
                 <tbody>
                 @foreach (var a in items)
                 {
@@ -46,6 +46,7 @@
                         <td>@UiText.Utc(a.CreatedAt) by @a.CreatedBy</td>
                         <td>@(a.SizeBytes / 1024) KiB</td>
                         <td><code class="small">@a.Sha256[..16]…</code></td>
+                        <td data-testid="package-signature">@(a.SignedAt is { } sa ? $"Signed {UiText.Utc(sa)} UTC by {SignerName(a.SignedBy)}" : "Not signed")</td>
                         <td><MarkingChip Text="@a.Banner" /></td>
                     </tr>
                 }
@@ -57,6 +58,8 @@
 
 @code {
     private static readonly IReadOnlyList<Crumb> Crumbs = [new("Release packages")];
+
+    private static string SignerName(string? dn) => dn is null ? "" : dn.Split(',').Select(p => p.Trim()).FirstOrDefault(p => p.StartsWith("CN=", StringComparison.Ordinal))?[3..] ?? dn;
     [SupplyParameterFromQuery(Name = "kind")] public string? QueryKind { get; set; }
     [SupplyParameterFromQuery(Name = "key")] public string? QueryKey { get; set; }
     private string kind = "part", key = "", loadedKind = "", loadedKey = "";

@@ -160,7 +160,7 @@ builder.Services.AddSingleton<Keel.Web.Services.ComplianceRollupService>(); // 8
 builder.Services.AddKeelComplianceOpenApi();
 Keel.Requirements.RequirementsModule.AddKeelRequirements(builder.Services, builder.Configuration); // 8.3 requirements and traceability
 builder.Services.AddKeelRequirementsOpenApi();
-builder.Services.AddKeelReportsHost(); // 8.9 release packages, BOM exchange, mass change, report builder
+builder.Services.AddKeelReportsHost(builder.Configuration, builder.Environment.IsDevelopment() || demo); // 8.9 release packages, BOM exchange, mass change, report builder
 
 var publicKeys = options.Audit.CheckpointPublicKeyPaths.Select(CheckpointKeys.LoadPem).ToList();
 if (!string.IsNullOrEmpty(options.Audit.CheckpointPrivateKeyPath))

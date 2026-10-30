@@ -1,0 +1,96 @@
+@page "/output/verify"
+@inject CurrentUser Users
+@inject PackageSigningService Signing
+
+@* Verify the digital signature of a downloaded release package (ADR-0051). Nothing is stored: the file is checked and forgotten, except for the audit entry. *@
+<PageFrame Banner="@(recordedBanner ?? UiText.Unclassified)" Title="Verify a package" Crumbs="@Crumbs">
+    <p class="muted">Check a release package PDF that you downloaded. Keel tests that the signature is valid over every byte of the file, who signed it and when, and whether the certificate chain leads to a root this server trusts. A changed file is reported as changed. Revocation is not checked: this server has no network access to revocation services.</p>
+
+    <section class="panel stack" aria-labelledby="verify-heading">
+        <h2 id="verify-heading">Choose the file</h2>
+        <label>Package PDF (at most @(MaxMb) MB)
+            <InputFile OnChange="Check" accept=".pdf,application/pdf" data-testid="verify-file" />
+        </label>
+        @if (busy) { <p role="status">Checking the file…</p> }
+        @if (error is not null) { <p class="error" role="alert" data-testid="verify-error">@error</p> }
+    </section>
+
+    @if (result is { } r)
+    {
+        <section class="panel stack" aria-labelledby="result-heading" aria-live="polite" data-testid="verify-result">
+            <h2 id="result-heading">Result for @fileName</h2>
+            <p class="@VerdictClass(r.Report.Verdict)" data-testid="verify-verdict" data-verdict="@r.Report.Verdict"><strong>@VerdictText(r.Report.Verdict)</strong></p>
+            <dl class="facts">
+                <dt>File SHA-256</dt><dd><code class="small" data-testid="verify-sha">@r.Report.FileSha256</code></dd>
+                <dt>Size</dt><dd>@r.Report.FileBytes.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) bytes</dd>
+                @if (r.Recorded is { } rec)
+                {
+                    <dt>Made by Keel</dt><dd data-testid="verify-recorded">@(rec.Number): @(rec.Kind == "release_package" ? "release package" : rec.Kind) of @rec.Key, made @UiText.Utc(rec.CreatedAt) UTC by @rec.CreatedBy, marked <MarkingChip Text="@rec.Banner" /></dd>
+                }
+            </dl>
+            @foreach (var s in r.Report.Signatures)
+            {
+                <h3>Signature @s.Index</h3>
+                <table class="data" data-testid="verify-signature">
+                    <caption class="visually-hidden">Signature @s.Index</caption>
+                    <tbody>
+                        <tr><th scope="row">Signed by</th><td>@s.SignerSubject</td></tr>
+                        <tr><th scope="row">Issued by</th><td>@s.IssuerSubject</td></tr>
+                        <tr><th scope="row">Signing time</th><td>@(s.SigningTime is { } t ? UiText.Utc(t) + " UTC" : "Not stated")</td></tr>
+                        <tr><th scope="row">Reason</th><td>@(s.Reason ?? "Not stated")</td></tr>
+                        <tr><th scope="row">Location</th><td>@(s.Location ?? "Not stated")</td></tr>
+                        <tr><th scope="row">Bytes unchanged since signing</th><td data-testid="check-integrity">@Mark(s.IntegrityIntact && s.CoversWholeFile)</td></tr>
+                        <tr><th scope="row">Signature names this certificate</th><td>@Mark(s.SigningCertificateBound)</td></tr>
+                        <tr><th scope="row">Certificate valid at signing time</th><td>@Mark(s.CertificateValidAtSigningTime)</td></tr>
+                        <tr><th scope="row">Chain reaches a trusted root</th><td data-testid="check-chain">@Mark(s.ChainTrusted)</td></tr>
+                        <tr><th scope="row">Certificate chain</th><td>@string.Join(" → ", s.ChainCertificates)</td></tr>
+                    </tbody>
+                </table>
+                @if (s.Findings.Count > 0)
+                {
+                    <ul class="plain" data-testid="verify-findings">@foreach (var f in s.Findings) { <li>@f</li> }</ul>
+                }
+            }
+            <ul class="plain small muted">@foreach (var f in r.Report.Findings) { <li>@f</li> }</ul>
+            <p class="small muted">The same check works without Keel: <code>scripts/verify-package-signature.sh package.pdf root.pem</code> uses only OpenSSL, and PDF readers such as Adobe Acrobat show the signature when your PKI root is trusted there (see the package signing guide in docs/ops).</p>
+        </section>
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Output"), new("Verify a package")];
+    private const int MaxMb = 32;
+    private VerifyResult? result;
+    private string? error, fileName, recordedBanner;
+    private bool busy;
+
+    private async Task Check(InputFileChangeEventArgs e)
+    {
+        error = null; result = null; recordedBanner = null; busy = true;
+        try
+        {
+            var file = e.File;
+            fileName = file.Name;
+            if (file.Size > MaxMb * 1024 * 1024) { error = $"The file is larger than {MaxMb} MB."; return; }
+            using var ms = new MemoryStream();
+            await using (var s = file.OpenReadStream(MaxMb * 1024 * 1024)) await s.CopyToAsync(ms);
+            result = await Signing.VerifyAsync(await Users.GetAsync(), ms.ToArray(), CurrentUser.NewCorrelationId());
+            recordedBanner = result.Recorded?.Banner;
+        }
+        catch (IOException) { error = "The file could not be read."; }
+        finally { busy = false; }
+    }
+
+    private static string Mark(bool ok) => ok ? "Yes" : "No";
+
+    private static string VerdictClass(string v) => v switch { VerificationVerdict.Valid => "permit", VerificationVerdict.Untrusted => "", _ => "error" };
+
+    private static string VerdictText(string v) => v switch
+    {
+        VerificationVerdict.Valid => "Valid: the signature is intact and the signer's certificate chains to a trusted root.",
+        VerificationVerdict.Untrusted => "Intact, but not trusted: the content is unchanged, yet the certificate does not chain to a root this server trusts, or was not valid when signed.",
+        VerificationVerdict.Tampered => "Changed: this file was altered after it was signed, or the signature does not match it. Do not rely on it.",
+        VerificationVerdict.NotSigned => "Not signed: this file carries no digital signature. Treat it as unverified.",
+        _ => "Unreadable: the file is not a PDF Keel can check.",
+    };
+}

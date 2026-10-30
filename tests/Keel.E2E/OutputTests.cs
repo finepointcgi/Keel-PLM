@@ -155,4 +155,66 @@ public sealed class OutputTests(E2EFixture fx)
             await page.SetViewportSizeAsync(1280, 800);
         });
     }
+
+    [E2EFact]
+    public async Task An_administrator_sets_up_a_development_signing_identity_packages_are_signed_and_the_verify_page_catches_a_changed_copy()
+    {
+        await using var session = new BrowserSession(fx, nameof(An_administrator_sets_up_a_development_signing_identity_packages_are_signed_and_the_verify_page_catches_a_changed_copy));
+        await session.RunAsync(async () =>
+        {
+            string? releasedLeaf;
+            await using (var conn = await fx.AppDb.OpenConnectionAsync())
+            await using (var cmd = new NpgsqlCommand(
+                "SELECT m.number FROM plm.part_master m JOIN plm.part_revision r ON r.master_id = m.id AND r.is_latest WHERE r.lifecycle_state = 'Released' AND m.part_type <> 'Assembly' ORDER BY m.number LIMIT 1", conn))
+                releasedLeaf = (string?)await cmd.ExecuteScalarAsync();
+            Assert.NotNull(releasedLeaf);
+
+            // The administrator generates the development certificate (labelled dev only) and activates it.
+            var ada = await session.SignInAsync("ada");
+            var page = ada.Page;
+            await session.GotoAsync(ada, "/admin/signing");
+            await BrowserSession.AssertBannersAsync(page);
+            await Expect(Id(page, "signing-dev-section")).ToContainTextAsync("DEVELOPMENT ONLY");
+            await Id(page, "signing-generate-dev").ClickAsync();
+            await Expect(Id(page, "signing-saved")).ToContainTextAsync("development only");
+            await Expect(Id(page, "signing-dev-flag").First).ToBeVisibleAsync();
+            await Id(page, "signing-activate").First.ClickAsync();
+            await Expect(Id(page, "signing-state")).ToContainTextAsync("Signing is on");
+
+            // A package made by Alice is signed; she downloads it and verifies it.
+            var alice = await session.SignInAsync("alice");
+            var ap = alice.Page;
+            await session.GotoAsync(alice, "/output/packages");
+            await BrowserSession.FillAsync(Id(ap, "package-key"), releasedLeaf!);
+            await Id(ap, "package-generate").ClickAsync();
+            await Expect(Id(ap, "package-list")).ToBeVisibleAsync();
+            await Expect(Id(ap, "package-signature").First).ToContainTextAsync("Signed");
+            await BrowserSession.AssertBannersAsync(ap);
+            var b64 = await ap.EvaluateAsync<string>("async () => { const r = await fetch(document.querySelector('[data-testid=package-download]').href); const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s); }");
+            var pdf = Convert.FromBase64String(b64);
+
+            await session.GotoAsync(alice, "/output/verify");
+            await BrowserSession.AssertBannersAsync(ap);
+            await Id(ap, "verify-file").SetInputFilesAsync(new FilePayload { Name = "package.pdf", MimeType = "application/pdf", Buffer = pdf });
+            await Expect(Id(ap, "verify-result")).ToBeVisibleAsync();
+            await Expect(Id(ap, "verify-verdict")).ToHaveAttributeAsync("data-verdict", "valid");
+            await Expect(Id(ap, "verify-recorded")).ToContainTextAsync("RPK-");
+            await Expect(Id(ap, "check-integrity")).ToHaveTextAsync("Yes");
+            await BrowserSession.AssertBannersAsync(ap);
+
+            // One changed byte: reported as changed, and no longer matched to a package Keel made.
+            var changed = (byte[])pdf.Clone();
+            changed[64] ^= 0x20;
+            await Id(ap, "verify-file").SetInputFilesAsync(new FilePayload { Name = "changed.pdf", MimeType = "application/pdf", Buffer = changed });
+            await Expect(Id(ap, "verify-verdict")).ToHaveAttributeAsync("data-verdict", "tampered");
+            await Expect(Id(ap, "check-integrity")).ToHaveTextAsync("No");
+            Assert.Equal(0, await Id(ap, "verify-recorded").CountAsync());
+
+            await ap.SetViewportSizeAsync(375, 800);
+            await session.GotoAsync(alice, "/output/verify");
+            await BrowserSession.AssertBannersAsync(ap);
+            Assert.False(await ap.EvaluateAsync<bool>("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1"), "no horizontal page scroll at 375 px");
+            await ap.SetViewportSizeAsync(1280, 800);
+        });
+    }
 }

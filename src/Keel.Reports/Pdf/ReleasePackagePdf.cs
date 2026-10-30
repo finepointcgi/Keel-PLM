@@ -18,10 +18,11 @@ public static class ReleasePackagePdf
     private const double PageW = 612, PageH = 792, Side = 36, Top = 22;
     private const double Leading = 1.22;
 
-    public static byte[] Render(ReleasePackageContent content, PackageMarking marking, PackageIdentity identity, Action ensureFonts) =>
+    /// <summary>With <paramref name="signature"/> the document reserves an invisible signature field that <see cref="Keel.Reports.Signing.PdfSigner"/> fills; the pages are identical either way.</summary>
+    public static byte[] Render(ReleasePackageContent content, PackageMarking marking, PackageIdentity identity, Action ensureFonts, Keel.Reports.Signing.SignatureReservation? signature = null) =>
         RenderCore((cur, f) => Body(cur, content, marking, identity, f), marking, identity,
             $"Keel PLM release package {identity.Number} · {content.Kind} {content.Key} {content.Revision} · generated {identity.GeneratedAt.UtcDateTime:yyyy-MM-dd HH:mm} UTC by {identity.GeneratedBy}",
-            $"Release package {identity.Number}: {content.Key} {content.Revision}", ensureFonts);
+            $"Release package {identity.Number}: {content.Key} {content.Revision}", ensureFonts, signature);
 
     /// <summary>A report as a PDF: a title, an optional note, and one table, under the same banner, notices and page numbering as a package.</summary>
     public static byte[] RenderTable(string title, string note, IReadOnlyList<(string Title, double Width, bool Right)> columns, IReadOnlyList<IReadOnlyList<string>> rows,
@@ -34,7 +35,7 @@ public static class ReleasePackagePdf
         }, marking, identity,
             $"Keel PLM report {identity.Number} · generated {identity.GeneratedAt.UtcDateTime:yyyy-MM-dd HH:mm} UTC by {identity.GeneratedBy}", $"Report: {title}", ensureFonts);
 
-    private static byte[] RenderCore(Action<Cursor, Fonts> body, PackageMarking marking, PackageIdentity identity, string trace, string docTitle, Action ensureFonts)
+    private static byte[] RenderCore(Action<Cursor, Fonts> body, PackageMarking marking, PackageIdentity identity, string trace, string docTitle, Action ensureFonts, Keel.Reports.Signing.SignatureReservation? signature = null)
     {
         ensureFonts();
         if (GlobalFontSettings.FontResolver is null) throw new InvalidOperationException("No font resolver is installed; the host must register one.");
@@ -77,6 +78,7 @@ public static class ReleasePackagePdf
         });
         Layout(frame, body, fonts, measure, bodyTop, bodyBottom);
         frame.Dispose();
+        if (signature is not null) Keel.Reports.Signing.PdfSigner.Reserve(doc, signature);
         using var output = new MemoryStream();
         doc.Save(output, closeStream: false);
         return output.ToArray();

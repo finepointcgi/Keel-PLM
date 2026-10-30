@@ -376,7 +376,42 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                     var run = p.Locator("[data-testid='report-run']");
                     if (await run.CountAsync() > 0) { await run.ClickAsync(); await p.WaitForTimeoutAsync(1200); await p.Mouse.MoveAsync(700, 600); await p.Mouse.WheelAsync(0, 350); await p.WaitForTimeoutAsync(400); }
                 });
-                await GoAsync(session, alice, "/output/packages", "output-packages");
+                // ---- signed release packages (ADR-0051): a development identity, a signed package, the verification page with a valid and a changed copy
+                await TryAsync("output-signing", async () =>
+                {
+                    await ada.Page.GotoAsync(fx.BaseUrl + "/admin/signing");
+                    if (await ada.Page.Locator("[data-testid='signing-identities']").CountAsync() == 0) { await ada.Page.Locator("[data-testid='signing-generate-dev']").ClickAsync(); await ada.Page.WaitForSelectorAsync("[data-testid='signing-identities']"); }
+                    if (await ada.Page.Locator("[data-testid='signing-activate']").CountAsync() > 0) { await ada.Page.Locator("[data-testid='signing-activate']").First.ClickAsync(); await ada.Page.WaitForTimeoutAsync(800); }
+                    await GoAsync(session, ada, "/admin/signing", "admin-package-signing");
+                    string? leaf;
+                    await using (var conn = await fx.AppDb.OpenConnectionAsync())
+                    await using (var cmd = new Npgsql.NpgsqlCommand(
+                        "SELECT m.number FROM plm.part_master m JOIN plm.part_revision r ON r.master_id = m.id AND r.is_latest WHERE r.lifecycle_state = 'Released' AND m.part_type <> 'Assembly' ORDER BY m.number LIMIT 1", conn))
+                        leaf = (string?)await cmd.ExecuteScalarAsync();
+                    if (leaf is null) throw new InvalidOperationException("No released part for the package shots.");
+                    await GoAsync(session, alice, "/output/packages", "output-packages", async p =>
+                    {
+                        await p.Locator("[data-testid='package-key']").FillAsync(leaf);
+                        await p.Locator("[data-testid='package-generate']").ClickAsync();
+                        await p.WaitForSelectorAsync("[data-testid='package-list']");
+                    });
+                    var b64 = await alice.Page.EvaluateAsync<string>("async () => { const r = await fetch(document.querySelector('[data-testid=package-download]').href); const b = new Uint8Array(await r.arrayBuffer()); let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s); }");
+                    var pdf = Convert.FromBase64String(b64);
+                    var changed = (byte[])pdf.Clone();
+                    changed[64] ^= 0x20;
+                    await GoAsync(session, alice, "/output/verify", "output-verify-valid", async p =>
+                    {
+                        await p.Locator("[data-testid='verify-file']").SetInputFilesAsync(new FilePayload { Name = "RPK-package.pdf", MimeType = "application/pdf", Buffer = pdf });
+                        await p.WaitForSelectorAsync("[data-testid='verify-result']");
+                        await p.Mouse.MoveAsync(700, 600); await p.Mouse.WheelAsync(0, 250); await p.WaitForTimeoutAsync(400);
+                    });
+                    await GoAsync(session, alice, "/output/verify", "output-verify-changed", async p =>
+                    {
+                        await p.Locator("[data-testid='verify-file']").SetInputFilesAsync(new FilePayload { Name = "RPK-package-changed.pdf", MimeType = "application/pdf", Buffer = changed });
+                        await p.WaitForSelectorAsync("[data-testid='verify-result']");
+                        await p.Mouse.MoveAsync(700, 600); await p.Mouse.WheelAsync(0, 250); await p.WaitForTimeoutAsync(400);
+                    });
+                });
                 await GoAsync(session, alice, "/output/bom", "output-bom-excel");
                 await GoAsync(session, alice, "/output/mass", "output-mass-change", async p =>
                 {
