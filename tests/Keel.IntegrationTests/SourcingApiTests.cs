@@ -126,6 +126,94 @@ public sealed class SourcingApiTests(PostgresFixture pg)
     }
 
     [Fact]
+    public async Task RFQ_comparison_awards_and_the_scorecard_work_over_HTTP_with_the_same_gates_as_the_services()
+    {
+        using var f = await HostAsync();
+        var sp = f.Services;
+        var parts = sp.GetRequiredService<PartService>();
+        var suppliers = sp.GetRequiredService<SupplierService>();
+        var requests = sp.GetRequiredService<RequestService>();
+        var directory = sp.GetRequiredService<UserDirectory>();
+        var alice = SourcingEnv.Alice;
+        var ada = SourcingEnv.Ada;
+        var open = SourcingEnv.Open;
+        await directory.UpsertAsync(SourcingEnv.Sup1 with { Id = "u-sup1" });
+        await directory.UpsertAsync(SourcingEnv.Sup2 with { Id = "u-sup2" });
+        var part = (await parts.CreateAsync(alice, new CreatePartCommand("Washer", "Component", "EA", "Buy", open, "d", new JsonObject()), null)).Value!.Number;
+        string Make(string name)
+        {
+            var s = suppliers.CreateAsync(alice, new CreateSupplierCommand(name, "USA", ["vendor"], false, open), null).GetAwaiter().GetResult().Value!;
+            Assert.True(suppliers.UpdateAsync(ada, s.Summary.Number, new UpdateSupplierCommand(name, "USA", ["vendor"], false, null, null, "public-release"), s.Revision, null).GetAwaiter().GetResult().IsOk);
+            return s.Summary.Number;
+        }
+        var s1 = Make("Alpha"); var s2 = Make("Bravo");
+        Assert.True((await suppliers.LinkPortalUserAsync(ada, s1, "sup1", null)).IsOk);
+        Assert.True((await suppliers.LinkPortalUserAsync(ada, s2, "sup2", null)).IsOk);
+        var buyer = f.ClientFor(Internal("plm-viewer", "plm-author"));
+        var viewer = f.ClientFor(Internal("plm-viewer"));
+
+        // A request with a need-by date through the REST layer; the portal shows it and takes a tiered quote that is valid until a date.
+        var created = await buyer.PostAsJsonAsync("/api/v1/sourcing/requests", new
+        {
+            kind = "rfq", title = "Washers", description = "d", dueOn = (string?)null, markings = new { exportJurisdiction = "None", distributionStatement = "A", owningOrg = "ENG" },
+            parts = new[] { new { partNumber = part, quantity = 600, needBy = "2027-03-01" } }, suppliers = new[] { s1, s2 },
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var number = JsonNode.Parse(await created.Content.ReadAsStringAsync())!["summary"]!["number"]!.GetValue<string>();
+        Assert.Equal(HttpStatusCode.OK, (await buyer.PostAsync($"/api/v1/sourcing/requests/{number}/issue", null)).StatusCode);
+        var c1 = f.ClientFor(Supplier("sup1"));
+        var c2 = f.ClientFor(Supplier("sup2"));
+        Assert.Equal("2027-03-01", JsonNode.Parse(await c1.GetStringAsync($"/api/v1/portal/requests/{number}"))!["parts"]![0]!["needBy"]!.GetValue<string>());
+        var valid = DateTime.UtcNow.AddDays(30).ToString("yyyy-MM-dd");
+        using (var form = new MultipartFormDataContent { { new StringContent("Tiered"), "message" }, { new StringContent(valid), "validUntil" },
+                   { new StringContent($"[{{\"part\":\"{part}\",\"currency\":\"USD\",\"leadTimeDays\":21,\"tiers\":[{{\"quantity\":100,\"unitPrice\":2.5}},{{\"quantity\":500,\"unitPrice\":2.1}}],\"exception\":\"Not before July\"}}]"), "quote" } })
+            Assert.Equal(HttpStatusCode.Created, (await c1.PostAsync($"/api/v1/portal/requests/{number}/responses", form)).StatusCode);
+        using (var form = new MultipartFormDataContent { { new StringContent("Single"), "message" }, { new StringContent($"[{{\"part\":\"{part}\",\"unitPrice\":2.2,\"currency\":\"USD\",\"leadTimeDays\":10}}]"), "quote" } })
+            Assert.Equal(HttpStatusCode.Created, (await c2.PostAsync($"/api/v1/portal/requests/{number}/responses", form)).StatusCode);
+        using (var bad = new MultipartFormDataContent { { new StringContent("x"), "message" }, { new StringContent("last week"), "validUntil" } })
+            Assert.Equal(HttpStatusCode.BadRequest, (await c1.PostAsync($"/api/v1/portal/requests/{number}/responses", bad)).StatusCode);
+
+        // The comparison: tier applied at 600 pieces, lowest price and shortest lead time marked; only internal roles read it.
+        var comparison = JsonNode.Parse(await buyer.GetStringAsync($"/api/v1/sourcing/requests/{number}/comparison"))!;
+        var cells = comparison["lines"]![0]!["cells"]!.AsArray();
+        Assert.Equal(2.1m, cells[0]!["unitPrice"]!.GetValue<decimal>());
+        Assert.True(cells[0]!["lowest"]!.GetValue<bool>());
+        Assert.True(cells[1]!["fastest"]!.GetValue<bool>());
+        Assert.Equal(HttpStatusCode.Forbidden, (await c1.GetAsync($"/api/v1/sourcing/requests/{number}/comparison")).StatusCode);
+
+        // Awarding needs the right to modify; a supplier cannot; a viewer cannot; the award shows to the winner alone.
+        Assert.Equal(HttpStatusCode.Forbidden, (await c1.PostAsJsonAsync($"/api/v1/sourcing/requests/{number}/awards", new { supplier = s1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await viewer.PostAsJsonAsync($"/api/v1/sourcing/requests/{number}/awards", new { supplier = s1 })).StatusCode);
+        var awarded = await buyer.PostAsJsonAsync($"/api/v1/sourcing/requests/{number}/awards", new { supplier = s1, note = "Best price" });
+        Assert.Equal(HttpStatusCode.OK, awarded.StatusCode);
+        var award = JsonNode.Parse(await awarded.Content.ReadAsStringAsync())!["awards"]![0]!;
+        Assert.Equal(s1, award["supplierNumber"]!.GetValue<string>());
+        Assert.StartsWith("SRC-", award["entryNumber"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Conflict, (await buyer.PostAsJsonAsync($"/api/v1/sourcing/requests/{number}/awards", new { supplier = s2, parts = new[] { part } })).StatusCode);
+        Assert.Single(JsonNode.Parse(await c1.GetStringAsync($"/api/v1/portal/requests/{number}"))!["awards"]!.AsArray());
+        Assert.Empty(JsonNode.Parse(await c2.GetStringAsync($"/api/v1/portal/requests/{number}"))!["awards"]!.AsArray());
+        Assert.Equal(HttpStatusCode.OK, (await buyer.PostAsJsonAsync($"/api/v1/sourcing/requests/{number}/awards/{part}/withdraw", new { reason = "Changed our mind" })).StatusCode);
+
+        // The scorecard: readable by internal roles, published by someone who may modify, then visible to that supplier alone.
+        Assert.Equal(HttpStatusCode.NotFound, (await c1.GetAsync("/api/v1/portal/scorecard")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await viewer.GetAsync($"/api/v1/sourcing/suppliers/{s1}/scorecard")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await viewer.PostAsync($"/api/v1/sourcing/suppliers/{s1}/scorecard/publish", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c1.GetAsync($"/api/v1/sourcing/suppliers/{s1}/scorecard")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await buyer.PostAsync($"/api/v1/sourcing/suppliers/{s1}/scorecard/publish", null)).StatusCode);
+        var card = JsonNode.Parse(await c1.GetStringAsync("/api/v1/portal/scorecard"))!["card"]!;
+        Assert.Equal(12, card["trend"]!.AsArray().Count);
+        Assert.Equal(HttpStatusCode.NotFound, (await c2.GetAsync("/api/v1/portal/scorecard")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await buyer.PostAsync($"/api/v1/sourcing/suppliers/{s1}/scorecard/withdraw", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await c1.GetAsync("/api/v1/portal/scorecard")).StatusCode);
+        // The portal never serves a document it was not asked for by id, and an unknown file is not found.
+        Assert.Equal(HttpStatusCode.NotFound, (await c1.GetAsync($"/api/v1/portal/requests/{number}/documents/{Guid.NewGuid():D}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await buyer.GetAsync($"/api/v1/portal/requests/{number}/documents/{Guid.NewGuid():D}")).StatusCode);
+        var audit = await new AuditQueries(sp.GetRequiredService<Npgsql.NpgsqlDataSource>()).ListAsync(new AuditQuery(Limit: 1000));
+        foreach (var action in new[] { "rfq.compare", "rfq.award", "rfq.award_withdraw", "scorecard.publish", "scorecard.withdraw", "portal.scorecard_read" })
+            Assert.Contains(audit, e => e.Action == action);
+    }
+
+    [Fact]
     public async Task The_published_sourcing_openapi_document_equals_the_committed_one_and_lists_no_internal_surface()
     {
         using var f = await HostAsync();

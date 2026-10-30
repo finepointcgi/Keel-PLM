@@ -193,15 +193,17 @@ public sealed class AccessibilityTests(E2EFixture fx)
         Add("alice", "/suppliers", "/suppliers/new", "/requests", "/requests/new", "/sourcing/where-sourced", "/sourcing/coverage",
             $"/sourcing/where-sourced?supplier={SourcingSeed.SupplierA}", $"/sourcing/coverage?mode=ebom&number={m.TopAssembly}", $"/requests/{SourcingSeed.Request}",
             $"/sourcing/entries/{SourcingSeed.Entry}", $"/parts/{m.OpenFastener}?tab=sourcing", $"/parts/{m.GimbalBracket}?tab=sourcing");
-        foreach (var tab in new[] { "overview", "certifications", "contacts", "parts", "quality", "review", "activity", "comments" })
+        foreach (var tab in new[] { "overview", "certifications", "contacts", "parts", "quality", "scorecard", "review", "activity", "comments" })
             Add("alice", $"/suppliers/{SourcingSeed.SupplierA}?tab={tab}");
+        // RFQs beyond the portal (9.6, ADR-0054): the compared quotes with an award, and the new request form started from a part.
+        Add("alice", $"/requests/{SourcingSeed.RequestQuoted}", $"/requests/new?part={m.OpenFastener}");
         Add("ada", $"/suppliers/{SourcingSeed.SupplierA}?tab=portal");
         // Product compliance (8.5, ADR-0040): the part tab, the roll-up (table, causes and treemap), declarations, regulatory lists, substances and materials; the rows come from ComplianceSeed.
         Add("alice", $"/parts/{m.OpenFastener}?tab=compliance", $"/parts/{m.GimbalBracket}?tab=compliance", "/compliance", $"/compliance?mode=ebom&number={m.TopAssembly}", "/compliance/declarations",
             $"/compliance/declarations/{ComplianceSeed.FastenerDeclaration}", $"/compliance/declarations/{ComplianceSeed.BracketDeclaration}", "/compliance/lists", "/compliance/lists/rohs",
             "/compliance/lists/rohs/versions/1", "/compliance/lists/conflict_minerals/versions/1", "/compliance/substances", "/compliance/substances/SUB-000001", "/compliance/materials");
         Add("ada", "/compliance/lists/rohs", "/compliance/substances", "/compliance/materials");
-        Add("sup-alpha", "/portal", $"/portal/requests/{SourcingSeed.Request}");
+        Add("sup-alpha", "/portal", $"/portal/requests/{SourcingSeed.Request}", $"/portal/requests/{SourcingSeed.RequestQuoted}", "/portal/scorecard");
 
         // Options and variants (8.4, ADR-0039): the seed gives the top assembly two options, rules and two released variants.
         VariantsSeed.EnsureAsync(fx).GetAwaiter().GetResult();

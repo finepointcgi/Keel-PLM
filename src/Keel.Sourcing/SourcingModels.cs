@@ -188,29 +188,54 @@ public sealed record PartCoverage(string PartNumber, string Source, string Bucke
 public sealed record RequestSummary(
     Guid Id, string Number, string Kind, string Title, string State, DateOnly? DueOn, int Parts, int Recipients, int Responded, string Banner, Markings Markings, DateTimeOffset CreatedAt, string CreatedBy);
 
-public sealed record RequestPartView(string PartNumber, string PartName, decimal Quantity, string Unit, string? Note, string Banner);
+public sealed record RequestPartView(string PartNumber, string PartName, decimal Quantity, string Unit, string? Note, string Banner, DateOnly? NeedBy = null);
 
 public sealed record RequestRecipientView(string SupplierNumber, string SupplierName, string State, DateTimeOffset? FirstViewedAt, bool Releasable, string? WithheldReason);
 
 public sealed record ResponseFileView(Guid Id, string Kind, string FileName, string Sha256, long SizeBytes);
 
-public sealed record QuoteLine(string Part, decimal? UnitPrice, string? Currency, int? LeadTimeDays, decimal? Moq);
+/// <summary>
+/// One quoted line. <see cref="UnitPrice"/> is the single price; <see cref="Tiers"/> are price breaks (the price at a quantity is the tier with the largest quantity at or below it).
+/// A line has a single price or tiers, or both: with tiers the tiers decide the price at the line's quantity. <see cref="Exception"/> is what the supplier cannot meet (a need-by date, a specification).
+/// </summary>
+public sealed record QuoteLine(string Part, decimal? UnitPrice, string? Currency, int? LeadTimeDays, decimal? Moq, IReadOnlyList<PriceBreak>? Tiers = null, string? Note = null, string? Exception = null);
 
 public sealed record ResponseView(
     Guid Id, string SupplierNumber, string SupplierName, int Seq, bool Declined, string Message, IReadOnlyList<QuoteLine> Quote, DateTimeOffset SubmittedAt, string SubmittedBy,
-    IReadOnlyList<ResponseFileView> Files);
+    IReadOnlyList<ResponseFileView> Files, DateOnly? ValidUntil = null);
+
+/// <summary>A released document attached to a request: the pinned version and its files. <see cref="Banner"/> is the document's own marking.</summary>
+public sealed record RequestDocumentView(
+    string DocumentNumber, string DocumentName, string DocumentType, string Revision, int Iteration, IReadOnlyList<RequestDocumentFile> Files, string Banner, IReadOnlyList<string>? WithheldFrom = null)
+{
+    /// <summary>The supplier numbers (recipients the reader may see) that do NOT receive this document: its clearance profile or country does not allow the document's markings.</summary>
+    public IReadOnlyList<string> Withheld => WithheldFrom ?? [];
+}
+
+public sealed record RequestDocumentFile(Guid Id, string FileName, long SizeBytes);
+
+/// <summary>The active award of one request line. <see cref="EntryNumber"/> is the approved vendor list entry that records the sourcing link.</summary>
+public sealed record AwardView(
+    Guid Id, string PartNumber, string SupplierNumber, string SupplierName, int ResponseSeq, decimal Quantity, decimal UnitPrice, string Currency, int? LeadTimeDays,
+    string EntryNumber, bool EntryCreated, string? Note, DateTimeOffset AwardedAt, string AwardedBy);
 
 public sealed record RequestDetail(
-    RequestSummary Summary, string Description, IReadOnlyList<RequestPartView> Parts, IReadOnlyList<RequestRecipientView> Recipients, IReadOnlyList<ResponseView> Responses, bool CanModify);
+    RequestSummary Summary, string Description, IReadOnlyList<RequestPartView> Parts, IReadOnlyList<RequestRecipientView> Recipients, IReadOnlyList<ResponseView> Responses, bool CanModify,
+    IReadOnlyList<RequestDocumentView>? Documents = null, IReadOnlyList<AwardView>? Awards = null)
+{
+    public IReadOnlyList<RequestDocumentView> DocumentList => Documents ?? [];
+    public IReadOnlyList<AwardView> AwardList => Awards ?? [];
+}
 
 public sealed record RequestSearch(string? Text = null, string? State = null, int Limit = 50, int Offset = 0, SortSpec? Sort = null);
 
 public sealed record RequestPage(IReadOnlyList<RequestSummary> Items, int Total, string Banner);
 
-public sealed record RequestPartInput(string PartNumber, decimal Quantity, string? Unit = null, string? Note = null);
+public sealed record RequestPartInput(string PartNumber, decimal Quantity, string? Unit = null, string? Note = null, DateOnly? NeedBy = null);
 
 public sealed record CreateRequestCommand(
-    string Kind, string Title, string Description, DateOnly? DueOn, Markings Markings, IReadOnlyList<RequestPartInput> Parts, IReadOnlyList<string> SupplierNumbers);
+    string Kind, string Title, string Description, DateOnly? DueOn, Markings Markings, IReadOnlyList<RequestPartInput> Parts, IReadOnlyList<string> SupplierNumbers,
+    IReadOnlyList<string>? DocumentNumbers = null);
 
 // ---------------------------------------------------------------- portal (what a supplier user sees)
 
@@ -220,13 +245,24 @@ public sealed record PortalRequestSummary(string Number, string Kind, string Tit
 
 /// <summary>A request as ONE supplier may see it: only the parts its clearance profile allows, only its own responses.</summary>
 public sealed record PortalRequestDetail(
-    PortalRequestSummary Summary, string Description, IReadOnlyList<PortalPart> Parts, IReadOnlyList<PortalResponse> Responses, bool CanRespond);
+    PortalRequestSummary Summary, string Description, IReadOnlyList<PortalPart> Parts, IReadOnlyList<PortalResponse> Responses, bool CanRespond,
+    IReadOnlyList<PortalDocument>? Documents = null, IReadOnlyList<PortalAward>? Awards = null)
+{
+    public IReadOnlyList<PortalDocument> DocumentList => Documents ?? [];
+    public IReadOnlyList<PortalAward> AwardList => Awards ?? [];
+}
 
-public sealed record PortalPart(string PartNumber, string PartName, decimal Quantity, string Unit, string? Note);
+public sealed record PortalPart(string PartNumber, string PartName, decimal Quantity, string Unit, string? Note, DateOnly? NeedBy = null);
 
-public sealed record PortalResponse(Guid Id, int Seq, bool Declined, string Message, IReadOnlyList<QuoteLine> Quote, DateTimeOffset SubmittedAt, string SubmittedBy, IReadOnlyList<ResponseFileView> Files);
+/// <summary>A document this supplier may receive: listed and downloadable only when the release check for this supplier passed (a document that fails it is not listed at all).</summary>
+public sealed record PortalDocument(string DocumentNumber, string DocumentName, string Revision, string Banner, IReadOnlyList<RequestDocumentFile> Files);
 
-public sealed record PortalResponseInput(string Message, bool Declined, IReadOnlyList<QuoteLine> Quote);
+/// <summary>The line of this request that was awarded to the caller's supplier. A supplier is never told about awards to others.</summary>
+public sealed record PortalAward(string PartNumber, decimal Quantity, decimal UnitPrice, string Currency, int? LeadTimeDays, DateTimeOffset AwardedAt);
+
+public sealed record PortalResponse(Guid Id, int Seq, bool Declined, string Message, IReadOnlyList<QuoteLine> Quote, DateTimeOffset SubmittedAt, string SubmittedBy, IReadOnlyList<ResponseFileView> Files, DateOnly? ValidUntil = null);
+
+public sealed record PortalResponseInput(string Message, bool Declined, IReadOnlyList<QuoteLine> Quote, DateOnly? ValidUntil = null);
 
 /// <summary>One file of a response. <see cref="Content"/> is read once and streamed to the vault (which scans it).</summary>
 public sealed record UploadedFile(string FileName, string Kind, Stream Content);

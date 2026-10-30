@@ -74,6 +74,7 @@ public static class SourcingModule
             sp.GetService<INotificationSink>(), sp.GetServices<IQualityReferenceResolver>()));
         services.AddSingleton(sp => new SourcingService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => new RequestService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<IContentReader>()));
+        services.AddSingleton(sp => new ScorecardService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<ISupplierQualityFacts>()));
         services.AddSingleton(sp => new PortalService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(),
             sp.GetService<IContentStore>(), sp.GetService<IContentReader>()));
         services.AddSingleton(sp => new CertificationExpiryService(sp.GetRequiredService<NpgsqlDataSource>(), sp.GetRequiredService<IAuditLog>(), sp.GetRequiredService<TimeProvider>(), sp.GetService<INotificationSink>()));

@@ -42,6 +42,7 @@ public static class PaletteActions
             new("go:process", "Go to Process plans", "Go to", "mbom", "process/plans", "routing operations work instructions shop floor manufacturing process"),
             new("go:tools", "Go to Tools and gauges", "Go to", "folder", "process/tools", "tooling fixtures gauges calibration"),
             new("go:suppliers", "Go to Suppliers", "Go to", "folder", "suppliers", "vendors manufacturers sources certifications approved"),
+            new("go:requests", "Go to Supplier requests", "Go to", "inbox", "requests", "rfq rfi quote quotation request compare award bids supplier scorecard"),
             new("go:access", "Go to Access check", "Go to", "access", "access", "permission can i see"),
             new("go:profile", "Go to My access", "Go to", "user", "profile", "profile roles clearance"),
         };
@@ -57,6 +58,7 @@ public static class PaletteActions
             list.Add(new("new:capa", "New corrective action", "Create", "plus", "quality/new/capa", "create add capa"));
             list.Add(new("new:deviation", "New deviation or waiver", "Create", "plus", "quality/new/deviation", "create add waiver"));
             list.Add(new("new:change", "New change request", "Create", "plus", "changes/new/ECR", "create ecr engineering change"));
+            list.Add(new("new:request", "Request a quote", "Create", "plus", "requests/new", "create new rfq quotation supplier price bid"));
         }
         list.Add(new(ToggleTheme, "Toggle theme", "Commands", "theme", null, "dark light contrast appearance"));
         if (canLock) list.Add(new(LockNow, "Lock now", "Commands", "lock", null, "lock screen session"));

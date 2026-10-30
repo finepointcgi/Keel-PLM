@@ -25,8 +25,10 @@ public sealed record UpdateEntryRequest(
     PriceBreakRequest[]? PriceBreaks = null, string? Note = null);
 public sealed record EndEntryRequest(DateOnly EndsOn, string Reason);
 public sealed record RelationRequest(string RelatedPart, string Relation, string? Note = null);
-public sealed record RequestPartRequest(string PartNumber, decimal Quantity, string? Unit = null, string? Note = null);
-public sealed record CreateSourcingRequest(string Kind, string Title, string? Description, DateOnly? DueOn, MarkingsDto Markings, RequestPartRequest[] Parts, string[] Suppliers);
+public sealed record RequestPartRequest(string PartNumber, decimal Quantity, string? Unit = null, string? Note = null, DateOnly? NeedBy = null);
+public sealed record CreateSourcingRequest(string Kind, string Title, string? Description, DateOnly? DueOn, MarkingsDto Markings, RequestPartRequest[] Parts, string[] Suppliers, string[]? Documents = null);
+public sealed record DueDateRequest(DateOnly? DueOn);
+public sealed record AwardRequest(string Supplier, string[]? Parts = null, string? Note = null);
 
 /// <summary>
 /// REST for suppliers, approved lists and sourcing views (internal roles) and for the supplier portal (the supplier role, scoped to the caller's own supplier by the
@@ -79,6 +81,12 @@ public static class SourcingEndpoints
             (await svc.LinkPortalUserAsync(SubjectFactory.Require(ctx), number, req.User, CorrelationId.Get(ctx), ct)).ToHttp());
         g.MapDelete("/suppliers/{number}/portal-users/{sub}", async (string number, string sub, HttpContext ctx, SupplierService svc, CancellationToken ct) =>
             (await svc.UnlinkPortalUserAsync(SubjectFactory.Require(ctx), number, sub, CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapGet("/suppliers/{number}/scorecard", async (string number, HttpContext ctx, ScorecardService svc, CancellationToken ct) =>
+            (await svc.GetAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapPost("/suppliers/{number}/scorecard/publish", async (string number, HttpContext ctx, ScorecardService svc, CancellationToken ct) =>
+            (await svc.PublishAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapPost("/suppliers/{number}/scorecard/withdraw", async (string number, HttpContext ctx, ScorecardService svc, CancellationToken ct) =>
+            (await svc.WithdrawAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToHttp());
         g.MapGet("/clearance-profiles", async (SupplierService svc, CancellationToken ct) => Results.Ok(await svc.ClearanceProfilesAsync(ct)));
 
         // ---- a part's lists
@@ -117,7 +125,7 @@ public static class SourcingEndpoints
             var m = req.Markings.ToMarkings();
             if (!m.IsSuccess) return Outcome<RequestDetail>.Invalid(m.Errors).ToHttp();
             return (await svc.CreateAsync(SubjectFactory.Require(ctx), new CreateRequestCommand(req.Kind, req.Title, req.Description ?? "", req.DueOn, m.Value,
-                [.. req.Parts.Select(p => new RequestPartInput(p.PartNumber, p.Quantity, p.Unit, p.Note))], req.Suppliers), CorrelationId.Get(ctx), ct))
+                [.. req.Parts.Select(p => new RequestPartInput(p.PartNumber, p.Quantity, p.Unit, p.Note, p.NeedBy))], req.Suppliers, req.Documents), CorrelationId.Get(ctx), ct))
                 .ToHttp(d => Results.Created($"/api/v1/sourcing/requests/{d.Summary.Number}", d));
         });
         g.MapGet("/requests/{number}", async (string number, HttpContext ctx, RequestService svc, CancellationToken ct) =>
@@ -128,6 +136,14 @@ public static class SourcingEndpoints
             (await svc.CloseAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToHttp());
         g.MapPost("/requests/{number}/cancel", async (string number, SourcingReasonRequest req, HttpContext ctx, RequestService svc, CancellationToken ct) =>
             (await svc.CancelAsync(SubjectFactory.Require(ctx), number, req.Reason, CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapPost("/requests/{number}/due-date", async (string number, DueDateRequest req, HttpContext ctx, RequestService svc, CancellationToken ct) =>
+            (await svc.ChangeDueDateAsync(SubjectFactory.Require(ctx), number, req.DueOn, CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapGet("/requests/{number}/comparison", async (string number, HttpContext ctx, RequestService svc, CancellationToken ct) =>
+            (await svc.CompareAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapPost("/requests/{number}/awards", async (string number, AwardRequest req, HttpContext ctx, RequestService svc, CancellationToken ct) =>
+            (await svc.AwardAsync(SubjectFactory.Require(ctx), number, new AwardCommand(req.Supplier, req.Parts, req.Note), CorrelationId.Get(ctx), ct)).ToHttp());
+        g.MapPost("/requests/{number}/awards/{part}/withdraw", async (string number, string part, SourcingReasonRequest req, HttpContext ctx, RequestService svc, CancellationToken ct) =>
+            (await svc.WithdrawAwardAsync(SubjectFactory.Require(ctx), number, part, req.Reason, CorrelationId.Get(ctx), ct)).ToHttp());
         g.MapGet("/requests/{number}/files/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, RequestService svc, CancellationToken ct) =>
             await FileResult((await svc.OpenResponseFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct))));
 
@@ -139,7 +155,7 @@ public static class SourcingEndpoints
             (await svc.GetRequestAsync(SubjectFactory.Require(ctx), number, CorrelationId.Get(ctx), ct)).ToHttp());
         p.MapPost("/requests/{number}/responses", async (string number, HttpContext ctx, PortalService svc, CancellationToken ct) =>
         {
-            // multipart/form-data: message, declined, quote (JSON array of {part, unitPrice, currency, leadTimeDays, moq}), and files (field name "response" or "certificate").
+            // multipart/form-data: message, declined, validUntil (yyyy-MM-dd), quote (JSON array of {part, unitPrice, currency, leadTimeDays, moq, tiers: [{quantity, unitPrice}], note, exception}), and files (field name "response" or "certificate").
             if (!ctx.Request.HasFormContentType) return Outcome<PortalResponse>.Invalid(["Send multipart/form-data."]).ToHttp();
             var form = await ctx.Request.ReadFormAsync(ct);
             IReadOnlyList<QuoteLine> quote = [];
@@ -148,21 +164,32 @@ public static class SourcingEndpoints
                 try { quote = RequestService.ParseQuote(json); }
                 catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { return Outcome<PortalResponse>.Invalid(["The quote is not valid."]).ToHttp(); }
             }
+            DateOnly? validUntil = null;
+            if (form["validUntil"].ToString() is { Length: > 0 } vu)
+            {
+                if (!DateOnly.TryParseExact(vu, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed)) return Outcome<PortalResponse>.Invalid(["validUntil is a date such as 2026-12-31."]).ToHttp();
+                validUntil = parsed;
+            }
             var files = new List<UploadedFile>();
             foreach (var f in form.Files) files.Add(new UploadedFile(f.FileName, f.Name == "certificate" ? "certificate" : "response", f.OpenReadStream()));
             try
             {
-                return (await svc.RespondAsync(SubjectFactory.Require(ctx), number, new PortalResponseInput(form["message"].ToString(), form["declined"].ToString() == "true", quote), files, CorrelationId.Get(ctx), ct))
+                return (await svc.RespondAsync(SubjectFactory.Require(ctx), number, new PortalResponseInput(form["message"].ToString(), form["declined"].ToString() == "true", quote, validUntil), files, CorrelationId.Get(ctx), ct))
                     .ToHttp(r => Results.Created($"/api/v1/portal/requests/{number}", r));
             }
             finally { foreach (var f in files) await f.Content.DisposeAsync(); }
         });
+        p.MapGet("/scorecard", async (HttpContext ctx, PortalService svc, CancellationToken ct) => (await svc.GetScorecardAsync(SubjectFactory.Require(ctx), CorrelationId.Get(ctx), ct)).ToHttp());
+        p.MapGet("/requests/{number}/documents/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, PortalService svc, CancellationToken ct) =>
+            await FileResult(await svc.OpenDocumentFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct)));
         p.MapGet("/requests/{number}/files/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, PortalService svc, CancellationToken ct) =>
             await FileResult(await svc.OpenMyFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct)));
 
         // The same downloads for the Blazor UI, authenticated by the session cookie, so pages use plain links and no token appears in a URL.
         app.MapGet("/downloads/requests/{number}/files/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, RequestService svc, CancellationToken ct) =>
             await FileResult(await svc.OpenResponseFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct))).RequireAuthorization(Policies.AnyPlmRole);
+        app.MapGet("/downloads/portal/requests/{number}/documents/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, PortalService svc, CancellationToken ct) =>
+            await FileResult(await svc.OpenDocumentFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct))).RequireAuthorization(Policies.Supplier);
         app.MapGet("/downloads/portal/requests/{number}/files/{fileId:guid}", async (string number, Guid fileId, HttpContext ctx, PortalService svc, CancellationToken ct) =>
             await FileResult(await svc.OpenMyFileAsync(SubjectFactory.Require(ctx), number, fileId, CorrelationId.Get(ctx), ct))).RequireAuthorization(Policies.Supplier);
     }

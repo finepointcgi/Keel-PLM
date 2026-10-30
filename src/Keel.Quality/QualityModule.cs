@@ -209,6 +209,7 @@ public static class QualityModule
             services.AddSingleton<IWorkflowObjectGateway>(sp => new QualityWorkflowGateway(k, sp.GetRequiredService<IAuditLog>()));
         }
         services.AddSingleton<IQualityReferenceResolver>(sp => new QualityReferenceResolver(sp.GetRequiredService<NpgsqlDataSource>()));
+        services.AddSingleton<ISupplierQualityFacts>(sp => new SupplierQualityFacts(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddSingleton<ITimelineSource>(sp => new QualityTimelineSource(sp.GetRequiredService<NpgsqlDataSource>()));
         services.AddHostedService<QualityMaintenanceService>();
         return services;

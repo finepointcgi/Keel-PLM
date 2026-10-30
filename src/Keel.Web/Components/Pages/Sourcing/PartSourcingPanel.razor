@@ -15,6 +15,10 @@ else if (data is not null)
             <span class="muted small">Only active entries inside their dates, of approved suppliers in good standing, count as a source.</span>
         </p>
         @if (error is not null) { <p class="error" role="alert">@error</p> }
+        @if (data.CanModify)
+        {
+            <p><a class="button secondary" href="requests/new?part=@Uri.EscapeDataString(PartNumber)">Request a quote for this part</a></p>
+        }
         @foreach (var kind in new[] { SourceKinds.Aml, SourceKinds.Avl })
         {
             var rows = data.Entries.Where(e => e.Kind == kind).ToList();

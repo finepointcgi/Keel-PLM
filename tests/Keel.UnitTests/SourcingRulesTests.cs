@@ -253,7 +253,7 @@ public sealed class SourcingRulesTests
     {
         var groups = NavModel.ForSupplier();
         var hrefs = groups.SelectMany(g => g.Items).Select(i => i.Href).ToList();
-        Assert.Equal(["portal"], hrefs);
+        Assert.Equal(["portal", "portal/scorecard"], hrefs); // the requests and the scorecard the buyer shares
         // The internal navigation offers suppliers and requests to people with the internal roles.
         Assert.Contains(NavModel.For([Roles.Viewer]).SelectMany(g => g.Items), i => i.Href == "suppliers");
         Assert.Contains(NavModel.For([Roles.Viewer]).SelectMany(g => g.Items), i => i.Href == "requests");

@@ -1,0 +1,37 @@
+@page "/portal/scorecard"
+@inject CurrentUser Users
+@inject PortalService Portal
+
+<PageFrame Banner="@(card?.Card.Banner ?? UiText.Unclassified)" Title="Your scorecard" Crumbs="@Crumbs">
+    @if (refused)
+    {
+        <p class="error" role="alert">Your account is not linked to a supplier, or the supplier is no longer active.</p>
+    }
+    else if (loaded && card is null)
+    {
+        <EmptyState Title="No scorecard shared" IconName="inbox">Your buyer has not shared a scorecard with you. When they publish one it appears here.</EmptyState>
+    }
+    else if (card is not null)
+    {
+        <p class="muted">Your buyer published this scorecard on @UiText.Utc(card.PublishedAt). It is a snapshot: it does not change until a new one is published.</p>
+        <ScorecardCard Card="card.Card" />
+    }
+    else
+    {
+        <Skeleton Lines="5" Label="Loading your scorecard" />
+    }
+</PageFrame>
+
+@code {
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("My requests", "portal"), new("Scorecard")];
+    private PortalScorecard? card;
+    private bool refused, loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var outcome = await Portal.GetScorecardAsync(await Users.GetAsync(), CurrentUser.NewCorrelationId());
+        card = outcome.Value;
+        refused = !outcome.IsOk && outcome.Kind == OutcomeKind.Forbidden;
+        loaded = true;
+    }
+}

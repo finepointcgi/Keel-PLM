@@ -12,6 +12,7 @@ public static class SourcingUi
     public static string PortalRequestHref(string number) => $"portal/requests/{Uri.EscapeDataString(number)}";
     public static string FileUrl(string request, Guid file) => $"downloads/requests/{Uri.EscapeDataString(request)}/files/{file:D}";
     public static string PortalFileUrl(string request, Guid file) => $"downloads/portal/requests/{Uri.EscapeDataString(request)}/files/{file:D}";
+    public static string PortalDocumentUrl(string request, Guid file) => $"downloads/portal/requests/{Uri.EscapeDataString(request)}/documents/{file:D}";
     public static string Size(long bytes) => bytes < 1024 ? $"{bytes} B" : bytes < 1024 * 1024 ? $"{bytes / 1024d:0.#} KiB" : $"{bytes / 1024d / 1024:0.#} MiB";
 
     public static string StatusClass(string status) => status switch

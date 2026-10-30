@@ -28,6 +28,10 @@
             </ul>
             @if (report.Required == 0) { <p class="muted">No purchased line was found.</p> }
             else if (report.Complete) { <p role="status">Every purchased line has an approved source.</p> }
+            @if (report.Required > 0 && report.Mode == SourcingCoverageService.Ebom)
+            {
+                <p><a class="button secondary" href="requests/new?assembly=@Uri.EscapeDataString(report.Number)">Request quotes for these parts</a></p>
+            }
         </section>
         <div class="table-wrap">
             <table class="data">

@@ -62,3 +62,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0049](0049-program-resources-and-cost.md) | Program resources and cost loading: pools, roles, assignments, load, budget against actual against estimate to complete | Accepted |
 | [0055](0055-email-verification-bounces-and-broker-sink.md) | E-mail address verification, bounce handling and the AMQP 0-9-1 message-broker sink | Accepted |
 | [0057](0057-localization.md) | Localization foundation: per-user language, .resx resources with satellite assemblies, culture-aware display without ICU, pseudo-locale, marking text never translated | Accepted |
+| [0054](0054-rfq-and-supplier-scorecards.md) | RFQs beyond the portal (need-by dates, released documents whole or refused, tiered quotes, comparison, awards that record the sourcing link) and supplier quality scorecards (transparent formula, trend, published to the supplier on purpose) | Accepted |

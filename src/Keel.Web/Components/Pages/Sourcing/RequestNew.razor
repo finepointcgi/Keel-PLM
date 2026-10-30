@@ -1,6 +1,8 @@
 @page "/requests/new"
 @inject CurrentUser Users
 @inject RequestService Requests
+@inject SourcingCoverageService Coverage
+@inject Keel.Documents.DocumentService Documents
 @inject NavigationManager Nav
 
 @* A blank form shows no controlled data; the markings being entered appear on the created request. *@
@@ -17,13 +19,26 @@
             </label>
             <label>Respond by <InputDate @bind-Value="due" /></label>
             <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
-            <label class="wide">Description for the suppliers <InputTextArea @bind-Value="description" rows="4" maxlength="4000" /></label>
-            <label class="wide">Parts * (one per line: part number, then quantity; for example P-000001 100) <InputTextArea @bind-Value="partsText" rows="4" required /></label>
+            <label class="wide">Description for the suppliers <InputTextArea @bind-Value="description" rows="3" maxlength="4000" /></label>
             <label class="wide">Suppliers * (supplier numbers, separated by commas or blanks) <InputText @bind-Value="suppliersText" placeholder="SUP-000001, SUP-000002" required /></label>
         </fieldset>
         <fieldset class="grid-form">
+            <legend>What you want quoted</legend>
+            <label class="wide">Lines * (one per line: part number, quantity, and if you want the date it is needed; for example P-000001 100 2026-12-01)
+                <InputTextArea @bind-Value="partsText" rows="5" required /></label>
+            <div class="toolbar wide" role="group" aria-label="Fill the lines from a bill of materials">
+                <label>Or take the purchased parts of an assembly <input @bind="assembly" placeholder="P-000003" aria-label="Assembly number" /></label>
+                <label>Number of assemblies <input type="number" min="1" step="1" @bind="assemblies" aria-label="Number of assemblies" /></label>
+                <button type="button" class="secondary" disabled="@busy" @onclick="FillFromAssembly">Add the purchased parts</button>
+            </div>
+            <label class="wide">Documents to send (released documents only; document numbers, separated by commas or blanks)
+                <InputText @bind-Value="documentsText" placeholder="D-000001, D-000002" /></label>
+            <label class="inline wide"><input type="checkbox" @bind="attachLinked" /> Also send the released documents linked to the parts above (drawings and specifications)</label>
+            <p class="muted wide small">A supplier receives a document only when its clearance profile allows the document's markings: it is sent whole or not at all, never partly blacked out.</p>
+        </fieldset>
+        <fieldset class="grid-form">
             <legend>Security markings</legend>
-            <p class="muted wide small">The markings of the request must cover every part it lists. A supplier receives the request only when its clearance profile allows these markings and each part; a foreign supplier never receives ITAR-marked parts.</p>
+            <p class="muted wide small">The markings of the request must cover every part and document it lists. A supplier receives the request only when its clearance profile allows these markings and each part; a foreign supplier never receives ITAR-marked parts.</p>
             <MarkingsFields Value="markings" />
         </fieldset>
         @if (errors is not null)
@@ -35,10 +50,14 @@
 </PageFrame>
 
 @code {
+    [SupplyParameterFromQuery(Name = "part")] public string? PartParam { get; set; }
+    [SupplyParameterFromQuery(Name = "assembly")] public string? AssemblyParam { get; set; }
+
     private static readonly IReadOnlyList<Crumb> Crumbs = [new("Supplier requests", "requests"), new("New request")];
-    private string kind = "rfq", title = "", description = "", partsText = "", suppliersText = "";
+    private string kind = "rfq", title = "", description = "", partsText = "", suppliersText = "", documentsText = "", assembly = "";
+    private decimal assemblies = 1;
     private DateTime? due;
-    private bool busy;
+    private bool busy, attachLinked, prefilled;
     private IReadOnlyList<string>? errors;
     private readonly MarkingsInput markings = new()
     {
@@ -46,21 +65,53 @@
         ControllingOffice = "", DistributionReason = "", Program = "", OwningOrg = "ENG", ExportAuthorizations = "",
     };
 
+    protected override async Task OnParametersSetAsync()
+    {
+        if (prefilled) return;
+        prefilled = true;
+        if (!string.IsNullOrWhiteSpace(PartParam)) partsText = PartParam.Trim() + " 1";
+        if (!string.IsNullOrWhiteSpace(AssemblyParam))
+        {
+            assembly = AssemblyParam.Trim();
+            await FillFromAssembly();
+        }
+    }
+
+    private async Task FillFromAssembly()
+    {
+        errors = null;
+        if (string.IsNullOrWhiteSpace(assembly)) { errors = ["Enter the number of the assembly."]; return; }
+        if (assemblies <= 0) { errors = ["The number of assemblies must be positive."]; return; }
+        busy = true;
+        var outcome = await Coverage.ReportAsync(await Users.GetAsync(), SourcingCoverageService.Ebom, assembly, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { errors = [UiText.Message(outcome)]; return; }
+        var report = outcome.Value!;
+        var lines = RfqLines.FromCoverage(report, assemblies);
+        if (lines.Count == 0) { errors = [$"{report.Number} has no purchased parts you can read."]; return; }
+        var existing = RfqLines.Parse(partsText).Lines.Where(l => lines.All(n => n.PartNumber != l.PartNumber));
+        partsText = RfqLines.Format(existing.Concat(lines));
+        if (string.IsNullOrWhiteSpace(title)) title = $"Quote for {report.Number} {report.Name}";
+    }
+
     private async Task Create()
     {
         errors = null;
         var m = markings.Effective().ToMarkings();
         if (!m.IsSuccess) { errors = m.Errors; return; }
-        var parts = new List<RequestPartInput>();
-        foreach (var line in partsText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var bits = line.Split([' ', ',', '\t', ';'], StringSplitOptions.RemoveEmptyEntries);
-            if (bits.Length != 2 || !decimal.TryParse(bits[1], System.Globalization.CultureInfo.InvariantCulture, out var qty)) { errors = [$"'{line}' is not a part line. Write the part number, then the quantity."]; return; }
-            parts.Add(new RequestPartInput(bits[0], qty));
-        }
+        var (parts, problem) = RfqLines.Parse(partsText);
+        if (problem is not null) { errors = [problem]; return; }
         var suppliers = suppliersText.Split([',', ' ', '\n', ';', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToList();
+        var docs = documentsText.Split([',', ' ', '\n', ';', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         busy = true;
-        var outcome = await Requests.CreateAsync(await Users.GetAsync(), new CreateRequestCommand(kind, title, description, due is null ? null : DateOnly.FromDateTime(due.Value), m.Value, parts, suppliers), CurrentUser.NewCorrelationId());
+        var subject = await Users.GetAsync();
+        if (attachLinked)
+            foreach (var part in parts)
+            {
+                var links = await Documents.GetPartLinksAsync(subject, part.PartNumber, null, null, CurrentUser.NewCorrelationId());
+                if (links.IsOk) docs.AddRange(links.Value!.Links.Where(l => !l.Redacted && l.Document is { State: "Released" }).Select(l => l.Document!.Number));
+            }
+        var outcome = await Requests.CreateAsync(subject, new CreateRequestCommand(kind, title, description, due is null ? null : DateOnly.FromDateTime(due.Value), m.Value, parts, suppliers, [.. docs.Distinct()]), CurrentUser.NewCorrelationId());
         busy = false;
         if (!outcome.IsOk) { errors = outcome.Kind == OutcomeKind.Forbidden ? outcome.Errors.Select(UiText.Reason).ToList() : outcome.Errors; return; }
         Nav.NavigateTo(SourcingUi.RequestHref(outcome.Value!.Summary.Number));

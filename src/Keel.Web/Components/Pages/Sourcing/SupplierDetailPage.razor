@@ -109,6 +109,9 @@
                     case "quality":
                         <SupplierQualityRefs Detail="d" OnChanged="Reload" />
                         break;
+                    case "scorecard":
+                        <SupplierScorecardPanel SupplierNumber="@d.Summary.Number" OnBanner="b => partsBanner = b" />
+                        break;
                     case "portal":
                         <SupplierPortalUsers Detail="d" OnChanged="Reload" />
                         break;
@@ -171,7 +174,7 @@
 @code {
     [Parameter] public required string Number { get; set; }
     private string? seenUri;
-    private static readonly string[] TabIds = ["overview", "certifications", "contacts", "parts", "quality", "portal", "review", .. AwarenessTabs.Ids];
+    private static readonly string[] TabIds = ["overview", "certifications", "contacts", "parts", "quality", "scorecard", "portal", "review", .. AwarenessTabs.Ids];
 
     private SupplierDetail? detail;
     private WhereSourcedResult? supplied;
@@ -191,7 +194,7 @@
         var tabs = new List<TabInfo>
         {
             new("overview", "Overview"), new("certifications", "Certifications", d.Certifications.Count), new("contacts", "Contacts", d.Contacts.Count), new("parts", "Parts supplied"),
-            new("quality", "Quality records", d.QualityRefs.Count),
+            new("quality", "Quality records", d.QualityRefs.Count), new("scorecard", "Scorecard"),
         };
         if (d.Permissions.CanAdminister) tabs.Add(new("portal", "Portal access", d.PortalUsers.Count));
         tabs.Add(new("review", "Approval"));

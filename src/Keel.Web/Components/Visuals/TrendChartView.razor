@@ -1,0 +1,97 @@
+@using System.Globalization
+@* A simple line chart over time with a table alternative (UX-3 visuals kit, ADR-0029, ADR-0054). One series of values from 0 to 100 (a score), month by month; a gap in the data breaks the line.
+   Reference lines are labelled (so no meaning rests on colour alone). The table below the switch holds the same numbers and is the accessible version; the chart is an image with a text
+   description. Only tokens and classes, no inline styles (CSP). *@
+<div class="stack trend">
+    <ViewSwitch Label="@($"{Title} view")" Options="views" Value="@(table ? "table" : "chart")" ValueChanged='id => table = id == "table"' />
+    @if (table)
+    {
+        <div class="table-wrap">
+            <table class="data" aria-label="@($"{Title} as a table")">
+                <caption class="visually-hidden">@Title by @(ColumnTitle.ToLowerInvariant())</caption>
+                <thead><tr><th scope="col">@ColumnTitle</th><th scope="col">@ValueTitle</th></tr></thead>
+                <tbody>
+                    @foreach (var p in Points)
+                    {
+                        <tr><th scope="row">@p.Label</th><td>@(p.Value is { } v ? v.ToString("0.#", CultureInfo.InvariantCulture) : "not measured")</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <svg class="vis-trend" viewBox="0 0 @W @H" role="img" aria-labelledby="@(uid)-t @(uid)-d" focusable="false">
+            <title id="@(uid)-t">@Title</title>
+            <desc id="@(uid)-d">@Describe()</desc>
+            @foreach (var g in grid)
+            {
+                <line class="vis-trend-grid" x1="@L" x2="@(W - R)" y1="@Y(g)" y2="@Y(g)" />
+                <g><text class="vis-trend-tick" x="@(L - 6)" y="@(YNum((decimal)g) + 4)" text-anchor="end">@g</text></g>
+            }
+            @foreach (var line in References)
+            {
+                <line class="vis-trend-ref" x1="@L" x2="@(W - R)" y1="@Y(line.Value)" y2="@Y(line.Value)" />
+                <g><text class="vis-trend-reftext" x="@(W - R)" y="@(YNum(line.Value) - 4)" text-anchor="end">@line.Label</text></g>
+            }
+            @foreach (var seg in Segments())
+            {
+                <path class="vis-trend-line" d="@seg" />
+            }
+            @for (var i = 0; i < Points.Count; i++)
+            {
+                var p = Points[i];
+                <g><text class="vis-trend-tick" x="@X(i)" y="@(H - 8)" text-anchor="middle">@p.Label</text></g>
+                @if (p.Value is { } v)
+                {
+                    <circle class="vis-trend-dot" cx="@X(i)" cy="@Y(v)" r="4"><title>@p.Label: @v.ToString("0.#", CultureInfo.InvariantCulture)</title></circle>
+                }
+            }
+        </svg>
+        <p class="muted small">@Describe()</p>
+    }
+</div>
+
+@code {
+    private const int W = 640, H = 260, L = 40, R = 16, T = 16, B = 32;
+    private static readonly int[] grid = [0, 25, 50, 75, 100];
+    private readonly string uid = "tc" + Guid.NewGuid().ToString("N")[..8];
+    private bool table;
+    private static readonly IReadOnlyList<ViewOption> views = [new("chart", "Chart"), new("table", "Table")];
+
+    /// <summary>One value per label (for example a month); null when the measure had no basis then.</summary>
+    public sealed record TrendPoint(string Label, decimal? Value);
+
+    public sealed record ReferenceLine(decimal Value, string Label);
+
+    [Parameter, EditorRequired] public required string Title { get; set; }
+    [Parameter, EditorRequired] public required IReadOnlyList<TrendPoint> Points { get; set; }
+    [Parameter] public string ColumnTitle { get; set; } = "Month";
+    [Parameter] public string ValueTitle { get; set; } = "Score";
+    [Parameter] public IReadOnlyList<ReferenceLine> References { get; set; } = [];
+
+    private string X(int i) => (Points.Count <= 1 ? L + (W - L - R) / 2.0 : L + i * (W - L - R) / (double)(Points.Count - 1)).ToString("0.#", CultureInfo.InvariantCulture);
+    private static double YNum(decimal v) => T + (H - T - B) * (1 - (double)Math.Clamp(v, 0, 100) / 100.0);
+    private string Y(decimal v) => YNum(v).ToString("0.#", CultureInfo.InvariantCulture);
+    private string Y(int v) => Y((decimal)v);
+
+    private IEnumerable<string> Segments()
+    {
+        var current = new List<string>();
+        for (var i = 0; i < Points.Count; i++)
+        {
+            if (Points[i].Value is { } v) current.Add($"{(current.Count == 0 ? "M" : "L")}{X(i)} {Y(v)}");
+            else if (current.Count > 0) { yield return string.Join(' ', current); current.Clear(); }
+        }
+        if (current.Count > 0) yield return string.Join(' ', current);
+    }
+
+    private string Describe()
+    {
+        var measured = Points.Where(p => p.Value is not null).ToList();
+        if (measured.Count == 0) return $"{Title}: no value could be measured in this period.";
+        var first = measured[0];
+        var last = measured[^1];
+        return $"{Title}: {measured.Count} of {Points.Count} points measured, from {first.Value:0.#} in {first.Label} to {last.Value:0.#} in {last.Label}, lowest {measured.Min(p => p.Value):0.#}, highest {measured.Max(p => p.Value):0.#}.";
+    }
+}

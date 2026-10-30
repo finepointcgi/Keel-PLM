@@ -371,6 +371,6 @@ public sealed partial class AwarenessUnitTests
         Assert.Null(AwarenessKinds.FromAuditObjectType(null));
     }
 
-    [GeneratedRegex(@"""((?:part|document|change|workflow|baseline|mbom|bom|comment|activity|watch|access|file|vault|siem|audit|session|workspace|migration|effectivity|classification|admin|integration|tdp|notification)\.[a-z_]+(?:\.[a-z_]+)*)""")]
+    [GeneratedRegex(@"""((?:part|document|change|workflow|baseline|mbom|bom|comment|activity|watch|access|file|vault|siem|audit|session|workspace|migration|effectivity|classification|admin|integration|tdp|rfq|portal|scorecard|sourcing|supplier|notification)\.[a-z_]+(?:\.[a-z_]+)*)""")]
     private static partial Regex ActionLiteral();
 }

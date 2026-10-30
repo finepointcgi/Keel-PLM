@@ -103,7 +103,7 @@ public sealed partial class ArchitectureTests
             // Sourcing (8.2, ADR-0037): EntryStore holds the JOIN fragment of list entries, which every caller completes with the part's and the supplier's read filters
             // (SourcingArchitectureTests checks the module's own statements); RequestService reads the parts and recipients of ONE request, keyed by its id, after the caller
             // was checked against the request's markings and each part again.
-            if (file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "EntryStore.cs", StringComparison.Ordinal) || file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "RequestService.cs", StringComparison.Ordinal)) continue;
+            if (file.EndsWith("Keel.Sourcing" + Path.DirectorySeparatorChar + "EntryStore.cs", StringComparison.Ordinal) || Path.GetFileName(file).StartsWith("RequestService", StringComparison.Ordinal) && file.Contains("Keel.Sourcing", StringComparison.Ordinal)) continue; // RequestService.cs and its partial RequestService.Rfq.cs (9.6: the documents and awards of ONE request, keyed by its id)
             // Process planning (8.7, ADR-0042): the calibration job is a system read of tool due dates (no end user; it writes audit events and pointer-only notifications), and the tool-use index
             // copies pointer rows for tool ids the caller's save already validated through the read filter. ProcessArchitectureTests checks every other statement of the module.
             if (file.EndsWith("Keel.Process" + Path.DirectorySeparatorChar + "CalibrationExpiry.cs", StringComparison.Ordinal) || file.EndsWith("Keel.Process" + Path.DirectorySeparatorChar + "ProcessToolUse.cs", StringComparison.Ordinal)) continue;

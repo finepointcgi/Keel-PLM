@@ -110,12 +110,17 @@ public sealed class PortalService(NpgsqlDataSource dataSource, IAuditLog audit, 
             await viewed.ExecuteNonQueryAsync(ct);
         }
         var responses = await MyResponsesAsync(conn, tx, r.Id, me.SupplierId, ct);
-        var banner = Markings.AggregateBanner(new[] { r.Markings }.Concat(parts.Select(p => p.Markings)));
-        await audit.AppendAsync(tx, Entry(subject, "portal.request_read", AuditOutcome.Success, number, correlationId, ("supplier", me.Supplier.Number)), ct);
+        // Attached documents: each is delivered whole or not at all. A document that fails the release check for THIS supplier is not listed (no placeholder, no count).
+        var profile = await SourcingStore.LoadProfileAsync(conn, tx, me.Supplier.ClearanceProfile, ct);
+        var documents = (await RequestService.PinnedDocumentsAsync(conn, tx, r.Id, ct)).Where(d => SourcingRules.ReleaseToSupplier(me.Supplier.IsForeign, profile, d.Pin.Markings).Permitted).ToList();
+        var awards = await MyAwardsAsync(conn, tx, r.Id, me.SupplierId, ct);
+        var banner = Markings.AggregateBanner(new[] { r.Markings }.Concat(parts.Select(p => p.Markings)).Concat(documents.Select(d => d.Pin.Markings)));
+        await audit.AppendAsync(tx, Entry(subject, "portal.request_read", AuditOutcome.Success, number, correlationId, ("supplier", me.Supplier.Number), ("documents", documents.Count.ToString(CultureInfo.InvariantCulture))), ct);
         await tx.CommitAsync(ct);
         var summary = new PortalRequestSummary(r.Number, r.Kind, r.Title, r.State, r.DueOn, myState, banner);
         return Outcome<PortalRequestDetail>.Ok(new PortalRequestDetail(summary, r.Description,
-            [.. parts.Select(p => new PortalPart(p.Number, p.Name, p.Quantity, p.Unit, p.Note))], responses, r.State == RequestStates.Issued));
+            [.. parts.Select(p => new PortalPart(p.Number, p.Name, p.Quantity, p.Unit, p.Note, p.NeedBy))], responses, r.State == RequestStates.Issued && !DueDatePassed(r.DueOn),
+            [.. documents.Select(d => new PortalDocument(d.Pin.Number, d.Pin.Name, d.Pin.Revision!, d.Pin.Markings.BannerText(), [.. d.Files.Select(f => new RequestDocumentFile(f.Id, f.FileName, f.Size))]))], awards));
     }
 
     /// <summary>The request as this supplier may see it, or null: addressed to it, issued or closed, releasable under its profile; with only the parts it may see.</summary>
@@ -139,18 +144,50 @@ public sealed class PortalService(NpgsqlDataSource dataSource, IAuditLog audit, 
         return parts.Count == 0 ? null : (r, myState, parts);
     }
 
-    private static async Task<IReadOnlyList<PortalResponse>> MyResponsesAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Guid requestId, Guid supplierId, CancellationToken ct)
+    /// <summary>The scorecard the buyer published to the caller's supplier (the latest one that was not withdrawn), or none.</summary>
+    public async Task<Outcome<PortalScorecard>> GetScorecardAsync(Subject subject, string? correlationId, CancellationToken ct = default)
     {
-        var raw = new List<(Guid Id, int Seq, bool Declined, string Message, string Quote, DateTimeOffset At, string By)>();
-        await using (var cmd = new NpgsqlCommand("SELECT id, seq, declined, message, quote::text, submitted_at, submitted_by_name FROM src.response WHERE request_id = @r AND supplier_id = @s ORDER BY seq DESC", conn, tx))
+        await using var conn = await dataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var (me, reason) = await ResolveAsync(conn, tx, subject, ct);
+        if (me is null) return await RefuseAsync<PortalScorecard>(conn, tx, subject, "portal.scorecard_read", correlationId, reason!, ct);
+        var published = await ScorecardService.PublishedForAsync(conn, tx, me.SupplierId, ct);
+        await audit.AppendAsync(tx, Entry(subject, "portal.scorecard_read", published is null ? AuditOutcome.Denied : AuditOutcome.Success, null, correlationId, ("supplier", me.Supplier.Number)), ct);
+        await tx.CommitAsync(ct);
+        return published is null ? Outcome<PortalScorecard>.NotFound() : Outcome<PortalScorecard>.Ok(published);
+    }
+
+    private bool DueDatePassed(DateOnly? due) => due is { } d && d < SourcingStore.Today(clock);
+
+    /// <summary>The lines of this request awarded to the caller's supplier (never anyone else's).</summary>
+    private static async Task<IReadOnlyList<PortalAward>> MyAwardsAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Guid requestId, Guid supplierId, CancellationToken ct)
+    {
+        var raw = new List<(Guid Part, decimal Qty, decimal Price, string Currency, int? Lead, DateTimeOffset At)>();
+        await using (var cmd = new NpgsqlCommand(
+            "SELECT a.part_master_id, a.quantity, a.unit_price, a.currency, a.lead_time_days, a.awarded_at FROM src.award a WHERE a.request_id = @r AND a.supplier_id = @s AND a.withdrawn_at IS NULL", conn, tx))
         {
             cmd.Parameters.AddWithValue("r", requestId);
             cmd.Parameters.AddWithValue("s", supplierId);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
-            while (await rd.ReadAsync(ct)) raw.Add((rd.GetGuid(0), rd.GetInt32(1), rd.GetBoolean(2), rd.GetString(3), rd.GetString(4), rd.GetFieldValue<DateTimeOffset>(5), rd.GetString(6)));
+            while (await rd.ReadAsync(ct)) raw.Add((rd.GetGuid(0), rd.GetDecimal(1), rd.GetDecimal(2), rd.GetString(3), rd.IsDBNull(4) ? null : rd.GetInt32(4), rd.GetFieldValue<DateTimeOffset>(5)));
+        }
+        // The line's part number comes from the request's own lines (read once, by request id).
+        var numbers = (await RequestService.PartsOfAsync(conn, tx, requestId, ct)).ToDictionary(p => p.PartId, p => p.Number);
+        return [.. raw.Where(a => numbers.ContainsKey(a.Part)).Select(a => new PortalAward(numbers[a.Part], a.Qty, a.Price, a.Currency, a.Lead, a.At)).OrderBy(a => a.PartNumber, StringComparer.Ordinal)];
+    }
+
+    private static async Task<IReadOnlyList<PortalResponse>> MyResponsesAsync(NpgsqlConnection conn, NpgsqlTransaction tx, Guid requestId, Guid supplierId, CancellationToken ct)
+    {
+        var raw = new List<(Guid Id, int Seq, bool Declined, string Message, string Quote, DateTimeOffset At, string By, DateOnly? Valid)>();
+        await using (var cmd = new NpgsqlCommand("SELECT id, seq, declined, message, quote::text, submitted_at, submitted_by_name, valid_until FROM src.response WHERE request_id = @r AND supplier_id = @s ORDER BY seq DESC", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("r", requestId);
+            cmd.Parameters.AddWithValue("s", supplierId);
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            while (await rd.ReadAsync(ct)) raw.Add((rd.GetGuid(0), rd.GetInt32(1), rd.GetBoolean(2), rd.GetString(3), rd.GetString(4), rd.GetFieldValue<DateTimeOffset>(5), rd.GetString(6), rd.IsDBNull(7) ? null : rd.GetFieldValue<DateOnly>(7)));
         }
         var list = new List<PortalResponse>();
-        foreach (var x in raw) list.Add(new PortalResponse(x.Id, x.Seq, x.Declined, x.Message, RequestService.ParseQuote(x.Quote), x.At, x.By, await RequestService.FilesAsync(conn, tx, x.Id, ct)));
+        foreach (var x in raw) list.Add(new PortalResponse(x.Id, x.Seq, x.Declined, x.Message, RequestService.ParseQuote(x.Quote), x.At, x.By, await RequestService.FilesAsync(conn, tx, x.Id, ct), x.Valid));
         return list;
     }
 
@@ -182,8 +219,11 @@ public sealed class PortalService(NpgsqlDataSource dataSource, IAuditLog audit, 
             await tx0.CommitAsync(ct);
         }
         if (request.State != RequestStates.Issued) return Outcome<PortalResponse>.Conflict("This request is closed; it takes no more responses.");
-        var clean = input with { Message = input.Message?.Trim() ?? "", Quote = [.. input.Quote.Select(q => q with { Currency = SourcingRules.Clean(q.Currency)?.ToUpperInvariant() })] };
+        if (DueDatePassed(request.DueOn)) return Outcome<PortalResponse>.Conflict("The due date has passed; this request takes no more responses. Ask the buyer if you still want to answer.");
+        var clean = input with { Message = input.Message?.Trim() ?? "", Quote = [.. input.Quote.Select(q => q with { Currency = SourcingRules.Clean(q.Currency)?.ToUpperInvariant(), Note = SourcingRules.Clean(q.Note), Exception = SourcingRules.Clean(q.Exception), Tiers = q.Tiers is { Count: > 0 } ? q.Tiers : null })] };
         var errors = SourcingRules.ValidateResponse(clean, [.. parts.Select(p => p.Number)]).ToList();
+        if (input.ValidUntil is { } validUntil && (validUntil < SourcingStore.Today(clock) || validUntil > SourcingStore.Today(clock).AddYears(10))) errors.Add("The quote must be valid until a date that has not passed (and within ten years).");
+        if (input.Declined && input.ValidUntil is not null) errors.Add("A declined response has no validity date.");
         if (files.Count > MaxFiles) errors.Add($"At most {MaxFiles} files per response.");
         foreach (var f in files)
             if (f.Kind is not ("response" or "certificate")) errors.Add("A file is a response file or a certificate.");
@@ -237,7 +277,7 @@ public sealed class PortalService(NpgsqlDataSource dataSource, IAuditLog audit, 
         var id = Guid.CreateVersion7();
         var now = clock.GetUtcNow();
         await using (var ins = new NpgsqlCommand(
-            "INSERT INTO src.response (id, request_id, supplier_id, seq, declined, message, quote, submitted_at, submitted_by_sub, submitted_by_name) VALUES (@id, @r, @s, @seq, @d, @m, @q::jsonb, @now, @sub, @name)", conn, tx))
+            "INSERT INTO src.response (id, request_id, supplier_id, seq, declined, message, quote, submitted_at, submitted_by_sub, submitted_by_name, valid_until) VALUES (@id, @r, @s, @seq, @d, @m, @q::jsonb, @now, @sub, @name, @valid)", conn, tx))
         {
             ins.Parameters.AddWithValue("id", id);
             ins.Parameters.AddWithValue("r", request.Id);
@@ -249,6 +289,7 @@ public sealed class PortalService(NpgsqlDataSource dataSource, IAuditLog audit, 
             ins.Parameters.AddWithValue("now", now);
             ins.Parameters.AddWithValue("sub", subject.Id);
             ins.Parameters.AddWithValue("name", subject.DisplayName);
+            ins.Parameters.AddWithValue("valid", (object?)clean.ValidUntil ?? DBNull.Value);
             await ins.ExecuteNonQueryAsync(ct);
         }
         foreach (var (file, info, name) in stored)
@@ -273,10 +314,44 @@ public sealed class PortalService(NpgsqlDataSource dataSource, IAuditLog audit, 
         // Counts and numbers only: the message, quote and file names stay out of the audit log.
         await audit.AppendAsync(tx, Entry(subject, "portal.respond", AuditOutcome.Success, number, correlationId,
             ("supplier", me.Supplier.Number), ("seq", seq.ToString(CultureInfo.InvariantCulture)), ("declined", clean.Declined ? "true" : "false"),
-            ("quoteLines", clean.Quote.Count.ToString(CultureInfo.InvariantCulture)), ("files", stored.Count.ToString(CultureInfo.InvariantCulture))), ct);
+            ("quoteLines", clean.Quote.Count.ToString(CultureInfo.InvariantCulture)), ("tiers", clean.Quote.Sum(q => q.Tiers?.Count ?? 0).ToString(CultureInfo.InvariantCulture)),
+            ("exceptions", clean.Quote.Count(q => !string.IsNullOrWhiteSpace(q.Exception)).ToString(CultureInfo.InvariantCulture)), ("files", stored.Count.ToString(CultureInfo.InvariantCulture))), ct);
         var view = (await MyResponsesAsync(conn, tx, request.Id, me.SupplierId, ct)).First(x => x.Id == id);
         await tx.CommitAsync(ct);
         return Outcome<PortalResponse>.Ok(view);
+    }
+
+    /// <summary>
+    /// A file of a document attached to a request addressed to the caller's supplier. Delivered whole as stored (the vault verifies it against its hash), and only when the release check
+    /// for this supplier passes for the document's own markings: otherwise the answer is the same "not found" as for a file that does not exist (refusal, never a redacted copy).
+    /// </summary>
+    public async Task<Outcome<(Stream Content, string FileName, long Size)>> OpenDocumentFileAsync(Subject subject, string requestNumber, Guid fileId, string? correlationId, CancellationToken ct = default)
+    {
+        if (reader is null) return Outcome<(Stream, string, long)>.Unavailable("File storage is not available.");
+        await using var conn = await dataSource.OpenConnectionAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        var (me, reason) = await ResolveAsync(conn, tx, subject, ct);
+        if (me is null) return await RefuseAsync<(Stream, string, long)>(conn, tx, subject, "portal.document_download", correlationId, reason!, ct);
+        string? sha = null, name = null; long size = 0;
+        var loaded = await LoadVisibleAsync(conn, tx, me, requestNumber, ct);
+        if (loaded is not null)
+        {
+            var profile = await SourcingStore.LoadProfileAsync(conn, tx, me.Supplier.ClearanceProfile, ct);
+            foreach (var d in await RequestService.PinnedDocumentsAsync(conn, tx, loaded.Value.Request.Id, ct))
+            {
+                if (!SourcingRules.ReleaseToSupplier(me.Supplier.IsForeign, profile, d.Pin.Markings).Permitted) continue;
+                foreach (var f in d.Files.Where(f => f.Id == fileId)) (sha, name, size) = (f.Sha256, f.FileName, f.Size);
+            }
+        }
+        if (sha is null)
+        {
+            await audit.AppendAsync(tx, Entry(subject, "portal.document_download", AuditOutcome.Denied, requestNumber, correlationId, ("reasons", "portal.not_found"), ("supplier", me.Supplier.Number)), ct);
+            await tx.CommitAsync(ct);
+            return Outcome<(Stream, string, long)>.NotFound();
+        }
+        await audit.AppendAsync(tx, Entry(subject, "portal.document_download", AuditOutcome.Success, requestNumber, correlationId, ("supplier", me.Supplier.Number), ("file", fileId.ToString("D"))), ct);
+        await tx.CommitAsync(ct);
+        return Outcome<(Stream, string, long)>.Ok((await reader.OpenReadAsync(sha, size, ct), name!, size));
     }
 
     /// <summary>A supplier's own uploaded file (never another supplier's).</summary>

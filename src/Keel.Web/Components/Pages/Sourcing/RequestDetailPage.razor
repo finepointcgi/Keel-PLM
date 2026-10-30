@@ -21,6 +21,8 @@
                     {
                         <input aria-label="Reason for cancelling" placeholder="Reason for cancelling" class="grow" @bind="cancelReason" />
                         <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel request</button>
+                        <label class="inline">New due date <input type="date" @bind="newDue" aria-label="New due date" /></label>
+                        <button type="button" class="secondary" disabled="@(busy || newDue is null)" @onclick="ChangeDue">Change due date</button>
                     }
                 </div>
             }
@@ -30,20 +32,45 @@
                 <p class="muted">Respond by @(d.Summary.DueOn is null ? "no date set" : SourcingUi.Date(d.Summary.DueOn)) · created @UiText.Utc(d.Summary.CreatedAt) by @d.Summary.CreatedBy</p>
             </section>
             <section class="panel" aria-labelledby="parts-heading">
-                <h3 id="parts-heading">Parts</h3>
+                <h3 id="parts-heading">Lines</h3>
                 <div class="table-wrap">
                     <table class="data">
                         <caption class="visually-hidden">Parts of the request</caption>
-                        <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Quantity</th><th scope="col">Note</th><th scope="col">Markings</th></tr></thead>
+                        <thead><tr><th scope="col">Part</th><th scope="col">Name</th><th scope="col">Quantity</th><th scope="col">Needed by</th><th scope="col">Note</th><th scope="col">Markings</th></tr></thead>
                         <tbody>
                             @foreach (var p in d.Parts)
                             {
-                                <tr><th scope="row"><a href="@SourcingUi.PartHref(p.PartNumber)">@p.PartNumber</a></th><td>@p.PartName</td><td>@p.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) @p.Unit</td><td>@p.Note</td><td><MarkingChip Text="@p.Banner" /></td></tr>
+                                <tr><th scope="row"><a href="@SourcingUi.PartHref(p.PartNumber)">@p.PartNumber</a></th><td>@p.PartName</td><td>@p.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) @p.Unit</td><td>@SourcingUi.Date(p.NeedBy)</td><td>@p.Note</td><td><MarkingChip Text="@p.Banner" /></td></tr>
                             }
                         </tbody>
                     </table>
                 </div>
             </section>
+            @if (d.DocumentList.Count > 0)
+            {
+                <section class="panel" aria-labelledby="documents-heading">
+                    <h3 id="documents-heading">Documents sent with the request</h3>
+                    <p class="muted small">Each is the released version pinned when the request was created. A supplier gets a document whole or not at all: when its clearance profile does not allow the document's markings it is not sent to that supplier.</p>
+                    <div class="table-wrap">
+                        <table class="data">
+                            <caption class="visually-hidden">Documents attached to the request</caption>
+                            <thead><tr><th scope="col">Document</th><th scope="col">Version</th><th scope="col">Files</th><th scope="col">Not sent to</th><th scope="col">Markings</th></tr></thead>
+                            <tbody>
+                                @foreach (var doc in d.DocumentList)
+                                {
+                                    <tr>
+                                        <th scope="row"><a href="documents/@Uri.EscapeDataString(doc.DocumentNumber)">@doc.DocumentNumber</a> <span class="muted">@doc.DocumentName</span></th>
+                                        <td>@doc.Revision.@doc.Iteration</td>
+                                        <td>@string.Join(", ", doc.Files.Select(f => f.FileName))</td>
+                                        <td>@(doc.Withheld.Count == 0 ? "Nobody: every supplier receives it" : string.Join(", ", doc.Withheld))</td>
+                                        <td><MarkingChip Text="@doc.Banner" /></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            }
             <section class="panel" aria-labelledby="recipients-heading">
                 <h3 id="recipients-heading">Suppliers</h3>
                 <div class="table-wrap">
@@ -64,6 +91,135 @@
                     </table>
                 </div>
             </section>
+            @if (d.Summary.Kind == RequestKinds.Rfq && comparison is not null)
+            {
+                var c = comparison;
+                <section class="panel stack" aria-labelledby="compare-heading">
+                    <h3 id="compare-heading">Compare quotes</h3>
+                    @if (c.Suppliers.All(x => x.ResponseSeq is null)) { <p class="muted">No supplier has responded yet. Quotes appear here side by side.</p> }
+                    else
+                    {
+                        <p class="muted small">Each supplier's latest response, at the quantity of each line (price tiers applied). Prices are compared only within one currency; no exchange rate is applied. "Meets need-by" assumes an order placed today.</p>
+                        @if (c.CanAward)
+                        {
+                            <label class="wide">Note for the award (optional) <input class="grow" maxlength="500" @bind="awardNote" aria-label="Note for the award" /></label>
+                        }
+                        <div class="table-wrap">
+                            <table class="data rfq-compare">
+                                <caption class="visually-hidden">Quotes of the suppliers for each line of the request</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Line</th>
+                                        @foreach (var sup in c.Suppliers)
+                                        {
+                                            <th scope="col">
+                                                @sup.Name <span class="muted">(@sup.Number)</span><br />
+                                                <span class="small muted">@SupplierStatus(sup)</span>
+                                                @if (c.CanAward && sup.ResponseSeq is not null && !sup.Declined)
+                                                {
+                                                    <br /><button type="button" class="secondary" disabled="@busy" aria-label="@($"Award all lines to {sup.Name}")" @onclick="() => AwardAll(sup.Number)">Award all lines</button>
+                                                }
+                                            </th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var line in c.Lines)
+                                    {
+                                        <tr>
+                                            <th scope="row">
+                                                <a href="@SourcingUi.PartHref(line.PartNumber)">@line.PartNumber</a> <span class="muted">@line.PartName</span><br />
+                                                <span class="small muted">@line.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) @line.Unit@(line.NeedBy is { } nb ? $", needed by {SourcingUi.Date(nb)}" : "")</span>
+                                            </th>
+                                            @for (var i = 0; i < c.Suppliers.Count; i++)
+                                            {
+                                                var cell = line.Cells[i];
+                                                var sup = c.Suppliers[i];
+                                                <td>
+                                                    @if (!cell.Quoted) { <span class="muted">@(sup.Declined ? "Declined" : sup.ResponseSeq is null ? "No response" : "Not quoted")</span> }
+                                                    else
+                                                    {
+                                                        <div class="rfq-cell @(cell.Awarded ? "is-awarded" : "")">
+                                                            @if (cell.UnitPrice is { } price)
+                                                            {
+                                                                <span class="rfq-price">@SourcingRules.Money(price, cell.Currency) each</span>
+                                                                <span class="small">@SourcingRules.Money(cell.ExtendedPrice ?? 0, cell.Currency) for @line.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)</span>
+                                                            }
+                                                            else { <span class="rfq-price">@(cell.BelowSmallestTier ? "Below the smallest tier" : "No price")</span> }
+                                                            @if (cell.Tiers.Count > 0) { <span class="small muted">Tiers: @string.Join("; ", cell.Tiers.Select(t => $"{t.Quantity:0.####}+ at {t.UnitPrice:0.####}"))</span> }
+                                                            @if (cell.LeadTimeDays is { } lead) { <span class="small">Lead time @lead days@(cell.Moq is { } moq ? $", minimum order {moq:0.####}" : "")</span> }
+                                                            else if (cell.Moq is { } moq2) { <span class="small">Minimum order @moq2.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)</span> }
+                                                            @if (cell.Lowest) { <span class="rfq-flag badge state-approved">Lowest price</span> }
+                                                            @if (cell.Fastest) { <span class="rfq-flag badge state-approved">Shortest lead time</span> }
+                                                            @if (cell.MeetsNeedBy is true) { <span class="rfq-flag small">Meets need-by</span> }
+                                                            @if (cell.MeetsNeedBy is false) { <span class="rfq-flag badge state-underreview">Misses need-by</span> }
+                                                            @if (!string.IsNullOrWhiteSpace(cell.Exception)) { <span class="rfq-flag small"><strong>Exception:</strong> @cell.Exception</span> }
+                                                            @if (!string.IsNullOrWhiteSpace(cell.Note)) { <span class="rfq-flag small muted">@cell.Note</span> }
+                                                            @if (cell.Awarded) { <span class="rfq-flag badge state-approved">Awarded</span> }
+                                                            @if (c.CanAward && !cell.Awarded && line.AwardedSupplier is null && cell.UnitPrice is not null)
+                                                            {
+                                                                <button type="button" class="secondary" disabled="@busy" aria-label="@($"Award {line.PartNumber} to {sup.Name}")" @onclick="() => AwardLine(sup.Number, line.PartNumber)">Award line</button>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                                @if (c.Totals.Count > 0)
+                                {
+                                    <tfoot>
+                                        <tr>
+                                            <th scope="row">Total of the priced lines</th>
+                                            @foreach (var sup in c.Suppliers)
+                                            {
+                                                <td>
+                                                    @foreach (var t in c.Totals.Where(t => t.SupplierNumber == sup.Number))
+                                                    {
+                                                        <div><strong>@SourcingRules.Money(t.Total, t.Currency)</strong> <span class="small muted">@(t.Complete ? "all lines priced" : $"{t.LinesPriced} of {t.LinesTotal} lines priced")</span></div>
+                                                    }
+                                                </td>
+                                            }
+                                        </tr>
+                                    </tfoot>
+                                }
+                            </table>
+                        </div>
+                        @if (d.AwardList.Count > 0)
+                        {
+                            <h4>Awards</h4>
+                            <div class="table-wrap">
+                                <table class="data">
+                                    <caption class="visually-hidden">Lines awarded</caption>
+                                    <thead><tr><th scope="col">Line</th><th scope="col">Supplier</th><th scope="col">Price</th><th scope="col">Quantity</th><th scope="col">Lead time</th><th scope="col">Sourcing link</th>@if (c.CanAward) { <th scope="col">Withdraw</th> }</tr></thead>
+                                    <tbody>
+                                        @foreach (var a in d.AwardList)
+                                        {
+                                            <tr>
+                                                <th scope="row"><a href="@SourcingUi.PartHref(a.PartNumber)">@a.PartNumber</a></th>
+                                                <td><a href="@SourcingUi.SupplierHref(a.SupplierNumber)">@a.SupplierName</a> <span class="muted small">response @a.ResponseSeq</span></td>
+                                                <td>@SourcingRules.Money(a.UnitPrice, a.Currency)</td>
+                                                <td>@a.Quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)</td>
+                                                <td>@(a.LeadTimeDays is { } l ? $"{l} days" : "")</td>
+                                                <td><a href="@SourcingUi.EntryHref(a.EntryNumber)">@a.EntryNumber</a> <span class="muted small">@(a.EntryCreated ? "added as a draft vendor list entry" : "existing vendor list entry")</span></td>
+                                                @if (c.CanAward)
+                                                {
+                                                    <td>
+                                                        <input aria-label="@($"Reason for withdrawing the award of {a.PartNumber}")" placeholder="Reason" @bind="withdrawReason[a.PartNumber]" @bind:event="oninput" />
+                                                        <button type="button" class="secondary" disabled="@busy" aria-label="@($"Withdraw the award of {a.PartNumber}")" @onclick="() => WithdrawAward(a.PartNumber)">Withdraw</button>
+                                                    </td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="muted small">An award adds the supplier to the part's approved vendor list as a draft entry, which still goes through the usual approval on the part's Sourcing tab.</p>
+                        }
+                    }
+                </section>
+            }
             <section class="panel" aria-labelledby="responses-heading">
                 <h3 id="responses-heading">Responses</h3>
                 @if (d.Responses.Count == 0) { <p class="muted">No supplier has responded yet.</p> }
@@ -71,15 +227,15 @@
                 {
                     <article class="stack" aria-label="Response @r.Seq of @r.SupplierName">
                         <h4>@r.SupplierName, response @r.Seq @(r.Declined ? "(declined)" : "")</h4>
-                        <p class="muted small">@UiText.Utc(r.SubmittedAt) by @r.SubmittedBy</p>
+                        <p class="muted small">@UiText.Utc(r.SubmittedAt) by @r.SubmittedBy@(r.ValidUntil is { } vu ? $" · quote valid until {SourcingUi.Date(vu)}" : "")</p>
                         @if (r.Message.Length > 0) { <p>@r.Message</p> }
                         @if (r.Quote.Count > 0)
                         {
                             <div class="table-wrap">
                                 <table class="data">
                                     <caption class="visually-hidden">Quote of @r.SupplierName</caption>
-                                    <thead><tr><th scope="col">Part</th><th scope="col">Unit price</th><th scope="col">Lead time (days)</th><th scope="col">Minimum order</th></tr></thead>
-                                    <tbody>@foreach (var q in r.Quote) { <tr><th scope="row">@q.Part</th><td>@(q.UnitPrice is null ? "" : $"{q.UnitPrice:0.####} {q.Currency}")</td><td>@q.LeadTimeDays</td><td>@q.Moq</td></tr> }</tbody>
+                                    <thead><tr><th scope="col">Part</th><th scope="col">Unit price</th><th scope="col">Price tiers</th><th scope="col">Lead time (days)</th><th scope="col">Minimum order</th><th scope="col">Note or exception</th></tr></thead>
+                                    <tbody>@foreach (var q in r.Quote) { <tr><th scope="row">@q.Part</th><td>@(q.UnitPrice is null ? "" : $"{q.UnitPrice:0.####} {q.Currency}")</td><td>@(q.Tiers is { Count: > 0 } ? string.Join("; ", q.Tiers.Select(t => $"{t.Quantity:0.####}+ at {t.UnitPrice:0.####}")) : "")</td><td>@q.LeadTimeDays</td><td>@q.Moq</td><td>@(string.IsNullOrWhiteSpace(q.Exception) ? "" : "Exception: " + q.Exception + ". ")@q.Note</td></tr> }</tbody>
                                 </table>
                             </div>
                         }
@@ -106,9 +262,12 @@
 @code {
     [Parameter] public required string Number { get; set; }
     private RequestDetail? detail;
+    private RfqComparison? comparison;
     private bool notFound, busy;
     private string? error;
-    private string cancelReason = "";
+    private string cancelReason = "", awardNote = "";
+    private DateTime? newDue;
+    private readonly Dictionary<string, string> withdrawReason = new(StringComparer.Ordinal);
 
     private string Title => detail is null ? "Request" : $"{detail.Summary.Number} · {detail.Summary.Title}";
     private IReadOnlyList<Crumb> Crumbs => [new("Supplier requests", "requests"), new(detail?.Summary.Number ?? Number)];
@@ -121,9 +280,12 @@
 
     private async Task Load()
     {
-        var outcome = await Requests.GetAsync(await Users.GetAsync(), Number, CurrentUser.NewCorrelationId());
+        var subject = await Users.GetAsync();
+        var outcome = await Requests.GetAsync(subject, Number, CurrentUser.NewCorrelationId());
         notFound = !outcome.IsOk;
         detail = outcome.Value;
+        comparison = detail is { Summary.Kind: RequestKinds.Rfq } ? (await Requests.CompareAsync(subject, Number, CurrentUser.NewCorrelationId())).Value : null;
+        foreach (var a in detail?.AwardList ?? []) withdrawReason.TryAdd(a.PartNumber, "");
     }
 
     private async Task Run(Func<Subject, Task<Outcome<RequestDetail>>> action)
@@ -132,10 +294,19 @@
         var outcome = await action(await Users.GetAsync());
         busy = false;
         if (!outcome.IsOk) { error = UiText.Message(outcome); return; }
-        detail = outcome.Value;
+        await Load();
     }
 
     private Task Issue() => Run(s => Requests.IssueAsync(s, Number, CurrentUser.NewCorrelationId()));
     private Task Close() => Run(s => Requests.CloseAsync(s, Number, CurrentUser.NewCorrelationId()));
     private Task Cancel() => Run(s => Requests.CancelAsync(s, Number, cancelReason, CurrentUser.NewCorrelationId()));
+    private Task ChangeDue() => Run(s => Requests.ChangeDueDateAsync(s, Number, newDue is null ? null : DateOnly.FromDateTime(newDue.Value), CurrentUser.NewCorrelationId()));
+    private Task AwardLine(string supplier, string part) => Run(s => Requests.AwardAsync(s, Number, new AwardCommand(supplier, [part], awardNote), CurrentUser.NewCorrelationId()));
+    private Task AwardAll(string supplier) => Run(s => Requests.AwardAsync(s, Number, new AwardCommand(supplier, null, awardNote), CurrentUser.NewCorrelationId()));
+    private Task WithdrawAward(string part) => Run(s => Requests.WithdrawAwardAsync(s, Number, part, withdrawReason.GetValueOrDefault(part, ""), CurrentUser.NewCorrelationId()));
+
+    private static string SupplierStatus(ComparisonSupplier s) =>
+        s.Declined ? "Declined" : s.ResponseSeq is null ? "No response yet"
+        : s.QuoteExpired ? $"Response {s.ResponseSeq}, quote expired {SourcingUi.Date(s.ValidUntil)}"
+        : $"Response {s.ResponseSeq}{(s.ValidUntil is { } v ? $", valid until {SourcingUi.Date(v)}" : "")}";
 }

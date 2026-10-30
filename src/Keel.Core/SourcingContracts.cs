@@ -24,3 +24,20 @@ public interface IQualityReferenceResolver
 
     Task<QualityReference?> ResolveAsync(Subject subject, string kind, string id, CancellationToken ct = default);
 }
+
+/// <summary>
+/// One nonconformance or corrective action as a supplier scorecard needs to count it (9.6): when it was opened, when it was closed, its severity or priority and its markings.
+/// <see cref="Severity"/> is Minor, Major or Critical for a nonconformance and null for a corrective action. <see cref="Cancelled"/> records are returned (so the caller can tell a
+/// cancelled record from one it may not read) and are never counted. Never a title or text.
+/// </summary>
+public sealed record SupplierQualityFact(string Kind, string Id, DateTimeOffset OpenedAt, DateTimeOffset? ClosedAt, string? Severity, Markings Markings, bool Cancelled = false);
+
+/// <summary>
+/// Implemented by the Quality module so the supplier scorecard can count the records a supplier is linked to without Sourcing referencing Quality. Returns facts ONLY for records
+/// the subject may read (the same read policy as the Quality module's own lists), so a record the caller cannot read is not counted and leaves no sign. Kinds it does not
+/// know are ignored.
+/// </summary>
+public interface ISupplierQualityFacts
+{
+    Task<IReadOnlyList<SupplierQualityFact>> ReadAsync(Subject subject, IReadOnlyList<(string Kind, string Id)> references, CancellationToken ct = default);
+}
