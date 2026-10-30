@@ -148,7 +148,11 @@ public sealed partial class WorkflowService
             task.Status == WorkTaskStatus.Open && task.DueAt is { } due && due < now, task.AssigneeSub is null);
         return Outcome<TaskDetail>.Ok(new TaskDetail(summary, task.Status.ToString(), task.Decision, content?.Description,
             content is null ? null : JsonNode.Parse(content.AttributesJson)!.AsObject(), view, codes, check.IsAllowed, check.IsAllowed ? [] : check.Reasons,
-            check.IsAllowed && !StepUp.IsFresh(subject, now, options.StepUpMaxAge), options.StepUpMaxAgeSeconds, obj.Markings.BannerText()));
+            check.IsAllowed && !StepUp.IsFresh(subject, now, options.StepUpMaxAge), options.StepUpMaxAgeSeconds, obj.Markings.BannerText(),
+            content is null ? null : new ReviewSummary(
+                Convert.ToHexStringLower(SignatureHasher.ContentHash(new SignedContent(content.ObjectType, content.ObjectKey, content.Revision, content.IterationId,
+                    content.IterationLabel, content.Description, content.AttributesJson, obj.Markings))),
+                inst.Comment, view.TemplateName, view.TemplateVersion)));
     }
 
     // ---------------------------------------------------------------- instance pages

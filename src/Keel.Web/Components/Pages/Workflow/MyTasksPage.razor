@@ -5,7 +5,7 @@
 <PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="My tasks" Crumbs="@Crumbs">
     @if (tasks is not null)
     {
-        <p class="muted">@tasks.Items.Count open task@(tasks.Items.Count == 1 ? "" : "s")</p>
+        <p class="muted">@tasks.Items.Count open task@(tasks.Items.Count == 1 ? "" : "s") · <a href="approve">Phone view</a></p>
         <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="My open tasks" OnServerSort="OnSort" ServerSort="sort">
             <Empty><EmptyState Title="You have no open tasks" IconName="check">Reviews and approvals that are waiting for you will be listed here.</EmptyState></Empty>
         </DataTable>

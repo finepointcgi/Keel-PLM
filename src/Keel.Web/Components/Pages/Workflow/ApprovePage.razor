@@ -1,0 +1,146 @@
+@page "/approve/{Id:guid}"
+@inject CurrentUser Users
+@inject WorkflowService Flow
+@inject SignDraftStore Drafts
+@inject NavigationManager Nav
+
+@* Phone approval of one task (ADR-0056): a review summary that states exactly what the signature will bind to (item, revision, version, markings, the content hash the engine
+   records, the submitter's note), then comment and decision buttons at the bottom of the page. Signing is the same call as on the desktop task page, so the step-up, separation
+   of duties, markings checks and audit are unchanged. *@
+<PageFrame Banner="@(detail?.Banner ?? UiText.Unclassified)" Title="Approve" Crumbs="@Crumbs">
+    @if (notFound)
+    {
+        <p class="error" role="alert">This task was not found, or you are not authorized to see it.</p>
+        <p><a class="button secondary" href="approve">Back to approvals</a></p>
+    }
+    else if (detail is not null)
+    {
+        var d = detail;
+        @if (d.Summary.Redacted || d.Summary.Target is null)
+        {
+            <p role="status">You are no longer eligible to see the item this task is about, so its details are hidden and the task cannot be signed. Ask the person who started the review, or an administrator, to reassign it.</p>
+            <p><a class="button secondary" href="approve">Back to approvals</a></p>
+        }
+        else
+        {
+            var o = d.Summary.Target;
+            <article class="stack phone-review">
+                @if (notice is not null) { <p class="notice" role="status">@notice</p> }
+                @if (message is not null)
+                {
+                    <p class="permit" role="status" data-testid="approve-message">@message</p>
+                    <p><a class="button approve-open" href="approve">Back to approvals</a></p>
+                }
+
+                <section class="panel review-summary" aria-labelledby="rs-heading" data-testid="review-summary">
+                    <h2 id="rs-heading">@(d.Summary.Kind == "approval" ? "You are approving" : "You are reviewing")</h2>
+                    <p class="rs-name"><strong>@o.Key</strong> · @o.Name</p>
+                    <dl class="facts">
+                        <dt>Kind of item</dt><dd>@char.ToUpperInvariant(WorkflowText.Noun(o.ObjectType)[0])@WorkflowText.Noun(o.ObjectType)[1..]</dd>
+                        <dt>Revision</dt><dd data-testid="rs-revision">@o.Revision</dd>
+                        <dt>Version</dt><dd>@o.IterationLabel</dd>
+                        <dt>State</dt><dd>@o.StateLabel</dd>
+                        <dt>Markings</dt><dd><MarkingChip Text="@o.Banner" /></dd>
+                        <dt>Started by</dt><dd>@d.Summary.StartedByName</dd>
+                        <dt>Due</dt><dd class="@(d.Summary.Overdue ? "error" : null)">@WorkflowText.Due(d.Summary.DueAt, d.Summary.Overdue)</dd>
+                    </dl>
+                </section>
+
+                <section class="panel" aria-labelledby="chg-heading">
+                    <h2 id="chg-heading">What changed</h2>
+                    <p data-testid="rs-note">@(string.IsNullOrWhiteSpace(d.Review?.SubmitterNote) ? "The person who submitted it gave no note." : d.Review!.SubmitterNote)</p>
+                    <p class="muted small">Description of this version: @(string.IsNullOrEmpty(d.Description) ? "none" : d.Description)</p>
+                    @if (d.Attributes is { Count: > 0 })
+                    {
+                        <details class="more-details">
+                            <summary>Attributes (@d.Attributes.Count)</summary>
+                            <dl class="facts">
+                                @foreach (var (k, v) in d.Attributes) { <dt>@k</dt><dd>@v?.ToString()</dd> }
+                            </dl>
+                        </details>
+                    }
+                    @if (d.Review is { } review)
+                    {
+                        <p class="muted small">Your signature records this content hash (SHA-256) of the version above and of its markings:</p>
+                        <p><code class="hash" data-testid="rs-hash">@review.ContentHash</code></p>
+                        <p class="muted small">Workflow: @review.TemplateName, version @review.TemplateVersion.</p>
+                    }
+                </section>
+
+                @if (d.Instance is { } inst)
+                {
+                    <details class="more-details">
+                        <summary>Progress of this review</summary>
+                        <WorkflowMapPanel InstanceId="@inst.Id" Version="@($"{inst.Status}:{inst.Tasks.Count(t => t.Status != "Open")}")" />
+                    </details>
+                }
+                <p class="small"><a href="tasks/@d.Summary.Id">Open the full task page</a></p>
+
+                @if (d.Status == "Open")
+                {
+                    <SignPanel Phone="true" ReasonCodes="d.ReasonCodes" CanSign="d.CanSign" BlockedReasons="d.CannotSignReasons" StepUpRequired="d.StepUpRequired"
+                               StepUpMaxAgeSeconds="d.StepUpMaxAgeSeconds" Busy="busy" Error="@error" @bind-Comment="comment" OnSign="Sign" />
+                }
+                else
+                {
+                    <p class="muted">This task is @d.Status.ToLowerInvariant()@(d.Decision is null ? "" : $" ({d.Decision})").</p>
+                }
+            </article>
+        }
+    }
+</PageFrame>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Approvals", "approve"), new("Decide")];
+
+    private TaskDetail? detail;
+    private bool notFound, busy;
+    private string? error, message;
+    private string comment = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = await Users.GetAsync();
+        var outcome = await Flow.GetTaskAsync(user, Id, CurrentUser.NewCorrelationId());
+        notFound = !outcome.IsOk;
+        detail = outcome.Value;
+        // Back from step-up: restore what the signer had typed (kept in server memory, never in the URL).
+        if (outcome.IsOk && Drafts.Take(Id, user.Id) is { } draft)
+        {
+            comment = draft.Comment ?? "";
+            message = null;
+            error = null;
+            notice = "You signed in again. Your comment was kept; choose the decision to sign.";
+        }
+    }
+
+    private string? notice;
+
+    private async Task Sign(SignChoice choice)
+    {
+        busy = true;
+        error = message = null;
+        notice = null;
+        var user = await Users.GetAsync();
+        var outcome = await Flow.SignAsync(user, Id, choice.Code, choice.Comment, CurrentUser.NewCorrelationId());
+        busy = false;
+        switch (outcome.Kind)
+        {
+            case OutcomeKind.Ok:
+                comment = "";
+                message = WorkflowText.SignedMessage(outcome.Value!);
+                var refreshed = await Flow.GetTaskAsync(user, Id, CurrentUser.NewCorrelationId());
+                detail = refreshed.Value ?? detail;
+                break;
+            case OutcomeKind.StepUpRequired:
+                Drafts.Put(Id, user.Id, new SignDraft(choice.Code, choice.Comment));
+                Nav.NavigateTo($"account/step-up?returnUrl={Uri.EscapeDataString("/approve/" + Id.ToString("D"))}", forceLoad: true);
+                break;
+            default:
+                error = WorkflowText.Message(outcome);
+                break;
+        }
+    }
+}

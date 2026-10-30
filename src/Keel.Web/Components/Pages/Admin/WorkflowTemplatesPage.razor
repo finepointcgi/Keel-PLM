@@ -2,11 +2,14 @@
 @attribute [Authorize(Policy = Policies.Admin)]
 @inject CurrentUser Users
 @inject WorkflowAdminService Workflows
+@inject WorkflowService Engine
+@using Keel.Web.Components.Visuals
+@using Keel.Workflow
 
 <PageFrame Banner="@UiText.Unclassified" Title="Administration: workflow templates">
     <AdminNav />
     <div class="stack">
-        <p>Review workflows are versioned data. Publishing creates a new version for new reviews; running reviews keep the version they started with. The engine's own rules validate every definition and the messages appear here before anything is stored.</p>
+        <p>A workflow is an ordered list of steps, then the release. Build it here, look at it as a map, save it as a draft while you work, and publish it when it is ready. Publishing creates a new version for new reviews; reviews that are already running keep the version they started with. The engine's own rules check every workflow and say what to fix before anything is published.</p>
         @if (error is not null) { <p class="error" role="alert">@error</p> }
         @if (message is not null) { <p role="status" class="permit">@message</p> }
 
@@ -14,22 +17,49 @@
             <h2>Templates</h2>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Workflow template versions</caption>
-                <thead><tr><th scope="col">Template</th><th scope="col">Object type</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Published</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <thead><tr><th scope="col">Workflow</th><th scope="col">Used for</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Running reviews</th><th scope="col">Published</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
                     @foreach (var t in versions.OrderBy(t => t.Id, StringComparer.Ordinal).ThenByDescending(t => t.Version))
                     {
                         <tr class="@(t.IsActive ? "" : "retired")">
-                            <td>@t.Name <span class="muted">(@t.Id)</span></td><td>@t.ObjectType</td><td>@t.Version</td><td>@(t.IsActive ? "Active" : "Superseded")</td><td>@AdminUi.Utc(t.CreatedAt) by @t.CreatedBy</td>
+                            <td>@t.Name <span class="muted">(@t.Id)</span></td><td>@t.ObjectType</td><td>@t.Version</td><td>@(t.IsActive ? "Active" : "Superseded")</td><td>@t.RunningReviews</td><td>@AdminUi.Utc(t.CreatedAt) by @t.CreatedBy</td>
                             <td class="actions-cell">
-                                <button type="button" class="secondary" @onclick="() => Open(t)">@(t.IsActive ? "Edit" : "View")</button>
-                                @if (versions.Any(o => o.Id == t.Id && o.Version == t.Version - 1)) { <button type="button" class="secondary" @onclick="() => ShowDiff(t)">Changes since v@(t.Version - 1)</button> }
+                                <button type="button" class="secondary" aria-label="@((t.IsActive ? "Edit " : "View ") + t.Name + " version " + t.Version)" @onclick="() => Open(t)">@(t.IsActive ? "Edit" : "View")</button>
+                                <button type="button" class="secondary" aria-label="Copy @t.Name to a new workflow" @onclick="() => NewFromCopy(t)">Copy</button>
+                                @if (versions.Any(o => o.Id == t.Id && o.Version == t.Version - 1)) { <button type="button" class="secondary" aria-label="Changes since v@(t.Version - 1): @t.Name version @t.Version" @onclick="() => ShowDiff(t)">Changes since v@(t.Version - 1)</button> }
                             </td>
                         </tr>
                     }
                 </tbody>
             </table></div>
-            <div class="toolbar"><button type="button" class="secondary" @onclick="NewFromCopy" disabled="@(versions.Count == 0)">New template from a copy</button></div>
+            <div class="toolbar">
+                <button type="button" @onclick="NewBlank">New workflow</button>
+            </div>
         </section>
+
+        @if (drafts.Count > 0)
+        {
+            <section class="panel" aria-label="Saved drafts">
+                <h2>Saved drafts</h2>
+                <p class="muted">A draft is work in progress. It is not used for any review until you publish it.</p>
+                <div class="table-wrap"><table class="data">
+                    <caption class="visually-hidden">Saved workflow drafts</caption>
+                    <thead><tr><th scope="col">Workflow</th><th scope="col">Started from</th><th scope="col">Saved</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var d in drafts)
+                        {
+                            <tr>
+                                <td>@d.Id</td><td>@(d.BaseVersion == 0 ? "A new workflow" : $"Version {d.BaseVersion}")</td><td>@AdminUi.Utc(d.UpdatedAt) by @d.UpdatedBy</td>
+                                <td class="actions-cell">
+                                    <button type="button" class="secondary" aria-label="Continue the draft of @d.Id" @onclick="() => OpenDraft(d)">Continue</button>
+                                    <button type="button" class="secondary" aria-label="Discard the draft of @d.Id" @onclick="() => DiscardDraft(d)">Discard</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            </section>
+        }
 
         @if (diff is not null)
         {
@@ -40,18 +70,86 @@
             </section>
         }
 
-        @if (draft is not null || jsonText is not null)
+        @if (draft is not null || jsonText is not null || steps is not null)
         {
             <section class="panel" aria-label="Template editor">
-                <h2>@(isNew ? "New template" : $"Editing {draft?.Id ?? openId}") @(viewOnly ? "(read only: superseded version)" : "")</h2>
-                <div class="toolbar" role="tablist" aria-label="Editor view">
-                    <button type="button" role="tab" aria-selected="@(!advanced ? "true" : "false")" class="@(advanced ? "secondary" : "")" @onclick="() => SwitchView(false)">Structured</button>
-                    <button type="button" role="tab" aria-selected="@(advanced ? "true" : "false")" class="@(advanced ? "" : "secondary")" @onclick="() => SwitchView(true)">JSON (advanced)</button>
+                <h2>@(isNew ? "New workflow" : $"Editing {EditingId}") @(viewOnly ? "(read only: superseded version)" : "")</h2>
+                <div class="toolbar" role="group" aria-label="Editor view">
+                    <button type="button" aria-pressed="@(view == "steps" ? "true" : "false")" class="@(view == "steps" ? "" : "secondary")" @onclick='() => SwitchView("steps")'>Steps</button>
+                    <button type="button" aria-pressed="@(view == "nodes" ? "true" : "false")" class="@(view == "nodes" ? "" : "secondary")" @onclick='() => SwitchView("nodes")'>Advanced nodes</button>
+                    <button type="button" aria-pressed="@(view == "json" ? "true" : "false")" class="@(view == "json" ? "" : "secondary")" @onclick='() => SwitchView("json")'>JSON</button>
                 </div>
 
-                @if (advanced)
+                @if (view == "json")
                 {
                     <label>Definition <textarea rows="22" class="code" @bind="jsonText" readonly="@viewOnly" spellcheck="false"></textarea></label>
+                }
+                else if (view == "steps" && steps is not null)
+                {
+                    <div class="grid-form">
+                        <label>Id * <input @bind="steps.Id" maxlength="63" readonly="@(!isNew)" /></label>
+                        <label>Name * <input @bind="steps.Name" maxlength="200" readonly="@viewOnly" /></label>
+                        <label>Used for <select @bind="steps.ObjectType" disabled="@(!isNew)">@foreach (var o in Workflows.ReviewableObjectTypes) { <option value="@o">@o</option> }</select></label>
+                        <label class="wide">Description <input @bind="steps.Description" maxlength="500" readonly="@viewOnly" /></label>
+                    </div>
+
+                    <ol class="step-list" aria-label="Steps in order">
+                        @for (var i = 0; i < steps.Steps.Count; i++)
+                        {
+                            var step = steps.Steps[i];
+                            var index = i;
+                            <li class="panel step-card" data-step="@(i + 1)">
+                                <fieldset disabled="@viewOnly">
+                                    <legend>Step @(i + 1): @(string.IsNullOrWhiteSpace(step.Name) ? "unnamed" : step.Name)</legend>
+                                    <div class="grid-form">
+                                        <label>Step name <input @bind="step.Name" maxlength="120" /></label>
+                                        <label>What they do
+                                            <select @bind="step.Kind"><option value="review">Review</option><option value="approval">Approve</option></select>
+                                        </label>
+                                        <label>Who
+                                            <select @bind="step.Who">
+                                                <option value="person">One person, chosen when the review starts</option>
+                                                <option value="group">Several people, chosen when the review starts</option>
+                                                <option value="role">Anyone holding a role</option>
+                                            </select>
+                                        </label>
+                                        <label>Role @(step.Who == "role" ? "they hold" : "they must hold")
+                                            <select @bind="step.Role">@foreach (var r in AssignableRoles) { <option value="@r">@RoleText(r)</option> }</select>
+                                        </label>
+                                        @if (step.Who != "role")
+                                        {
+                                            <label>Name of the group on the start form <input @bind="step.GroupLabel" maxlength="80" placeholder="@step.Name" /></label>
+                                        }
+                                        @if (step.Who == "group")
+                                        {
+                                            <label>Fewest people <input type="number" min="1" max="50" @bind="step.Min" /></label>
+                                            <label>Most people <input type="number" min="1" max="50" @bind="step.Max" /></label>
+                                            <label>They decide
+                                                <select @bind="step.Rule"><option value="All">All must approve</option><option value="Any">Any one approves</option><option value="NofM">A number of them approve</option></select>
+                                            </label>
+                                            @if (step.Rule == "NofM") { <label>How many must approve <input type="number" min="1" max="50" @bind="step.RuleN" /></label> }
+                                        }
+                                        <label>Due after (days) <input type="number" min="1" max="365" value="@step.DueDays" @onchange="e => step.DueDays = ParseDays(e.Value as string)" /></label>
+                                    </div>
+                                    <p class="muted small">They sign as: @MeaningText(step.Kind).</p>
+                                </fieldset>
+                                @if (!viewOnly)
+                                {
+                                    <div class="toolbar">
+                                        <button type="button" class="secondary" disabled="@(index == 0)" aria-label="Move step @(index + 1) up" @onclick="() => Move(index, -1)">Move up</button>
+                                        <button type="button" class="secondary" disabled="@(index == steps.Steps.Count - 1)" aria-label="Move step @(index + 1) down" @onclick="() => Move(index, 1)">Move down</button>
+                                        <button type="button" class="secondary" aria-label="Remove step @(index + 1)" @onclick="() => steps.Steps.RemoveAt(index)">Remove step</button>
+                                    </div>
+                                }
+                            </li>
+                        }
+                        <li class="panel step-card step-end"><strong>Then the item is released</strong> <span class="muted">(the last step is always the release)</span></li>
+                    </ol>
+                    @if (!viewOnly) { <div class="toolbar"><button type="button" class="secondary" @onclick="AddStep">Add step</button></div> }
+                }
+                else if (view == "steps")
+                {
+                    <p role="status">@(stepsWhy ?? "This workflow cannot be shown as a simple list of steps.") Use Advanced nodes or JSON to change it.</p>
                 }
                 else if (draft is not null)
                 {
@@ -136,23 +234,33 @@
                 }
 
                 <ValidationList Errors="errors" />
+                @if (preview is not null)
+                {
+                    <div class="stack" data-preview>
+                        <h3>Preview</h3>
+                        <p class="muted small">This is how the workflow looks when a review starts. The people are chosen then.</p>
+                        <WorkflowMapView Map="preview" Label="Preview of the workflow" />
+                    </div>
+                }
                 @if (!viewOnly)
                 {
                     <div class="toolbar">
+                        <button type="button" class="secondary" disabled="@busy" @onclick="PreviewAsync">Preview</button>
+                        <button type="button" class="secondary" disabled="@busy" @onclick="SaveDraftAsync">Save draft</button>
                         <button type="button" class="secondary" disabled="@busy" @onclick="ValidateAsync">Validate</button>
                         <button type="button" disabled="@busy" @onclick="() => confirming = true">Publish new version</button>
                         <button type="button" class="secondary" @onclick="Close">Close editor</button>
                     </div>
                     <ConfirmDialog @bind-Open="confirming" Title="Publish this version?" Destructive="true" ConfirmText="Publish version" OnConfirm="_ => PublishAsync()">
-                        <p>Publish as the next version and make it the active one? New reviews use it; running reviews are not affected.</p>
+                        <p>Publish as the next version and make it the active one? New reviews use it. @(RunningOf(EditingId) > 0 ? $"{RunningOf(EditingId)} review(s) are running on the current version and keep it." : "No review is running on the current version.")</p>
                     </ConfirmDialog>
                 }
-                else { <div class="toolbar"><button type="button" class="secondary" @onclick="Close">Close</button></div> }
+                else { <div class="toolbar"><button type="button" class="secondary" disabled="@busy" @onclick="PreviewAsync">Preview</button><button type="button" class="secondary" @onclick="Close">Close</button></div> }
             </section>
         }
 
         <section class="panel">
-            <h2>Which template each object type uses</h2>
+            <h2>Which workflow each kind of item uses</h2>
             <p class="muted">When a user chooses "Submit for review" without picking a template, the pinned template is used. Without a pin, the only active template is used, or the user is asked to choose.</p>
             <div class="table-wrap"><table class="data">
                 <caption class="visually-hidden">Template pins</caption>
@@ -182,13 +290,22 @@
 
     private IReadOnlyList<TemplateVersionInfo> versions = [];
     private IReadOnlyList<TemplatePin> pins = [];
+    private IReadOnlyList<TemplateDraftInfo> drafts = [];
+    private IReadOnlyList<SignatureMeaning> meanings = [];
     private readonly Dictionary<string, string> pinChoice = new(StringComparer.Ordinal);
     private TemplateDraft? draft;
-    private string? jsonText, openId, diffTitle, error, message;
+    private StepsDraft? steps;
+    private WorkflowMap? preview;
+    private string view = "steps";
+    private string? jsonText, openId, diffTitle, error, message, stepsWhy;
     private IReadOnlyList<string>? errors, diff;
-    private bool advanced, isNew, viewOnly, busy, confirming;
+    private bool isNew, viewOnly, busy, confirming;
+
+    private static readonly System.Text.Json.JsonSerializerOptions Indented = new() { WriteIndented = true };
 
     protected override Task OnInitializedAsync() => Load();
+
+    private string? EditingId => openId ?? (view == "steps" ? steps?.Id : view == "nodes" ? draft?.Id : null);
 
     private async Task Load()
     {
@@ -198,12 +315,33 @@
         versions = v.Value ?? [];
         var p = await Workflows.ListPinsAsync(subject);
         pins = p.Value ?? [];
+        drafts = (await Workflows.ListDraftsAsync(subject)).Value ?? [];
+        meanings = (await Workflows.ListSignatureMeaningsAsync(subject)).Value ?? [];
         pinChoice.Clear();
     }
 
     private string PinOf(string type) => pinChoice.TryGetValue(type, out var c) ? c : pins.FirstOrDefault(p => p.ObjectType == type)?.TemplateId ?? "";
 
+    private int RunningOf(string? id) => versions.Where(v => v.Id == id).Sum(v => v.RunningReviews);
+
     private static List<string> Split(string? s) => [.. (s ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    private static int? ParseDays(string? s) => int.TryParse(s, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+
+    private static string RoleText(string role) => role switch
+    {
+        Roles.Viewer => "Viewer or higher",
+        Roles.Author => "Author",
+        Roles.Approver => "Approver",
+        Roles.Admin => "Administrator",
+        _ => role,
+    };
+
+    private string MeaningText(string kind)
+    {
+        var labels = meanings.Where(m => m.AppliesTo.Contains(kind)).Select(m => m.Label).ToList();
+        return labels.Count == 0 ? "the meanings the engine defines for this kind of task" : string.Join(", ", labels);
+    }
 
     private void Open(TemplateVersionInfo t)
     {
@@ -213,43 +351,95 @@
         Show(t.Definition.ToJsonString());
     }
 
-    private void NewFromCopy()
+    private void OpenDraft(TemplateDraftInfo d)
     {
-        var source = versions.First(v => v.IsActive);
+        isNew = !versions.Any(v => v.Id == d.Id);
+        openId = isNew ? null : d.Id;
+        viewOnly = false;
+        Show(d.Definition);
+        message = null;
+    }
+
+    private void NewBlank()
+    {
+        isNew = true;
+        viewOnly = false;
+        openId = null;
+        var sd = new StepsDraft { ObjectType = Workflows.ReviewableObjectTypes.FirstOrDefault() ?? "part" };
+        sd.Steps.Add(new StepDraft { Id = "step-1", Name = "Review", Kind = TaskKinds.Review, Who = StepWho.Person, Role = Roles.Viewer, GroupLabel = "Reviewer" });
+        sd.Steps.Add(new StepDraft { Id = "step-2", Name = "Approval", Kind = TaskKinds.Approval, Who = StepWho.Group, Role = Roles.Approver, GroupLabel = "Approvers", Min = 1, Max = 5, Rule = "All" });
+        Show(sd.ToJson().ToJsonString());
+    }
+
+    private void NewFromCopy(TemplateVersionInfo source)
+    {
         isNew = true;
         viewOnly = false;
         openId = null;
         Show(source.Definition.ToJsonString());
+        if (steps is not null) { steps.Id = ""; steps.Name = ""; }
         if (draft is not null) { draft.Id = ""; draft.Name = ""; }
+        var copy = JsonNode.Parse(jsonText!)!.AsObject();
+        copy["id"] = "";
+        copy["name"] = "";
+        jsonText = copy.ToJsonString(Indented);
     }
 
     private void Show(string json)
     {
         message = null;
         errors = null;
+        preview = null;
         confirming = false;
+        (steps, stepsWhy) = StepsDraft.FromJson(json);
         var (d, why) = TemplateDraft.FromJson(json);
         draft = d;
-        jsonText = JsonNode.Parse(json)!.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        advanced = d is null; // a definition the structured editor cannot show opens in the JSON view
-        if (why is not null) errors = [why];
+        jsonText = JsonNode.Parse(json)!.ToJsonString(Indented);
+        view = steps is not null ? "steps" : d is not null ? "nodes" : "json";
+        if (steps is null && why is not null && d is null) errors = [why];
     }
 
-    private void SwitchView(bool toJson)
+    private void SwitchView(string target)
     {
-        if (toJson == advanced) return;
-        if (toJson && draft is not null) jsonText = draft.ToJson().ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        else if (!toJson)
+        if (target == view) return;
+        var json = CurrentJson();
+        errors = null;
+        preview = null;
+        if (target == "steps")
         {
-            var (d, why) = TemplateDraft.FromJson(jsonText ?? "");
+            var (sd, why) = StepsDraft.FromJson(json);
+            if (sd is null) { errors = [why ?? "The workflow cannot be shown as a list of steps."]; return; }
+            steps = sd;
+        }
+        else if (target == "nodes")
+        {
+            var (d, why) = TemplateDraft.FromJson(json);
             if (d is null) { errors = [why ?? "The JSON could not be read."]; return; }
             draft = d;
         }
-        advanced = toJson;
-        errors = null;
+        else
+        {
+            try { jsonText = JsonNode.Parse(json)!.ToJsonString(Indented); }
+            catch (System.Text.Json.JsonException e) { errors = [$"The JSON could not be read: {e.Message}"]; return; }
+        }
+        view = target;
     }
 
-    private string CurrentJson() => advanced ? jsonText ?? "" : draft!.ToJson().ToJsonString();
+    private string CurrentJson() => view switch
+    {
+        "steps" when steps is not null => steps.ToJson().ToJsonString(),
+        "nodes" when draft is not null => draft.ToJson().ToJsonString(),
+        _ => jsonText ?? "",
+    };
+
+    private void AddStep() => steps!.Steps.Add(new StepDraft { Id = steps.NextStepId(), Name = "New step", Role = Roles.Approver });
+
+    private void Move(int index, int delta)
+    {
+        var to = index + delta;
+        if (to < 0 || to >= steps!.Steps.Count) return;
+        (steps.Steps[index], steps.Steps[to]) = (steps.Steps[to], steps.Steps[index]);
+    }
 
     private async Task ValidateAsync()
     {
@@ -257,7 +447,38 @@
         var o = await Workflows.ValidateAsync(await Users.GetAsync(), CurrentJson());
         busy = false;
         errors = o.IsOk ? null : o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
-        message = o.IsOk ? "The definition is valid." : null;
+        message = o.IsOk ? "The workflow is valid." : null;
+    }
+
+    private async Task PreviewAsync()
+    {
+        busy = true;
+        var o = await Engine.PreviewTemplateMapAsync(await Users.GetAsync(), CurrentJson(), CurrentUser.NewCorrelationId());
+        busy = false;
+        message = null;
+        if (o.IsOk) { preview = o.Value; errors = null; }
+        else { preview = null; errors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)]; }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        string? id;
+        try { id = JsonNode.Parse(CurrentJson())?["id"]?.GetValue<string>(); }
+        catch (System.Text.Json.JsonException e) { errors = [$"The JSON could not be read: {e.Message}"]; return; }
+        if (string.IsNullOrWhiteSpace(id)) { errors = ["Give the workflow an id before saving a draft."]; return; }
+        busy = true;
+        var baseVersion = versions.Where(v => v.Id == id).Select(v => v.Version).DefaultIfEmpty(0).Max();
+        var o = await Workflows.SaveDraftAsync(await Users.GetAsync(), id, baseVersion, CurrentJson(), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (o.IsOk) { message = $"Saved the draft of {id}. It is not used for any review until you publish it."; errors = null; await Load(); }
+        else errors = o.Kind == OutcomeKind.Invalid ? o.Errors : [UiText.Message(o)];
+    }
+
+    private async Task DiscardDraft(TemplateDraftInfo d)
+    {
+        var o = await Workflows.DiscardDraftAsync(await Users.GetAsync(), d.Id, CurrentUser.NewCorrelationId());
+        if (o.IsOk) { message = $"Discarded the draft of {d.Id}."; error = null; await Load(); }
+        else error = UiText.Message(o);
     }
 
     private async Task PublishAsync()
@@ -277,7 +498,10 @@
     private void Close()
     {
         draft = null;
+        steps = null;
         jsonText = null;
+        preview = null;
+        openId = null;
         confirming = false;
     }
 

@@ -131,13 +131,7 @@
         {
             case OutcomeKind.Ok:
                 comment = "";
-                var noun = outcome.Value!.Target.ObjectType switch { "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "reqspec" => "specification", "gate" => "gate review", "supplier" => "supplier", "process_plan" => "process plan", "ncr" => "report", "capa" => "corrective action", "deviation" => "deviation or waiver", "source_entry" => "list entry", "reg_list_version" => "list version", "retention_schedule" => "schedule", "legal_hold" => "hold", "disposition" => "disposition request", "ecn" or "ecr" => "change", _ => "part" };
-                message = outcome.Value!.Status switch
-                {
-                    InstanceStatus.Approved => $"Signed. All approvals are in and the {noun} is released.",
-                    InstanceStatus.Rejected => $"Signed. The review was rejected and the {noun} is back In Work.",
-                    _ => "Signed.",
-                };
+                message = WorkflowText.SignedMessage(outcome.Value!);
                 var refreshed = await Flow.GetTaskAsync(user, Id, CurrentUser.NewCorrelationId());
                 detail = refreshed.Value ?? detail;
                 break;

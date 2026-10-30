@@ -1,0 +1,51 @@
+@page "/approve"
+@inject CurrentUser Users
+@inject WorkflowService Flow
+
+@* Phone approvals (ADR-0056): the same open tasks as My tasks, as a list of large cards instead of a table. Nothing here is a different rule: the list, the redaction of
+   items the reader may no longer see and every audit entry come from WorkflowService.MyTasksAsync. *@
+<PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="Approvals" Crumbs="@Crumbs">
+    @if (tasks is not null)
+    {
+        <p class="muted" data-testid="approvals-count">@tasks.Items.Count waiting for you</p>
+        @if (tasks.Items.Count == 0)
+        {
+            <EmptyState Title="You have nothing to approve" IconName="check">Reviews and approvals that are waiting for you will be listed here.</EmptyState>
+        }
+        else
+        {
+            <ul class="plain approve-list" aria-label="Waiting for your decision">
+                @foreach (var t in tasks.Items)
+                {
+                    <li class="approve-card" data-testid="approval-card">
+                        <h2 class="approve-title">@t.Name</h2>
+                        @if (t.Redacted || t.Target is null)
+                        {
+                            <p class="muted">Restricted item. You are no longer eligible to see it, so this task cannot be signed.</p>
+                        }
+                        else
+                        {
+                            <p class="approve-item"><strong>@t.Target.Key</strong> · @t.Target.Name <span class="muted">revision @t.Target.Revision</span></p>
+                            <p><MarkingChip Text="@t.Target.Banner" /></p>
+                            <p class="muted small">Started by @t.StartedByName</p>
+                        }
+                        <p class="@(t.Overdue ? "error" : "muted") small">@WorkflowText.Due(t.DueAt, t.Overdue)</p>
+                        @if (!t.Redacted && t.Target is not null)
+                        {
+                            <a class="button approve-open" href="approve/@t.Id" aria-label="Review and decide: @t.Name, @t.Target.Key">Review and decide</a>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        <p class="muted small"><a href="tasks">Open the full My tasks table</a></p>
+    }
+</PageFrame>
+
+@code {
+    private MyTasks? tasks;
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Approvals")];
+
+    protected override async Task OnInitializedAsync() => tasks = await Flow.MyTasksAsync(await Users.GetAsync(), null, CurrentUser.NewCorrelationId());
+}

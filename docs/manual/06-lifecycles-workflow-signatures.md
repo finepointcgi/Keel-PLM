@@ -34,6 +34,19 @@ The object becomes **Under Review** and locked, and the participants get tasks.
 
 The task page shows what you are signing, the progress map of the workflow (steps, who is pending), and the history.
 
+## Approve on a phone
+
+On a phone, open **Approvals** (the **Phone view** link on My tasks, or `/approve`). Each waiting task is a card with the item, its markings, who started it and when it is due. Select **Review and decide**.
+
+![Approvals on a phone](images/mobile-approvals.png)
+
+The page starts with a summary of exactly what you are about to sign: the kind of item, number and name, revision and version, state, the markings, who started the review, the submitter's note, the description and attributes, and the content hash (SHA-256) your signature will record. Below it are the comment box and one large button per decision (at least 56 px high, the full width of the screen), at the bottom of the page.
+
+![The review summary on a phone](images/mobile-approve-summary.png)
+![The decision buttons on a phone](images/mobile-approve-decision.png)
+
+Everything else is the same as on the desktop: the same rules, **step-up** when your login is older than the allowed age (you return to the same page with your comment kept), the same audit entries. If you are no longer allowed to see the item, the card says so and the task cannot be signed.
+
 ## Sign a task (e-signature)
 
 1. Open the task. Read **What you are signing**: the version and a note that the signature records a hash of this exact content.

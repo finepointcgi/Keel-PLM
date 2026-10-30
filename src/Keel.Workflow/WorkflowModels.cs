@@ -61,10 +61,18 @@ public sealed record InstanceSummary(
 
 public sealed record InstancePage(IReadOnlyList<InstanceSummary> Items, long Total, string PageBanner);
 
+/// <summary>
+/// What a signature on this task will bind to, beyond what <see cref="TaskDetail.Summary"/> already names (object, revision, iteration, markings banner):
+/// the SHA-256 content hash the signature will record (the same function as the signing step, so what is shown is what is signed), the submitter's note and
+/// the template version the review runs. Present only for a reader who may read the object.
+/// </summary>
+// ASSUMPTION(A84): the change summary is the submitter's note plus the description and attributes; there is no per-type diff against the previous revision.
+public sealed record ReviewSummary(string ContentHash, string? SubmitterNote, string TemplateName, int TemplateVersion);
+
 public sealed record TaskDetail(
     TaskSummary Summary, string Status, string? Decision, string? Description, JsonObject? Attributes, InstanceView? Instance,
     IReadOnlyList<ReasonCodeView> ReasonCodes, bool CanSign, IReadOnlyList<string> CannotSignReasons,
-    bool StepUpRequired, int StepUpMaxAgeSeconds, string Banner);
+    bool StepUpRequired, int StepUpMaxAgeSeconds, string Banner, ReviewSummary? Review = null);
 
 /// <summary>Workflow state of one object, for its page: the running review, the latest one, and the release history.</summary>
 public sealed record ObjectWorkflowStatus(InstanceView? Active, InstanceView? Last, IReadOnlyList<ReleaseRecord> Releases);
