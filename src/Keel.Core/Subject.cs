@@ -24,6 +24,12 @@ public sealed record Subject
     /// electronic signatures (A9, ADR-0007). Null when the IdP did not release it; signing then always needs step-up.
     /// </summary>
     public DateTimeOffset? AuthTime { get; init; }
+    /// <summary>
+    /// The authentication context class reference (<c>acr</c>) the IdP released for this sign-in, for example "2" for a client certificate
+    /// (CAC/PIV) sign-in at the Keycloak flow of ADR-0058. Null when the IdP did not release it. Used only to require a stronger
+    /// authentication for e-signatures (<c>Keel:Auth:StepUpAcr</c>); it grants no access by itself.
+    /// </summary>
+    public string? Acr { get; init; }
 }
 
 /// <summary>Role names released by the IdP in the <c>roles</c> claim.</summary>

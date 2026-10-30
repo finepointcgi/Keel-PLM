@@ -11,6 +11,8 @@ public sealed class RequirementOptions
 {
     /// <summary>How recent the sign-in must be for a formal verification (e-signature step-up, like review signatures).</summary>
     public int StepUpMaxAgeSeconds { get; set; } = 300;
+    /// <summary>The <c>acr</c> a formal verification's sign-in must carry (<c>Keel:Auth:StepUpAcr</c>, ADR-0058); empty = any fresh sign-in.</summary>
+    public string? StepUpRequiredAcr { get; set; }
     /// <summary>Seconds between background checks of links whose part or document got a new revision. 0 turns the background check off (an administrator can still run it).</summary>
     public int SweepSeconds { get; set; } = 300;
 }

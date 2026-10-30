@@ -1,0 +1,151 @@
+{
+  "_comment": "TEMPLATE overlay (ADR-0058). Every __NAME__ must be given a value by scripts/idp/merge-realm-overlay.sh; the merge refuses to run with one left over. Nothing is granted to a person the IdP does not assert: an unmapped person gets no plm role and Keel denies them. Read docs/ops/sso-integration.md before use.",
+  "identityProviders": [
+    {
+      "alias": "customer-oidc",
+      "displayName": "__DISPLAY_NAME__",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": false,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "issuer": "__ISSUER__",
+        "authorizationUrl": "__AUTHORIZATION_URL__",
+        "tokenUrl": "__TOKEN_URL__",
+        "jwksUrl": "__JWKS_URL__",
+        "useJwksUrl": "true",
+        "validateSignature": "true",
+        "pkceEnabled": "true",
+        "pkceMethod": "S256",
+        "clientId": "__CLIENT_ID__",
+        "clientSecret": "__CLIENT_SECRET__",
+        "clientAuthMethod": "client_secret_post",
+        "defaultScope": "openid profile email",
+        "syncMode": "FORCE",
+        "disableUserInfo": "true",
+        "filteredByClaim": "false",
+        "hideOnLoginPage": "false"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "group-to-plm-viewer",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "__GROUP_VIEWER__",
+        "role": "plm-viewer"
+      }
+    },
+    {
+      "name": "group-to-plm-author",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "__GROUP_AUTHOR__",
+        "role": "plm-author"
+      }
+    },
+    {
+      "name": "group-to-plm-approver",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "__GROUP_APPROVER__",
+        "role": "plm-approver"
+      }
+    },
+    {
+      "name": "group-to-plm-admin",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "__GROUP_ADMIN__",
+        "role": "plm-admin"
+      }
+    },
+    {
+      "name": "group-to-plm-auditor",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "groups",
+        "claim.value": "__GROUP_AUDITOR__",
+        "role": "plm-auditor"
+      }
+    },
+    {
+      "name": "us_person",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "us_person",
+        "user.attribute": "us_person"
+      }
+    },
+    {
+      "name": "citizenship",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "citizenship",
+        "user.attribute": "citizenship"
+      }
+    },
+    {
+      "name": "org",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "org",
+        "user.attribute": "org"
+      }
+    },
+    {
+      "name": "programs",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "programs",
+        "user.attribute": "programs"
+      }
+    },
+    {
+      "name": "export_authorizations",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "export_authorizations",
+        "user.attribute": "export_authorizations"
+      }
+    },
+    {
+      "name": "cui_categories",
+      "identityProviderAlias": "customer-oidc",
+      "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "claim": "cui_categories",
+        "user.attribute": "cui_categories"
+      }
+    }
+  ]
+}

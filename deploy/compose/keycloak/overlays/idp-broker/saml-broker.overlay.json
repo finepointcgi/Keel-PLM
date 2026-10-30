@@ -1,0 +1,153 @@
+{
+  "_comment": "TEMPLATE overlay (ADR-0058) for a SAML 2.0 identity provider (ADFS, Entra ID SAML, Okta SAML, Ping). Same rules as the OIDC template. Not exercised against a live SAML IdP by the repository tests (docs/ops/sso-integration.md says what was and was not verified).",
+  "identityProviders": [
+    {
+      "alias": "customer-saml",
+      "displayName": "__DISPLAY_NAME__",
+      "providerId": "saml",
+      "enabled": true,
+      "trustEmail": false,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "entityId": "__SP_ENTITY_ID__",
+        "idpEntityId": "__IDP_ENTITY_ID__",
+        "singleSignOnServiceUrl": "__SSO_URL__",
+        "singleLogoutServiceUrl": "__SLO_URL__",
+        "signingCertificate": "__SIGNING_CERTIFICATE__",
+        "validateSignature": "true",
+        "wantAssertionsSigned": "true",
+        "wantAssertionsEncrypted": "false",
+        "postBindingResponse": "true",
+        "postBindingAuthnRequest": "true",
+        "signSpMetadata": "false",
+        "wantAuthnRequestsSigned": "false",
+        "nameIDPolicyFormat": "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
+        "principalType": "SUBJECT",
+        "allowCreate": "true",
+        "forceAuthn": "false",
+        "syncMode": "FORCE",
+        "xmlSigKeyInfoKeyNameTransformer": "KEY_ID"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "group-to-plm-viewer",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "groups",
+        "attribute.value": "__GROUP_VIEWER__",
+        "role": "plm-viewer"
+      }
+    },
+    {
+      "name": "group-to-plm-author",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "groups",
+        "attribute.value": "__GROUP_AUTHOR__",
+        "role": "plm-author"
+      }
+    },
+    {
+      "name": "group-to-plm-approver",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "groups",
+        "attribute.value": "__GROUP_APPROVER__",
+        "role": "plm-approver"
+      }
+    },
+    {
+      "name": "group-to-plm-admin",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "groups",
+        "attribute.value": "__GROUP_ADMIN__",
+        "role": "plm-admin"
+      }
+    },
+    {
+      "name": "group-to-plm-auditor",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "groups",
+        "attribute.value": "__GROUP_AUDITOR__",
+        "role": "plm-auditor"
+      }
+    },
+    {
+      "name": "us_person",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "us_person",
+        "user.attribute": "us_person"
+      }
+    },
+    {
+      "name": "citizenship",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "citizenship",
+        "user.attribute": "citizenship"
+      }
+    },
+    {
+      "name": "org",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "org",
+        "user.attribute": "org"
+      }
+    },
+    {
+      "name": "programs",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "programs",
+        "user.attribute": "programs"
+      }
+    },
+    {
+      "name": "export_authorizations",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "export_authorizations",
+        "user.attribute": "export_authorizations"
+      }
+    },
+    {
+      "name": "cui_categories",
+      "identityProviderAlias": "customer-saml",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "cui_categories",
+        "user.attribute": "cui_categories"
+      }
+    }
+  ]
+}

@@ -81,11 +81,11 @@ public sealed partial class WorkflowService
         if (problems.Count > 0) return Outcome<InstanceView>.Invalid(problems);
 
         var now = SignatureHasher.Truncate(clock.GetUtcNow());
-        if (!StepUp.IsFresh(subject, now, options.StepUpMaxAge))
+        if (!StepUp.IsFresh(subject, now, options.StepUpMaxAge, options.StepUpRequiredAcr))
         {
             await audit.AppendAsync(tx, Entry(subject, "workflow.sign", AuditOutcome.Denied, inst.ObjectType, inst.ObjectKey, correlationId,
                 ("instance", inst.Id.ToString("D")), ("task", taskId.ToString("D")), ("reasons", "stepup.required"),
-                ("authTime", subject.AuthTime is { } a ? Iso(a) : null)), ct);
+                ("authTime", subject.AuthTime is { } a ? Iso(a) : null), ("acr", subject.Acr), ("requiredAcr", options.StepUpRequiredAcr)), ct);
             await tx.CommitAsync(ct);
             return Outcome<InstanceView>.StepUpRequired("stepup.required", options.StepUpMaxAgeSeconds);
         }

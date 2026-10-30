@@ -29,6 +29,10 @@ x-app-env: &app-env
   Keel__Auth__Audience: ${KEEL_OIDC_AUDIENCE:-keel-api}
   Keel__Auth__WebClientId: ${KEEL_OIDC_CLIENT_ID:-keel-web}
   Keel__Auth__RequireHttpsMetadata: "true"
+  # Sign-in options (ADR-0058, docs/ops/cac-piv-sign-in.md): to tell Administration > Sign-in how your IdP is set up, add Keel__Auth__SignIn__Method
+  # (Certificate or Federated) and, when a local-account login also exists, Keel__Auth__SignIn__PasswordFallback=true here. They are not listed because
+  # scripts/verify-compose-example.sh refuses any environment name that looks like a credential.
+  Keel__Auth__StepUpAcr: ${KEEL_STEPUP_ACR:-}                               # e.g. 2 = certificate-only level of the CAC/PIV Keycloak flow; empty = any fresh sign-in
   Keel__Security__RequireFips: ${KEEL_REQUIRE_FIPS:-true}
   Keel__Vault__ServiceUrl: https://vault:8334
   Keel__Vault__Bucket: keel-vault

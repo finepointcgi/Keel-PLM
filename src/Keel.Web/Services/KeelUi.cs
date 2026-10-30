@@ -29,6 +29,10 @@ public sealed class KeelUiOptions
     public string ClientId { get; set; } = "keel-web";
     public string ClientSecret { get; set; } = "";
     public bool RequireHttpsMetadata { get; set; } = true;
+    /// <summary>
+    /// The authentication level an e-signature step-up asks for (<c>acr_values</c>) and the id token must carry (ADR-0058). Empty = any fresh login.
+    /// </summary>
+    public string StepUpAcr { get; set; } = "";
     /// <summary>Absolute UI session lifetime; the circuit is ended when it passes (NIST SP 800-171 3.1.11).</summary>
     public TimeSpan SessionLifetime { get; set; } = TimeSpan.FromHours(8);
 }
@@ -128,6 +132,8 @@ public static class KeelUi
                 {
                     ctx.ProtocolMessage.Prompt = "login";
                     ctx.ProtocolMessage.MaxAge = "0";
+                    // A site that binds signatures to a stronger sign-in (CAC/PIV) names the level it needs; the token is checked again below.
+                    if (!string.IsNullOrWhiteSpace(options.StepUpAcr)) ctx.ProtocolMessage.AcrValues = options.StepUpAcr.Trim();
                 }
                 return Task.CompletedTask;
             };
@@ -158,6 +164,10 @@ public static class KeelUi
         if (identity.FindFirst("auth_time") is null
             && ctx.SecurityToken is System.IdentityModel.Tokens.Jwt.JwtSecurityToken jwt && jwt.Claims.FirstOrDefault(c => c.Type == "auth_time") is { } authTime)
             identity.AddClaim(new Claim("auth_time", authTime.Value));
+        // The OIDC handler drops "acr" by default; keep it so the level of the sign-in can be required for signatures (ADR-0058).
+        if (identity.FindFirst("acr") is null
+            && ctx.SecurityToken is System.IdentityModel.Tokens.Jwt.JwtSecurityToken idToken && idToken.Claims.FirstOrDefault(c => c.Type == "acr") is { } acrClaim)
+            identity.AddClaim(new Claim("acr", acrClaim.Value));
 
         var expires = DateTimeOffset.UtcNow.Add(options.SessionLifetime).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
         var services = ctx.HttpContext.RequestServices;
@@ -168,15 +178,16 @@ public static class KeelUi
         {
             // The step-up replaces the cookie principal, so it must be the same person re-authenticating.
             var previous = (await ctx.HttpContext.AuthenticateAsync(CookieScheme)).Principal;
-            var verdict = StepUp.Check(previous, ctx.Principal);
-            if (verdict is StepUp.Verdict.SubjectMismatch or StepUp.Verdict.MissingAuthTime)
+            var verdict = StepUp.Check(previous, ctx.Principal, options.StepUpAcr);
+            if (verdict is StepUp.Verdict.SubjectMismatch or StepUp.Verdict.MissingAuthTime or StepUp.Verdict.AcrNotSatisfied)
             {
                 if (services.GetService<IAuditLog>() is { } audit)
                     await audit.AppendAsync(new AuditEntry
                     {
                         Actor = SubjectClaims.FromPrincipal(previous ?? ctx.Principal) is { } who ? ActorSnapshot.From(who) : ActorSnapshot.System,
                         Action = "session.step_up", Outcome = AuditOutcome.Denied, ObjectType = "session",
-                        Details = AuditDetails.Of(("reason", verdict == StepUp.Verdict.SubjectMismatch ? "step_up.subject_mismatch" : "step_up.auth_time_missing")),
+                        Details = AuditDetails.Of(("reason", verdict switch { StepUp.Verdict.SubjectMismatch => "step_up.subject_mismatch", StepUp.Verdict.AcrNotSatisfied => "step_up.acr_not_satisfied", _ => "step_up.auth_time_missing" }),
+                            ("requiredAcr", options.StepUpAcr), ("releasedAcr", ctx.Principal.FindFirst("acr")?.Value)),
                     });
                 ctx.Fail(StepUpFailure);
                 return;

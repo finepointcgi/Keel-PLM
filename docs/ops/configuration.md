@@ -35,6 +35,9 @@ Secret-bearing settings are marked **secret**: supply them as files, never in an
 | `Keel__Auth__Audience` | `keel-api` | D | Audience the API validates on bearer tokens. |
 | `Keel__Auth__RequireHttpsMetadata` | `true` | D | Set `false` only for a dev IdP on plain http. |
 | `Keel__Auth__WebClientId` | `keel-web` | D | Confidential OIDC client of the UI (ADR-0014). Register `https://<public host>/signin-oidc` and `https://<public host>/signout-callback-oidc` as its redirect URIs. |
+| `Keel__Auth__SignIn__Method` | `Password` | D | `Password`, `Certificate` or `Federated`: what you state the IdP is set up for (ADR-0058). Shown on Administration > Sign-in; `Password` in Production draws a warning. A value other than these three stops the start. Not checked against the IdP. |
+| `Keel__Auth__SignIn__PasswordFallback` | `false` | D | `true` when the IdP also offers a password form next to the certificate or federated sign-in (warned about). |
+| `Keel__Auth__StepUpAcr` | empty | O | The `acr` an e-signature sign-in must carry, e.g. `2` (certificate-only level of the shipped CAC/PIV Keycloak flow). Empty = any fresh sign-in (A9). Sent as `acr_values` at the step-up, required in the ID token, and checked at every signature (review signatures, formal requirement verification). See [cac-piv-sign-in.md](cac-piv-sign-in.md). |
 | `Keel__Auth__WebClientSecret` | empty | R, **secret** | The client secret the IdP issued for `keel-web`. |
 
 ### Audit (`Keel:Audit`)

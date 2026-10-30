@@ -53,7 +53,7 @@ The complete reference with defaults and whether production needs each value is
 | Group | What it controls |
 |---|---|
 | `Keel:Database` | Connection strings (app role for the host, migrator role for the migration job only) |
-| `Keel:Auth` | The IdP authority, the confidential client `keel-web` and its secret, the API audience |
+| `Keel:Auth` | The IdP authority, the confidential client `keel-web` and its secret, the API audience, the declared sign-in method, and the level e-signatures require (`StepUpAcr`) |
 | `Keel:Audit` | The checkpoint signing key and the public keys trusted for verification |
 | `Keel:Security` | `RequireFips` |
 | `Keel:DataProtection` | The key ring directory; it must be the same for every replica and survive restarts |
@@ -64,6 +64,8 @@ The complete reference with defaults and whether production needs each value is
 | `Keel:Siem` | Forwarding of the audit log |
 | `Keel:Workflow` | How recently a signer must have authenticated (default 5 minutes) |
 | `Keel:Notifications` | Retention, fan-out and the optional e-mail channel ([ops/notifications.md](../ops/notifications.md)) |
+
+How people sign in at production is covered by [ops/cac-piv-sign-in.md](../ops/cac-piv-sign-in.md) (smart cards) and [ops/sso-integration.md](../ops/sso-integration.md) (your own identity provider); **Administration > Sign-in** shows the effective result and warns about weak settings.
 
 Register `https://<public host>/signin-oidc` and `https://<public host>/signout-callback-oidc` as redirect URIs of the `keel-web` client at your IdP.
 
@@ -127,7 +129,7 @@ Full description: [ops/offline-install.md](../ops/offline-install.md). Other air
 Said plainly, from the existing documents:
 
 - **High availability and failover automation**, a bulk vault integrity verifier and load-tested recovery figures are open items ([ops/disaster-recovery.md](../ops/disaster-recovery.md)).
-- **CAC/PIV sign-in** is the site identity provider's job; the development realm uses passwords.
+- **CAC/PIV sign-in** is done by Keycloak: an opt-in configuration with a generated test PKI is tested against a real Keycloak ([ops/cac-piv-sign-in.md](../ops/cac-piv-sign-in.md)), but nothing was tried with real cards, the DoD PKI, OCSP or a reverse proxy, and no customer IdP (Entra ID, AD FS, Okta, Ping) was tested ([ops/sso-integration.md](../ops/sso-integration.md)). The development realm uses passwords; Administration > Sign-in warns when a Production host declares them.
 - **Commercial CAD plug-ins** (SolidWorks, NX, Creo, CATIA) were not built ([integration/cad-plugins.md](../integration/cad-plugins.md)).
 - **The legal and export-control review packets** (`docs/review/`) are all pending reviewer sign-off and are not legal advice.
 - **A broker sink** for the outbox is deferred; webhooks and file drops are shipped ([increments/7.5-platform.md](../increments/7.5-platform.md)).

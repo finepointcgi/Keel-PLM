@@ -8,7 +8,7 @@ Administrators change configuration but get no bypass of markings. Every change 
 
 ## Page by page
 
-The Administration page has a tab bar: **Overview, Attributes, Lifecycles, Types and lists, Workflow templates, Classification, Numbering, Supply types, Requirement links, Reasons and meanings, Package signing, Integration, Export and import, Change history**. Every change is validated, recorded with its before and after values, and shown under Change history. Each page shows the effect before you confirm.
+The Administration page has a tab bar: **Overview, Attributes, Lifecycles, Types and lists, Workflow templates, Classification, Numbering, Supply types, Requirement links, Reasons and meanings, Package signing, Sign-in, Integration, Export and import, Change history**. Every change is validated, recorded with its before and after values, and shown under Change history. Each page shows the effect before you confirm.
 
 | Page | What you do there |
 |---|---|
@@ -22,6 +22,7 @@ The Administration page has a tab bar: **Overview, Attributes, Lifecycles, Types
 | **Requirement links** | Link types for requirement traceability (five are built in) |
 | **Reasons and meanings** | Signature meanings and change reason codes |
 | **Package signing** | The certificate that digitally signs release packages, where its private key is kept, whether signatures are required ([below](#package-signing)) |
+| **Sign-in** | Read-only: how this host signs people in, the level e-signatures require, and warnings ([below](#sign-in-status)) |
 | **Integration** | Sinks, profiles, outbox, deliveries, TDP categories ([chapter 21](21-integration-and-tdp.md)) |
 | **Export and import** | Export the whole configuration as a file and import it elsewhere; every import is a confirmed, audited step |
 | **Change history** | Who changed which configuration, when and why |
@@ -56,6 +57,17 @@ Other administrator tasks live elsewhere: supplier **Portal access** on a suppli
 ## Limits
 
 Only parts store attribute values today; document and change attributes are not shipped. Lifecycles of PR, ECR, ECN, CT, MBOM and quality records are view-only. Server-side sorting is available on the main lists. Roles themselves (viewer, author, approver, admin, auditor, records, supplier, integration) come from the identity provider, not from Keel.
+
+## Sign-in status
+
+**Administration > Sign-in** shows how this Keel host is set up to sign people in. It is read-only: nothing on it can be changed, and it never shows a secret. Settings live in the host configuration ([ops/configuration.md](../ops/configuration.md)); change them there and restart.
+
+- **Warnings and notes** come first, worst first, each with its plain-language reason. Examples: password sign-in is the declared method in a Production profile; a password fallback exists beside the certificate sign-in; a password could sign because no signature level is required; demo sign-in is on; the identity provider address is not https; FIPS is not required; your own token is missing a security claim.
+- **Effective configuration** lists each setting with its value and the setting that controls it: the declared sign-in method, the identity provider, the web client, the level (`acr`) e-signatures require, the fresh sign-in window, the session lifetime and idle lock, FIPS, proxy and cookie settings.
+- **Your current sign-in** shows the level, the methods and the time the identity provider released for *your* session, and which security claims (`us_person`, `citizenship`, `org`, `programs`, `export_authorizations`, `cui_categories`) arrived and which did not. Only names are shown, not values. A claim that is absent is treated as the most restrictive value, so this is the quickest way to see why a person has too little access.
+- **Check the identity provider** reads the public discovery document at the configured address (one read-only request, to that address only) and compares it: issuer, PKCE, the levels it advertises, the token algorithms.
+
+Two settings are statements by the operator, not measurements: the sign-in method (`Password`, `Certificate` or `Federated`) and whether a password fallback exists. Keel cannot see inside the identity provider's login flows, so it uses these to decide which warnings apply. Setup guides: [CAC/PIV sign-in](../ops/cac-piv-sign-in.md) and [connecting your own identity provider](../ops/sso-integration.md).
 
 ## Package signing
 
