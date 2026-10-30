@@ -229,7 +229,7 @@ public sealed class UxTests(E2EFixture fx)
             await Expect(page.Locator("nav#main-nav")).ToBeHiddenAsync();
             await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Menu" }).ClickAsync();
             await Expect(page.Locator("nav#main-nav")).ToBeVisibleAsync();
-            await page.Locator("nav#main-nav").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Documents" }).ClickAsync();
+            await page.Locator("nav#main-nav").GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Documents", Exact = true }).ClickAsync();
             await page.WaitForURLAsync(url => url.EndsWith("/documents", StringComparison.Ordinal));
             await Expect(page.Locator("nav#main-nav")).ToBeHiddenAsync();
 

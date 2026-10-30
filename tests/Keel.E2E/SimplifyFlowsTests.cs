@@ -54,7 +54,7 @@ public sealed class SimplifyFlowsTests(E2EFixture fx)
             await Expect(page.GetByLabel("Name *")).ToHaveAttributeAsync("aria-invalid", "true");
 
             // The rarely changed things are folded away but one click away: kind, markings (one chip), More details.
-            await Expect(page.Locator(".defaults-line .markings-line")).ToContainTextAsync("Component");
+            await Expect(page.Locator(".defaults-line .markings-line")).ToContainTextAsync(new System.Text.RegularExpressions.Regex("This part will be an? .+, .+, .+\\."));
             await Expect(page.Locator("[data-markings-default] .chip")).ToBeVisibleAsync();
             await Expect(page.Locator("[data-markings-default] fieldset")).ToHaveCountAsync(0);
             await page.Locator("[data-markings-change]").ClickAsync();

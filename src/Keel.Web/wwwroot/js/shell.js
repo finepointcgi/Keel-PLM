@@ -217,6 +217,8 @@ if (!window.__keelScrollRegions) {
     pending = window.setTimeout(() => { pending = 0; refreshScrollRegions(); }, 60);
   };
   new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+  // A theme or density change reflows every table without adding or removing a node, so the regions are re-evaluated for it too.
+  new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-density'] });
   window.addEventListener('resize', schedule);
   schedule();
 }
