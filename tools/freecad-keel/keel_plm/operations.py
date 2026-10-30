@@ -167,11 +167,14 @@ def status(client: KeelClient, folder: Path | str) -> StatusReport:
         report.members.append(MemberStatus(m.number, m.role, [f.file_name for f in m.files], [fn for (n, fn) in sorted(changed) if n == m.number],
                                            co.get("userName"), bool(co.get("isMine")), m.is_new))
     view = client.package_view(state.top)
-    report.stale_count = int(view.get("staleCount") or 0)
     report.redacted_count = int(view.get("redactedCount") or 0)
     report.banner = view.get("banner") or ""
     _stale_nodes(view.get("uses") or [], report.stale)
     _stale_nodes(view.get("usedBy") or [], report.stale)
+    # The server's staleCount counts only what the TOP document was built against, so a model with an out-of-date drawing reports 0 (found against the
+    # real host, tests/Keel.E2E/AddOnLiveTests.cs). This status is about the whole package, both directions: count the stale nodes found.
+    report.stale = list({s["number"]: s for s in report.stale}.values())
+    report.stale_count = len(report.stale)
     return report
 
 
