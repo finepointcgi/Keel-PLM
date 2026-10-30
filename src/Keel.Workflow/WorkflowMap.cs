@@ -10,10 +10,12 @@ public sealed record MapPerson(string Name, string Initials, bool Redacted);
 
 /// <summary>
 /// One task (or one not yet created task of a later step) on the map. <see cref="Status"/> is Pending, Signed, Rejected, Skipped, Cancelled or Waiting
-/// (the step has not started). <see cref="Meaning"/> is the signature meaning of a signed or rejected task.
+/// (the step has not started). <see cref="Meaning"/> is the signature meaning of a signed or rejected task. <see cref="SlotLabel"/> is set only on a template
+/// preview: the participant group whose person is chosen when a review starts.
 /// </summary>
 public sealed record MapTask(
-    Guid? TaskId, string Name, string Kind, string Status, string? Meaning, MapPerson? Person, string? PoolRole, DateTimeOffset? At, DateTimeOffset? DueAt, bool Overdue);
+    Guid? TaskId, string Name, string Kind, string Status, string? Meaning, MapPerson? Person, string? PoolRole, DateTimeOffset? At, DateTimeOffset? DueAt, bool Overdue,
+    string? SlotLabel = null);
 
 /// <summary>
 /// A step of the workflow in order. <see cref="Type"/> is Task (one task), Parallel (a group with a vote rule: <see cref="Rule"/> reads All, Any or "2 of 3")
@@ -61,12 +63,35 @@ public sealed partial class WorkflowService
     }
 }
 
+public sealed partial class WorkflowService
+{
+    /// <summary>
+    /// The map of a template definition as it would look when a review starts: every step Waiting, each person-or-group step labelled with the group whose
+    /// people are chosen then. Administrators only (it shows a definition that may not be published yet); nothing is stored. The engine's own parser decides
+    /// whether the definition can be drawn, and its messages are returned unchanged.
+    /// </summary>
+    public async Task<Outcome<WorkflowMap>> PreviewTemplateMapAsync(Subject subject, string definitionJson, string? correlationId, CancellationToken ct = default)
+    {
+        if (!AccessPolicy.HasRoleFor(subject, PlmAction.Administer))
+        {
+            await audit.AppendAsync(Entry(subject, "admin.workflow_preview", AuditOutcome.Denied, "workflow_template", null, correlationId, ("reasons", AccessPolicy.RoleMissing)), ct);
+            return Outcome<WorkflowMap>.Forbidden([AccessPolicy.RoleMissing]);
+        }
+        var parsed = TemplateParser.Parse(definitionJson);
+        if (!parsed.IsSuccess) return Outcome<WorkflowMap>.Invalid(parsed.Errors);
+        var template = parsed.Value;
+        var stages = WorkflowMapBuilder.Build(template, new ExecutionState(), new Dictionary<Guid, SignatureRow>(), new Dictionary<string, IReadOnlyList<Participant>>(),
+            "Preview", clock.GetUtcNow(), redacted: false, preview: true);
+        return Outcome<WorkflowMap>.Ok(new WorkflowMap(Guid.Empty, template.Name, "Preview", false, stages, UiBanner.Unclassified));
+    }
+}
+
 /// <summary>Flattens a definition and its execution state into ordered stages. Pure: no data access, so it is unit tested directly.</summary>
 internal static class WorkflowMapBuilder
 {
     internal static IReadOnlyList<MapStage> Build(
         WorkflowTemplate template, ExecutionState execution, IReadOnlyDictionary<Guid, SignatureRow> signatures,
-        IReadOnlyDictionary<string, IReadOnlyList<Participant>> participants, string instanceStatus, DateTimeOffset now, bool redacted)
+        IReadOnlyDictionary<string, IReadOnlyList<Participant>> participants, string instanceStatus, DateTimeOffset now, bool redacted, bool preview = false)
     {
         var stages = new List<MapStage>();
         Walk(template.Node(template.Start));
@@ -83,7 +108,7 @@ internal static class WorkflowMapBuilder
                 {
                     var token = execution.Tokens.FirstOrDefault(x => x.NodeId == t.Id);
                     var tasks = execution.Tasks.Where(x => x.NodeId == t.Id).Select(x => ToTask(x)).ToList();
-                    if (tasks.Count == 0) tasks.Add(Waiting(t.Name, t.Kind, t.Assignment.Mode == AssignmentMode.Slot ? One(t.Assignment.Slot!) : null, t.Assignment.Role));
+                    if (tasks.Count == 0) tasks.Add(Waiting(t.Name, t.Kind, t.Assignment.Mode == AssignmentMode.Slot ? One(t.Assignment.Slot!) : null, t.Assignment.Role, SlotLabelOf(t.Assignment.Slot)));
                     stages.Add(new MapStage(t.Id, t.Name, "Task", null, 1, 1, StageState(token), tasks));
                     break;
                 }
@@ -98,12 +123,22 @@ internal static class WorkflowMapBuilder
                     if (tasks.Count == 0 && p.FanOut is { } fan)
                     {
                         var people = participants.GetValueOrDefault(fan.Slot) ?? [];
-                        tasks.AddRange(people.Select(x => Waiting(p.Name, fan.Kind, x, null)));
-                        total = people.Count;
+                        if (preview)
+                        {
+                            // A template has no people yet: show as many placeholders as the group's minimum, labelled with the group.
+                            var slot = template.SlotNamed(fan.Slot);
+                            for (var i = 0; i < slot.Min; i++) tasks.Add(Waiting(p.Name, fan.Kind, null, null, slot.Label));
+                            total = slot.Min;
+                        }
+                        else
+                        {
+                            tasks.AddRange(people.Select(x => Waiting(p.Name, fan.Kind, x, null)));
+                            total = people.Count;
+                        }
                     }
                     else if (tasks.Count == 0)
                     {
-                        tasks.AddRange(p.Branches.Select(b => template.Node(b) is TaskNode bt ? Waiting(bt.Name, bt.Kind, bt.Assignment.Mode == AssignmentMode.Slot ? One(bt.Assignment.Slot!) : null, bt.Assignment.Role) : Waiting(template.Node(b).Name, "review", null, null)));
+                        tasks.AddRange(p.Branches.Select(b => template.Node(b) is TaskNode bt ? Waiting(bt.Name, bt.Kind, bt.Assignment.Mode == AssignmentMode.Slot ? One(bt.Assignment.Slot!) : null, bt.Assignment.Role, SlotLabelOf(bt.Assignment.Slot)) : Waiting(template.Node(b).Name, "review", null, null)));
                         total = p.Branches.Count;
                     }
                     else total = group is { BranchCount: > 0 } ? group.BranchCount : tasks.Count;
@@ -127,8 +162,10 @@ internal static class WorkflowMapBuilder
 
         MapPerson? Person(Participant p) => redacted ? new MapPerson("Participant", "?", true) : new MapPerson(p.DisplayName, Initials(p.DisplayName), false);
 
-        MapTask Waiting(string name, string kind, object? who, string? role) =>
-            new(null, name, kind, "Waiting", null, who switch { Participant p => Person(p), MapPerson m => m, _ => null }, who is null && role is not null ? role : null, null, null, false);
+        string? SlotLabelOf(string? slot) => preview && slot is not null ? template.SlotNamed(slot).Label : null;
+
+        MapTask Waiting(string name, string kind, object? who, string? role, string? slotLabel = null) =>
+            new(null, name, kind, "Waiting", null, who switch { Participant p => Person(p), MapPerson m => m, _ => null }, who is null && role is not null ? role : null, null, null, false, slotLabel);
 
         MapTask ToTask(TaskState t)
         {

@@ -15,7 +15,7 @@ The Administration page has a tab bar: **Overview, Attributes, Lifecycles, Types
 | **Attributes** | Part attribute definitions with units, lists, formats and ranges; retire without losing stored values |
 | **Lifecycles** | Versioned states and transitions. **Validate**, **publish** a new immutable version, and **migrate** existing objects with a state mapping. Protected states that code relies on cannot be removed; PR, ECR, ECN, CT, MBOM and quality lifecycles are view-only |
 | **Types and lists** | Part types, sources, units, document types, change priorities, and the office and program pickers (pickers only: access still comes from the identity provider's attributes). Entries are retired, never deleted |
-| **Workflow templates** | Edit, validate and publish review workflows, and pin the template each object type uses. Running reviews keep the version they started with |
+| **Workflow templates** | Build review workflows as an ordered list of steps, preview them as the workflow map, save drafts, validate and publish new versions, and pin the template each object type uses. Running reviews keep the version they started with |
 | **Classification** | The class hierarchy (depth up to 12) with inherited attribute sets, safe move and retire, import and export ([migration/classification-format.md](../migration/classification-format.md)) |
 | **Numbering** | Prefixes and widths with a safe preview of the next number. Counters only advance |
 | **Supply types** | How MBOM lines are supplied (Make, Buy, Consume and your own); retire with a reason |
@@ -49,13 +49,18 @@ Other administrator tasks live elsewhere: supplier **Portal access** on a suppli
 
 **Change a lifecycle.** Lifecycles > open the family > edit a draft version > **Validate** > **Publish**. New objects use the new version; to move existing objects, choose **Migrate** and map old states to new ones. Both steps are confirmed and audited.
 
-**Edit a workflow template.** Workflow templates > edit a draft > validate > publish > pin it for the object kind. Reviews already running keep their version.
+**Build or change a workflow.** Workflow templates > **New workflow** (or **Edit** or **Copy** on a row) > in **Steps**, name each step, say whether the person reviews or approves, and who does it: one person or several people (chosen when the review starts), or anyone holding a role. For several people choose how they decide (all, any one, or a number of them). Add, remove and reorder steps with **Add step**, **Move up**, **Move down**; the release is always the last step. **Preview** draws the workflow as the workflow map. **Save draft** keeps unfinished work (it is never used for a review). **Validate** shows the engine's messages. **Publish new version** makes it the one new reviews use; reviews already running keep their version, and the list shows how many still run on each. Pin it for the object kind if it should be the default.
+
+![The steps editor](images/admin-workflow-steps-editor.png)
+![The preview as the workflow map](images/admin-workflow-preview.png)
+
+A workflow that is not a plain list of steps (older or imported templates with nested blocks) opens under **Advanced nodes** or **JSON**, and you can switch between the three views. The engine runs only review and approval tasks, parallel votes and the release; there are no conditions and no fixed named people in a template.
 
 **Move configuration between environments.** Config export on the source, import on the target (after a dry run if offered), then check the history page.
 
 ## Limits
 
-Only parts store attribute values today; document and change attributes are not shipped. Lifecycles of PR, ECR, ECN, CT, MBOM and quality records are view-only. Server-side sorting is available on the main lists. Roles themselves (viewer, author, approver, admin, auditor, records, supplier, integration) come from the identity provider, not from Keel.
+Only parts store attribute values today; document and change attributes are not shipped. Lifecycles of PR, ECR, ECN, CT, MBOM and quality records are view-only. Workflow templates have no conditions, fixed assignees, delegation or escalation timers. Server-side sorting is available on the main lists. Roles themselves (viewer, author, approver, admin, auditor, records, supplier, integration) come from the identity provider, not from Keel.
 
 ## Package signing
 

@@ -41,7 +41,7 @@
     [Parameter] public string Label { get; set; } = "Workflow progress";
 
     private static string PersonName(MapTask t) =>
-        t.Person?.Name ?? (t.PoolRole is { } role ? $"Anyone holding {role.Replace("plm-", "", StringComparison.Ordinal)}" : "Unassigned");
+        t.Person?.Name ?? (t.SlotLabel is { } slot ? $"Chosen when the review starts: {slot}" : t.PoolRole is { } role ? $"Anyone holding {role.Replace("plm-", "", StringComparison.Ordinal)}" : "Unassigned");
 
     private static string RuleText(MapStage s) => s.Rule switch
     {

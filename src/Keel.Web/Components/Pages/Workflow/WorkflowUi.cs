@@ -94,5 +94,22 @@ public static class WorkflowText
             ? $"compliance/lists/{Uri.EscapeDataString(key[..dash])}/versions/{v}" : null;
     }
 
+    /// <summary>What the reviewed item is called in a sentence ("part", "MBOM", "gate review").</summary>
+    public static string Noun(string objectType) => objectType switch
+    {
+        "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "reqspec" => "specification", "gate" => "gate review", "supplier" => "supplier",
+        "process_plan" => "process plan", "ncr" => "report", "capa" => "corrective action", "deviation" => "deviation or waiver", "source_entry" => "list entry",
+        "reg_list_version" => "list version", "retention_schedule" => "schedule", "legal_hold" => "hold", "disposition" => "disposition request", "ecn" or "ecr" => "change",
+        _ => "part",
+    };
+
+    /// <summary>The confirmation shown after a signature, shared by the desktop task page and the phone approval page.</summary>
+    public static string SignedMessage(InstanceView instance) => instance.Status switch
+    {
+        InstanceStatus.Approved => $"Signed. All approvals are in and the {Noun(instance.Target.ObjectType)} is released.",
+        InstanceStatus.Rejected => $"Signed. The review was rejected and the {Noun(instance.Target.ObjectType)} is back In Work.",
+        _ => "Signed.",
+    };
+
     public static string Utc(DateTimeOffset t) => t.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + " UTC";
 }

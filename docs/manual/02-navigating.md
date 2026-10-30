@@ -100,6 +100,8 @@ Below 768 px the rail becomes a menu button and tables scroll inside their own a
 |---|---|---|
 | ![Home on a phone](images/mobile-home.png) | ![A part page on a phone](images/mobile-part.png) | ![The navigation menu on a phone](images/mobile-menu.png) |
 
+Approvals have their own phone screens: see [Approve on a phone](06-lifecycles-workflow-signatures.md#approve-on-a-phone).
+
 ## Session lock
 
 If you stop working, Keel warns you (default: after 15 minutes idle, with a 60 second warning), then **locks** the session. While locked, the page's data is removed from the page, not hidden behind a cover, and the server refuses actions. To unlock, select **Sign in to unlock**: you sign in again at the identity provider and return to the same page. Unsaved input is not kept, because that would mean keeping marked data in memory. A session that stays locked for 15 minutes is ended and you are signed out.

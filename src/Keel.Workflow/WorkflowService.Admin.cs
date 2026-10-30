@@ -228,8 +228,16 @@ public sealed partial class WorkflowService
             insert.Parameters.AddWithValue("by", subject.Username ?? subject.Id);
             await insert.ExecuteNonQueryAsync(ct);
         }
+        // The draft this version was made from is done with: removing it is part of the same transaction as the publication (migration 0035).
+        int draftRemoved;
+        await using (var del = new NpgsqlCommand("DELETE FROM wf.template_draft WHERE id = @id", conn, tx))
+        {
+            del.Parameters.AddWithValue("id", template.Id);
+            draftRemoved = await del.ExecuteNonQueryAsync(ct);
+        }
         await audit.AppendAsync(tx, Entry(subject, "workflow.template_upload", AuditOutcome.Success, "workflow_template", template.Id, correlationId,
-            ("version", version.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("objectType", template.ObjectType), ("name", template.Name)), ct);
+            ("version", version.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("objectType", template.ObjectType), ("name", template.Name),
+            ("draftRemoved", (draftRemoved > 0).ToString())), ct);
         var stored = (await WorkflowStore.LoadTemplateVersionAsync(conn, tx, template.Id, version, ct))!;
         await tx.CommitAsync(ct);
         return Outcome<TemplateView>.Ok(ToView(stored));

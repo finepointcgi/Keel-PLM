@@ -487,6 +487,20 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                     if (href is not null) await GoAsync(session, ada, "/" + href.TrimStart('/'), "workflow-detail");
                 });
 
+                // ---- phone approvals (ADR 0056): ada has a technical review waiting on the demo part under review
+                await TryAsync("mobile-approvals", async () =>
+                {
+                    var adaPhone = await session.SignInAsync("ada", 375, 812);
+                    await GoAsync(session, adaPhone, "/approve", "mobile-approvals");
+                    var open = adaPhone.Page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Review and decide", Exact = false }).First;
+                    if (await open.CountAsync() == 0) { _log.AppendLine("FAILED mobile-approve-summary: ada has no open task"); return; }
+                    await open.ClickAsync();
+                    await adaPhone.Page.Locator("[data-testid=review-summary]").WaitForAsync();
+                    await ShotAsync(adaPhone.Page, "mobile-approve-summary");
+                    await adaPhone.Page.EvaluateAsync("() => window.scrollTo(0, document.body.scrollHeight)");
+                    await ShotAsync(adaPhone.Page, "mobile-approve-decision");
+                });
+
                 // ---- tasks and e-signatures (ada: stale login, so the step-up screen appears)
                 await TryAsync("ada-task", async () =>
                 {
@@ -714,6 +728,21 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                 })
                     await GoAsync(session, ada, path, name);
                 await GoAsync(session, ada, "/workflows", "admin-workflows");
+
+                // ---- the workflow designer (ADR 0056): the steps editor and the preview as the workflow map
+                await TryAsync("admin-workflow-steps-editor", async () =>
+                {
+                    await session.GotoAsync(ada, "/admin/workflow-templates");
+                    await ada.Page.Locator("table.data").First.Locator("tr", new LocatorLocatorOptions { HasText = "part-release-review" }).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit", Exact = false }).First.ClickAsync();
+                    await ada.Page.Locator("[data-step='1']").WaitForAsync();
+                    await ada.Page.Locator("[data-step='1']").ScrollIntoViewIfNeededAsync();
+                    await ShotAsync(ada.Page, "admin-workflow-steps-editor");
+                    await ada.Page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Preview", Exact = true }).ClickAsync();
+                    await ada.Page.Locator("[data-preview]").WaitForAsync();
+                    await ada.Page.Locator("[data-preview]").ScrollIntoViewIfNeededAsync();
+                    await ShotAsync(ada.Page, "admin-workflow-preview");
+                });
+
 
                 // ---- phone width (375 px)
                 var phone = await session.SignInAsync("alice", 375, 812);

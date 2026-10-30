@@ -223,6 +223,16 @@ public sealed class WorkflowAdminService(IWorkflowTemplateAdmin templates)
     public Task<Outcome<TemplateVersionInfo>> PublishAsync(Subject subject, string definitionJson, string? correlationId, CancellationToken ct = default) =>
         templates.PublishAsync(subject, definitionJson, correlationId, ct);
 
+    public Task<Outcome<IReadOnlyList<TemplateDraftInfo>>> ListDraftsAsync(Subject subject, CancellationToken ct = default) => templates.ListDraftsAsync(subject, ct);
+
+    public Task<Outcome<TemplateDraftInfo>> SaveDraftAsync(Subject subject, string templateId, int baseVersion, string definitionJson, string? correlationId, CancellationToken ct = default) =>
+        templates.SaveDraftAsync(subject, templateId, baseVersion, definitionJson, correlationId, ct);
+
+    public Task<Outcome<bool>> DiscardDraftAsync(Subject subject, string templateId, string? correlationId, CancellationToken ct = default) =>
+        templates.DiscardDraftAsync(subject, templateId, correlationId, ct);
+
+    public Task<Outcome<IReadOnlyList<SignatureMeaning>>> ListSignatureMeaningsAsync(Subject subject, CancellationToken ct = default) => templates.ListSignatureMeaningsAsync(subject, ct);
+
     public Task<Outcome<IReadOnlyList<TemplatePin>>> ListPinsAsync(Subject subject, CancellationToken ct = default) => templates.ListPinsAsync(subject, ct);
 
     public Task<Outcome<TemplatePin?>> PinAsync(Subject subject, string objectType, string? templateId, string? correlationId, CancellationToken ct = default) =>

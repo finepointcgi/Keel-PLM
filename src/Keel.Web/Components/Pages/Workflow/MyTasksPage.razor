@@ -8,7 +8,7 @@
 <PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="@P["Tasks.Title"]" Crumbs="@Crumbs">
     @if (tasks is not null)
     {
-        <p class="muted">@P.Count("Tasks.Count", tasks.Items.Count)</p>
+        <p class="muted">@P.Count("Tasks.Count", tasks.Items.Count) · <a href="approve">@P["Tasks.PhoneView"]</a></p>
         <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="@P["Tasks.Caption"]" OnServerSort="OnSort" ServerSort="sort">
             <Empty><EmptyState Title="@P["Tasks.EmptyTitle"]" IconName="check">@P["Tasks.EmptyText"]</EmptyState></Empty>
         </DataTable>

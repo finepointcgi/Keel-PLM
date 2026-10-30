@@ -238,4 +238,6 @@
   <data name="Tasks.Restricted" xml:space="preserve"><value>Elemento restringido. Usted ya no puede verlo; la tarea no se puede firmar.</value></data>
   <data name="Tasks.Rev" xml:space="preserve"><value>rev. {0}</value></data>
   <data name="Tasks.Title" xml:space="preserve"><value>Mis tareas</value></data>
+  <data name="Tasks.PhoneView" xml:space="preserve"><value>Vista de teléfono</value></data>
+  <data name="Sign.Decision" xml:space="preserve"><value>Su decisión</value></data>
 </root>

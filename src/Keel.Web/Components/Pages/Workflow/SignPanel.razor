@@ -1,6 +1,6 @@
 @inject IServiceProvider Services
-<section class="panel sign-panel" aria-labelledby="sign-heading">
-    <h3 id="sign-heading">@P["Sign.Title"]</h3>
+<section class="panel sign-panel @(Phone ? "sign-phone" : null)" aria-labelledby="sign-heading">
+    <h3 id="sign-heading">@(Phone ? P["Sign.Decision"].Value : P["Sign.Title"].Value)</h3>
     @if (!CanSign)
     {
         <p class="muted" role="status">@P["Sign.Cannot"] @string.Join(" ", BlockedReasons.Select(r => WorkflowText.Reason(r, C)))</p>
@@ -21,7 +21,7 @@
             </label>
             @if (validation is not null) { <p id="sign-validation" class="error" role="alert">@validation</p> }
             @if (Error is not null) { <p class="error" role="alert">@Error</p> }
-            <div class="toolbar" role="group" aria-label="@P["Sign.Meaning"]">
+            <div class="toolbar decision-buttons" role="group" aria-label="@P["Sign.Meaning"]">
                 @foreach (var c in ReasonCodes)
                 {
                     <button type="button" class="@(c.Decision == "reject" ? "danger" : null)" disabled="@Busy" @onclick="() => Choose(c)">@c.Label</button>
@@ -40,6 +40,8 @@
     [Parameter] public IReadOnlyList<string> BlockedReasons { get; set; } = [];
     [Parameter] public bool StepUpRequired { get; set; }
     [Parameter] public int StepUpMaxAgeSeconds { get; set; } = 300;
+    /// <summary>Phone layout (ADR-0056): full-width decision buttons at the bottom of the page, at least 56 px high.</summary>
+    [Parameter] public bool Phone { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public string? Error { get; set; }
     [Parameter] public string Comment { get; set; } = "";

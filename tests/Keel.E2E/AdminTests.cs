@@ -158,13 +158,14 @@ public sealed class AdminTests(E2EFixture fx)
             // ---- a workflow template: open the structured editor, switch to JSON and back, publish a new version, pin it
             await session.GotoAsync(ada, "/admin/workflow-templates");
             await page.Locator("tr", new PageLocatorOptions { HasText = "part-release-review" }).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit" }).ClickAsync();
-            await Expect(page.GetByRole(AriaRole.Group, new PageGetByRoleOptions { Name = "Node tech-review" })).ToBeVisibleAsync();
-            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "JSON (advanced)" }).ClickAsync();
+            var step1 = page.GetByRole(AriaRole.Group, new PageGetByRoleOptions { Name = "Step 1: Technical review" }); // ADR-0056: the steps view is the default
+            await Expect(step1).ToBeVisibleAsync();
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "JSON", Exact = true }).ClickAsync();
             await Expect(page.Locator("textarea.code")).ToHaveValueAsync(new System.Text.RegularExpressions.Regex("tech-review"));
-            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Structured" }).ClickAsync();
-            await BrowserSession.FillAsync(page.GetByRole(AriaRole.Group, new PageGetByRoleOptions { Name = "Node tech-review" }).GetByLabel("Due in days"), "9");
+            await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Steps", Exact = true }).ClickAsync();
+            await BrowserSession.FillAsync(step1.GetByLabel("Due after (days)"), "9");
             await BrowserSession.ClickAsync(page, "Validate");
-            await Expect(page.GetByRole(AriaRole.Status).Filter(new LocatorFilterOptions { HasText = "The definition is valid." })).ToBeVisibleAsync();
+            await Expect(page.GetByRole(AriaRole.Status).Filter(new LocatorFilterOptions { HasText = "The workflow is valid." })).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(page, "Publish new version");
             await Expect(page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Publish this version?" })).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(page, "Publish version");
