@@ -4,6 +4,8 @@ Status: **pending review. For counsel and the empowered official to decide: ever
 
 Marks: **verified** = read in this repository (path given); **unverified** = not checkable here.
 
+> **Repository visibility (checked by the coordinator, 2026-10-30):** the GitHub repository `finepointcgi/Keel-PLM` is **private**. This is a point-in-time fact; visibility can change, and counsel should decide whether and when any publication affects the export questions below.
+
 ## 1. What the product is
 
 - Keel PLM (working name; the organisation name is the placeholder `[Company]`, assumption A21) is a product lifecycle management system: parts, documents and a file vault, bills of materials, change management, workflow with electronic signatures, baselines, configuration, CAD file management, quality, sourcing, requirements, records, programs, reports. It is a web application (ASP.NET Core host with a Blazor Server UI and REST API) over PostgreSQL and an S3-compatible object store (`README.md`, `docs/CLAUDE.md`, ADR-0001, ADR-0012).
