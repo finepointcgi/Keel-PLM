@@ -1,3 +1,4 @@
+using Keel.Web.Localization;
 using MudBlazor.Services;
 using System.Globalization;
 using System.Security.Claims;
@@ -69,6 +70,7 @@ public static class KeelUi
         services.AddScoped<ShellJs>();
         services.AddScoped<LifecycleSteps>();
         services.AddScoped<ShellState>();
+        services.AddKeelLocalization(); // ADR 0057: interface language (resx resources, per-user preference)
         services.AddScoped<PaletteState>();
         services.AddScoped<SimpleFlows>(); // ADR 0061: one-step edit, add-document and quick-create flows
         services.AddScoped<WorkspaceReads>();

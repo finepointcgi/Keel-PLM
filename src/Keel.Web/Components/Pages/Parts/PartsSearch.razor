@@ -1,32 +1,31 @@
 @page "/parts"
 @inject CurrentUser Users
 @inject PartService Parts
+@inject IStringLocalizer<PageStrings> P
+@inject IStringLocalizer<CommonStrings> C
 
-<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="Parts" Crumbs="@Crumbs">
+<PageFrame Banner="@(result?.PageBanner ?? UiText.Unclassified)" Title="@P["Parts.Title"]" Crumbs="@Crumbs">
     <form class="toolbar" role="search" @onsubmit="() => Search(0)">
-        <input aria-label="Search parts" placeholder="Number or name" class="grow" @bind="query" />
-        <select aria-label="State" @bind="state" @bind:after="() => Search(0)">
-            <option value="">Any state</option>
-            <option value="InWork">In Work</option>
-            <option value="UnderReview">Under Review</option>
-            <option value="Released">Released</option>
-            <option value="Obsolete">Obsolete</option>
+        <input aria-label="@P["Parts.Search"]" placeholder="@C["Search.Placeholder"]" class="grow" @bind="query" />
+        <select aria-label="@C["State"]" @bind="state" @bind:after="() => Search(0)">
+            <option value="">@C["State.Any"]</option>
+            @foreach (var s in States) { <option value="@s">@C.StateLabel(s)</option> }
         </select>
-        <button type="submit">Search</button>
+        <button type="submit">@C["Search"]</button>
         <AuthorizeView Roles="@($"{Roles.Author},{Roles.Admin}")">
-            <a class="button" href="parts/new" data-action="create-part">Create part</a>
+            <a class="button" href="parts/new" data-action="create-part">@P["Parts.Create"]</a>
         </AuthorizeView>
-        <a class="button secondary" href="parts/classification">By classification</a>
+        <a class="button secondary" href="parts/classification">@P["Parts.ByClassification"]</a>
     </form>
 
     @if (result is not null)
     {
-        <p class="muted">@result.Total part@(result.Total == 1 ? "" : "s") you can access</p>
-        <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="Parts" OnServerSort="OnSort" ServerSort="sort">
+        <p class="muted">@P.Count("Parts.Count", result.Total)</p>
+        <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="@P["Parts.Title"]" OnServerSort="OnSort" ServerSort="sort">
             <Empty>
-                <EmptyState Title="@(query.Length > 0 || state != "" ? "No parts match" : "No parts yet")" IconName="part"
-                            ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="Create part">
-                    @(query.Length > 0 || state != "" ? "Try a different number or name, or choose Any state." : "Create the first part to start building products. All it needs is a name.")
+                <EmptyState Title="@(query.Length > 0 || state != "" ? P["Parts.NoMatch"] : P["Parts.None"])" IconName="part"
+                            ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="@P["Parts.Create"]">
+                    @(query.Length > 0 || state != "" ? P["Parts.NoMatchHelp"] : P["Parts.NoneHelp"])
                 </EmptyState>
             </Empty>
         </DataTable>
@@ -34,7 +33,7 @@
     }
     else
     {
-        <Skeleton Lines="6" Label="Loading parts" />
+        <Skeleton Lines="6" Label="@P["Parts.Loading"]" />
     }
 </PageFrame>
 
@@ -65,16 +64,19 @@
     private int offset;
     private PartSearchResult? result;
 
-    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Parts")];
+    private static readonly string[] States = ["InWork", "UnderReview", "Released", "Obsolete"];
 
-    private static readonly IReadOnlyList<DataColumn<PartSummary>> Columns =
+    private IReadOnlyList<Crumb> Crumbs => [new(P["Parts.Title"])];
+
+    // Built per render: the titles and state labels follow the language of the circuit (ADR 0057).
+    private IReadOnlyList<DataColumn<PartSummary>> Columns =>
     [
-        new() { Key = "number", Title = "Number", Required = true, ServerSortKey = "number", Cell = p => @<a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a> },
-        new() { Key = "name", Title = "Name", ServerSortKey = "name", Text = p => p.Name },
-        new() { Key = "type", Title = "Type", ServerSortKey = "type", Text = p => p.PartType },
-        new() { Key = "version", Title = "Version", ServerSortKey = "version", Text = p => $"{p.Revision}.{p.Iteration}" },
-        new() { Key = "state", Title = "State", ServerSortKey = "state", Text = p => StateText.Label(p.State) },
-        new() { Key = "markings", Title = "Markings", Required = true, Cell = p => @<MarkingChip Text="@p.Banner" /> },
+        new() { Key = "number", Title = C["Column.Number"], Required = true, ServerSortKey = "number", Cell = p => @<a href="parts/@Uri.EscapeDataString(p.Number)">@p.Number</a> },
+        new() { Key = "name", Title = C["Column.Name"], ServerSortKey = "name", Text = p => p.Name },
+        new() { Key = "type", Title = C["Column.Type"], ServerSortKey = "type", Text = p => p.PartType },
+        new() { Key = "version", Title = C["Column.Version"], ServerSortKey = "version", Text = p => $"{p.Revision}.{p.Iteration}" },
+        new() { Key = "state", Title = C["Column.State"], ServerSortKey = "state", Text = p => C.StateLabel(p.State) },
+        new() { Key = "markings", Title = C["Column.Markings"], Required = true, Cell = p => @<MarkingChip Text="@p.Banner" /> },
     ];
 
     private async Task Search(int newOffset)

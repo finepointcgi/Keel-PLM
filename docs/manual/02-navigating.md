@@ -64,6 +64,20 @@ The full search page (`/search`) has a tab per kind of object and can keep saved
 
 Parts, documents, changes, baselines and manufacturing BOMs share one layout: a header with number, name, markings and version; a **lifecycle stepper** showing where the object is; a sticky action bar (Edit, Save, Add document, Move to..., and More for the step-by-step Check out and Check in); and tabs. A tab is part of the address (`?tab=history`), so you can bookmark or send a link to it. The star (**Add to favorites**) and **Watch** button sit in the header.
 
+## Language
+
+Open the user menu and under **Language** choose **English** or **Español**. The page loads again in the language you chose, and the choice is saved for you on the server like the theme: it follows you to your next sign-in and to other browsers.
+
+![The user menu with the language choice](images/shell-language-menu.png)
+
+What is translated today: the frame (top bar, navigation rail, user menu, command palette), Home, the Parts list and the Create part form and the part page's edit, save and check-out controls, the Documents list and Create document, My tasks and the task page with the signature panel, and the tables, paging, confirmation and not-found messages around them. Dates, numbers and units on those screens follow the language (for example `30/10/2026 12:05` and `1.234,5` in Spanish); times are always UTC. Every other page is still in English whatever language you choose; the list is in [increments/9.6-localization.md](../increments/9.6-localization.md).
+
+![Home in Spanish](images/shell-home-es.png)
+
+**Marking banners and classification text are never translated.** They are the handling markings the policy dictates, and they read exactly the same in every language. The same goes for object numbers, the audit log, and names that an administrator defined (lists, lifecycles, attributes). Messages that come from the rules of a module (for example a validation message) are shown in English until that module is translated.
+
+Your administrator can add a language without changing the program; see the [operator guide](24-administrator-and-operator-guide.md).
+
 ## Themes and density
 
 Open the user menu and use **Theme** (System, Light, Dark, High contrast) and **Density** (Comfortable, Compact). The choice is saved for you on the server and follows you to your next sign-in.

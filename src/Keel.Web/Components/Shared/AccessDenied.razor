@@ -1,15 +1,16 @@
 @inject CurrentUser Users
 @inject IAuditLog Audit
 @inject NavigationManager Nav
+@inject IStringLocalizer<PageStrings> P
 
-<PageFrame Banner="@UiText.Unclassified" Title="@(signedIn ? "Not authorized" : "Session ended")">
+<PageFrame Banner="@UiText.Unclassified" Title="@(signedIn ? P["Denied.Title"] : P["Ended.Title"])">
     @if (signedIn)
     {
-        <p>You are not authorized to open this page. The attempt has been recorded.</p>
+        <p>@P["Denied.Text"]</p>
     }
     else
     {
-        <p>Your session has ended. <a href="@Nav.Uri" target="_top" @onclick="Reload" @onclick:preventDefault>Sign in again</a>.</p>
+        <p>@P["Ended.Text"] <a href="@Nav.Uri" target="_top" @onclick="Reload" @onclick:preventDefault>@P["Ended.SignIn"]</a></p>
     }
 </PageFrame>
 

@@ -67,6 +67,12 @@ public sealed class ShellState(CurrentUser users, IPreferenceStore workspace, Sh
     /// <summary>Simple view (ADR 0061): the navigation shows the everyday groups only. Display only; access never depends on it.</summary>
     public Task SetSimpleViewAsync(bool simple) => UpdateAsync(Preferences with { SimpleView = simple }, apply: false);
 
+    /// <summary>
+    /// The interface language (ADR 0057). Saved for the person; the caller then reloads the page so the new circuit starts in the new culture.
+    /// Display only: it changes the words on the screen, never access, markings, banners or the audit log.
+    /// </summary>
+    public Task SetLanguageAsync(string language) => UpdateAsync(Preferences with { Language = language }, apply: false);
+
     /// <summary>Cycles light, dark, high contrast (the palette's "Toggle theme"). "System" counts as the theme the OS currently shows, so it moves to light.</summary>
     public Task ToggleThemeAsync() => SetThemeAsync(Preferences.Theme switch
     {
@@ -77,7 +83,7 @@ public sealed class ShellState(CurrentUser users, IPreferenceStore workspace, Sh
 
     private async Task UpdateAsync(UserPreferences next, bool apply = true)
     {
-        next = UserPreferences.Normalize(next.Theme, next.Density, next.NavCollapsed, next.SimpleView);
+        next = UserPreferences.Normalize(next.Theme, next.Density, next.NavCollapsed, next.SimpleView, next.Language);
         Preferences = next;
         Changed?.Invoke();
         if (apply) await js.InvokeVoidAsync("applyPreferences", next.Theme, next.Density);

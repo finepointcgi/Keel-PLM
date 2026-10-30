@@ -63,6 +63,36 @@ public sealed class WorkspaceTests(PostgresFixture pg)
     }
 
     [Fact]
+    public async Task The_interface_language_is_a_per_user_preference_that_defaults_to_English_and_is_never_stored_raw()
+    {
+        // ADR 0057, migration 0036: ws.preference.language.
+        var env = await NewEnvAsync();
+        Assert.Equal("en", (await env.Workspace.GetPreferencesAsync(Alice)).Language);
+
+        var saved = await env.Workspace.SetPreferencesAsync(Alice, new UserPreferences(ThemeNames.Dark, DensityNames.Compact, true, SimpleView: true, Language: "es"));
+
+        Assert.Equal("es", saved.Language);
+        Assert.Equal(new UserPreferences("dark", "compact", true, true, "es"), await env.Workspace.GetPreferencesAsync(Alice)); // the other choices are kept
+        Assert.Equal("es", (await env.Workspace.GetPreferencesForShellAsync("sub-alice")).Language); // the page shell reads the same value for <html lang>
+        Assert.Equal("en", (await env.Workspace.GetPreferencesAsync(Rita)).Language); // another user is untouched
+
+        Assert.Equal("en", (await env.Workspace.SetPreferencesAsync(Rita, UserPreferences.Default with { Language = "'; DROP TABLE ws.preference; --" })).Language);
+        await using var check = env.Ds.CreateCommand("SELECT language FROM ws.preference WHERE user_sub = 'sub-rita'");
+        Assert.Equal("en", (string?)await check.ExecuteScalarAsync());
+
+        // Changing another preference later must not reset the language (the UI saves all choices together, from the circuit's copy).
+        await env.Workspace.SetPreferencesAsync(Alice, (await env.Workspace.GetPreferencesAsync(Alice)) with { Theme = ThemeNames.Light });
+        Assert.Equal("es", (await env.Workspace.GetPreferencesAsync(Alice)).Language);
+
+        // The database bounds the shape of the value even if a bug skipped the normalization; which tags are shipped is the application's decision (no migration per language).
+        await using var bad = env.Ds.CreateCommand("UPDATE ws.preference SET language = 'Español, por favor' WHERE user_sub = 'sub-alice'");
+        await Assert.ThrowsAsync<PostgresException>(() => bad.ExecuteNonQueryAsync());
+        await using var future = env.Ds.CreateCommand("UPDATE ws.preference SET language = 'de' WHERE user_sub = 'sub-alice'");
+        Assert.Equal(1, await future.ExecuteNonQueryAsync());
+        Assert.Equal("de", (await env.Workspace.GetPreferencesAsync(Alice)).Language); // stored; the UI reads an unshipped tag as English (LocalizationTests)
+    }
+
+    [Fact]
     public async Task Table_layouts_are_per_user_and_per_table_and_capped()
     {
         var env = await NewEnvAsync();

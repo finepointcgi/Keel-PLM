@@ -3,11 +3,14 @@
 @inject WorkflowService Flow
 @inject SignDraftStore Drafts
 @inject NavigationManager Nav
+@inject IStringLocalizer<PageStrings> P
+@inject IStringLocalizer<CommonStrings> C
+@inject UiLanguage Language
 
-<PageFrame Banner="@(detail?.Banner ?? UiText.Unclassified)" Title="Task">
+<PageFrame Banner="@(detail?.Banner ?? UiText.Unclassified)" Title="@P["Task.Title"]">
     @if (notFound)
     {
-        <p class="error" role="alert">This task was not found, or you are not authorized to see it.</p>
+        <p class="error" role="alert">@P["Task.NotFound"]</p>
     }
     else if (detail is not null)
     {
@@ -16,7 +19,7 @@
         {
             <article class="stack">
                 <h2>@d.Summary.Name</h2>
-                <p role="status">You are no longer eligible to see the item this task is about, so its details are hidden and the task cannot be signed. Ask the person who started the review, or an administrator, to reassign it.</p>
+                <p role="status">@P["Task.NoLongerEligible"]</p>
                 @* UX-3: the steps and their status, with every participant shown as "Participant". *@
                 <WorkflowMapPanel InstanceId="@d.Summary.InstanceId" Version="@d.Status" />
             </article>
@@ -29,55 +32,57 @@
                     <div>
                         <h2>@d.Summary.Name</h2>
                         <p class="muted">
-                            @(d.Summary.Kind == "approval" ? "Approval" : "Review") of
-                            @{ var link = WorkflowText.ObjectLink(o.ObjectType, o.Key); }
-                            @if (link is not null) { <a href="@link">@o.Key</a> } else { <span>@o.Key</span> }
-                            · @o.Name · revision @o.Revision (@o.IterationLabel) · started by @d.Summary.StartedByName
+                            @{
+                                var link = WorkflowText.ObjectLink(o.ObjectType, o.Key);
+                                RenderFragment objectKey = link is not null ? @<a href="@link">@o.Key</a> : @<span>@o.Key</span>;
+                            }
+                            @Rich.With(P[d.Summary.Kind == "approval" ? "Task.ApprovalOf" : "Task.ReviewOf"], objectKey)
+                            · @o.Name · @P["Task.Revision", o.Revision, o.IterationLabel] · @P["Task.StartedBy", d.Summary.StartedByName ?? ""]
                         </p>
                     </div>
                     <div class="badges">
                         <span class="badge">@d.Status</span>
                         <MarkingChip Text="@o.Banner" />
-                        <span class="badge @(d.Summary.Overdue ? "error" : null)">@WorkflowText.Due(d.Summary.DueAt, d.Summary.Overdue)</span>
+                        <span class="badge @(d.Summary.Overdue ? "error" : null)">@WorkflowText.Due(d.Summary.DueAt, d.Summary.Overdue, C, Language)</span>
                     </div>
                 </header>
 
                 @if (message is not null) { <p class="permit" role="status">@message</p> }
 
                 <section class="panel">
-                    <h3>What you are signing</h3>
-                    <p>@(string.IsNullOrEmpty(d.Description) ? "No description" : d.Description)</p>
+                    <h3>@P["Task.Signing"]</h3>
+                    <p>@(string.IsNullOrEmpty(d.Description) ? P["Task.NoDescription"] : d.Description)</p>
                     @if (d.Attributes is { Count: > 0 })
                     {
                         <dl class="facts">
                             @foreach (var (k, v) in d.Attributes) { <dt>@k</dt><dd>@v?.ToString()</dd> }
                         </dl>
                     }
-                    <p class="muted small">Version @o.IterationLabel as stored; the signature records a hash of this content.</p>
+                    <p class="muted small">@P["Task.VersionNote", o.IterationLabel]</p>
                 </section>
 
                 @if (d.Instance is { } inst)
                 {
-                    @if (inst.Comment is not null) { <section class="panel"><h3>Submitter's comment</h3><p>@inst.Comment</p></section> }
-                    <section class="panel" aria-label="Workflow progress">
-                        <h3>Progress</h3>
+                    @if (inst.Comment is not null) { <section class="panel"><h3>@P["Task.SubmitterComment"]</h3><p>@inst.Comment</p></section> }
+                    <section class="panel" aria-label="@P["Task.ProgressLabel"]">
+                        <h3>@P["Task.Progress"]</h3>
                         <WorkflowMapPanel InstanceId="@inst.Id" Version="@($"{inst.Status}:{inst.Tasks.Count(t => t.Status != "Open")}")" />
                     </section>
                     <section class="panel">
-                        <h3>Workflow history</h3>
-                        <p><a href="workflows/@inst.Id">Open the workflow</a> · @WorkflowText.Status(inst.Status)</p>
+                        <h3>@P["Task.History"]</h3>
+                        <p><a href="workflows/@inst.Id">@P["Task.OpenWorkflow"]</a> · @WorkflowText.Status(inst.Status)</p>
                         @if (inst.Signatures.Count > 0)
                         {
-                            <ul class="plain signatures" aria-label="Signatures so far">
+                            <ul class="plain signatures" aria-label="@P["Task.SignaturesSoFar"]">
                                 @foreach (var s in inst.Signatures) { <li>@s.Manifestation@(string.IsNullOrEmpty(s.Comment) ? "" : $": {s.Comment}")</li> }
                             </ul>
                         }
                         <div class="table-wrap"><table class="data">
-                            <thead><tr><th scope="col">When (UTC)</th><th scope="col">Who</th><th scope="col">What</th></tr></thead>
+                            <thead><tr><th scope="col">@P["Task.When"]</th><th scope="col">@P["Task.Who"]</th><th scope="col">@P["Task.What"]</th></tr></thead>
                             <tbody>
                                 @foreach (var e in inst.Events)
                                 {
-                                    <tr><td>@WorkflowText.Utc(e.At)</td><td>@e.ActorName</td><td>@e.Action@(e.Detail is null ? "" : ": " + e.Detail)</td></tr>
+                                    <tr><td>@Language.Utc(e.At)</td><td>@e.ActorName</td><td>@e.Action@(e.Detail is null ? "" : ": " + e.Detail)</td></tr>
                                 }
                             </tbody>
                         </table></div>
@@ -91,7 +96,7 @@
                 }
                 else
                 {
-                    <p class="muted">This task is @d.Status.ToLowerInvariant()@(d.Decision is null ? "" : $" ({d.Decision})").</p>
+                    <p class="muted">@(d.Decision is null ? P["Task.StatusIs", d.Status.ToLower(Language.Culture)] : P["Task.StatusIsDecision", d.Status.ToLower(Language.Culture), d.Decision])</p>
                 }
             </article>
         }
@@ -116,7 +121,7 @@
         if (outcome.IsOk && Drafts.Take(Id, user.Id) is { } draft)
         {
             comment = draft.Comment ?? "";
-            message = "You signed in again. Your comment was kept; choose the decision to sign.";
+            message = P["Task.SignedInAgain"];
         }
     }
 
@@ -131,12 +136,14 @@
         {
             case OutcomeKind.Ok:
                 comment = "";
-                var noun = outcome.Value!.Target.ObjectType switch { "document" => "document", "mbom" => "MBOM", "baseline" => "baseline", "reqspec" => "specification", "gate" => "gate review", "supplier" => "supplier", "process_plan" => "process plan", "ncr" => "report", "capa" => "corrective action", "deviation" => "deviation or waiver", "source_entry" => "list entry", "reg_list_version" => "list version", "retention_schedule" => "schedule", "legal_hold" => "hold", "disposition" => "disposition request", "ecn" or "ecr" => "change", _ => "part" };
+                // The object's noun comes with the sentence as ONE string per object kind, so the sentence keeps its grammar in every language.
+                var kind = outcome.Value!.Target.ObjectType is "ecn" or "ecr" ? "change" : outcome.Value!.Target.ObjectType;
+                var noun = P.Or("Task.Noun." + kind, P["Task.Noun.part"].Value);
                 message = outcome.Value!.Status switch
                 {
-                    InstanceStatus.Approved => $"Signed. All approvals are in and the {noun} is released.",
-                    InstanceStatus.Rejected => $"Signed. The review was rejected and the {noun} is back In Work.",
-                    _ => "Signed.",
+                    InstanceStatus.Approved => P["Task.SignedApproved", noun].Value,
+                    InstanceStatus.Rejected => P["Task.SignedRejected", noun].Value,
+                    _ => P["Task.Signed"].Value,
                 };
                 var refreshed = await Flow.GetTaskAsync(user, Id, CurrentUser.NewCorrelationId());
                 detail = refreshed.Value ?? detail;
@@ -147,7 +154,7 @@
                 Nav.NavigateTo($"account/step-up?returnUrl={Uri.EscapeDataString("/tasks/" + Id.ToString("D"))}", forceLoad: true);
                 break;
             default:
-                error = WorkflowText.Message(outcome);
+                error = WorkflowText.Message(outcome, C);
                 break;
         }
     }

@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" id="root">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Attention.AllTasks" xml:space="preserve"><value>Todas mis tareas</value></data>
+  <data name="Attention.Due" xml:space="preserve"><value>vence el {0}</value></data>
+  <data name="Attention.EmptyText" xml:space="preserve"><value>Aquí aparecen las revisiones por firmar, las tareas de cambio que se le asignan y las decisiones sobre sus solicitudes de cambio.</value></data>
+  <data name="Attention.EmptyTitle" xml:space="preserve"><value>Está al día</value></data>
+  <data name="Attention.LoadFailed" xml:space="preserve"><value>No se pudieron cargar sus tareas. El resto de la página no se ve afectado.</value></data>
+  <data name="Attention.Loading" xml:space="preserve"><value>Cargando sus tareas</value></data>
+  <data name="Attention.Overdue" xml:space="preserve"><value>Vencida</value></data>
+  <data name="Attention.Title" xml:space="preserve"><value>Requiere mi atención</value></data>
+  <data name="Card.LoadFailed" xml:space="preserve"><value>No se pudo cargar esta lista. El resto de la página no se ve afectado.</value></data>
+  <data name="Card.NothingYet" xml:space="preserve"><value>Todavía no hay nada aquí</value></data>
+  <data name="Card.Remove" xml:space="preserve"><value>Quitar</value></data>
+  <data name="Card.RemoveFavorite" xml:space="preserve"><value>Quitar {0} de favoritos</value></data>
+  <data name="Denied.Text" xml:space="preserve"><value>Usted no tiene autorización para abrir esta página. El intento quedó registrado.</value></data>
+  <data name="Denied.Title" xml:space="preserve"><value>No autorizado</value></data>
+  <data name="DocNew.File" xml:space="preserve"><value>Archivo principal (opcional, hasta {0})</value></data>
+  <data name="DocNew.Link.describes.Help" xml:space="preserve"><value>Apunta a una revisión concreta del documento, de modo que la pieza sigue mostrando la revisión con la que se liberó.</value></data>
+  <data name="DocNew.Link.describes.Label" xml:space="preserve"><value>Describe esta pieza (por ejemplo, su plano)</value></data>
+  <data name="DocNew.Link.references.Help" xml:space="preserve"><value>Significa siempre la última revisión liberada del documento.</value></data>
+  <data name="DocNew.Link.references.Label" xml:space="preserve"><value>La pieza sigue este documento (por ejemplo, una especificación)</value></data>
+  <data name="DocNew.LinkFailed" xml:space="preserve"><value>Se creó {0}, pero no se pudo vincular a {1}: {2}</value></data>
+  <data name="DocNew.LinkNote" xml:space="preserve"><value>Keel guarda una versión nueva de la pieza con el vínculo; no necesita extraer la pieza. Si la pieza está liberada, añada el documento mediante una orden de cambio.</value></data>
+  <data name="DocNew.LinkPart" xml:space="preserve"><value>Vincular a una pieza (opcional)</value></data>
+  <data name="DocNew.NameRequired" xml:space="preserve"><value>Escriba un nombre para el documento.</value></data>
+  <data name="DocNew.Part" xml:space="preserve"><value>Pieza</value></data>
+  <data name="DocNew.PartPlaceholder" xml:space="preserve"><value>Número o nombre de la pieza</value></data>
+  <data name="DocNew.Related" xml:space="preserve"><value>¿Cómo se relaciona el documento con la pieza?</value></data>
+  <data name="DocNew.Title" xml:space="preserve"><value>Nuevo documento</value></data>
+  <data name="DocNew.Uploading" xml:space="preserve"><value>Subiendo…</value></data>
+  <data name="Documents.Count.One" xml:space="preserve"><value>{0} documento al que tiene acceso</value></data>
+  <data name="Documents.Count.Other" xml:space="preserve"><value>{0} documentos a los que tiene acceso</value></data>
+  <data name="Documents.Create" xml:space="preserve"><value>Crear documento</value></data>
+  <data name="Documents.Loading" xml:space="preserve"><value>Cargando documentos</value></data>
+  <data name="Documents.NoMatch" xml:space="preserve"><value>Ningún documento coincide</value></data>
+  <data name="Documents.NoMatchHelp" xml:space="preserve"><value>Pruebe con otro número o nombre, o quite los filtros.</value></data>
+  <data name="Documents.None" xml:space="preserve"><value>Todavía no hay documentos</value></data>
+  <data name="Documents.NoneHelp" xml:space="preserve"><value>Suba el primer plano o la primera especificación para empezar.</value></data>
+  <data name="Documents.Search" xml:space="preserve"><value>Buscar documentos</value></data>
+  <data name="Documents.Title" xml:space="preserve"><value>Documentos</value></data>
+  <data name="Documents.Type" xml:space="preserve"><value>Tipo de documento</value></data>
+  <data name="Ended.SignIn" xml:space="preserve"><value>Iniciar sesión de nuevo</value></data>
+  <data name="Ended.Text" xml:space="preserve"><value>Su sesión ha finalizado.</value></data>
+  <data name="Ended.Title" xml:space="preserve"><value>Sesión finalizada</value></data>
+  <data name="Home.Card.favorites" xml:space="preserve"><value>Favoritos</value></data>
+  <data name="Home.Card.favorites.EmptyText" xml:space="preserve"><value>Use la estrella de una pieza, un documento o un cambio para tenerlo a mano.</value></data>
+  <data name="Home.Card.favorites.EmptyTitle" xml:space="preserve"><value>Todavía no hay favoritos</value></data>
+  <data name="Home.Card.programs" xml:space="preserve"><value>Cambios en mis programas</value></data>
+  <data name="Home.Card.programs.EmptyText" xml:space="preserve"><value>Aquí aparecen las solicitudes y los avisos de cambio abiertos de los programas a los que pertenece.</value></data>
+  <data name="Home.Card.programs.EmptyTitle" xml:space="preserve"><value>No hay cambios abiertos</value></data>
+  <data name="Home.Card.recent" xml:space="preserve"><value>Vistos recientemente</value></data>
+  <data name="Home.Card.recent.EmptyText" xml:space="preserve"><value>Las piezas, los documentos y los cambios que abra se mostrarán aquí para que pueda volver a ellos.</value></data>
+  <data name="Home.Card.recent.EmptyTitle" xml:space="preserve"><value>Todavía no ha visto nada</value></data>
+  <data name="Home.Card.released" xml:space="preserve"><value>Liberados recientemente</value></data>
+  <data name="Home.Card.released.EmptyText" xml:space="preserve"><value>Aquí se muestran las piezas y los documentos liberados en los últimos 30 días que usted puede leer.</value></data>
+  <data name="Home.Card.released.EmptyTitle" xml:space="preserve"><value>Nada liberado recientemente</value></data>
+  <data name="Home.Intro" xml:space="preserve"><value>Su trabajo de un vistazo: lo que le necesita, lo que abrió hace poco y lo que cambió en sus programas. Todo lo que ve aquí se limita a lo que usted tiene permiso de ver.</value></data>
+  <data name="Home.Title" xml:space="preserve"><value>Inicio</value></data>
+  <data name="NotFound.GoToParts" xml:space="preserve"><value>Ir a piezas</value></data>
+  <data name="NotFound.Text" xml:space="preserve"><value>No hay nada en esta dirección.</value></data>
+  <data name="NotFound.Title" xml:space="preserve"><value>Página no encontrada</value></data>
+  <data name="Part.Actions" xml:space="preserve"><value>Acciones de la pieza</value></data>
+  <data name="Part.AddDocument" xml:space="preserve"><value>Añadir documento</value></data>
+  <data name="Part.ChangeNote" xml:space="preserve"><value>Nota del cambio (opcional)</value></data>
+  <data name="Part.CheckIn" xml:space="preserve"><value>Ingresar</value></data>
+  <data name="Part.CheckInComment" xml:space="preserve"><value>Comentario del ingreso</value></data>
+  <data name="Part.CheckOut" xml:space="preserve"><value>Extraer</value></data>
+  <data name="Part.CheckedIn" xml:space="preserve"><value>Ingresada.</value></data>
+  <data name="Part.CheckedOut" xml:space="preserve"><value>Extraída. Sus cambios siguen siendo privados hasta que la ingrese.</value></data>
+  <data name="Part.CheckedOutBy" xml:space="preserve"><value>Extraída por {0} desde {1}.</value></data>
+  <data name="Part.Compare" xml:space="preserve"><value>Comparar</value></data>
+  <data name="Part.Discard" xml:space="preserve"><value>Descartar los cambios</value></data>
+  <data name="Part.DiscardBody" xml:space="preserve"><value>Se descartan sus ediciones sin guardar de {0}. La última versión guardada queda como está.</value></data>
+  <data name="Part.DiscardTitle" xml:space="preserve"><value>¿Descartar sus cambios?</value></data>
+  <data name="Part.Discarded" xml:space="preserve"><value>Cambios descartados. La pieza está como antes de empezar.</value></data>
+  <data name="Part.Edit" xml:space="preserve"><value>Editar</value></data>
+  <data name="Part.EditNow" xml:space="preserve"><value>Ya puede editar. Sus cambios siguen siendo privados hasta que guarde.</value></data>
+  <data name="Part.Lifecycle" xml:space="preserve"><value>Ciclo de vida de la pieza</value></data>
+  <data name="Part.Loading" xml:space="preserve"><value>Cargando la pieza</value></data>
+  <data name="Part.Locked" xml:space="preserve"><value>Bloqueada</value></data>
+  <data name="Part.MarkingsChanged" xml:space="preserve"><value>Marcas cambiadas.</value></data>
+  <data name="Part.More" xml:space="preserve"><value>Más</value></data>
+  <data name="Part.MoveTo" xml:space="preserve"><value>Pasar a {0}</value></data>
+  <data name="Part.Moved" xml:space="preserve"><value>Pasó a {0}.</value></data>
+  <data name="Part.NotFound" xml:space="preserve"><value>No se encontró la pieza {0}, o usted no tiene autorización para verla.</value></data>
+  <data name="Part.OverrideBody" xml:space="preserve"><value>Esto omite los pasos normales de revisión y liberación. El motivo y su nombre quedan registrados en el registro de auditoría.</value></data>
+  <data name="Part.OverrideReason" xml:space="preserve"><value>Motivo de esta anulación</value></data>
+  <data name="Part.ReadOnly" xml:space="preserve"><value>Solo lectura: {0}</value></data>
+  <data name="Part.Rev" xml:space="preserve"><value>Rev. {0} ({1})</value></data>
+  <data name="Part.Revisions" xml:space="preserve"><value>Revisiones</value></data>
+  <data name="Part.Save" xml:space="preserve"><value>Guardar</value></data>
+  <data name="Part.SaveWorkingCopy" xml:space="preserve"><value>Guardar copia de trabajo</value></data>
+  <data name="Part.SavedAs" xml:space="preserve"><value>Guardada como versión {0}.</value></data>
+  <data name="Part.Sections" xml:space="preserve"><value>Secciones de la pieza</value></data>
+  <data name="Part.SetState" xml:space="preserve"><value>Establecer estado</value></data>
+  <data name="Part.SetStateTitle" xml:space="preserve"><value>¿Establecer el estado en {0}?</value></data>
+  <data name="Part.StateSet" xml:space="preserve"><value>Estado establecido.</value></data>
+  <data name="Part.StepByStep" xml:space="preserve"><value>Control de versiones paso a paso</value></data>
+  <data name="Part.StepByStepHelp" xml:space="preserve"><value>Extraiga, guarde una copia de trabajo e ingrese como pasos separados (lo mismo que hacen Editar y Guardar en un solo paso).</value></data>
+  <data name="Part.Subtitle" xml:space="preserve"><value>{0} · {1} · unidad {2} · creada por {3}</value></data>
+  <data name="Part.Tab.changes" xml:space="preserve"><value>Cambios</value></data>
+  <data name="Part.Tab.classification" xml:space="preserve"><value>Clasificación</value></data>
+  <data name="Part.Tab.compliance" xml:space="preserve"><value>Cumplimiento</value></data>
+  <data name="Part.Tab.documents" xml:space="preserve"><value>Documentos</value></data>
+  <data name="Part.Tab.history" xml:space="preserve"><value>Historial</value></data>
+  <data name="Part.Tab.overview" xml:space="preserve"><value>Resumen</value></data>
+  <data name="Part.Tab.quality" xml:space="preserve"><value>Calidad</value></data>
+  <data name="Part.Tab.review" xml:space="preserve"><value>Revisión y liberación</value></data>
+  <data name="Part.Tab.security" xml:space="preserve"><value>Marcas de seguridad</value></data>
+  <data name="Part.Tab.sourcing" xml:space="preserve"><value>Abastecimiento</value></data>
+  <data name="Part.Tab.structure" xml:space="preserve"><value>Estructura</value></data>
+  <data name="Part.Tab.timeline" xml:space="preserve"><value>Cronología</value></data>
+  <data name="Part.Tab.trace" xml:space="preserve"><value>Trazabilidad</value></data>
+  <data name="Part.Tab.viewer" xml:space="preserve"><value>Visor</value></data>
+  <data name="Part.Title" xml:space="preserve"><value>Pieza</value></data>
+  <data name="Part.UndoBody" xml:space="preserve"><value>Se descarta la copia de trabajo de {0}: se pierden las ediciones que no haya ingresado. La última versión ingresada queda como está.</value></data>
+  <data name="Part.UndoCheckOut" xml:space="preserve"><value>Deshacer la extracción</value></data>
+  <data name="Part.UndoDone" xml:space="preserve"><value>Extracción deshecha. Se descartaron los cambios sin guardar.</value></data>
+  <data name="Part.UndoTitle" xml:space="preserve"><value>¿Deshacer la extracción?</value></data>
+  <data name="Part.Version" xml:space="preserve"><value>Versión {0}</value></data>
+  <data name="Part.WhereUsed" xml:space="preserve"><value>Dónde se usa</value></data>
+  <data name="Part.WorkingCopySaved" xml:space="preserve"><value>Copia de trabajo guardada.</value></data>
+  <data name="PartForm.Change" xml:space="preserve"><value>Cambiar</value></data>
+  <data name="PartForm.CreateAnother" xml:space="preserve"><value>Crear y añadir otra</value></data>
+  <data name="PartForm.CreatedNext" xml:space="preserve"><value>Se creó {0} {1}. Añada la siguiente.</value></data>
+  <data name="PartForm.Done" xml:space="preserve"><value>Listo</value></data>
+  <data name="PartForm.Fixed" xml:space="preserve"><value>El tipo, la unidad y el origen no se pueden cambiar una vez creada la pieza.</value></data>
+  <data name="PartForm.Intro" xml:space="preserve"><value>Póngale un nombre a la pieza y créela. Después puede añadir detalles en la página de la pieza.</value></data>
+  <data name="PartForm.Kind" xml:space="preserve"><value>Clase de pieza</value></data>
+  <data name="PartForm.More" xml:space="preserve"><value>Más detalles (opcional)</value></data>
+  <data name="PartForm.NameRequired" xml:space="preserve"><value>Escriba un nombre para la pieza.</value></data>
+  <data name="PartForm.Source" xml:space="preserve"><value>Origen</value></data>
+  <data name="PartForm.Summary" xml:space="preserve"><value>Esta pieza será de tipo {0}, {1}, {2}.</value></data>
+  <data name="PartForm.Unit" xml:space="preserve"><value>Unidad de medida</value></data>
+  <data name="PartForm.ValueRequired" xml:space="preserve"><value>Escriba un valor para {0}. Este detalle es obligatorio.</value></data>
+  <data name="Parts.ByClassification" xml:space="preserve"><value>Por clasificación</value></data>
+  <data name="Parts.Count.One" xml:space="preserve"><value>{0} pieza a la que tiene acceso</value></data>
+  <data name="Parts.Count.Other" xml:space="preserve"><value>{0} piezas a las que tiene acceso</value></data>
+  <data name="Parts.Create" xml:space="preserve"><value>Crear pieza</value></data>
+  <data name="Parts.Loading" xml:space="preserve"><value>Cargando piezas</value></data>
+  <data name="Parts.NoMatch" xml:space="preserve"><value>Ninguna pieza coincide</value></data>
+  <data name="Parts.NoMatchHelp" xml:space="preserve"><value>Pruebe con otro número o nombre, o elija Cualquier estado.</value></data>
+  <data name="Parts.None" xml:space="preserve"><value>Todavía no hay piezas</value></data>
+  <data name="Parts.NoneHelp" xml:space="preserve"><value>Cree la primera pieza para empezar a construir productos. Solo necesita un nombre.</value></data>
+  <data name="Parts.Search" xml:space="preserve"><value>Buscar piezas</value></data>
+  <data name="Parts.Title" xml:space="preserve"><value>Piezas</value></data>
+  <data name="Quick.BrowseParts" xml:space="preserve"><value>Explorar piezas</value></data>
+  <data name="Quick.CheckAccess" xml:space="preserve"><value>Comprobar mi acceso</value></data>
+  <data name="Quick.NewChange" xml:space="preserve"><value>Nueva solicitud de cambio</value></data>
+  <data name="Quick.Shortcut" xml:space="preserve"><value>Pulse Ctrl + K en cualquier lugar para buscar o ir a otra página.</value></data>
+  <data name="Quick.Title" xml:space="preserve"><value>Acciones rápidas</value></data>
+  <data name="Sign.Bound" xml:space="preserve"><value>Su firma queda vinculada a la versión exacta que se muestra en esta página y a su identidad. Después no se puede modificar.</value></data>
+  <data name="Sign.Cannot" xml:space="preserve"><value>No puede firmar esta tarea.</value></data>
+  <data name="Sign.Comment" xml:space="preserve"><value>Comentario</value></data>
+  <data name="Sign.CommentHint" xml:space="preserve"><value>(obligatorio para rechazar o para aprobar con comentarios)</value></data>
+  <data name="Sign.Meaning" xml:space="preserve"><value>Significado de la firma</value></data>
+  <data name="Sign.Minutes" xml:space="preserve"><value>{0} minutos</value></data>
+  <data name="Sign.NeedComment" xml:space="preserve"><value>Escriba un comentario para firmar como «{0}».</value></data>
+  <data name="Sign.Seconds" xml:space="preserve"><value>{0} segundos</value></data>
+  <data name="Sign.StepUp" xml:space="preserve"><value>Su último inicio de sesión fue hace más de {0}, así que se le pedirá que inicie sesión de nuevo cuando elija una decisión. Lo que escriba aquí se conserva mientras tanto.</value></data>
+  <data name="Sign.Title" xml:space="preserve"><value>Firmar</value></data>
+  <data name="Task.ApprovalOf" xml:space="preserve"><value>Aprobación de {0}</value></data>
+  <data name="Task.History" xml:space="preserve"><value>Historial del flujo de trabajo</value></data>
+  <data name="Task.NoDescription" xml:space="preserve"><value>Sin descripción</value></data>
+  <data name="Task.NoLongerEligible" xml:space="preserve"><value>Usted ya no puede ver el elemento al que se refiere esta tarea, así que sus detalles están ocultos y la tarea no se puede firmar. Pida a quien inició la revisión, o a un administrador, que la reasigne.</value></data>
+  <data name="Task.NotFound" xml:space="preserve"><value>No se encontró esta tarea, o usted no tiene autorización para verla.</value></data>
+  <data name="Task.Noun.baseline" xml:space="preserve"><value>la línea base</value></data>
+  <data name="Task.Noun.capa" xml:space="preserve"><value>la acción correctiva</value></data>
+  <data name="Task.Noun.change" xml:space="preserve"><value>el cambio</value></data>
+  <data name="Task.Noun.deviation" xml:space="preserve"><value>la desviación o exención</value></data>
+  <data name="Task.Noun.disposition" xml:space="preserve"><value>la solicitud de disposición</value></data>
+  <data name="Task.Noun.document" xml:space="preserve"><value>el documento</value></data>
+  <data name="Task.Noun.gate" xml:space="preserve"><value>la revisión de puerta</value></data>
+  <data name="Task.Noun.legal_hold" xml:space="preserve"><value>la retención</value></data>
+  <data name="Task.Noun.mbom" xml:space="preserve"><value>la lista de materiales de fabricación</value></data>
+  <data name="Task.Noun.ncr" xml:space="preserve"><value>el informe</value></data>
+  <data name="Task.Noun.part" xml:space="preserve"><value>la pieza</value></data>
+  <data name="Task.Noun.process_plan" xml:space="preserve"><value>el plan de proceso</value></data>
+  <data name="Task.Noun.reg_list_version" xml:space="preserve"><value>la versión de la lista</value></data>
+  <data name="Task.Noun.reqspec" xml:space="preserve"><value>la especificación</value></data>
+  <data name="Task.Noun.retention_schedule" xml:space="preserve"><value>el calendario</value></data>
+  <data name="Task.Noun.source_entry" xml:space="preserve"><value>la entrada de la lista</value></data>
+  <data name="Task.Noun.supplier" xml:space="preserve"><value>el proveedor</value></data>
+  <data name="Task.OpenWorkflow" xml:space="preserve"><value>Abrir el flujo de trabajo</value></data>
+  <data name="Task.Progress" xml:space="preserve"><value>Progreso</value></data>
+  <data name="Task.ProgressLabel" xml:space="preserve"><value>Progreso del flujo de trabajo</value></data>
+  <data name="Task.ReviewOf" xml:space="preserve"><value>Revisión de {0}</value></data>
+  <data name="Task.Revision" xml:space="preserve"><value>revisión {0} ({1})</value></data>
+  <data name="Task.SignaturesSoFar" xml:space="preserve"><value>Firmas hasta ahora</value></data>
+  <data name="Task.Signed" xml:space="preserve"><value>Firmado.</value></data>
+  <data name="Task.SignedApproved" xml:space="preserve"><value>Firmado. Todas las aprobaciones están y {0} queda liberado.</value></data>
+  <data name="Task.SignedInAgain" xml:space="preserve"><value>Volvió a iniciar sesión. Se conservó su comentario; elija la decisión con la que firmar.</value></data>
+  <data name="Task.SignedRejected" xml:space="preserve"><value>Firmado. La revisión fue rechazada y {0} vuelve a En trabajo.</value></data>
+  <data name="Task.Signing" xml:space="preserve"><value>Lo que va a firmar</value></data>
+  <data name="Task.StartedBy" xml:space="preserve"><value>iniciada por {0}</value></data>
+  <data name="Task.StatusIs" xml:space="preserve"><value>Esta tarea está {0}.</value></data>
+  <data name="Task.StatusIsDecision" xml:space="preserve"><value>Esta tarea está {0} ({1}).</value></data>
+  <data name="Task.SubmitterComment" xml:space="preserve"><value>Comentario de quien lo envió</value></data>
+  <data name="Task.Title" xml:space="preserve"><value>Tarea</value></data>
+  <data name="Task.VersionNote" xml:space="preserve"><value>Versión {0} tal como está guardada; la firma registra un resumen criptográfico de este contenido.</value></data>
+  <data name="Task.What" xml:space="preserve"><value>Qué</value></data>
+  <data name="Task.When" xml:space="preserve"><value>Cuándo (UTC)</value></data>
+  <data name="Task.Who" xml:space="preserve"><value>Quién</value></data>
+  <data name="Tasks.Caption" xml:space="preserve"><value>Mis tareas abiertas</value></data>
+  <data name="Tasks.Column.Due" xml:space="preserve"><value>Vencimiento</value></data>
+  <data name="Tasks.Column.Item" xml:space="preserve"><value>Elemento</value></data>
+  <data name="Tasks.Column.StartedBy" xml:space="preserve"><value>Iniciada por</value></data>
+  <data name="Tasks.Column.Task" xml:space="preserve"><value>Tarea</value></data>
+  <data name="Tasks.Count.One" xml:space="preserve"><value>{0} tarea abierta</value></data>
+  <data name="Tasks.Count.Other" xml:space="preserve"><value>{0} tareas abiertas</value></data>
+  <data name="Tasks.EmptyText" xml:space="preserve"><value>Aquí se mostrarán las revisiones y aprobaciones que le esperan.</value></data>
+  <data name="Tasks.EmptyTitle" xml:space="preserve"><value>No tiene tareas abiertas</value></data>
+  <data name="Tasks.Restricted" xml:space="preserve"><value>Elemento restringido. Usted ya no puede verlo; la tarea no se puede firmar.</value></data>
+  <data name="Tasks.Rev" xml:space="preserve"><value>rev. {0}</value></data>
+  <data name="Tasks.Title" xml:space="preserve"><value>Mis tareas</value></data>
+</root>

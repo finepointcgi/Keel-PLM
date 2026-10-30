@@ -1,13 +1,16 @@
 @page "/tasks"
 @inject CurrentUser Users
 @inject WorkflowService Flow
+@inject IStringLocalizer<PageStrings> P
+@inject IStringLocalizer<CommonStrings> C
+@inject UiLanguage Language
 
-<PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="My tasks" Crumbs="@Crumbs">
+<PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="@P["Tasks.Title"]" Crumbs="@Crumbs">
     @if (tasks is not null)
     {
-        <p class="muted">@tasks.Items.Count open task@(tasks.Items.Count == 1 ? "" : "s")</p>
-        <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="My open tasks" OnServerSort="OnSort" ServerSort="sort">
-            <Empty><EmptyState Title="You have no open tasks" IconName="check">Reviews and approvals that are waiting for you will be listed here.</EmptyState></Empty>
+        <p class="muted">@P.Count("Tasks.Count", tasks.Items.Count)</p>
+        <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="@P["Tasks.Caption"]" OnServerSort="OnSort" ServerSort="sort">
+            <Empty><EmptyState Title="@P["Tasks.EmptyTitle"]" IconName="check">@P["Tasks.EmptyText"]</EmptyState></Empty>
         </DataTable>
     }
 </PageFrame>
@@ -15,15 +18,15 @@
 @code {
     private MyTasks? tasks;
 
-    private static readonly IReadOnlyList<Crumb> Crumbs = [new("My tasks")];
+    private IReadOnlyList<Crumb> Crumbs => [new(P["Tasks.Title"])];
 
-    private static readonly IReadOnlyList<DataColumn<TaskSummary>> Columns =
+    private IReadOnlyList<DataColumn<TaskSummary>> Columns =>
     [
-        new() { Key = "task", Title = "Task", Required = true, ServerSortKey = "task", Cell = t => @<a href="tasks/@t.Id">@t.Name</a> },
-        new() { Key = "item", Title = "Item", ServerSortKey = "item", Cell = t => @<text>@if (t.Redacted || t.Target is null) { <span class="muted">Restricted item. You are no longer eligible to see it; the task cannot be signed.</span> } else { @t.Target.Key <text>·</text> @t.Target.Name <span class="muted">rev @t.Target.Revision</span> }</text> },
-        new() { Key = "markings", Title = "Markings", Cell = t => @<text>@if (!t.Redacted && t.Target is not null) { <MarkingChip Text="@t.Target.Banner" /> }</text> },
-        new() { Key = "started", Title = "Started by", ServerSortKey = "started", Text = t => t.Redacted ? "" : t.StartedByName },
-        new() { Key = "due", Title = "Due", ServerSortKey = "due", Cell = t => @<span class="@(t.Overdue ? "error" : null)">@WorkflowText.Due(t.DueAt, t.Overdue)</span> },
+        new() { Key = "task", Title = P["Tasks.Column.Task"], Required = true, ServerSortKey = "task", Cell = t => @<a href="tasks/@t.Id">@t.Name</a> },
+        new() { Key = "item", Title = P["Tasks.Column.Item"], ServerSortKey = "item", Cell = t => @<text>@if (t.Redacted || t.Target is null) { <span class="muted">@P["Tasks.Restricted"]</span> } else { @t.Target.Key <text>·</text> @t.Target.Name <span class="muted">@P["Tasks.Rev", t.Target.Revision]</span> }</text> },
+        new() { Key = "markings", Title = C["Column.Markings"], Cell = t => @<text>@if (!t.Redacted && t.Target is not null) { <MarkingChip Text="@t.Target.Banner" /> }</text> },
+        new() { Key = "started", Title = P["Tasks.Column.StartedBy"], ServerSortKey = "started", Text = t => t.Redacted ? "" : t.StartedByName },
+        new() { Key = "due", Title = P["Tasks.Column.Due"], ServerSortKey = "due", Cell = t => @<span class="@(t.Overdue ? "error" : null)">@WorkflowText.Due(t.DueAt, t.Overdue, C, Language)</span> },
     ];
 
     [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }

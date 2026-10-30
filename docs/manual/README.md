@@ -85,6 +85,7 @@ Stated in the chapter where it matters; collected here.
 
 - No plug-ins for commercial CAD systems; Keel does not read native CAD files ([chapter 11](11-cad-connector-and-freecad.md)).
 - No manufacturing execution, work orders or machine integration ([chapter 13](13-manufacturing-process.md)).
+- Spanish covers the frame, Home, Parts, Documents (list and create) and My tasks only; every other page is English in every language, and there is no right-to-left layout ([chapter 2](02-navigating.md#language)).
 - No renaming of a part; no attributes on documents or changes ([chapters 3, 23](03-parts.md)).
 - No conditions on MBOM lines of their own, nor in baselines ([chapter 4](04-boms-variants-mbom.md)).
 - No message-broker sink for events ([chapter 21](21-integration-and-tdp.md)).

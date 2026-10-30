@@ -6,24 +6,26 @@
 @inject ShellJs Js
 @inject PaletteState Palette
 @inject AuthenticationStateProvider Auth
+@inject UiLanguage Language
+@inject IStringLocalizer<ShellStrings> S
 
 @* The app shell (ADR-0028): skip link, marking banners, top bar (search, session, user menu), grouped navigation rail, main landmark. The idle lock (ADR-0026)
    is unchanged: while the session is locked this renders the lock panel INSTEAD of the page, with no navigation, no search and no page data in the DOM. *@
 <div class="app @(Shell.Preferences.NavCollapsed ? "rail-collapsed" : null) @(railOpen ? "rail-open" : null)">
-    <a class="skip-link" href="#main" @onclick="SkipToMainAsync" @onclick:preventDefault>Skip to main content</a>
+    <a class="skip-link" href="#main" @onclick="SkipToMainAsync" @onclick:preventDefault>@S["Skip.Main"]</a>
     <DemoBanner />
     <SectionOutlet SectionName="@PageFrame.TopBanner" />
     <header class="topbar">
         @if (!locked)
         {
-            <button type="button" class="icon-button menu-button" aria-label="Menu" aria-expanded="@(railOpen ? "true" : "false")" aria-controls="main-nav" @onclick="ToggleRail"><Icon Name="menu" /></button>
+            <button type="button" class="icon-button menu-button" aria-label="@S["Menu"]" aria-expanded="@(railOpen ? "true" : "false")" aria-controls="main-nav" @onclick="ToggleRail"><Icon Name="menu" /></button>
         }
         <a class="brand" href=""><Icon Name="part" /><span class="brand-text">Keel PLM</span></a>
         @if (!locked && ready && !supplier)
         {
-            <button type="button" class="search-trigger" aria-label="Search or jump to" aria-keyshortcuts="Control+K Meta+K" data-action="open-palette" @onclick="Palette.Open">
+            <button type="button" class="search-trigger" aria-label="@S["Search.Trigger"]" aria-keyshortcuts="Control+K Meta+K" data-action="open-palette" @onclick="Palette.Open">
                 <Icon Name="search" />
-                <span class="label">Search or jump to…</span>
+                <span class="label">@S["Search.TriggerLabel"]</span>
                 <kbd>Ctrl K</kbd>
             </button>
         }
@@ -36,7 +38,7 @@
         }
         else
         {
-            <button type="submit" class="secondary" form="signout-form">Sign out</button>
+            <button type="submit" class="secondary" form="signout-form">@S["SignOut"]</button>
         }
     </header>
     <form id="signout-form" method="post" action="account/logout" class="inline">
@@ -48,7 +50,7 @@
             <RailNav Groups="groups" Collapsed="Shell.Preferences.NavCollapsed" OnToggle="Shell.SetNavCollapsedAsync" />
             @if (railOpen)
             {
-                <button type="button" class="rail-backdrop" aria-label="Close menu" tabindex="-1" @onclick="CloseRail"></button>
+                <button type="button" class="rail-backdrop" aria-label="@S["Menu.Close"]" tabindex="-1" @onclick="CloseRail"></button>
             }
         }
         <main id="main" tabindex="-1">
@@ -74,7 +76,7 @@
 }
 
 <div id="blazor-error-ui" role="alert">
-    Something went wrong. <a href="." class="reload">Reload</a>
+    @S["Error.Unhandled"] <a href="." class="reload">@S["Error.Reload"]</a>
 </div>
 
 @code {
@@ -95,6 +97,7 @@
         supplier = NavModel.RolesOf(user).Contains(Roles.Supplier);
         roles = NavModel.RolesOf(user);
         if (!locked) await Shell.LoadAsync();
+        Language.Set(Shell.Preferences.Language); // ADR 0057: the screen text language of this circuit, before any page renders
         groups = supplier ? NavModel.ForSupplier() : NavModel.For(roles, Shell.Preferences.SimpleView);
         ready = true;
     }

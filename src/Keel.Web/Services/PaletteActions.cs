@@ -1,4 +1,6 @@
 using Keel.Core;
+using Keel.Web.Localization;
+using Microsoft.Extensions.Localization;
 
 namespace Keel.Web.Services;
 
@@ -61,6 +63,20 @@ public static class PaletteActions
         list.Add(new(SignOut, "Sign out", "Commands", "logout", null, "log out logout"));
         return list;
     }
+
+    /// <summary>
+    /// The actions with their label and group in the person's language (resource keys <c>Palette.&lt;id&gt;</c> and <c>Palette.group.&lt;group&gt;</c>). The English label stays searchable
+    /// as a keyword, so a person who knows the English name still finds the action. An action without a translation keeps its English text.
+    /// </summary>
+    public static IReadOnlyList<PaletteAction> Localize(IReadOnlyList<PaletteAction> actions, IStringLocalizer strings) =>
+    [
+        .. actions.Select(a =>
+        {
+            var label = strings.Or("Palette." + a.Id, a.Label);
+            var group = strings.Or(LocalizationServices.Key("Palette.group", a.Group), a.Group);
+            return a with { Label = label, Group = group, Keywords = label == a.Label ? a.Keywords : a.Keywords + " " + a.Label };
+        }),
+    ];
 
     /// <summary>Actions whose label or keywords contain every word of the query (case-insensitive). An empty query matches all.</summary>
     public static IReadOnlyList<PaletteAction> Filter(IEnumerable<PaletteAction> actions, string query)

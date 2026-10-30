@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" id="root">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Density" xml:space="preserve"><value>Density</value></data>
+  <data name="Density.comfortable" xml:space="preserve"><value>Comfortable</value></data>
+  <data name="Density.compact" xml:space="preserve"><value>Compact</value></data>
+  <data name="Error.Reload" xml:space="preserve"><value>Reload</value></data>
+  <data name="Error.Unhandled" xml:space="preserve"><value>Something went wrong.</value></data>
+  <data name="Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Language.Help" xml:space="preserve"><value>Changes the language of menus, buttons and messages. Security markings and banners are never translated.</value></data>
+  <data name="Menu" xml:space="preserve"><value>Menu</value></data>
+  <data name="Menu.Close" xml:space="preserve"><value>Close menu</value></data>
+  <data name="Nav.Collapse" xml:space="preserve"><value>Collapse navigation</value></data>
+  <data name="Nav.Expand" xml:space="preserve"><value>Expand navigation</value></data>
+  <data name="Nav.Main" xml:space="preserve"><value>Main</value></data>
+  <data name="Nav.group.administration" xml:space="preserve"><value>Administration</value></data>
+  <data name="Nav.group.change" xml:space="preserve"><value>Change</value></data>
+  <data name="Nav.group.configuration" xml:space="preserve"><value>Configuration</value></data>
+  <data name="Nav.group.output" xml:space="preserve"><value>Output</value></data>
+  <data name="Nav.group.product-data" xml:space="preserve"><value>Product data</value></data>
+  <data name="Nav.group.programs" xml:space="preserve"><value>Programs</value></data>
+  <data name="Nav.group.quality" xml:space="preserve"><value>Quality</value></data>
+  <data name="Nav.group.records" xml:space="preserve"><value>Records</value></data>
+  <data name="Nav.group.sourcing" xml:space="preserve"><value>Sourcing</value></data>
+  <data name="Nav.group.supplier-portal" xml:space="preserve"><value>Supplier portal</value></data>
+  <data name="Nav.group.tools" xml:space="preserve"><value>Tools</value></data>
+  <data name="Nav.group.work" xml:space="preserve"><value>Work</value></data>
+  <data name="Nav.item.access-check" xml:space="preserve"><value>Access check</value></data>
+  <data name="Nav.item.administration" xml:space="preserve"><value>Administration</value></data>
+  <data name="Nav.item.archives" xml:space="preserve"><value>Archives</value></data>
+  <data name="Nav.item.audit-log" xml:space="preserve"><value>Audit log</value></data>
+  <data name="Nav.item.baselines" xml:space="preserve"><value>Baselines</value></data>
+  <data name="Nav.item.bom-in-excel" xml:space="preserve"><value>BOM in Excel</value></data>
+  <data name="Nav.item.cad-structures" xml:space="preserve"><value>CAD structures</value></data>
+  <data name="Nav.item.changes" xml:space="preserve"><value>Changes</value></data>
+  <data name="Nav.item.classification" xml:space="preserve"><value>Classification</value></data>
+  <data name="Nav.item.compare-documents" xml:space="preserve"><value>Compare documents</value></data>
+  <data name="Nav.item.compliance" xml:space="preserve"><value>Compliance</value></data>
+  <data name="Nav.item.corrective-actions" xml:space="preserve"><value>Corrective actions</value></data>
+  <data name="Nav.item.deviations-and-waivers" xml:space="preserve"><value>Deviations and waivers</value></data>
+  <data name="Nav.item.disposition" xml:space="preserve"><value>Disposition</value></data>
+  <data name="Nav.item.documents" xml:space="preserve"><value>Documents</value></data>
+  <data name="Nav.item.home" xml:space="preserve"><value>Home</value></data>
+  <data name="Nav.item.integration" xml:space="preserve"><value>Integration</value></data>
+  <data name="Nav.item.legal-holds" xml:space="preserve"><value>Legal holds</value></data>
+  <data name="Nav.item.lifecycles" xml:space="preserve"><value>Lifecycles</value></data>
+  <data name="Nav.item.manufacturing-boms" xml:space="preserve"><value>Manufacturing BOMs</value></data>
+  <data name="Nav.item.mass-change" xml:space="preserve"><value>Mass change</value></data>
+  <data name="Nav.item.migration" xml:space="preserve"><value>Migration</value></data>
+  <data name="Nav.item.my-requests" xml:space="preserve"><value>My requests</value></data>
+  <data name="Nav.item.my-tasks" xml:space="preserve"><value>My tasks</value></data>
+  <data name="Nav.item.nonconformance-reports" xml:space="preserve"><value>Nonconformance reports</value></data>
+  <data name="Nav.item.options-and-variants" xml:space="preserve"><value>Options and variants</value></data>
+  <data name="Nav.item.parts" xml:space="preserve"><value>Parts</value></data>
+  <data name="Nav.item.process-plans" xml:space="preserve"><value>Process plans</value></data>
+  <data name="Nav.item.programs" xml:space="preserve"><value>Programs</value></data>
+  <data name="Nav.item.records-management" xml:space="preserve"><value>Records management</value></data>
+  <data name="Nav.item.release-packages" xml:space="preserve"><value>Release packages</value></data>
+  <data name="Nav.item.reports" xml:space="preserve"><value>Reports</value></data>
+  <data name="Nav.item.requirements" xml:space="preserve"><value>Requirements</value></data>
+  <data name="Nav.item.retention-schedules" xml:space="preserve"><value>Retention schedules</value></data>
+  <data name="Nav.item.style-guide" xml:space="preserve"><value>Style guide</value></data>
+  <data name="Nav.item.supplier-requests" xml:space="preserve"><value>Supplier requests</value></data>
+  <data name="Nav.item.suppliers" xml:space="preserve"><value>Suppliers</value></data>
+  <data name="Nav.item.technical-data-packages" xml:space="preserve"><value>Technical data packages</value></data>
+  <data name="Nav.item.tools-and-gauges" xml:space="preserve"><value>Tools and gauges</value></data>
+  <data name="Nav.item.verify-a-package" xml:space="preserve"><value>Verify a package</value></data>
+  <data name="Nav.item.workflows" xml:space="preserve"><value>Workflows</value></data>
+  <data name="Navigation" xml:space="preserve"><value>Navigation</value></data>
+  <data name="Navigation.All" xml:space="preserve"><value>All areas</value></data>
+  <data name="Navigation.Help" xml:space="preserve"><value>Simple shows parts, documents and changes. Everything else is still found by search (Ctrl + K).</value></data>
+  <data name="Navigation.Simple" xml:space="preserve"><value>Simple</value></data>
+  <data name="Palette.Announce.Results.One" xml:space="preserve"><value>{0} result</value></data>
+  <data name="Palette.Announce.Results.Other" xml:space="preserve"><value>{0} results</value></data>
+  <data name="Palette.Announce.Searching" xml:space="preserve"><value>Searching</value></data>
+  <data name="Palette.Empty" xml:space="preserve"><value>Nothing found. Try a part number, a name, or a prefix such as p: or ecn:.</value></data>
+  <data name="Palette.Hint.Close" xml:space="preserve"><value>to close</value></data>
+  <data name="Palette.Hint.Move" xml:space="preserve"><value>to move</value></data>
+  <data name="Palette.Hint.NewTab" xml:space="preserve"><value>in a new tab</value></data>
+  <data name="Palette.Hint.Open" xml:space="preserve"><value>to open</value></data>
+  <data name="Palette.Input" xml:space="preserve"><value>Search or run a command</value></data>
+  <data name="Palette.Placeholder" xml:space="preserve"><value>Search parts, documents, changes… or type a command</value></data>
+  <data name="Palette.Recent" xml:space="preserve"><value>Recent</value></data>
+  <data name="Palette.Results" xml:space="preserve"><value>Results</value></data>
+  <data name="Palette.Search" xml:space="preserve"><value>Search</value></data>
+  <data name="Palette.SearchUnavailable" xml:space="preserve"><value>Search is not available right now.</value></data>
+  <data name="Palette.Searching" xml:space="preserve"><value>Searching…</value></data>
+  <data name="Palette.SeeAll" xml:space="preserve"><value>See all results for “{0}”</value></data>
+  <data name="Palette.Title" xml:space="preserve"><value>Command palette</value></data>
+  <data name="Palette.cmd:lock-now" xml:space="preserve"><value>Lock now</value></data>
+  <data name="Palette.cmd:sign-out" xml:space="preserve"><value>Sign out</value></data>
+  <data name="Palette.cmd:toggle-theme" xml:space="preserve"><value>Toggle theme</value></data>
+  <data name="Palette.go:access" xml:space="preserve"><value>Go to Access check</value></data>
+  <data name="Palette.go:admin" xml:space="preserve"><value>Go to Administration</value></data>
+  <data name="Palette.go:audit" xml:space="preserve"><value>Go to Audit log</value></data>
+  <data name="Palette.go:baselines" xml:space="preserve"><value>Go to Baselines</value></data>
+  <data name="Palette.go:capas" xml:space="preserve"><value>Go to Corrective actions</value></data>
+  <data name="Palette.go:changes" xml:space="preserve"><value>Go to Changes</value></data>
+  <data name="Palette.go:compare" xml:space="preserve"><value>Compare documents</value></data>
+  <data name="Palette.go:compliance" xml:space="preserve"><value>Go to Compliance</value></data>
+  <data name="Palette.go:deviations" xml:space="preserve"><value>Go to Deviations and waivers</value></data>
+  <data name="Palette.go:documents" xml:space="preserve"><value>Go to Documents</value></data>
+  <data name="Palette.go:home" xml:space="preserve"><value>Go to Home</value></data>
+  <data name="Palette.go:mboms" xml:space="preserve"><value>Go to Manufacturing BOMs</value></data>
+  <data name="Palette.go:ncrs" xml:space="preserve"><value>Go to Nonconformance reports</value></data>
+  <data name="Palette.go:parts" xml:space="preserve"><value>Go to Parts</value></data>
+  <data name="Palette.go:process" xml:space="preserve"><value>Go to Process plans</value></data>
+  <data name="Palette.go:profile" xml:space="preserve"><value>Go to My access</value></data>
+  <data name="Palette.go:programs" xml:space="preserve"><value>Go to Programs</value></data>
+  <data name="Palette.go:records" xml:space="preserve"><value>Go to Records management</value></data>
+  <data name="Palette.go:requirements" xml:space="preserve"><value>Go to Requirements</value></data>
+  <data name="Palette.go:suppliers" xml:space="preserve"><value>Go to Suppliers</value></data>
+  <data name="Palette.go:tasks" xml:space="preserve"><value>Go to My tasks</value></data>
+  <data name="Palette.go:tools" xml:space="preserve"><value>Go to Tools and gauges</value></data>
+  <data name="Palette.group.commands" xml:space="preserve"><value>Commands</value></data>
+  <data name="Palette.group.create" xml:space="preserve"><value>Create</value></data>
+  <data name="Palette.group.go-to" xml:space="preserve"><value>Go to</value></data>
+  <data name="Palette.new:capa" xml:space="preserve"><value>New corrective action</value></data>
+  <data name="Palette.new:change" xml:space="preserve"><value>New change request</value></data>
+  <data name="Palette.new:deviation" xml:space="preserve"><value>New deviation or waiver</value></data>
+  <data name="Palette.new:document" xml:space="preserve"><value>Create document</value></data>
+  <data name="Palette.new:ncr" xml:space="preserve"><value>New nonconformance report</value></data>
+  <data name="Palette.new:part" xml:space="preserve"><value>Create part</value></data>
+  <data name="Search.Trigger" xml:space="preserve"><value>Search or jump to</value></data>
+  <data name="Search.TriggerLabel" xml:space="preserve"><value>Search or jump to…</value></data>
+  <data name="SignOut" xml:space="preserve"><value>Sign out</value></data>
+  <data name="Skip.Main" xml:space="preserve"><value>Skip to main content</value></data>
+  <data name="Theme" xml:space="preserve"><value>Theme</value></data>
+  <data name="Theme.dark" xml:space="preserve"><value>Dark</value></data>
+  <data name="Theme.high-contrast" xml:space="preserve"><value>High contrast</value></data>
+  <data name="Theme.light" xml:space="preserve"><value>Light</value></data>
+  <data name="Theme.system" xml:space="preserve"><value>System</value></data>
+  <data name="UserMenu" xml:space="preserve"><value>User menu</value></data>
+  <data name="UserMenu.Lock" xml:space="preserve"><value>Lock session now</value></data>
+  <data name="UserMenu.MyAccess" xml:space="preserve"><value>My access</value></data>
+</root>

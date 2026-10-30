@@ -122,6 +122,10 @@ Full description: [ops/offline-install.md](../ops/offline-install.md). Other air
 - The identity provider must be reachable from the Keel host (discovery and key set are fetched at runtime). It is the one dependency that is
   on your network by design.
 
+## Adding an interface language
+
+Languages are resource files built into the web assembly (no service, nothing downloaded). To add one: translate `Resources/ShellStrings`, `CommonStrings` and `PageStrings` into `*.<tag>.resx` (including the date and number formats in `CommonStrings` under `Format.`), add the language to the list in `Locales.cs`, and run the unit tests, which list every missing or mismatched key. People then choose it in the user menu. The language of the marking banners is never changed by this. A test-only generated pseudo-language (long accented English) is switched on with `Keel__Localization__PseudoLocale=true`; leave it off in production. Details: [increments/9.6-localization.md](../increments/9.6-localization.md), [ADR-0057](../adr/0057-localization.md).
+
 ## What is not shipped or not verified
 
 Said plainly, from the existing documents:

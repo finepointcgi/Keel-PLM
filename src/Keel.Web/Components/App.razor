@@ -1,9 +1,11 @@
 @using Keel.Workspace
 @inject WorkspaceService Workspace
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
 <!DOCTYPE html>
 @* The page shell is rendered by the server for every document load: the user's stored theme and density go into <html> here, so the first paint already has them
-   (no inline script, CSP-safe). "system" has no explicit attribute rule: tokens.css follows prefers-color-scheme for it. *@
-<html lang="en" data-theme="@prefs.Theme" data-density="@prefs.Density">
+   (no inline script, CSP-safe). "system" has no explicit attribute rule: tokens.css follows prefers-color-scheme for it. The same goes for the language of the
+   document (ADR 0057): lang names the person's interface language, so screen readers pronounce it right. Right-to-left layouts are not supported yet (dir stays ltr). *@
+<html lang="@Lang" dir="ltr" data-theme="@prefs.Theme" data-density="@prefs.Density">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -38,6 +40,16 @@
     private static readonly IComponentRenderMode Mode = new InteractiveServerRenderMode(prerender: false);
 
     private UserPreferences prefs = UserPreferences.Default;
+
+    // The pseudo-locale is generated English, so the document says "en" for it (no real language tag exists for it).
+    private string Lang
+    {
+        get
+        {
+            var tag = Locales.Resolve(prefs.Language, bool.TryParse(Config["Keel:Localization:PseudoLocale"], out var on) && on);
+            return tag == Locales.PseudoTag ? Locales.Source : tag;
+        }
+    }
 
     [CascadingParameter] private HttpContext? HttpContext { get; set; }
 

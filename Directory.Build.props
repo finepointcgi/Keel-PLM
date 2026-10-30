@@ -7,6 +7,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- ADR 0057: the interface language is a CultureInfo ("es") created without ICU data (no OS culture database in an air-gapped image). Only tags from the shipped list are ever created. -->
+    <PredefinedCulturesOnly>false</PredefinedCulturesOnly>
     <!-- Library code is consumed internally; XML docs are not published. -->
     <NoWarn>$(NoWarn);CA1848;CA1716;CA1711;CA1062;CA2007;CA1305;CA1307;CA1309;CA1310;CA1000;CA1873</NoWarn>
   </PropertyGroup>

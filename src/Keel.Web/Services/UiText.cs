@@ -1,4 +1,5 @@
 using Keel.Core;
+using Microsoft.Extensions.Localization;
 
 namespace Keel.Web.Services;
 
@@ -35,6 +36,26 @@ public static class UiText
         // A code nobody wrote text for is still not shown raw: the audit log has the exact code for support.
         return IsReasonCode(code) ? "You are not allowed to do this." : code;
     }
+
+    /// <summary>
+    /// The reason in the person's language (resource keys <c>Reason.&lt;code&gt;</c> in CommonStrings, ADR 0057). A code with no translation falls back to the English
+    /// text above, so an untranslated reason is shown in English, never as a raw code. The reason code in the audit log is the same in every language.
+    /// </summary>
+    public static string Reason(string code, IStringLocalizer common)
+    {
+        if (code.StartsWith("new_markings:", StringComparison.Ordinal)) return common["Reason.NewMarkings", Reason(code["new_markings:".Length..], common)].Value;
+        if (code.StartsWith("cui.category_missing:", StringComparison.Ordinal)) return common["Reason.CuiCategory", code.Split(':')[1]].Value;
+        var fallback = Reason(code);
+        return Reasons.ContainsKey(code) ? Localization.LocalizerExtensions.Or(common, "Reason." + code, fallback) : fallback;
+    }
+
+    /// <summary>The message of an outcome in the person's language. Messages that come from a module's validation are that module's own text and are shown as written.</summary>
+    public static string Message<T>(Outcome<T> o, IStringLocalizer common) => o.Kind switch
+    {
+        OutcomeKind.Forbidden => string.Join(" ", o.Errors.Select(e => Reason(e, common))),
+        OutcomeKind.NotFound => common["Reason.NotFound"].Value,
+        _ => string.Join(" ", o.Errors),
+    };
 
     public static string Message<T>(Outcome<T> o) => o.Kind switch
     {
