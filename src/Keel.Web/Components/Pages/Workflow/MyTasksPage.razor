@@ -4,16 +4,39 @@
 @inject IStringLocalizer<PageStrings> P
 @inject IStringLocalizer<CommonStrings> C
 @inject UiLanguage Language
+@inject WorkspaceReads Reads
 
-<PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="@P["Tasks.Title"]" Crumbs="@Crumbs">
+<PageFrame Banner="@PageBanner" Title="@P["Tasks.Title"]" Crumbs="@Crumbs">
     @if (tasks is not null)
     {
-        <p class="muted">@P.Count("Tasks.Count", tasks.Items.Count)</p>
+        <p class="muted">@P.Count("Tasks.Count", tasks.Items.Count + changeTasks.Count)</p>
+        @if (tasks.Items.Count > 0 || changeTasks.Count == 0)
+        {
         <div class="tasks-table">
             <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="@P["Tasks.Caption"]" OnServerSort="OnSort" ServerSort="sort">
                 <Empty><EmptyState Title="@P["Tasks.EmptyTitle"]" IconName="check">@P["Tasks.EmptyText"]</EmptyState></Empty>
             </DataTable>
         </div>
+        }
+        @* The tasks of changes assigned to the person are the same ones Home counts under "Needs my attention", so the two pages agree. *@
+        @if (changeTasks.Count > 0)
+        {
+            <section class="list-card">
+                <p class="list-title">@P["Tasks.ChangeTasks"]</p>
+                <ul class="items">
+                    @foreach (var c in changeTasks)
+                    {
+                        <li>
+                            <span class="main">
+                                <a href="@c.Href">@c.Title</a>
+                                <span class="sub">@c.Detail@if (c.At is { } at) { <text> · @P["Attention.Due", Language.Date(at)]</text> }</span>
+                            </span>
+                            @if (c.Overdue) { <span class="badge state-obsolete error">@P["Attention.Overdue"]</span> }
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
         @* On a phone the same tasks are large cards instead of a table (the one page replaces the separate approvals screens). *@
         @if (tasks.Items.Count > 0)
         {
@@ -46,6 +69,10 @@
 
 @code {
     private MyTasks? tasks;
+    private IReadOnlyList<AttentionItem> changeTasks = [];
+
+    // The banner covers what the page shows: the tasks and the markings of the change tasks listed under them.
+    private string PageBanner => BannerMerge.Union([tasks?.PageBanner ?? UiText.Unclassified, .. changeTasks.Where(c => c.Markings is not null).Select(c => c.Markings!.BannerText())]);
 
     private IReadOnlyList<Crumb> Crumbs => [new(P["Tasks.Title"])];
 
@@ -78,5 +105,10 @@
         await LoadAsync();
     }
 
-    private async Task LoadAsync() => tasks = await Flow.MyTasksAsync(await Users.GetAsync(), sort, CurrentUser.NewCorrelationId());
+    private async Task LoadAsync()
+    {
+        tasks = await Flow.MyTasksAsync(await Users.GetAsync(), sort, CurrentUser.NewCorrelationId());
+        var attention = await Reads.AttentionAsync();
+        changeTasks = [.. attention.Items.Where(i => i.Kind == "change task")];
+    }
 }

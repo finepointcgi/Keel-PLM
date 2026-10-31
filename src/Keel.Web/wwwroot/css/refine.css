@@ -113,3 +113,25 @@ a.tile:hover { border-color: var(--c-accent); }
 .attention-sign, .items .button { white-space: nowrap; }
 .start-review label { display: flex; flex-direction: column; gap: var(--sp-1); }
 .start-review textarea { width: 100%; }
+
+/* A checkbox and its words sit on one line, also inside the form grids (the general label rule makes labels columns) */
+.grid-form label.inline-check, .toolbar label.inline-check { flex-direction: row; align-items: center; justify-content: flex-start; text-align: left; gap: var(--sp-2); font-size: var(--fs-md); font-weight: 400; }
+/* "Why can't I move it on?" is for the rare question: a quiet line, not a panel */
+details.more-details[data-why-not] { background: none; border: 0; box-shadow: none; padding: 0; }
+details.more-details[data-why-not] > summary { font-size: var(--fs-sm); font-weight: 400; color: var(--c-muted); }
+
+/* Phone: the first screen is for the work, not for the introduction */
+@media (max-width: 700px) {
+  .home-intro, .quick-actions + p { display: none; }
+  .quick-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .quick-actions .button { width: 100%; text-align: center; justify-content: center; }
+  .stepper { gap: var(--sp-2); }
+  .stepper li + li::before { display: none; }
+}
+
+/* the same row list as in the Home cards, inside a list card */
+.list-card ul.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.list-card ul.items li { display: flex; gap: var(--sp-2); align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--c-border); min-width: 0; flex-wrap: wrap; }
+.list-card ul.items li:first-child { border-top: 0; }
+.list-card ul.items .main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
+.list-card ul.items .main .sub { color: var(--c-muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }

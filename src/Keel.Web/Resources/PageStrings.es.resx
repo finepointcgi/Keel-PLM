@@ -284,4 +284,5 @@
   <data name="Tasks.OpenAria" xml:space="preserve"><value>Revisar y decidir: {0}, {1}</value></data>
   <data name="Tasks.StartedByLine" xml:space="preserve"><value>Iniciada por {0}</value></data>
   <data name="Part.WhyNotMove" xml:space="preserve"><value>¿Por qué no puedo pasarla a otro estado?</value></data>
+  <data name="Tasks.ChangeTasks" xml:space="preserve"><value>Tareas de cambios para usted</value></data>
 </root>

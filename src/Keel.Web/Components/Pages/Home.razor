@@ -7,7 +7,7 @@
 @inject IStringLocalizer<CommonStrings> C
 
 <PageFrame Banner="@PageBanner" Title="@P["Home.Title"]">
-    <p class="muted">@P["Home.Intro"]</p>
+    <p class="muted home-intro">@P["Home.Intro"]</p>
     <form class="toolbar home-search" role="search" method="get" action="parts">
         <input name="q" type="search" aria-label="@P["Home.FindPart"]" placeholder="@C["Search.Placeholder"]" class="grow" />
         <button type="submit">@P["Home.FindPart"]</button>

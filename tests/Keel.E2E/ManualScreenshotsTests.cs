@@ -477,6 +477,7 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                 await GoAsync(session, alice, $"/parts/{m.PayloadAssembly}?tab=review", "workflow-submit-dialog", async p =>
                 {
                     await ClickIfAsync(p, "Submit for review");
+                    await p.GetByRole(AriaRole.Dialog).WaitForAsync(new LocatorWaitForOptions { Timeout = 15_000 });
                     await p.WaitForTimeoutAsync(500);
                 });
                 await GoAsync(session, alice, "/tasks", "workflow-my-tasks");
