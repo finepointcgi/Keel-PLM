@@ -14,7 +14,7 @@
         @if (status.Active is { } active)
         {
             <p>
-                <span class="badge state-underreview">Review in progress</span>
+                <span class="badge state-underreview">@(Controls ? "Review in progress" : "Under review")</span>
                 Started by @active.StartedBy on @WorkflowText.Utc(active.StartedAt) · <a href="workflows/@active.Id">Workflow details</a>
             </p>
             <ul class="plain">
@@ -23,12 +23,15 @@
                     <li>@t.Name: waiting for @(t.AssigneeName ?? WorkflowText.Role(t.RequiredRole))@(t.Overdue ? " (overdue)" : "")</li>
                 }
             </ul>
-            @if (active.CanCancel)
+            @if (Controls)
             {
-                <div class="toolbar">
-                    <input aria-label="Reason for cancelling the review" placeholder="Reason for cancelling (required)" class="grow" @bind="cancelReason" />
-                    <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
-                </div>
+                @if (active.CanCancel)
+                {
+                    <div class="toolbar">
+                        <input aria-label="Reason for cancelling the review" placeholder="Reason for cancelling (required)" class="grow" @bind="cancelReason" />
+                        <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
+                    </div>
+                }
             }
         }
         else
@@ -47,16 +50,22 @@
             }
             else { <p class="muted">This @Noun has not been submitted for review.</p> }
 
-            @if (CanSubmit && !starting)
+            @if (Controls)
             {
-                <button type="button" disabled="@busy" @onclick="BeginStart">Submit for review</button>
-                @if (!string.IsNullOrEmpty(SubmitHint)) { <p class="muted small">@SubmitHint</p> }
+                @if (CanSubmit && !starting)
+                {
+                    <button type="button" disabled="@busy" @onclick="BeginStart">Submit for review</button>
+                    @if (!string.IsNullOrEmpty(SubmitHint)) { <p class="muted small">@SubmitHint</p> }
+                }
             }
         }
 
-        @if (starting && template is not null)
+        @if (Controls)
         {
-            <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" />
+            @if (starting && template is not null)
+            {
+                <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" />
+            }
         }
 
         @if (status.Releases.Count > 0)
@@ -78,6 +87,8 @@
     [Parameter, EditorRequired] public required string ObjectType { get; set; }
     [Parameter, EditorRequired] public required string Key { get; set; }
     [Parameter] public string Noun { get; set; } = "record";
+    /// <summary>False when the page offers the review step in its header (ReviewStrip): the panel then only shows the status and the signatures.</summary>
+    [Parameter] public bool Controls { get; set; } = true;
     [Parameter] public bool CanSubmit { get; set; }
     [Parameter] public string? SubmitHint { get; set; }
     /// <summary>The review started or was cancelled; the page reloads.</summary>

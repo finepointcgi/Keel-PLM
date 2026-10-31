@@ -44,13 +44,16 @@
                     <MarkingsDefaultPicker Value="newMarkings" Hint="Starts with the markings of this part. Change them if the document is controlled differently." />
                 }
 
-                <label>
-                    How is it related to the part?
-                    <select @bind="linkType" data-add-link-type>
-                        @foreach (var c in QuickDefaults.LinkChoices) { <option value="@c.Value">@c.Label</option> }
-                    </select>
-                    <span class="muted small">@QuickDefaults.LinkChoices.First(c => c.Value == linkType).Help</span>
-                </label>
+                <details class="more-details" data-link-details>
+                    <summary>How it relates to the part: @QuickDefaults.LinkChoices.First(c => c.Value == linkType).Label</summary>
+                    <label>
+                        How is it related to the part?
+                        <select @bind="linkType" data-add-link-type>
+                            @foreach (var c in QuickDefaults.LinkChoices) { <option value="@c.Value">@c.Label</option> }
+                        </select>
+                        <span class="muted small">@QuickDefaults.LinkChoices.First(c => c.Value == linkType).Help</span>
+                    </label>
+                </details>
 
                 <p class="muted small" data-add-explain>
                     @if (Part.Checkout?.IsMine == true)

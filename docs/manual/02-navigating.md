@@ -100,7 +100,7 @@ Below 768 px the rail becomes a menu button and tables scroll inside their own a
 |---|---|---|
 | ![Home on a phone](images/mobile-home.png) | ![A part page on a phone](images/mobile-part.png) | ![The navigation menu on a phone](images/mobile-menu.png) |
 
-Approvals have their own phone screens: see [Approve on a phone](06-lifecycles-workflow-signatures.md#approve-on-a-phone).
+On a phone My tasks shows cards you can decide from: see [Approve on a phone](06-lifecycles-workflow-signatures.md#approve-on-a-phone).
 
 ## Session lock
 

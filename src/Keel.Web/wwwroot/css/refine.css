@@ -109,3 +109,5 @@ a.tile:hover { border-color: var(--c-accent); }
 .review-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding: var(--sp-2) var(--sp-3); background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--radius-2); }
 .review-strip .spacer { flex: 1 1 auto; }
 .review-strip-note { flex: 1 1 100%; margin: 0; }
+.home-search { margin: 0 0 var(--sp-3); }
+.attention-sign, .items .button { white-space: nowrap; }

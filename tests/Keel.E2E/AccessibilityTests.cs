@@ -149,7 +149,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
         void Add(string user, params string[] paths) { foreach (var p in paths) t.Add(new Target(p, user)); }
 
         Add("alice", "/", "/parts", "/parts?q=bracket", "/parts/new", "/parts/classification", "/documents", "/documents/new", "/changes", "/changes/new/ecr",
-            "/baselines", "/baselines/new", "/baselines/compare", "/mboms", "/mboms/generate", "/tasks", "/approve", "/workflows", "/search?q=" + m.GimbalBracket, "/search?q=bracket&kind=part",
+            "/baselines", "/baselines/new", "/baselines/compare", "/mboms", "/mboms/generate", "/tasks", "/workflows", "/search?q=" + m.GimbalBracket, "/search?q=bracket&kind=part",
             "/notifications", "/notifications?tab=unread", "/notifications/preferences", "/watching", "/profile", "/access", "/tdp", "/tools/style-guide", "/compare", "/not-found", "/access-denied");
 
         foreach (var tab in new[] { "overview", "structure", "documents", "changes", "review", "classification", "history", "timeline", "security", "activity", "comments", "trace" })

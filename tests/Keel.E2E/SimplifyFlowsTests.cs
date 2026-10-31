@@ -208,6 +208,7 @@ public sealed class SimplifyFlowsTests(E2EFixture fx)
             await Expect(dialog).ToBeVisibleAsync();
             await dialog.Locator("[data-picker=add-doc-existing] input").FillAsync(second);
             await dialog.Locator($"[data-picker-option={second}]").ClickAsync();
+            await dialog.Locator("[data-link-details] summary").ClickAsync();
             await dialog.Locator("[data-add-link-type]").SelectOptionAsync("references");
             await dialog.Locator("[data-add-ok]").ClickAsync();
             await Expect(page.Locator("[data-toast=success]").Last).ToContainTextAsync($"{second} is now linked to {part}");

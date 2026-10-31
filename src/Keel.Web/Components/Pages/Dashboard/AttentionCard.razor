@@ -28,6 +28,7 @@
                         <a href="@item.Href">@item.Title</a>
                         <span class="sub">@item.Detail@(item.At is { } at ? " · " + (item.Kind == "decision" ? Language.Utc(at) : P["Attention.Due", Language.Date(at)].Value) : "")</span>
                     </span>
+                    @if (item.Kind == "task" && !item.Restricted) { <a class="button" href="@item.Href">@P["Attention.Sign"]</a> }
                     @if (item.Overdue) { <span class="badge state-obsolete error">@P["Attention.Overdue"]</span> }
                     @if (item.Markings is { } m) { <MarkingChip Text="@m.BannerText()" Compact="true" /> }
                 </li>

@@ -15,6 +15,7 @@ public static class Glossary
         ["check in"] = "Checking in stores your draft as the next version and lets others edit the item again. Save does this for you.",
         ["markings"] = "Markings say who may see the item: export control, CUI category, distribution and program. Only people allowed under all of them can open it.",
         ["released"] = "A released part is locked. To change it, start a change order; the new revision is released with the order.",
+        ["change control board"] = "The change control board (CCB) is the group that decides whether a Class I change goes ahead. Class II changes are smaller and do not need the board.",
         ["describes"] = "Describes: the document shows what the part is, such as its drawing. The part points at one revision of the document.",
         ["references"] = "References: the part follows the document, such as a specification. It always means the latest released revision.",
     };

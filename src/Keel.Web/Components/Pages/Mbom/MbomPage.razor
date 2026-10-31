@@ -178,6 +178,9 @@
             {
                 <Stepper States="steps" Current="@d.Displayed.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Manufacturing BOM lifecycle" />
             }
+            @{ var mbomReady = d.Summary.State == "InWork" && d.Permissions.CanModify && d.Checkout is null; }
+            <ReviewStrip ObjectType="@MbomService.ObjectType" Number="@d.Summary.Number" Noun="MBOM" Version="@d.Summary.State" OnChanged="Reload"
+                         CanStart="@(mbomReady && d.ReleaseBlocker is null)" WhyNot="@(mbomReady ? d.ReleaseBlocker : null)" />
         </Steps>
     </ObjectHeader>;
 

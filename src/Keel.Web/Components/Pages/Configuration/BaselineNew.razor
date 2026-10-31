@@ -5,8 +5,7 @@
 @inject NavigationManager Nav
 
 @* A blank form shows no controlled data; the created baseline carries the markings that cover everything it freezes (ADR-0021). *@
-<PageFrame Banner="@UiText.Unclassified" Title="New baseline">
-    <p><a href="baselines">Back to baselines</a></p>
+<PageFrame Banner="@UiText.Unclassified" Title="New baseline" Crumbs="@Crumbs">
     <p class="muted">A baseline freezes the exact versions of a part's structure at this moment. It starts as a draft; whoever may modify data creates it, and it
         needs read access to every item. Release and product baselines are established by e-signature review.</p>
     <EditForm Model="this" OnSubmit="Create" FormName="new-baseline" class="stack">
@@ -18,11 +17,13 @@
                 Type
                 <InputSelect @bind-Value="type">@foreach (var t in types) { <option value="@t.Type">@t.Label@(t.RequiresSignoff ? " (needs sign-off)" : "")</option> }</InputSelect>
             </label>
-            <label>Milestone <InputText @bind-Value="milestone" maxlength="40" placeholder="PDR, CDR, FCA, PCA" /></label>
             <label class="wide">Purpose <InputTextArea @bind-Value="purpose" rows="3" maxlength="4000" /></label>
         </fieldset>
+        <details class="more-details" data-more-details>
+        <summary>More options: milestone, which versions, released only, documents, sign-off</summary>
         <fieldset class="grid-form">
             <legend>Configuration</legend>
+            <label>Milestone <InputText @bind-Value="milestone" maxlength="40" placeholder="PDR, CDR, FCA, PCA" /></label>
             <label>
                 Children are taken as
                 <InputSelect @bind-Value="specText">
@@ -39,6 +40,7 @@
             <label class="inline-check wide"><InputCheckbox @bind-Value="includeDocuments" /> Pin the documents linked to the items (describes and references links)</label>
             <label class="inline-check wide"><InputCheckbox @bind-Value="forceSignoff" /> Require sign-off by e-signature even if the type does not</label>
         </fieldset>
+        </details>
         <fieldset class="grid-form">
             <legend>Markings</legend>
             <p class="muted wide">The baseline starts with the markings of the root part. When an item is more restrictive, the baseline needs the minimal markings that cover it, and you confirm that here.</p>
@@ -58,6 +60,8 @@
 
 @code {
     [SupplyParameterFromQuery(Name = "part")] public string? Part { get; set; }
+
+    private static readonly IReadOnlyList<Crumb> Crumbs = [new("Baselines", "baselines"), new("New baseline")];
 
     private IReadOnlyList<BaselineTypeInfo> types = [];
     private IReadOnlyList<string> contextIds = [];

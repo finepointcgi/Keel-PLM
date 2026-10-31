@@ -43,6 +43,8 @@
     private const int PageSize = 50;
     [SupplyParameterFromQuery(Name = "sort")] public string? SortParam { get; set; }
     [SupplyParameterFromQuery(Name = "dir")] public string? DirParam { get; set; }
+    // The search box on Home arrives here as ?q=text: the first search starts from it.
+    [SupplyParameterFromQuery(Name = "q")] public string? QueryParam { get; set; }
     private SortSpec? sort;
     private bool sortLoaded;
 
@@ -50,6 +52,7 @@
     protected override async Task OnParametersSetAsync()
     {
         _ = PartService.SortKeys.TryResolve(SortParam, DirParam, out var requested, out _);
+        if (!sortLoaded && !string.IsNullOrWhiteSpace(QueryParam)) query = QueryParam.Trim();
         if (sortLoaded && requested == sort) return;
         (sort, sortLoaded) = (requested, true);
         await Search(0);

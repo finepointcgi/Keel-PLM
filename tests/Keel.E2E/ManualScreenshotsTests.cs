@@ -491,7 +491,7 @@ public sealed class ManualScreenshotsTests(E2EFixture fx)
                 await TryAsync("mobile-approvals", async () =>
                 {
                     var adaPhone = await session.SignInAsync("ada", 375, 812);
-                    await GoAsync(session, adaPhone, "/approve", "mobile-approvals");
+                    await GoAsync(session, adaPhone, "/tasks", "mobile-approvals");
                     var open = adaPhone.Page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Review and decide", Exact = false }).First;
                     if (await open.CountAsync() == 0) { _log.AppendLine("FAILED mobile-approve-summary: ada has no open task"); return; }
                     await open.ClickAsync();

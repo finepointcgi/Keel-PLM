@@ -3,7 +3,7 @@
 @inject RequirementService Requirements
 @inject ToastService Toasts
 
-@* Review status, "Submit for review", signature history and the next revision of one specification. A release is signed over a digest of every requirement (ADR-0018, ADR-0038). *@
+@* Review status, signature history and the next revision of one specification. A release is signed over a digest of every requirement (ADR-0018, ADR-0038). *@
 <section class="panel stack" aria-labelledby="req-review-heading">
     <h3 id="req-review-heading">Release review</h3>
     @if (error is not null) { <p class="error" role="alert">@error</p> }
@@ -13,15 +13,8 @@
         @if (mapInstance is not null) { <WorkflowMapPanel InstanceId="@mapInstance.Id" Version="@($"{mapInstance.Status}:{mapInstance.Tasks.Count(t => t.Status != "Open")}")" /> }
         @if (status.Active is { } active)
         {
-            <p><span class="badge state-underreview">Review in progress</span> Started by @active.StartedBy on @WorkflowText.Utc(active.StartedAt) · <a href="workflows/@active.Id">Workflow details</a></p>
+            <p><span class="badge state-underreview">Under review</span> Started by @active.StartedBy on @WorkflowText.Utc(active.StartedAt) · <a href="workflows/@active.Id">Workflow details</a></p>
             <ul class="plain">@foreach (var t in active.Tasks.Where(t => t.Status == "Open")) { <li>@t.Name: waiting for @(t.AssigneeName ?? WorkflowText.Role(t.RequiredRole))@(t.Overdue ? " (overdue)" : "")</li> }</ul>
-            @if (active.CanCancel)
-            {
-                <div class="toolbar">
-                    <input aria-label="Reason for cancelling the review" placeholder="Reason for cancelling (required)" class="grow" @bind="cancelReason" />
-                    <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
-                </div>
-            }
         }
         else
         {
@@ -32,13 +25,7 @@
                 else if (last.Status == InstanceStatus.Cancelled) { <p class="muted">@last.CompletionNote</p> }
             }
             else { <p class="muted">This specification has not been submitted for review.</p> }
-            @if (Detail.Editable && Detail.CanModify && !starting)
-            {
-                <button type="button" disabled="@busy" @onclick="BeginStart">Submit for review</button>
-                <p class="muted small">Every requirement must be approved, deferred or withdrawn first. The signatures cover a digest of all requirements.</p>
-            }
         }
-        @if (starting && template is not null) { <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" /> }
         @if (status.Releases.Count > 0)
         {
             <h4>Signatures</h4>
@@ -65,54 +52,14 @@
     [Parameter] public EventCallback OnChanged { get; set; }
 
     private ObjectWorkflowStatus? status;
-    private TemplateView? template;
-    private bool starting, busy;
-    private string? error, startError;
-    private string cancelReason = "", reviseReason = "";
+    private string reviseReason = "";
+    private bool busy;
+    private string? error;
 
     protected override async Task OnParametersSetAsync()
     {
         var outcome = await Flow.StatusForObjectAsync(await Users.GetAsync(), RequirementService.ObjectType, Detail.Summary.Number, CurrentUser.NewCorrelationId());
         status = outcome.IsOk ? outcome.Value : null;
-    }
-
-    private async Task BeginStart()
-    {
-        error = startError = null;
-        var templates = await Flow.ListTemplatesAsync(await Users.GetAsync(), activeOnly: true, CurrentUser.NewCorrelationId());
-        template = templates.FirstOrDefault(t => t.ObjectType == RequirementService.ObjectType);
-        if (template is null) { error = "No workflow template is available for requirement specifications. Ask an administrator to upload one."; return; }
-        starting = true;
-    }
-
-    private Task EndStart() { starting = false; return Task.CompletedTask; }
-
-    private async Task<IReadOnlyList<DirectoryUserView>> SearchUsers(SlotView slot, string text)
-    {
-        var outcome = await Flow.SearchUsersAsync(await Users.GetAsync(), text, slot.Role, RequirementService.ObjectType, Detail.Summary.Number, 25, CurrentUser.NewCorrelationId());
-        return outcome.IsOk ? outcome.Value! : [];
-    }
-
-    private async Task Start(StartSelection selection)
-    {
-        busy = true;
-        startError = null;
-        var outcome = await Flow.StartAsync(await Users.GetAsync(), new StartReviewCommand(RequirementService.ObjectType, Detail.Summary.Number, selection.Participants, selection.TemplateId, selection.Comment), CurrentUser.NewCorrelationId());
-        busy = false;
-        if (!outcome.IsOk) { startError = WorkflowText.Message(outcome); return; }
-        starting = false;
-        await OnChanged.InvokeAsync();
-    }
-
-    private async Task Cancel()
-    {
-        busy = true;
-        error = null;
-        var outcome = await Flow.CancelAsync(await Users.GetAsync(), status!.Active!.Id, cancelReason, CurrentUser.NewCorrelationId());
-        busy = false;
-        if (!outcome.IsOk) { error = WorkflowText.Message(outcome); return; }
-        cancelReason = "";
-        await OnChanged.InvokeAsync();
     }
 
     private async Task Revise()

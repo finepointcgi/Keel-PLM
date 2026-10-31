@@ -47,7 +47,25 @@
                     </div>
                 </header>
 
-                @if (message is not null) { <p class="permit" role="status">@message</p> }
+                @if (message is not null)
+                {
+                    <p class="permit" role="status" data-testid="approve-message">@message</p>
+                    @if (detail.Status != "Open") { <p><a class="button" href="tasks">@P["Task.BackToTasks"]</a></p> }
+                }
+
+                <section class="panel review-summary" aria-labelledby="task-summary-heading" data-testid="review-summary">
+                    <h3 id="task-summary-heading">@P["Task.Summary"]</h3>
+                    <p class="rs-name"><strong>@o.Key</strong> · @o.Name</p>
+                    <dl class="facts">
+                        <dt>@P["Task.Fact.Kind"]</dt><dd>@char.ToUpperInvariant(WorkflowText.Noun(o.ObjectType)[0])@WorkflowText.Noun(o.ObjectType)[1..]</dd>
+                        <dt>@P["Task.Fact.Revision"]</dt><dd data-testid="rs-revision">@o.Revision</dd>
+                        <dt>@P["Task.Fact.Version"]</dt><dd>@o.IterationLabel</dd>
+                        <dt>@P["Task.Fact.State"]</dt><dd>@o.StateLabel</dd>
+                        <dt>@P["Task.Fact.Markings"]</dt><dd><MarkingChip Text="@o.Banner" /></dd>
+                        <dt>@P["Task.Fact.StartedBy"]</dt><dd>@d.Summary.StartedByName</dd>
+                        <dt>@P["Task.Fact.Due"]</dt><dd class="@(d.Summary.Overdue ? "error" : null)">@WorkflowText.Due(d.Summary.DueAt, d.Summary.Overdue, C, Language)</dd>
+                    </dl>
+                </section>
 
                 <section class="panel">
                     <h3>@P["Task.Signing"]</h3>
@@ -59,12 +77,17 @@
                         </dl>
                     }
                     <p class="muted small">@P["Task.VersionNote", o.IterationLabel]</p>
+                    @if (d.Review is { } review)
+                    {
+                        <p class="muted small">@P["Task.HashNote"]</p>
+                        <p><code class="hash" data-testid="rs-hash">@review.ContentHash</code></p>
+                    }
                 </section>
 
                 @if (d.Instance is { } inst)
                 {
-                    @if (inst.Comment is not null) { <section class="panel"><h3>@P["Task.SubmitterComment"]</h3><p>@inst.Comment</p></section> }
-                    <section class="panel" aria-label="@P["Task.ProgressLabel"]">
+                    <section class="panel"><h3>@P["Task.SubmitterComment"]</h3><p data-testid="rs-note">@(string.IsNullOrWhiteSpace(inst.Comment) ? P["Task.NoNote"].Value : inst.Comment)</p></section>
+                    <section class="panel">
                         <h3>@P["Task.Progress"]</h3>
                         <WorkflowMapPanel InstanceId="@inst.Id" Version="@($"{inst.Status}:{inst.Tasks.Count(t => t.Status != "Open")}")" />
                     </section>

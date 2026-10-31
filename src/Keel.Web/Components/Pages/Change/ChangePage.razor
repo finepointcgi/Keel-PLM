@@ -1,4 +1,5 @@
 @page "/changes/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject ChangeService Changes
 @inject IReferenceData Refs
@@ -245,6 +246,14 @@
             @if (steps.Count > 0)
             {
                 <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Change lifecycle" />
+            }
+            @if (ChangeUi.ReviewObjectType(d.Type) is { } reviewType)
+            {
+                var ready = d.State == "Draft";
+                var canStart = ready && d.Permissions.CanModify && (d.Type != ChangeTypes.Ecr || d.ChangeClass is not null);
+                <ReviewStrip ObjectType="@reviewType" Number="@d.Number" Noun="@ChangeUi.TypeName(d.Type).ToLowerInvariant()" Version="@d.State" OnChanged="Reload" CanStart="@canStart"
+                             StartText="@(d.Type == ChangeTypes.Ecr ? "Submit to the CCB" : "Submit for review")"
+                             WhyNot="@(ready && !canStart ? (d.Type == ChangeTypes.Ecr && d.ChangeClass is null ? "Classify the request (Class I or II) before submitting it." : "You may not submit this change for review.") : null)" />
             }
         </Steps>
     </ObjectHeader>;

@@ -1,4 +1,5 @@
 @page "/programs/gates/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject ProgramService Programs
 @inject NavigationManager Nav
@@ -87,10 +88,7 @@
                         </div>
                         break;
                     case "review":
-                        <QualityReviewPanel Kind="gate" Number="@d.Number" Heading="Review board" StartText="Submit to the review board" Version="@($"{d.State}:{d.Submission}")"
-                                            Intro="The review board signs that the gate criteria are met. Each signature covers the gate, its checklist and the readiness of its deliverables as they are when it is submitted. Approval completes the milestone."
-                                            CanStart="@(d.State == GateStates.Draft && d.CanModify && d.ChecklistComplete)"
-                                            WhyNot="@(d.State != GateStates.Draft ? null : !d.CanModify ? "You may not submit this gate review." : "Mark every required criterion met or not applicable first.")" OnChanged="Reload" />
+                        <QualityReviewPanel Kind="gate" Number="@d.Number" Heading="Review board" Intro="The review board signs that the gate criteria are met. Each signature covers the gate, its checklist and the readiness of its deliverables as they are when it is submitted. Approval completes the milestone." Version="@($"{d.State}:{d.Submission}")" />
                         break;
                     case "activity":
                         <ActivityFeed Kind="gate" Number="@d.Number" />
@@ -129,6 +127,11 @@
             <span class="badge @(d.State == GateStates.Approved ? "state-released" : d.State == GateStates.UnderReview ? "state-underreview" : null)">@d.StateLabel</span>
             <WatchButton Kind="gate" Number="@d.Number" />
         </Badges>
+        <Steps>
+            <ReviewStrip ObjectType="gate" Number="@d.Number" Noun="record" Version="@($"{d.State}:{d.Submission}")" StartText="Submit to the review board" OnChanged="Reload"
+                         CanStart="@(d.State == GateStates.Draft && d.CanModify && d.ChecklistComplete)"
+                         WhyNot="@(d.State != GateStates.Draft ? null : !d.CanModify ? "You may not submit this gate review." : "Mark every required criterion met or not applicable first.")" />
+        </Steps>
     </ObjectHeader>;
 
     protected override Task OnParametersSetAsync() => Reload();

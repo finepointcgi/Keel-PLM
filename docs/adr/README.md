@@ -68,3 +68,4 @@ Assumptions referenced as `A<n>` live in [../assumptions.md](../assumptions.md).
 | [0059](0059-ci-and-supply-chain.md) | CI pipeline, supply-chain checks, SBOM and the committed licence inventory with an enforcing test | Accepted |
 | [0060](0060-packaging-backup-restore-and-upgrade.md) | Production packaging, preflight, versions manifest and the operations proof: backup and restore drill, upgrade rehearsal, load smoke, `keel-vault verify` | Accepted |
 | [0062](0062-refined-look-and-files-with-a-new-part.md) | A calmer look (grouped tabs, key facts, list cards, compact chips) and files with a new part (several files at once, one part version, STL becomes the part model) | Accepted |
+| [0063](0063-one-review-step-and-one-task-page.md) | A review strip in the object header, and one task page (phone approval screens merged into My tasks and the task page) | Accepted |

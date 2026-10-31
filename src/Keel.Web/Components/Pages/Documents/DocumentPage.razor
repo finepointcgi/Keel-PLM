@@ -305,8 +305,9 @@
         </Badges>
         <Steps>
             <Stepper States="lifecycleStates" Current="@d.Revision.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Document lifecycle" />
-            <ReviewStrip ObjectType="document" Number="@d.Number" State="@d.Revision.State" Latest="@d.Revision.IsLatest" CheckedOut="@(d.Checkout is not null)"
-                         CanModify="@d.Permissions.CanModify" HasPrimary="@d.Iteration.Files.Any(f => f.Role == FileRoles.Primary)" OnChanged="Reload" />
+            <ReviewStrip ObjectType="document" Number="@d.Number" Noun="document" Version="@d.Revision.State" OnChanged="Reload"
+                         CanStart="@(ReviewReady(d) && d.Checkout is null && d.Permissions.CanModify && HasPrimaryFile(d))"
+                         WhyNot="@(ReviewReady(d) && !(d.Checkout is null && d.Permissions.CanModify && HasPrimaryFile(d)) ? (d.Checkout is not null ? "Save or discard your edit before submitting for review." : !HasPrimaryFile(d) ? "Add a primary file before submitting for review." : "You may not submit this document for review.") : null)" />
         </Steps>
         <ChildContent>
             @if (d.Revisions.Count > 1)
@@ -320,6 +321,9 @@
             }
         </ChildContent>
     </ObjectHeader>;
+
+    private static bool ReviewReady(DocumentDetail d) => d.Revision.IsLatest && d.Revision.State == "InWork";
+    private static bool HasPrimaryFile(DocumentDetail d) => d.Iteration.Files.Any(f => f.Role == FileRoles.Primary);
 
     private static string Corr() => CurrentUser.NewCorrelationId();
 

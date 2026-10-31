@@ -8,7 +8,6 @@
 {
     <section class="panel" aria-labelledby="review-heading">
         <h3 id="review-heading">@(Detail.Type == ChangeTypes.Ecr ? "CCB review" : "Review and release")</h3>
-        @if (error is not null) { <p class="error" role="alert">@error</p> }
         @* UX-3: the progress map of the running (or last) review: steps, vote rule, who signed, who is pending. *@
         @{ var mapInstance = status.Active ?? status.Last; }
         @if (mapInstance is not null) { <WorkflowMapPanel InstanceId="@mapInstance.Id" Version="@($"{mapInstance.Status}:{mapInstance.Tasks.Count(t => t.Status != "Open")}")" /> }
@@ -16,7 +15,7 @@
         @if (status.Active is { } active)
         {
             <p>
-                <span class="badge state-underreview">Review in progress</span>
+                <span class="badge state-underreview">Under review</span>
                 Started by @active.StartedBy on @WorkflowText.Utc(active.StartedAt) · <a href="workflows/@active.Id">Workflow details</a>
             </p>
             <ul class="plain">
@@ -25,13 +24,6 @@
                     <li>@t.Name: waiting for @(t.AssigneeName ?? WorkflowText.Role(t.RequiredRole))@(t.Overdue ? " (overdue)" : "")</li>
                 }
             </ul>
-            @if (active.CanCancel)
-            {
-                <div class="toolbar">
-                    <input aria-label="Reason for cancelling the review" placeholder="Reason for cancelling (required)" class="grow" @bind="cancelReason" />
-                    <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
-                </div>
-            }
         }
         else
         {
@@ -51,19 +43,6 @@
             }
             else { <p class="muted">This @ChangeUi.TypeName(Detail.Type).ToLowerInvariant() has not been submitted for review.</p> }
 
-            @if (CanStart && !starting)
-            {
-                <button type="button" disabled="@busy" @onclick="BeginStart">@(Detail.Type == ChangeTypes.Ecr ? "Submit to the CCB" : "Submit for review")</button>
-            }
-            else if (!CanStart && Detail.State == "Draft")
-            {
-                <p class="muted small">@(Detail.Type == ChangeTypes.Ecr && Detail.ChangeClass is null ? "Classify the request (Class I or II) before submitting it." : "You may not submit this change for review.")</p>
-            }
-        }
-
-        @if (starting && template is not null)
-        {
-            <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" />
         }
 
         @if (status.Releases.Count > 0)
@@ -88,9 +67,6 @@
     [Parameter] public EventCallback OnChanged { get; set; }
 
     private ObjectWorkflowStatus? status;
-    private TemplateView? template;
-    private bool starting, busy;
-    private string? error, startError, cancelReason = "";
 
     private string? ObjectType => ChangeUi.ReviewObjectType(Detail.Type);
 
@@ -103,47 +79,4 @@
         status = outcome.IsOk ? outcome.Value : null;
     }
 
-    private async Task BeginStart()
-    {
-        error = startError = null;
-        var templates = await Flow.ListTemplatesAsync(await Users.GetAsync(), activeOnly: true, CurrentUser.NewCorrelationId());
-        template = templates.FirstOrDefault(t => t.ObjectType == ObjectType);
-        if (template is null) { error = $"No workflow template is available for {ObjectType} objects. Ask an administrator to upload one."; return; }
-        starting = true;
-    }
-
-    private Task EndStart()
-    {
-        starting = false;
-        return Task.CompletedTask;
-    }
-
-    private async Task<IReadOnlyList<DirectoryUserView>> SearchUsers(SlotView slot, string text)
-    {
-        var outcome = await Flow.SearchUsersAsync(await Users.GetAsync(), text, slot.Role, ObjectType, Detail.Number, 25, CurrentUser.NewCorrelationId());
-        return outcome.IsOk ? outcome.Value! : [];
-    }
-
-    private async Task Start(StartSelection selection)
-    {
-        busy = true;
-        startError = null;
-        var outcome = await Flow.StartAsync(await Users.GetAsync(),
-            new StartReviewCommand(ObjectType!, Detail.Number, selection.Participants, selection.TemplateId, selection.Comment), CurrentUser.NewCorrelationId());
-        busy = false;
-        if (!outcome.IsOk) { startError = WorkflowText.Message(outcome); return; }
-        starting = false;
-        await OnChanged.InvokeAsync();
-    }
-
-    private async Task Cancel()
-    {
-        busy = true;
-        error = null;
-        var outcome = await Flow.CancelAsync(await Users.GetAsync(), status!.Active!.Id, cancelReason, CurrentUser.NewCorrelationId());
-        busy = false;
-        if (!outcome.IsOk) { error = WorkflowText.Message(outcome); return; }
-        cancelReason = "";
-        await OnChanged.InvokeAsync();
-    }
 }

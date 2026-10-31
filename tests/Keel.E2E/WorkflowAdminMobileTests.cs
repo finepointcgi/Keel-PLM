@@ -132,7 +132,7 @@ public sealed class WorkflowAdminMobileE2ETests(E2EFixture fx)
             await Expect(page.GetByText("Review in progress")).ToBeVisibleAsync();
 
             // ---- ada, on a phone: the card list, then the summary
-            await session.GotoAsync(ada, "/approve");
+            await session.GotoAsync(ada, "/tasks");
             var card = ada.Page.Locator("[data-testid=approval-card]", new PageLocatorOptions { HasText = part });
             await Expect(card).ToBeVisibleAsync();
             await Expect(card).ToContainTextAsync(partName);
@@ -143,7 +143,7 @@ public sealed class WorkflowAdminMobileE2ETests(E2EFixture fx)
             var open = card.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Review and decide" });
             Assert.True((await open.BoundingBoxAsync())!.Height >= 56, "The open button is a large target.");
             await open.ClickAsync();
-            await ada.Page.WaitForURLAsync(new Regex(@"/approve/[0-9a-f-]{36}$"));
+            await ada.Page.WaitForURLAsync(new Regex(@"/tasks/[0-9a-f-]{36}$"));
 
             var summary = ada.Page.Locator("[data-testid=review-summary]");
             await Expect(summary).ToContainTextAsync(part);
@@ -169,7 +169,7 @@ public sealed class WorkflowAdminMobileE2ETests(E2EFixture fx)
             // ---- ada signs with a comment after the step-up the stale login needs
             var adaPath = new Uri(ada.Page.Url).AbsolutePath;
             await session.SignTaskAsync(ada, adaPath, "Reviewed", expectStepUp: true, comment: "Checked on my phone.");
-            await Expect(ada.Page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Back to approvals" })).ToBeVisibleAsync();
+            await Expect(ada.Page.GetByRole(AriaRole.Link, new PageGetByRoleOptions { Name = "Back to my tasks" })).ToBeVisibleAsync();
             await AccessibilityTests.RunAxeAsync(ada.Page, "375 px approve page after signing", axe, findings);
 
             // The hash the phone showed is the hash the signature recorded.
@@ -181,11 +181,11 @@ public sealed class WorkflowAdminMobileE2ETests(E2EFixture fx)
             }
 
             // ---- bob rejects without a comment (refused in words), then approves; the part is released
-            await session.GotoAsync(bob, "/approve");
+            await session.GotoAsync(bob, "/tasks");
             var bobCard = bob.Page.Locator("[data-testid=approval-card]", new PageLocatorOptions { HasText = part });
             await Expect(bobCard).ToBeVisibleAsync();
             await bobCard.GetByRole(AriaRole.Link, new LocatorGetByRoleOptions { Name = "Review and decide" }).ClickAsync();
-            await bob.Page.WaitForURLAsync(new Regex(@"/approve/[0-9a-f-]{36}$"));
+            await bob.Page.WaitForURLAsync(new Regex(@"/tasks/[0-9a-f-]{36}$"));
             var bobPath = new Uri(bob.Page.Url).AbsolutePath;
             await BrowserSession.ClickAsync(bob.Page, "Rejected");
             await Expect(bob.Page.GetByRole(AriaRole.Alert).Filter(new LocatorFilterOptions { HasText = "Enter a comment" })).ToBeVisibleAsync();

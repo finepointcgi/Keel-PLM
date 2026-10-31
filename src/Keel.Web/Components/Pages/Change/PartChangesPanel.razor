@@ -29,8 +29,7 @@
         }
         @if (CanRequest)
         {
-            <a class="button" href="@($"{ChangeUi.NewHref(ChangeTypes.Ecn)}?part={Uri.EscapeDataString(Number)}")">Request change</a>
-            <span class="muted small">Opens a change notice that revises this released revision.</span>
+            <p class="muted small">To change this released revision, use Request change at the top of the page. It opens a change notice that revises this revision.</p>
         }
     </section>
 }

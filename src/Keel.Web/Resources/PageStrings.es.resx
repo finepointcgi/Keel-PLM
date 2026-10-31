@@ -241,7 +241,6 @@
   <data name="Tasks.Restricted" xml:space="preserve"><value>Elemento restringido. Usted ya no puede verlo; la tarea no se puede firmar.</value></data>
   <data name="Tasks.Rev" xml:space="preserve"><value>rev. {0}</value></data>
   <data name="Tasks.Title" xml:space="preserve"><value>Mis tareas</value></data>
-  <data name="Tasks.PhoneView" xml:space="preserve"><value>Vista de teléfono</value></data>
   <data name="Sign.Decision" xml:space="preserve"><value>Su decisión</value></data>
   <data name="Tiles.Label" xml:space="preserve"><value>Resumen</value></data>
   <data name="Tiles.Tasks" xml:space="preserve"><value>Requieren mi atención</value></data>
@@ -265,4 +264,23 @@
   <data name="Files.Done" xml:space="preserve"><value>Se creó {0} con {1} documento(s).</value></data>
   <data name="Files.Partial" xml:space="preserve"><value>Se creó {0}, pero no se agregaron todos los archivos: {1} Agregue el resto con Agregar documento en la pieza.</value></data>
   <data name="Files.Choose" xml:space="preserve"><value>Elegir archivos</value></data>
+  <data name="Home.FindPart" xml:space="preserve"><value>Buscar una pieza</value></data>
+  <data name="Attention.Sign" xml:space="preserve"><value>Revisar y firmar</value></data>
+  <data name="Part.RequestChange" xml:space="preserve"><value>Solicitar cambio</value></data>
+  <data name="Part.CreateBaseline" xml:space="preserve"><value>Crear línea base</value></data>
+  <data name="Quick.NewBaseline" xml:space="preserve"><value>Nueva línea base</value></data>
+  <data name="Task.HashNote" xml:space="preserve"><value>La firma registra este resumen (SHA-256) de la versión anterior y de sus marcas:</value></data>
+  <data name="Task.Summary" xml:space="preserve"><value>Lo que va a firmar</value></data>
+  <data name="Task.Fact.Kind" xml:space="preserve"><value>Tipo de elemento</value></data>
+  <data name="Task.Fact.Revision" xml:space="preserve"><value>Revisión</value></data>
+  <data name="Task.Fact.Version" xml:space="preserve"><value>Versión</value></data>
+  <data name="Task.Fact.State" xml:space="preserve"><value>Estado</value></data>
+  <data name="Task.Fact.Markings" xml:space="preserve"><value>Marcas</value></data>
+  <data name="Task.Fact.StartedBy" xml:space="preserve"><value>Iniciada por</value></data>
+  <data name="Task.Fact.Due" xml:space="preserve"><value>Vence</value></data>
+  <data name="Task.NoNote" xml:space="preserve"><value>Quien la envió no dejó ninguna nota.</value></data>
+  <data name="Task.BackToTasks" xml:space="preserve"><value>Volver a mis tareas</value></data>
+  <data name="Tasks.Open" xml:space="preserve"><value>Revisar y decidir</value></data>
+  <data name="Tasks.OpenAria" xml:space="preserve"><value>Revisar y decidir: {0}, {1}</value></data>
+  <data name="Tasks.StartedByLine" xml:space="preserve"><value>Iniciada por {0}</value></data>
 </root>

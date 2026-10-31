@@ -241,7 +241,6 @@
   <data name="Tasks.Restricted" xml:space="preserve"><value>Restricted item. You are no longer eligible to see it; the task cannot be signed.</value></data>
   <data name="Tasks.Rev" xml:space="preserve"><value>rev {0}</value></data>
   <data name="Tasks.Title" xml:space="preserve"><value>My tasks</value></data>
-  <data name="Tasks.PhoneView" xml:space="preserve"><value>Phone view</value></data>
   <data name="Sign.Decision" xml:space="preserve"><value>Your decision</value></data>
   <data name="Tiles.Label" xml:space="preserve"><value>Summary</value></data>
   <data name="Tiles.Tasks" xml:space="preserve"><value>Need my attention</value></data>
@@ -265,4 +264,23 @@
   <data name="Files.Done" xml:space="preserve"><value>Created {0} with {1} document(s).</value></data>
   <data name="Files.Partial" xml:space="preserve"><value>{0} was created, but not every file was added: {1} Add the rest with Add document on the part.</value></data>
   <data name="Files.Choose" xml:space="preserve"><value>Choose files</value></data>
+  <data name="Home.FindPart" xml:space="preserve"><value>Find a part</value></data>
+  <data name="Attention.Sign" xml:space="preserve"><value>Review and sign</value></data>
+  <data name="Part.RequestChange" xml:space="preserve"><value>Request change</value></data>
+  <data name="Part.CreateBaseline" xml:space="preserve"><value>Create baseline</value></data>
+  <data name="Quick.NewBaseline" xml:space="preserve"><value>New baseline</value></data>
+  <data name="Task.HashNote" xml:space="preserve"><value>The signature records this content hash (SHA-256) of the version above and of its markings:</value></data>
+  <data name="Task.Summary" xml:space="preserve"><value>What you are signing</value></data>
+  <data name="Task.Fact.Kind" xml:space="preserve"><value>Kind of item</value></data>
+  <data name="Task.Fact.Revision" xml:space="preserve"><value>Revision</value></data>
+  <data name="Task.Fact.Version" xml:space="preserve"><value>Version</value></data>
+  <data name="Task.Fact.State" xml:space="preserve"><value>State</value></data>
+  <data name="Task.Fact.Markings" xml:space="preserve"><value>Markings</value></data>
+  <data name="Task.Fact.StartedBy" xml:space="preserve"><value>Started by</value></data>
+  <data name="Task.Fact.Due" xml:space="preserve"><value>Due</value></data>
+  <data name="Task.NoNote" xml:space="preserve"><value>The person who submitted it gave no note.</value></data>
+  <data name="Task.BackToTasks" xml:space="preserve"><value>Back to my tasks</value></data>
+  <data name="Tasks.Open" xml:space="preserve"><value>Review and decide</value></data>
+  <data name="Tasks.OpenAria" xml:space="preserve"><value>Review and decide: {0}, {1}</value></data>
+  <data name="Tasks.StartedByLine" xml:space="preserve"><value>Started by {0}</value></data>
 </root>

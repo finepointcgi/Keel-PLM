@@ -1,4 +1,5 @@
 @page "/quality/ncrs/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject NcrService Ncrs
 @inject LifecycleSteps Lifecycles
@@ -126,9 +127,7 @@
                         <QualityLinksPanel Kind="@QualityKinds.Ncr" Number="@d.Number" Items="d.Links" CanModify="d.Permissions.CanModify" Final="d.IsFinal" OnChanged="Reload" />
                         break;
                     case "review":
-                        <QualityReviewPanel Kind="@QualityKinds.Ncr" Number="@d.Number" Heading="Material review board" StartText="Submit to the review board" Version="@($"{d.State}:{d.Submission}")"
-                                            Intro="The review board signs the proposed disposition. Each signature covers the report, the part, the quantity and the containment actions as they are when it is submitted."
-                                            CanStart="@(d.State == "Open" && d.Permissions.CanModify)" WhyNot="@(d.State == "Open" ? "You may not submit this report." : null)" OnChanged="Reload" />
+                        <QualityReviewPanel Kind="@QualityKinds.Ncr" Number="@d.Number" Heading="Material review board" Intro="The review board signs the proposed disposition. Each signature covers the report, the part, the quantity and the containment actions as they are when it is submitted." Version="@($"{d.State}:{d.Submission}")" />
                         break;
                     case "history":
                         <QualityHistoryPanel Items="d.History" />
@@ -196,6 +195,9 @@
         </Badges>
         <Steps>
             @if (steps.Count > 0) { <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Report lifecycle" /> }
+            <ReviewStrip ObjectType="@QualityKinds.Ncr" Number="@d.Number" Noun="record" Version="@($"{d.State}:{d.Submission}")" StartText="Submit to the review board" OnChanged="Reload"
+                         CanStart="@(d.State == "Open" && d.Permissions.CanModify)"
+                         WhyNot="@(d.State == "Open" ? "You may not submit this report." : null)" />
         </Steps>
     </ObjectHeader>;
 

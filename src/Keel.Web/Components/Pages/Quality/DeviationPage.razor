@@ -1,4 +1,5 @@
 @page "/quality/deviations/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject DeviationService Deviations
 @inject LifecycleSteps Lifecycles
@@ -135,9 +136,7 @@
                         <QualityLinksPanel Kind="@QualityKinds.Deviation" Number="@d.Number" Items="d.Links" CanModify="d.Permissions.CanModify" Final="d.IsFinal" OnChanged="Reload" />
                         break;
                     case "review":
-                        <QualityReviewPanel Kind="@QualityKinds.Deviation" Number="@d.Number" Heading="Approval" StartText="Submit for approval" Version="@($"{d.State}:{d.Submission}")"
-                                            Intro="Every chosen approver signs. The signatures cover the scope and the window as they are when it is submitted. When the customer must approve too, that is recorded after the internal approval."
-                                            CanStart="@(d.State == "Draft" && d.Permissions.CanModify)" WhyNot="@(d.State == "Draft" ? "You may not submit this record." : null)" OnChanged="Reload" />
+                        <QualityReviewPanel Kind="@QualityKinds.Deviation" Number="@d.Number" Heading="Approval" Intro="Every chosen approver signs. The signatures cover the scope and the window as they are when it is submitted. When the customer must approve too, that is recorded after the internal approval." Version="@($"{d.State}:{d.Submission}")" />
                         break;
                     case "history":
                         <QualityHistoryPanel Items="d.History" />
@@ -212,6 +211,9 @@
         </Badges>
         <Steps>
             @if (steps.Count > 0) { <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Deviation lifecycle" /> }
+            <ReviewStrip ObjectType="@QualityKinds.Deviation" Number="@d.Number" Noun="record" Version="@($"{d.State}:{d.Submission}")" StartText="Submit for approval" OnChanged="Reload"
+                         CanStart="@(d.State == "Draft" && d.Permissions.CanModify)"
+                         WhyNot="@(d.State == "Draft" ? "You may not submit this record." : null)" />
         </Steps>
     </ObjectHeader>;
 

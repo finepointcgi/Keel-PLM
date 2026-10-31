@@ -1,4 +1,5 @@
 @page "/quality/capas/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject CapaService Capas
 @inject QualityActions Actions
@@ -189,10 +190,7 @@
                         <QualityLinksPanel Kind="@QualityKinds.Capa" Number="@d.Number" Items="d.Links" CanModify="d.Permissions.CanModify" Final="d.IsFinal" OnChanged="Reload" />
                         break;
                     case "review":
-                        <QualityReviewPanel Kind="@QualityKinds.Capa" Number="@d.Number" Heading="Signed verification" StartText="Submit for signed verification" Version="@($"{d.State}:{d.Submission}")"
-                                            Intro="Closing needs signed verification. The signatures cover the analysis, the actions and the effectiveness result as they are when it is submitted."
-                                            CanStart="@(d.State == "InProgress" && d.Permissions.CanModify)"
-                                            WhyNot="@(d.State == "InProgress" ? "You may not submit this record." : "The work has to be in progress, with every action finished and an effective result recorded.")" OnChanged="Reload" />
+                        <QualityReviewPanel Kind="@QualityKinds.Capa" Number="@d.Number" Heading="Signed verification" Intro="Closing needs signed verification. The signatures cover the analysis, the actions and the effectiveness result as they are when it is submitted." Version="@($"{d.State}:{d.Submission}")" />
                         break;
                     case "history":
                         <QualityHistoryPanel Items="d.History" />
@@ -266,6 +264,9 @@
         </Badges>
         <Steps>
             @if (steps.Count > 0) { <Stepper States="steps" Current="@d.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Corrective action lifecycle" /> }
+            <ReviewStrip ObjectType="@QualityKinds.Capa" Number="@d.Number" Noun="record" Version="@($"{d.State}:{d.Submission}")" StartText="Submit for signed verification" OnChanged="Reload"
+                         CanStart="@(d.State == "InProgress" && d.Permissions.CanModify)"
+                         WhyNot="@(d.State == "InProgress" ? "You may not submit this record." : "The work has to be in progress, with every action finished and an effective result recorded.")" />
         </Steps>
     </ObjectHeader>;
 

@@ -136,7 +136,7 @@
                                 @if (d.ProposedStatus is not null) { <p class="muted">The review will grant: <strong>@SupplierStatuses.Label(d.ProposedStatus)</strong>.</p> }
                             }
                         </section>
-                        <SourcingReviewPanel ObjectType="supplier" Key="@d.Summary.Number" Noun="supplier" OnChanged="Reload"
+                        <SourcingReviewPanel ObjectType="supplier" Key="@d.Summary.Number" Noun="supplier" OnChanged="Reload" Controls="false"
                                              CanSubmit="@(d.Permissions.CanModify && !d.Summary.InReview && d.ProposedStatus is not null)"
                                              SubmitHint="@(d.ProposedStatus is null ? "Set the proposed status first." : null)" />
                         @if (d.Permissions.CanModify && !d.Summary.InReview && d.Summary.Status != SupplierStatuses.Obsolete)
@@ -210,6 +210,11 @@
             <FavoriteButton Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" />
             <WatchButton Kind="@ObjectKinds.Supplier" Number="@d.Summary.Number" />
         </Badges>
+        <Steps>
+            <ReviewStrip ObjectType="supplier" Number="@d.Summary.Number" Noun="supplier" Version="@($"{d.Summary.Status}:{d.Summary.InReview}")" OnChanged="Reload"
+                         CanStart="@(d.Permissions.CanModify && !d.Summary.InReview && d.ProposedStatus is not null)"
+                         WhyNot="@(d.Permissions.CanModify && !d.Summary.InReview && d.ProposedStatus is null ? "Set the proposed status first." : null)" />
+        </Steps>
     </ObjectHeader>;
 
     private void OnTabChanged(string id)

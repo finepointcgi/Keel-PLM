@@ -11,6 +11,8 @@
 @inject UiLanguage Language
 @using Npgsql
 @using Keel.Web.Components.Pages.Workflow
+@using Keel.Web.Components.Pages.Change
+@using Keel.Change
 
 <PageFrame Banner="@BannerMerge.Union(bomBanner ?? part?.Banner ?? UiText.Unclassified, changesBanner, mbomBanner, tdpBanner, timelineBanner, sourcingBanner, qualityBanner, tab == "viewer" ? viewerBanner : null, tab == "trace" ? traceBanner : null)" Title="@PageTitle"
            Crumbs="@Crumbs" Header="@(part is not null && defs is not null ? HeaderFragment(part) : null)">
@@ -51,6 +53,11 @@
                         <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
                                 @onclick='() => Run(s => Parts.SetStateAsync(s, Number, t.To, null, false, Corr()), P["Part.Moved", t.Label].Value)'>@P["Part.MoveTo", t.Label]</button>
                     }
+                    @if (p.Revision.State == "Released" && p.Permissions.CanModify)
+                    {
+                        @* A released revision is changed through a change notice; the button starts one for this part (it used to sit inside the Changes tab). *@
+                        <a class="button" data-action="request-change" href="@($"{ChangeUi.NewHref(ChangeTypes.Ecn)}?part={Uri.EscapeDataString(p.Number)}")">@P["Part.RequestChange"]</a>
+                    }
                     @if ((co is null && p.Permissions.CanModify && !p.Revision.IsLocked) || co?.IsMine == true || (co is not null && p.Permissions.CanAdminister))
                     {
                         <details class="more-menu" data-more-menu>
@@ -79,6 +86,10 @@
                 <span class="spacer"></span>
                 <a class="button secondary" href="@($"parts/{Uri.EscapeDataString(p.Number)}/where-used")">@P["Part.WhereUsed"]</a>
                 <a class="button secondary" href="@($"parts/{Uri.EscapeDataString(p.Number)}/compare")">@P["Part.Compare"]</a>
+                @if (p.Revision.IsLatest && p.Permissions.CanModify)
+                {
+                    <a class="button secondary" href="@($"baselines/new?part={Uri.EscapeDataString(p.Number)}")">@P["Part.CreateBaseline"]</a>
+                }
             </div>
 
             @if (error is not null) { <p class="error" role="alert">@error</p> }
@@ -350,8 +361,9 @@
             {
                 <Stepper States="lifecycle.States" Current="@p.Revision.State" Reachable="@(p.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="@P["Part.Lifecycle"]" />
             }
-            <ReviewStrip ObjectType="part" Number="@p.Number" State="@p.Revision.State" Latest="@p.Revision.IsLatest" CheckedOut="@(p.Checkout is not null)"
-                         CanModify="@p.Permissions.CanModify" OnChanged="Refresh" />
+            <ReviewStrip ObjectType="part" Number="@p.Number" Noun="part" Version="@p.Revision.State" OnChanged="Refresh"
+                         CanStart="@(p.Revision.IsLatest && p.Revision.State == "InWork" && p.Checkout is null && p.Permissions.CanModify)"
+                         WhyNot="@(p.Revision.IsLatest && p.Revision.State == "InWork" && !(p.Checkout is null && p.Permissions.CanModify) ? (p.Checkout is not null ? "Save or discard your edit before submitting for review." : "You may not submit this part for review.") : null)" />
         </Steps>
         <ChildContent>
             @if (p.Revisions.Count > 1)
@@ -450,7 +462,7 @@
 
     private async Task OnDocumentAdded(AddDocumentResult result)
     {
-        if (result.IsOk) Toasts.Success(result.Message); else error = result.Message;
+        if (result.IsOk) { Toasts.Success(result.Message); OnTabChanged("documents"); } else error = result.Message; // show where the file now is
         await Refresh();
     }
 

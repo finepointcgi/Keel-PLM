@@ -15,28 +15,39 @@
         <EditForm Model="this" OnSubmit="Create" FormName="new-change" class="stack">
             <fieldset class="grid-form">
                 <legend>@ChangeUi.TypeName(kind)</legend>
+                <p class="muted wide">@Explain</p>
+                @if (OtherType is { } other)
+                {
+                    <p class="small wide"><a href="@OtherHref">@other.Label</a></p>
+                }
                 <label class="wide">Title * <InputText @bind-Value="title" maxlength="200" required /></label>
-                <label>
-                    Priority
-                    <InputSelect @bind-Value="priority">@foreach (var p in priorities) { <option value="@p">@p</option> }</InputSelect>
-                </label>
-                @if (kind == ChangeTypes.Ecr)
-                {
-                    <label>
-                        Class
-                        <InputSelect @bind-Value="changeClass">
-                            <option value="">Not classified yet</option>
-                            <option value="I">Class I (needs CCB approval)</option>
-                            <option value="II">Class II</option>
-                        </InputSelect>
-                    </label>
-                }
-                @if (kind == ChangeTypes.Ecn)
-                {
-                    <p class="muted wide">Class II. A Class I change starts as a change request, which the CCB approves; open its notice from the approved request.</p>
-                }
                 <label class="wide">Description <InputTextArea @bind-Value="description" rows="4" maxlength="8000" /></label>
-                <label class="wide">Reason <InputTextArea @bind-Value="reason" rows="2" maxlength="4000" /></label>
+                <details class="more-details wide" data-more-details>
+                    <summary>More details</summary>
+                    <div class="grid-form">
+                        <label>
+                            Priority
+                            <InputSelect @bind-Value="priority">@foreach (var p in priorities) { <option value="@p">@p</option> }</InputSelect>
+                        </label>
+                        @if (kind == ChangeTypes.Ecr)
+                        {
+                            <label>
+                                Class
+                                <InputSelect @bind-Value="changeClass">
+                                    <option value="">Not classified yet</option>
+                                    <option value="I">Class I (the change control board must approve)</option>
+                                    <option value="II">Class II (a smaller change)</option>
+                                </InputSelect>
+                            </label>
+                            <GlossaryHint Term="change control board" />
+                        }
+                        @if (kind == ChangeTypes.Ecn)
+                        {
+                            <p class="muted wide">Class II. A Class I change starts as a change request, which the change control board approves; open its notice from the approved request.</p>
+                        }
+                        <label class="wide">Reason <InputTextArea @bind-Value="reason" rows="2" maxlength="4000" /></label>
+                    </div>
+                </details>
             </fieldset>
             <fieldset class="grid-form">
                 <legend>Security markings</legend>
@@ -90,6 +101,24 @@
     private IReadOnlyList<string>? errors;
     private string? createdNumber;
     private bool busy;
+
+    private string Explain => kind switch
+    {
+        ChangeTypes.Pr => "Report a problem you found. It can lead to a change request later.",
+        ChangeTypes.Ecr => "Ask for a change. A board looks at it and decides before any work starts.",
+        ChangeTypes.Ecn => "Make a change official. It revises the released parts you list, and they are released together when it is approved.",
+        _ => "",
+    };
+
+    // The other way to start the same work, keeping the part: ask first, or go straight to the notice.
+    private (string Label, string Type)? OtherType => kind switch
+    {
+        ChangeTypes.Ecn => ("Not sure yet? Ask for approval first with a change request.", ChangeTypes.Ecr),
+        ChangeTypes.Ecr => ("Already approved? Go straight to a change notice.", ChangeTypes.Ecn),
+        _ => null,
+    };
+
+    private string OtherHref => OtherType is { } o ? ChangeUi.NewHref(o.Type) + (Part is null ? "" : "?part=" + Uri.EscapeDataString(Part)) : "";
 
     private string Title => kind is null ? "New change" : $"New {ChangeUi.TypeName(kind).ToLowerInvariant()}";
 

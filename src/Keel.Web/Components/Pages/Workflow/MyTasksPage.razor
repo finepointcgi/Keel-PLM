@@ -8,10 +8,39 @@
 <PageFrame Banner="@(tasks?.PageBanner ?? UiText.Unclassified)" Title="@P["Tasks.Title"]" Crumbs="@Crumbs">
     @if (tasks is not null)
     {
-        <p class="muted">@P.Count("Tasks.Count", tasks.Items.Count) · <a href="approve">@P["Tasks.PhoneView"]</a></p>
-        <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="@P["Tasks.Caption"]" OnServerSort="OnSort" ServerSort="sort">
-            <Empty><EmptyState Title="@P["Tasks.EmptyTitle"]" IconName="check">@P["Tasks.EmptyText"]</EmptyState></Empty>
-        </DataTable>
+        <p class="muted">@P.Count("Tasks.Count", tasks.Items.Count)</p>
+        <div class="tasks-table">
+            <DataTable TItem="TaskSummary" TableId="tasks" Items="tasks.Items" Columns="Columns" Caption="@P["Tasks.Caption"]" OnServerSort="OnSort" ServerSort="sort">
+                <Empty><EmptyState Title="@P["Tasks.EmptyTitle"]" IconName="check">@P["Tasks.EmptyText"]</EmptyState></Empty>
+            </DataTable>
+        </div>
+        @* On a phone the same tasks are large cards instead of a table (the one page replaces the separate approvals screens). *@
+        @if (tasks.Items.Count > 0)
+        {
+            <ul class="plain approve-list" aria-label="@P["Tasks.Caption"]">
+                @foreach (var t in tasks.Items)
+                {
+                    <li class="approve-card" data-testid="approval-card">
+                        <h2 class="approve-title">@t.Name</h2>
+                        @if (t.Redacted || t.Target is null)
+                        {
+                            <p class="muted">@P["Tasks.Restricted"]</p>
+                        }
+                        else
+                        {
+                            <p class="approve-item"><strong>@t.Target.Key</strong> · @t.Target.Name <span class="muted">@P["Tasks.Rev", t.Target.Revision]</span></p>
+                            <p><MarkingChip Text="@t.Target.Banner" /></p>
+                            <p class="muted small">@P["Tasks.StartedByLine", t.StartedByName ?? ""]</p>
+                        }
+                        <p class="@(t.Overdue ? "error" : "muted") small">@WorkflowText.Due(t.DueAt, t.Overdue, C, Language)</p>
+                        @if (!t.Redacted && t.Target is not null)
+                        {
+                            <a class="button approve-open" href="tasks/@t.Id" aria-label="@P["Tasks.OpenAria", t.Name, t.Target.Key]">@P["Tasks.Open"]</a>
+                        }
+                    </li>
+                }
+            </ul>
+        }
     }
 </PageFrame>
 

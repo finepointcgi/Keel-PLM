@@ -201,6 +201,8 @@
             {
                 <Stepper States="steps" Current="@d.Summary.State" Label="Baseline lifecycle" />
             }
+            <ReviewStrip ObjectType="@BaselineService.ObjectType" Number="@d.Summary.Number" Noun="baseline" Version="@d.Summary.State" OnChanged="Load"
+                         CanStart="@(d.Summary.State == "Draft" && d.Permissions.CanModify)" />
         </Steps>
     </ObjectHeader>;
 

@@ -129,6 +129,8 @@
         </Badges>
         <Steps>
             @if (steps.Count > 0) { <Stepper States="steps" Current="@d.Displayed.State" Reachable="@(new HashSet<string>())" Label="Specification lifecycle" /> }
+            <ReviewStrip ObjectType="@RequirementService.ObjectType" Number="@d.Summary.Number" Noun="specification" Version="@d.Displayed.State" OnChanged="Reload"
+                         CanStart="@(d.Editable && d.CanModify)" Hint="Every requirement must be approved, deferred or withdrawn first. The signatures cover a digest of all requirements." />
         </Steps>
     </ObjectHeader>;
 
