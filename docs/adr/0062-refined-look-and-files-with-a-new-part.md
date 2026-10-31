@@ -1,0 +1,19 @@
+# ADR-0062: A calmer look (grouped tabs, key facts, list cards, compact chips) and files with a new part
+
+Status: Accepted
+
+## Context
+Users said the application still felt like an old machine. The lists carried a four-line marking chip on every row, the object pages had up to 16 tabs in one row, a sentence under the title held the key facts, and putting an STL on a new part took a part form, then one Add document dialog per file, each saving a new version of the part, and then a separate step in the CAD module to make the STL the part's model before the Viewer appeared.
+
+## Decision
+- **Visual only: no rule changed.** Markings, the aggregate banners, access control, release locks and audit are untouched. All new styles use the existing design tokens (`wwwroot/css/refine.css`), so dark mode, high contrast and density keep working.
+- **Compact marking chip in list rows** (`MarkingChip Compact`): the first segment and a count; the full marking is in the title and in text for assistive technology, so the row still carries the whole marking. Object headers and detail pages keep the full chip, and the page banner is still the aggregate of everything shown.
+- **Grouped tabs** (`TabInfo.Group`): tabs that share a group are one tab with a second row. Tab ids, `#id` and `?tab=` deep links and the "last used member" memory are unchanged. A group with one visible member is an ordinary tab. Parts: Overview, Structure, Documents, Audit trail (Changes, History, Timeline, Activity), Review & release, Security markings, Design (Viewer, Classification), Supply & checks (Sourcing, Quality, Compliance, Trace), Comments. Documents: Overview, Model (Versions, Viewer), Related (Compare, Used by, CAD, Trace), Review & release, Security markings, Audit trail (History, Timeline, Activity), Comments. Group names never contain a member's name, so a tab is still found by its own name.
+- **Key facts** (`ObjectHeader Facts`, class `key-facts`): label and value pairs instead of a sentence; **list cards** (a titled card with the count around the table); **Home figures** (needs attention, favorites, recently released; a full card shows "8+", never an invented total; no search is run for them because each search is an audit event); one 16 px card corner.
+- **Files with a new part** (`SimpleFlows.AddNewDocumentsAsync`, `NewFilesPanel`): the New part form takes several files at once. Each becomes a document (name from the file name, type from the extension, both editable) with the part's markings. The part is checked out once, every document is created and linked to the working copy, and the part is checked in once, so it gains one version however many files. A file that fails is reported on its own line and the rest continue; if none can be linked, a check-out taken for the action is given back; a released part is refused before anything is created. A linked 3D model is also recorded as the part's model (`cad.association` model-of, the CAD module's own call) so the part opens on its Viewer. The same panel is the "Add several files" mode of the Add document dialog and a single created document linked to a part gets the same model association.
+- Choosing files again replaces the list: Blazor hands out file handles per choice and drops the earlier ones, so rows from an earlier choice cannot be read (an attempt to append raised "There is no file with ID" in a browser test).
+
+## Consequences
+- 140 browser tests open tabs through one helper (`BrowserSession.OpenTabAsync`), which now opens the group first when the named tab is inside one.
+- A document type guessed from the file name is only a starting value; types the administrator has not offered are never guessed.
+- Files are not scanned or hashed any differently: each goes through the same `DocumentService.CreateAsync` upload, including malware scanning and the vault.

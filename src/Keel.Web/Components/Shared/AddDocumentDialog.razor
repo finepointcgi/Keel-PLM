@@ -22,10 +22,15 @@
                 <fieldset class="inline-fieldset" data-add-mode>
                     <legend class="visually-hidden">What do you want to do?</legend>
                     <label class="inline-check"><input type="radio" name="add-mode" checked="@(!createNew)" @onchange="() => SetMode(false)" /> Attach an existing document</label>
-                    <label class="inline-check"><input type="radio" name="add-mode" checked="@createNew" @onchange="() => SetMode(true)" /> Create a new document</label>
+                    <label class="inline-check"><input type="radio" name="add-mode" checked="@(createNew && !several)" @onchange="() => SetMode(true)" /> Create a new document</label>
+                    <label class="inline-check"><input type="radio" name="add-mode" checked="@several" @onchange="() => SetSeveral()" data-add-several /> Add several files</label>
                 </fieldset>
 
-                @if (!createNew)
+                @if (several)
+                {
+                    <NewFilesPanel Rows="rows" Types="docTypes" MaxBytes="@Vault.MaxUploadBytes" OnChanged="() => { error = null; }" />
+                }
+                else if (!createNew)
                 {
                     <ObjectPicker Id="add-doc-existing" Label="Document" Noun="documents" Placeholder="Document number or name" Search="q => Flows.FindDocumentsAsync(subject!, q)" @bind-Selected="picked" />
                 }
@@ -62,7 +67,7 @@
             </div>
             <div class="dialog-foot">
                 <button type="button" class="secondary" data-add-cancel @onclick="CloseAsync">Cancel</button>
-                <button type="button" disabled="@(busy || blocker is not null)" data-add-ok @onclick="SubmitAsync">@(createNew ? "Create and add" : "Add document")</button>
+                <button type="button" disabled="@(busy || blocker is not null)" data-add-ok @onclick="SubmitAsync">@(several ? "Create and add" : createNew ? "Create and add" : "Add document")</button>
             </div>
         </div>
     </div>
@@ -71,7 +76,8 @@
 @code {
     private ElementReference dialog;
     private Subject? subject;
-    private bool trapped, createNew, busy, loaded;
+    private bool trapped, createNew, busy, loaded, several;
+    private readonly List<FileRow> rows = [];
     private PickItem? picked;
     private string newName = "", newType = QuickDefaults.DocumentType, linkType = Keel.Documents.LinkTypes.Describes;
     private IReadOnlyList<RefItem> docTypes = [];
@@ -95,7 +101,7 @@
         loaded = true;
         subject = await Users.GetAsync();
         createNew = StartCreate;
-        picked = null; file = null; error = null; newName = "";
+        picked = null; file = null; error = null; newName = ""; several = false; rows.Clear();
         docTypes = await Refs.ListAsync(RefLists.DocumentType);
         IReadOnlyDictionary<string, string> last = new Dictionary<string, string>();
         try { last = await Last.GetAsync(subject); } catch (Exception e) when (e is Npgsql.NpgsqlException or InvalidOperationException) { /* defaults apply */ }
@@ -113,7 +119,8 @@
         }
     }
 
-    private void SetMode(bool create) { createNew = create; error = null; }
+    private void SetMode(bool create) { createNew = create; several = false; error = null; }
+    private void SetSeveral() { createNew = true; several = true; error = null; }
     private void Pick(InputFileChangeEventArgs e) => file = e.File;
 
     private async Task CloseAsync()
@@ -129,6 +136,7 @@
     private async Task SubmitAsync()
     {
         error = null;
+        if (several) { await SubmitSeveralAsync(); return; }
         if (createNew ? string.IsNullOrWhiteSpace(newName) : picked is null)
         {
             error = createNew ? "Enter a name for the new document." : "Choose the document to add. Search by its number or name.";
@@ -164,6 +172,46 @@
         // A document that was created stays created: close the dialog and let the page say it was not linked, so it is not created a second time.
         await CloseAsync();
         await OnAdded.InvokeAsync(result);
+    }
+
+    // Several files: every one becomes a document of the part, and the part is saved once (the same service call as one document at a time, in a batch).
+    private async Task SubmitSeveralAsync()
+    {
+        if (rows.Count == 0) { error = "Choose at least one file."; return; }
+        if (rows.Any(r => string.IsNullOrWhiteSpace(r.Name))) { error = "Give every file a document name."; return; }
+        var m = newMarkings.Effective().ToMarkings();
+        if (!m.IsSuccess) { error = "Security markings: " + string.Join(" ", m.Errors); return; }
+        busy = true;
+        var streams = new List<Stream>();
+        AddDocumentsResult result;
+        try
+        {
+            var specs = new List<NewDocumentSpec>();
+            foreach (var r in rows)
+            {
+                var content = r.File.OpenReadStream(Vault.MaxUploadBytes);
+                streams.Add(content);
+                specs.Add(new NewDocumentSpec(new CreateDocumentCommand(r.Name.Trim(), r.Type, m.Value), r.File.Name, r.File.ContentType, content, linkType, FileGuess.IsModel(r.File.Name)));
+            }
+            result = await Flows.AddNewDocumentsAsync(subject!, Part.Number, specs, CurrentUser.NewCorrelationId());
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException or Microsoft.JSInterop.JSException)
+        {
+            busy = false;
+            error = e.Message;
+            return;
+        }
+        finally
+        {
+            foreach (var st in streams) await st.DisposeAsync();
+        }
+        busy = false;
+        await RememberAsync();
+        var failed = result.Lines.Where(l => !l.Linked).ToList();
+        if (!result.IsOk && result.Lines.Count == 0) { error = result.Message; return; }
+        var message = failed.Count == 0 ? result.Message : result.Message + " " + string.Join(" ", failed.Select(l => l.Message));
+        await CloseAsync();
+        await OnAdded.InvokeAsync(new AddDocumentResult(result.IsOk && failed.Count == 0, message, result.CheckedIn, result.PartVersion));
     }
 
     private async Task RememberAsync()

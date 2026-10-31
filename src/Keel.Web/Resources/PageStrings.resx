@@ -252,4 +252,17 @@
   <data name="Part.Fact.Source" xml:space="preserve"><value>Source</value></data>
   <data name="Part.Fact.Unit" xml:space="preserve"><value>Unit</value></data>
   <data name="Part.Fact.CreatedBy" xml:space="preserve"><value>Created by</value></data>
+  <data name="Files.Title" xml:space="preserve"><value>Files (optional)</value></data>
+  <data name="Files.Intro" xml:space="preserve"><value>Choose the STL, drawings and other files for this part. Each one becomes a document linked to the part, and the part is saved once.</value></data>
+  <data name="Files.Hint" xml:space="preserve"><value>Choose all the files at once (Ctrl or Shift to select several), or drop them here. Choosing again replaces the list. Up to {0} each.</value></data>
+  <data name="Files.List" xml:space="preserve"><value>Files to add</value></data>
+  <data name="Files.DocName" xml:space="preserve"><value>Document name</value></data>
+  <data name="Files.DocType" xml:space="preserve"><value>Type</value></data>
+  <data name="Files.Remove" xml:space="preserve"><value>Remove {0}</value></data>
+  <data name="Files.RemoveShort" xml:space="preserve"><value>Remove</value></data>
+  <data name="Files.Relation" xml:space="preserve"><value>How are these related to the part?</value></data>
+  <data name="Files.NameRequired" xml:space="preserve"><value>Give every file a document name.</value></data>
+  <data name="Files.Done" xml:space="preserve"><value>Created {0} with {1} document(s).</value></data>
+  <data name="Files.Partial" xml:space="preserve"><value>{0} was created, but not every file was added: {1} Add the rest with Add document on the part.</value></data>
+  <data name="Files.Choose" xml:space="preserve"><value>Choose files</value></data>
 </root>

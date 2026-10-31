@@ -9,6 +9,8 @@
 @inject LastChoiceStore Last
 @inject ToastService Toasts
 @inject ShellJs Js
+@inject SimpleFlows Flows
+@inject Keel.Documents.Vault.VaultOptions Vault
 @inject IStringLocalizer<PageStrings> P
 @inject IStringLocalizer<CommonStrings> C
 @using Npgsql
@@ -57,6 +59,19 @@
 
         <MarkingsDefaultPicker @ref="markingsPicker" Value="markings" />
 
+        <fieldset class="files-fieldset">
+            <legend>@P["Files.Title"]</legend>
+            <p class="muted small">@P["Files.Intro"]</p>
+            <NewFilesPanel Rows="rows" Types="docTypes" MaxBytes="@Vault.MaxUploadBytes" OnChanged="() => { fileError = null; }" />
+            @if (rows.Count > 0)
+            {
+                <label>@P["Files.Relation"]
+                    <select @bind="linkType" data-files-link>@foreach (var c in QuickDefaults.LinkChoices) { <option value="@c.Value">@c.Label</option> }</select>
+                </label>
+            }
+            @if (fileError is not null) { <p class="error" role="alert" data-files-error>@fileError</p> }
+        </fieldset>
+
         @if (optionalDefs.Count > 0)
         {
             <details class="more-details" data-more-details>
@@ -89,6 +104,10 @@
     private readonly Dictionary<string, string> fieldErrors = new(StringComparer.Ordinal);
     private List<string>? errors;
     private bool busy, showKind;
+    private readonly List<FileRow> rows = [];
+    private IReadOnlyList<RefItem> docTypes = [];
+    private string linkType = Keel.Documents.LinkTypes.Describes;
+    private string? fileError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -107,6 +126,8 @@
         unit = QuickDefaults.Pick([.. units.Select(t => t.Code)], last, LastChoiceKeys.PartUnit, UnitsOfMeasure.Each);
         source = QuickDefaults.Pick([.. sources.Select(t => t.Code)], last, LastChoiceKeys.PartSource, QuickDefaults.PartSource);
         markings = QuickDefaults.Markings(me);
+        docTypes = await Refs.ListAsync(RefLists.DocumentType);
+        linkType = QuickDefaults.DefaultLinkType(last);
     }
 
     private bool Has(string key) => fieldErrors.ContainsKey(key);
@@ -121,11 +142,13 @@
     {
         fieldErrors.Clear();
         errors = null;
+        fileError = null;
+        if (rows.Any(r => string.IsNullOrWhiteSpace(r.Name))) fileError = P["Files.NameRequired"];
         if (string.IsNullOrWhiteSpace(name)) fieldErrors[nameKey] = P["PartForm.NameRequired"];
         foreach (var d in requiredDefs)
             if (!attributes.Values.TryGetValue(d.Name, out var v) || string.IsNullOrWhiteSpace(v))
                 fieldErrors[d.Name] = P["PartForm.ValueRequired", d.Label];
-        return fieldErrors.Count == 0;
+        return fieldErrors.Count == 0 && fileError is null;
     }
 
     private async Task SubmitAsync(bool another)
@@ -156,10 +179,47 @@
         }
         catch (Exception e) when (e is NpgsqlException or InvalidOperationException) { /* remembering is a convenience */ }
         var created = outcome.Value!;
-        if (!another) { Nav.NavigateTo($"parts/{Uri.EscapeDataString(created.Number)}"); return; }
+        var hasModel = rows.Any(r => FileGuess.IsModel(r.File.Name));
+        var filesNote = await AddFilesAsync(me, created.Number, m.Value!);
+        if (!another) { Nav.NavigateTo($"parts/{Uri.EscapeDataString(created.Number)}{(hasModel && filesNote.Ok ? "?tab=viewer" : "")}"); return; }
         Toasts.Success(P["PartForm.CreatedNext", created.Number, created.Name]);
         name = description = "";
+        rows.Clear();
         attributes.Values.Clear();
         await Js.InvokeVoidAsync("focusSelector", "[data-quick-name]");
+    }
+
+    // The files chosen on this page become documents of the new part, in one action (one new version of the part). The part already exists by now: what could not
+    // be added is said in plain words and can be added again from the part page.
+    private async Task<(bool Ok, string? Note)> AddFilesAsync(Subject me, string partNumber, Markings documentMarkings)
+    {
+        if (rows.Count == 0) return (true, null);
+        var streams = new List<Stream>();
+        try
+        {
+            var specs = new List<NewDocumentSpec>();
+            foreach (var r in rows)
+            {
+                var content = r.File.OpenReadStream(Vault.MaxUploadBytes);
+                streams.Add(content);
+                specs.Add(new NewDocumentSpec(new Keel.Documents.CreateDocumentCommand(r.Name.Trim(), r.Type, documentMarkings), r.File.Name, r.File.ContentType, content, linkType, FileGuess.IsModel(r.File.Name)));
+            }
+            var result = await Flows.AddNewDocumentsAsync(me, partNumber, specs, CurrentUser.NewCorrelationId());
+            var failed = result.Lines.Where(l => !l.Linked).ToList();
+            if (result.IsOk && failed.Count == 0) Toasts.Success(P["Files.Done", partNumber, result.Lines.Count]);
+            else Toasts.Warning(P["Files.Partial", partNumber, string.Join(" ", failed.Select(l => l.Message).DefaultIfEmpty(result.Message))]);
+            try { await Last.SetAsync(me, new Dictionary<string, string> { [LastChoiceKeys.LinkType] = linkType }); }
+            catch (Exception e) when (e is NpgsqlException or InvalidOperationException) { /* remembering is a convenience */ }
+            return (result.IsOk, result.Message);
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException or ArgumentException or Microsoft.JSInterop.JSException)
+        {
+            Toasts.Warning(P["Files.Partial", partNumber, e.Message]);
+            return (false, e.Message);
+        }
+        finally
+        {
+            foreach (var st in streams) await st.DisposeAsync();
+        }
     }
 }

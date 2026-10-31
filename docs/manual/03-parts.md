@@ -34,24 +34,34 @@ What the form fills in for you, and how to change it:
 
 ![The quick add form with every fold-out open](images/parts-new-more.png)
 
+### Create a part with its files
+
+You can give the part its files in the same step. Under **Files (optional)** on the form:
+
+1. Choose all the files together (hold Ctrl or Shift to select several), or drop them on the box. For a gimbal bracket that might be the STL model, the drawing PDF and the specification.
+2. Check the list. Each file becomes a document: its **Document name** comes from the file name (`gimbal_bracket.stl` starts as "gimbal bracket") and its **Type** from the file (a model such as STL, STEP or 3MF is CAD; a file with "spec", "procedure" or "report" in its name gets that type; the rest start as Drawing). Change either, or **Remove** a file that does not belong. Choosing files again replaces the list.
+3. Under the list, say how the documents relate to the part. The default, "Describes this part", suits models and drawings; use "The part follows this document" for a specification that is revised on its own.
+4. Select **Create part**.
+
+Keel creates the part, creates every document with the part's markings, links them and saves the part once, so the part is at version A.2 however many files you gave it. If one of the files cannot be added, the part is still created and a message names the file and the reason; add the rest with **Add document** on the part page. A 3D model is also recorded as the part's model, so the part opens on its **Viewer**.
+
 ## Read a part
 
-The part page has the actions **Edit**, **Add document** and the lifecycle moves in a bar that stays in view, and these tabs:
+The part page has the actions **Edit**, **Add document** and the lifecycle moves in a bar that stays in view. The key facts (type, source, unit, who created it) are under the title. The tabs are:
 
 | Tab | What it shows |
 |---|---|
 | Overview | The version, its description and attributes |
 | Structure | The bill of materials ([chapter 4](04-boms-variants-mbom.md)) |
-| Viewer | The 3D view of the CAD model attached to the part; shown only when a model is attached ([chapter 5](05-documents-and-vault.md#the-viewer-tab-3d-models-on-the-page)) |
 | Documents | Linked documents ([chapter 5](05-documents-and-vault.md)) |
-| Changes | Change notices that affect the part ([chapter 7](07-change-management.md)) |
+| Audit trail | A group tab: **Changes** (change notices that affect the part, [chapter 7](07-change-management.md)), **History** (every version, with who and when), **Timeline** (events in time order) and **Activity** (who did what, [chapter 19](19-notifications-and-activity.md)) |
 | Review & release | The review workflow and its history ([chapter 6](06-lifecycles-workflow-signatures.md)) |
-| Classification | Class and class attribute values |
-| History | Every version, with who and when |
-| Timeline | Events in time order, including lifecycle, change and workflow entries |
 | Security markings | The markings and the history of changes to them |
-| Sourcing, Quality, Compliance, Trace | Other areas' data for this part ([chapters 10, 12, 14, 15](10-quality.md)) |
-| Activity, Comments | Who did what; discussion ([chapter 19](19-notifications-and-activity.md)) |
+| Design | A group tab: **Viewer** (the 3D view of the CAD model attached to the part, shown only when a model is attached, [chapter 5](05-documents-and-vault.md#the-viewer-tab-3d-models-on-the-page)) and **Classification** (class and class attribute values) |
+| Supply & checks | A group tab: **Sourcing**, **Quality**, **Compliance** and **Trace** (other areas' data for this part, [chapters 10, 12, 14, 15](10-quality.md)) |
+| Comments | Discussion ([chapter 19](19-notifications-and-activity.md)) |
+
+A group tab opens a second row of small buttons under the main row. Opening the group again takes you back to the one you used last, and every tab keeps its own address (for example `#history`), so links and bookmarks still work.
 
 ![The Overview tab of the gimbal bracket](images/parts-overview.png)
 

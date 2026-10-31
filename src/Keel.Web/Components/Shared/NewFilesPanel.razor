@@ -1,0 +1,57 @@
+@* "Files" for a new part or for several new documents at once: choose or drop all the files, then check what each will become (a document name and a type, both editable)
+   and drop the ones that do not belong. Nothing is created here: the page that owns the panel creates the documents, in one action, when the person confirms. *@
+@using Microsoft.AspNetCore.Components.Forms
+@inject IStringLocalizer<PageStrings> P
+
+<div class="files-panel" data-files-panel>
+    <div class="dropzone">
+        <InputFile OnChange="OnPick" multiple aria-label="@P["Files.Choose"]" aria-describedby="files-hint" data-files-input />
+        <p id="files-hint" class="muted small">@P["Files.Hint", MaxSize]</p>
+    </div>
+    @if (Rows.Count > 0)
+    {
+        <ul class="file-rows" aria-label="@P["Files.List"]">
+            @foreach (var row in Rows)
+            {
+                var r = row;
+                <li class="file-row">
+                    <span class="file-name" title="@r.File.Name">@r.File.Name <span class="muted small">(@Size(r.File.Size))</span></span>
+                    <label>@P["Files.DocName"] <input @bind="r.Name" @bind:event="oninput" maxlength="200" aria-required="true" data-file-name /></label>
+                    <label>@P["Files.DocType"]
+                        <select @bind="r.Type" data-file-type>@foreach (var t in Types) { <option value="@t.Code">@t.Label</option> }</select>
+                    </label>
+                    <button type="button" class="secondary small" @onclick="() => Remove(r)" aria-label="@P["Files.Remove", r.File.Name]">@P["Files.RemoveShort"]</button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    /// <summary>The rows the owner reads when it creates the documents.</summary>
+    [Parameter, EditorRequired] public required List<FileRow> Rows { get; set; }
+    [Parameter, EditorRequired] public required IReadOnlyList<RefItem> Types { get; set; }
+    [Parameter] public string Fallback { get; set; } = QuickDefaults.DocumentType;
+    [Parameter] public long MaxBytes { get; set; } = 2L * 1024 * 1024 * 1024;
+    [Parameter] public int MaxFiles { get; set; } = 25;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string MaxSize => DocumentUi.Size(MaxBytes);
+    private static string Size(long bytes) => DocumentUi.Size(bytes);
+
+    private async Task OnPick(InputFileChangeEventArgs e)
+    {
+        // A new choice replaces the list: the browser hands out file handles per choice and drops the earlier ones, so rows from an earlier choice could not be read.
+        var codes = Types.Select(t => t.Code).ToList();
+        Rows.Clear();
+        foreach (var f in e.GetMultipleFiles(MaxFiles))
+            Rows.Add(new FileRow(f, FileGuess.Name(f.Name), FileGuess.Type(f.Name, codes, Fallback)));
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Remove(FileRow row)
+    {
+        Rows.Remove(row);
+        await OnChanged.InvokeAsync();
+    }
+}

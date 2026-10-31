@@ -252,4 +252,17 @@
   <data name="Part.Fact.Source" xml:space="preserve"><value>Origen</value></data>
   <data name="Part.Fact.Unit" xml:space="preserve"><value>Unidad</value></data>
   <data name="Part.Fact.CreatedBy" xml:space="preserve"><value>Creado por</value></data>
+  <data name="Files.Title" xml:space="preserve"><value>Archivos (opcional)</value></data>
+  <data name="Files.Intro" xml:space="preserve"><value>Elija el STL, los planos y otros archivos de esta pieza. Cada uno se convierte en un documento vinculado a la pieza, y la pieza se guarda una sola vez.</value></data>
+  <data name="Files.Hint" xml:space="preserve"><value>Elija todos los archivos a la vez (Ctrl o Mayús para varios) o suéltelos aquí. Elegir de nuevo reemplaza la lista. Hasta {0} cada uno.</value></data>
+  <data name="Files.List" xml:space="preserve"><value>Archivos por agregar</value></data>
+  <data name="Files.DocName" xml:space="preserve"><value>Nombre del documento</value></data>
+  <data name="Files.DocType" xml:space="preserve"><value>Tipo</value></data>
+  <data name="Files.Remove" xml:space="preserve"><value>Quitar {0}</value></data>
+  <data name="Files.RemoveShort" xml:space="preserve"><value>Quitar</value></data>
+  <data name="Files.Relation" xml:space="preserve"><value>¿Cómo se relacionan con la pieza?</value></data>
+  <data name="Files.NameRequired" xml:space="preserve"><value>Dé un nombre de documento a cada archivo.</value></data>
+  <data name="Files.Done" xml:space="preserve"><value>Se creó {0} con {1} documento(s).</value></data>
+  <data name="Files.Partial" xml:space="preserve"><value>Se creó {0}, pero no se agregaron todos los archivos: {1} Agregue el resto con Agregar documento en la pieza.</value></data>
+  <data name="Files.Choose" xml:space="preserve"><value>Elegir archivos</value></data>
 </root>

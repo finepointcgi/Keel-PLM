@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Keel.TestSupport;
 using Microsoft.Playwright;
 using Npgsql;
 using static Microsoft.Playwright.Assertions;
@@ -236,6 +237,77 @@ public sealed class SimplifyFlowsTests(E2EFixture fx)
     }
 
     [E2EFact]
+    public async Task A_new_part_is_created_with_its_files_in_one_step_and_opens_on_the_viewer()
+    {
+        await using var session = new BrowserSession(fx, nameof(A_new_part_is_created_with_its_files_in_one_step_and_opens_on_the_viewer));
+        await session.RunAsync(async () =>
+        {
+            var alice = await session.SignInAsync("alice");
+            var page = alice.Page;
+            var suffix = Guid.NewGuid().ToString("N")[..6];
+            await session.GotoAsync(alice, "/parts/new");
+            await BrowserSession.FillAsync(page.Locator("[data-quick-name]"), $"E2E gimbal with files {suffix}");
+
+            // Choose the STL, a drawing and one more file together: each becomes a row with a name from the file name and a type from its extension.
+            var stl = new FilePayload { Name = $"gimbal_bracket_{suffix}.stl", MimeType = "model/stl", Buffer = ViewerSamples.AsciiStlCube() };
+            var pdf = new FilePayload { Name = $"bracket drawing {suffix}.pdf", MimeType = "application/pdf", Buffer = System.Text.Encoding.UTF8.GetBytes("%PDF-1.4 synthetic " + suffix) };
+            var extra = new FilePayload { Name = $"extra {suffix}.txt", MimeType = "text/plain", Buffer = System.Text.Encoding.UTF8.GetBytes("extra") };
+            await page.Locator("[data-files-input]").SetInputFilesAsync([stl, pdf, extra]);
+            var rows = page.Locator(".file-row");
+            await Expect(rows).ToHaveCountAsync(3);
+            await Expect(rows.Nth(0).Locator("[data-file-name]")).ToHaveValueAsync($"gimbal bracket {suffix}");
+            await Expect(rows.Nth(0).Locator("[data-file-type]")).ToHaveValueAsync("CAD");
+            await Expect(rows.Nth(1).Locator("[data-file-type]")).ToHaveValueAsync("Drawing");
+
+            // A row that does not belong can be taken out again.
+            await rows.Nth(2).GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Remove" }).ClickAsync();
+            await Expect(rows).ToHaveCountAsync(2);
+
+            await BrowserSession.ClickAsync(page, "Create part");
+            await page.WaitForURLAsync(new Regex(@"/parts/P-\d+\?tab=viewer"), new PageWaitForURLOptions { Timeout = 90_000 });
+            await Expect(page.Locator("[data-toast=success]").Last).ToContainTextAsync("with 2 document");
+            await Expect(page.Locator(".badges")).ToContainTextAsync("Version A.2"); // one save for both documents
+            await Expect(page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Viewer" })).ToHaveAttributeAsync("aria-selected", "true");
+            await BrowserSession.OpenTabAsync(page, "Documents");
+            await Expect(page.Locator("#linked-docs-heading").Locator("xpath=..")).ToContainTextAsync($"gimbal bracket {suffix}");
+            await Expect(page.Locator("#linked-docs-heading").Locator("xpath=..")).ToContainTextAsync($"bracket drawing {suffix}");
+        });
+    }
+
+    [E2EFact]
+    public async Task Several_files_are_added_to_an_existing_part_in_one_dialog_and_save_the_part_once()
+    {
+        await using var session = new BrowserSession(fx, nameof(Several_files_are_added_to_an_existing_part_in_one_dialog_and_save_the_part_once));
+        await session.RunAsync(async () =>
+        {
+            var alice = await session.SignInAsync("alice");
+            var page = alice.Page;
+            var suffix = Guid.NewGuid().ToString("N")[..6];
+            var part = await QuickAddAsync(session, alice, $"E2E part for several files {suffix}");
+            await Expect(page.Locator(".badges")).ToContainTextAsync("Version A.1");
+
+            await BrowserSession.ClickAsync(page, "Add document");
+            var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = $"Add a document to {part}" });
+            await Expect(dialog).ToBeVisibleAsync();
+            await dialog.Locator("[data-add-several]").CheckAsync();
+            await dialog.Locator("[data-files-input]").SetInputFilesAsync([
+                new FilePayload { Name = $"interface spec {suffix}.pdf", MimeType = "application/pdf", Buffer = System.Text.Encoding.UTF8.GetBytes("%PDF-1.4 spec " + suffix) },
+                new FilePayload { Name = $"mount_{suffix}.stl", MimeType = "model/stl", Buffer = ViewerSamples.AsciiStlCube() }]);
+            await Expect(dialog.Locator(".file-row")).ToHaveCountAsync(2);
+            await Expect(dialog.Locator(".file-row").Nth(0).Locator("[data-file-type]")).ToHaveValueAsync("Specification");
+            await Expect(dialog.Locator(".file-row").Nth(1).Locator("[data-file-type]")).ToHaveValueAsync("CAD");
+            await dialog.Locator("[data-add-ok]").ClickAsync();
+
+            await Expect(page.Locator("[data-toast]").Last).ToContainTextAsync("2 document(s) linked");
+            await Expect(page.Locator(".badges")).ToContainTextAsync("Version A.2");
+            await BrowserSession.OpenTabAsync(page, "Viewer"); // the STL was also recorded as the part's model
+            await BrowserSession.OpenTabAsync(page, "Documents");
+            await Expect(page.Locator("#linked-docs-heading").Locator("xpath=..")).ToContainTextAsync($"interface spec {suffix}");
+            await Expect(page.Locator("#linked-docs-heading").Locator("xpath=..")).ToContainTextAsync($"mount {suffix}");
+        });
+    }
+
+    [E2EFact]
     public async Task Simple_view_hides_the_advanced_navigation_groups_and_is_remembered()
     {
         await using var session = new BrowserSession(fx, nameof(Simple_view_hides_the_advanced_navigation_groups_and_is_remembered));
@@ -294,6 +366,12 @@ public sealed class SimplifyFlowsTests(E2EFixture fx)
             await page.Locator("[data-markings-change]").ClickAsync();
             await page.Locator("details[data-more-details] summary").ClickAsync();
             await Audit("quick add part, every disclosure open");
+
+            await page.Locator("[data-files-input]").SetInputFilesAsync([
+                new FilePayload { Name = "audit_bracket.stl", MimeType = "model/stl", Buffer = ViewerSamples.AsciiStlCube() },
+                new FilePayload { Name = "audit drawing.pdf", MimeType = "application/pdf", Buffer = System.Text.Encoding.UTF8.GetBytes("%PDF-1.4 audit") }]);
+            await Expect(page.Locator(".file-row")).ToHaveCountAsync(2);
+            await Audit("quick add part with files chosen");
 
             await session.GotoAsync(alice, "/documents/new");
             await Expect(page.GetByLabel("Name *")).ToBeVisibleAsync();

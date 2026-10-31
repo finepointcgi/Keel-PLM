@@ -45,7 +45,16 @@ public sealed record AddDocumentResult(bool IsOk, string Message, bool CheckedIn
 /// step is refused, the module's answer is what the person reads, and a chain that fails halfway gives back what it took (it never leaves a part locked
 /// to a person who did not ask to keep it).
 /// </summary>
-public sealed class SimpleFlows(PartService parts, DocumentService docs)
+/// <summary>One document to create and link: the command, an optional file (the caller owns and disposes the stream), how it relates to the part, and whether it is the part's 3D model (it is then also recorded as the part's model, so the part page offers the Viewer).</summary>
+public sealed record NewDocumentSpec(CreateDocumentCommand Command, string? FileName, string? MediaType, Stream? Content, string LinkType, bool IsModel = false);
+
+/// <summary>What happened to one document of a batch.</summary>
+public sealed record BatchLine(string Name, string? DocumentNumber, bool Linked, string Message);
+
+/// <summary>The outcome of adding several new documents to a part in one action: the part changes once (one new version) however many documents were added.</summary>
+public sealed record AddDocumentsResult(bool IsOk, string Message, bool CheckedIn, string? PartVersion, IReadOnlyList<BatchLine> Lines);
+
+public sealed class SimpleFlows(PartService parts, DocumentService docs, Keel.Cad.CadGraphService? cad = null)
 {
     /// <summary>Decides, from what the part page already loaded, which sentence and which action apply. No data is read here.</summary>
     public static PartEditAdvice Advise(PartDetail part)
@@ -151,7 +160,85 @@ public sealed class SimpleFlows(PartService parts, DocumentService docs)
         var created = await docs.CreateAsync(subject, command, primary, correlationId, ct);
         if (!created.IsOk || string.IsNullOrWhiteSpace(partNumber)) return (created, null);
         var link = await AddDocumentAsync(subject, partNumber, created.Value!.Number, linkType, null, correlationId, ct);
+        if (link.IsOk && cad is not null && primary is { } file && FileGuess.IsModel(file.FileName))
+        {
+            // a 3D model is also recorded as the part's model, which is what makes the part page offer the Viewer
+            var assoc = await cad.AddAssociationAsync(subject, created.Value!.Number, partNumber, Keel.Cad.AssociationKinds.ModelOf, correlationId, ct);
+            if (!assoc.IsOk) link = link with { Message = link.Message + $" It could not be recorded as the part's model: {UiText.Message(assoc)}" };
+        }
         return (created, link);
+    }
+
+    /// <summary>
+    /// Creates several documents and links them all to a part as one action. The part is checked out once (or the person's own draft is used), every document is created
+    /// and linked to the working copy, and the part is checked in once, so it gains one version however many documents were added. A document that fails is reported
+    /// on its own line and the others continue; when none could be linked a check-out taken for this action is given back. Every step is the module's own call, so
+    /// release locks, access rules and the audit trail are the same as with one document at a time.
+    /// </summary>
+    public async Task<AddDocumentsResult> AddNewDocumentsAsync(Subject subject, string partNumber, IReadOnlyList<NewDocumentSpec> specs, string? correlationId, CancellationToken ct = default)
+    {
+        var lines = new List<BatchLine>();
+        var current = await parts.GetAsync(subject, partNumber, null, correlationId, ct);
+        if (!current.IsOk) return new(false, $"Part {partNumber} was not found, or you are not allowed to see it.", false, null, lines);
+        var part = current.Value!;
+        if (LinkBlocker(part) is { } blocked) return new(false, blocked + " No document was created.", false, null, lines);
+        var mineAlready = part.Checkout?.IsMine == true;
+        if (!mineAlready)
+        {
+            var co = await parts.CheckOutAsync(subject, part.Number, correlationId, ct);
+            if (!co.IsOk) return new(false, UiText.Message(co), false, null, lines);
+        }
+        foreach (var spec in specs)
+        {
+            var upload = spec.Content is null ? null : new FileUpload(spec.FileName ?? "file", spec.MediaType, spec.Content);
+            var created = await docs.CreateAsync(subject, spec.Command, upload, correlationId, ct);
+            if (!created.IsOk)
+            {
+                lines.Add(new(spec.Command.Name, null, false, created.Kind == OutcomeKind.Invalid ? string.Join(" ", created.Errors) : UiText.Message(created)));
+                continue;
+            }
+            var number = created.Value!.Number;
+            var link = await docs.AddLinkToWorkingCopyAsync(subject, part.Number, number, spec.LinkType, null, correlationId, ct);
+            lines.Add(link.IsOk
+                ? new(spec.Command.Name, number, true, $"{number} is linked.")
+                : new(spec.Command.Name, number, false, $"{number} was created, but it could not be linked: {UiText.Message(link)}"));
+        }
+        var linked = lines.Where(l => l.Linked).Select(l => l.DocumentNumber!).ToList();
+        if (linked.Count == 0)
+        {
+            if (!mineAlready) await parts.UndoCheckOutAsync(subject, part.Number, correlationId, ct);
+            return new(false, "No document could be added.", false, null, lines);
+        }
+        if (mineAlready)
+        {
+            lines = await AssociateModelsAsync(subject, part.Number, specs, lines, correlationId, ct);
+            return new(true, $"{linked.Count} document(s) added to your draft of {part.Number}. They are applied when you save.", false, null, lines);
+        }
+        var done = await parts.CheckInAsync(subject, part.Number, "Added documents " + string.Join(", ", linked), correlationId, ct);
+        if (!done.IsOk)
+        {
+            await parts.UndoCheckOutAsync(subject, part.Number, correlationId, ct);
+            var failed = lines.Select(l => l.Linked ? l with { Linked = false, Message = $"{l.DocumentNumber} was created, but the part could not be saved: {UiText.Message(done)}" } : l).ToList();
+            return new(false, UiText.Message(done), false, null, failed);
+        }
+        lines = await AssociateModelsAsync(subject, part.Number, specs, lines, correlationId, ct);
+        return new(true, $"{linked.Count} document(s) linked to {part.Number}.", true, done.Value!.Iteration.Label, lines);
+    }
+
+    // A 3D model that was linked is also recorded as the part's model (the CAD module's own call), which is what makes the part page offer the Viewer. A refusal is said on
+    // that document's line; the link itself stands.
+    private async Task<List<BatchLine>> AssociateModelsAsync(Subject subject, string partNumber, IReadOnlyList<NewDocumentSpec> specs, List<BatchLine> lines, string? correlationId, CancellationToken ct)
+    {
+        if (cad is null) return lines;
+        var result = new List<BatchLine>();
+        foreach (var line in lines)
+        {
+            var spec = specs.FirstOrDefault(sp => ReferenceEquals(sp.Command.Name, line.Name) || sp.Command.Name == line.Name);
+            if (!line.Linked || spec is null || !(spec.IsModel || (spec.FileName is { } fileName && FileGuess.IsModel(fileName))) || line.DocumentNumber is null) { result.Add(line); continue; }
+            var assoc = await cad.AddAssociationAsync(subject, line.DocumentNumber, partNumber, Keel.Cad.AssociationKinds.ModelOf, correlationId, ct);
+            result.Add(assoc.IsOk ? line : line with { Message = line.Message + $" It could not be recorded as the part's model: {UiText.Message(assoc)}" });
+        }
+        return result;
     }
 
     // ---------------------------------------------------------------- pickers

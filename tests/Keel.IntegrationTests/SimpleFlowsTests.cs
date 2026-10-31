@@ -261,6 +261,74 @@ public sealed class SimpleFlowsTests(PostgresFixture pg)
         Assert.Null(noLink);
     }
 
+    private static NewDocumentSpec Spec(string name, string type = "Drawing", string linkType = "describes", bool withFile = true) =>
+        new(new CreateDocumentCommand(name, type, Itar()), withFile ? name + ".txt" : null, "text/plain", withFile ? new MemoryStream(Encoding.UTF8.GetBytes($"{name} {Guid.NewGuid()}")) : null, linkType);
+
+    [Fact]
+    public async Task Several_new_documents_are_linked_to_a_part_as_one_new_version_of_the_part()
+    {
+        var env = await Setup();
+        var number = await NewPart(env, "Gimbal");
+        var before = (await env.Parts.GetAsync(Alice, number, null, null)).Value!.Iteration.Label;
+
+        var result = await env.Flows.AddNewDocumentsAsync(Alice, number, [Spec("Gimbal model", "CAD"), Spec("Gimbal drawing"), Spec("Gimbal spec", "Specification", "references", withFile: false)], null);
+
+        Assert.True(result.IsOk, result.Message);
+        Assert.True(result.CheckedIn);
+        Assert.All(result.Lines, l => Assert.True(l.Linked, l.Message));
+        var part = (await env.Parts.GetAsync(Alice, number, null, null)).Value!;
+        Assert.Null(part.Checkout); // given back: nothing is left checked out
+        Assert.NotEqual(before, part.Iteration.Label);
+        Assert.Equal(result.PartVersion, part.Iteration.Label);
+        // one new version however many documents: the label advanced exactly once
+        Assert.Equal(int.Parse(before[(before.IndexOf('.') + 1)..]) + 1, int.Parse(part.Iteration.Label[(part.Iteration.Label.IndexOf('.') + 1)..]));
+        var links = (await env.Docs.GetPartLinksAsync(Alice, number, null, null, null)).Value!.Links;
+        Assert.Equal(3, links.Count);
+        Assert.Equal(1, (await Trail(env.Ds, number)).Count(t => t == "part.checkin:Success"));
+    }
+
+    [Fact]
+    public async Task A_document_that_fails_is_reported_and_the_others_still_go_in_and_nothing_is_left_checked_out()
+    {
+        var env = await Setup();
+        var number = await NewPart(env, "Partial");
+        var result = await env.Flows.AddNewDocumentsAsync(Alice, number, [Spec("Good one"), Spec("   ", "Drawing", withFile: false), Spec("Good two")], null);
+
+        Assert.True(result.IsOk);
+        Assert.Equal([true, false, true], result.Lines.Select(l => l.Linked).ToArray());
+        Assert.Null((await env.Parts.GetAsync(Alice, number, null, null)).Value!.Checkout);
+        Assert.Equal(2, (await env.Docs.GetPartLinksAsync(Alice, number, null, null, null)).Value!.Links.Count);
+
+        // none can be linked: the check-out taken for this action is given back and the part gains no version
+        var other = await NewPart(env, "Nothing in");
+        var versionBefore = (await env.Parts.GetAsync(Alice, other, null, null)).Value!.Iteration.Label;
+        var none = await env.Flows.AddNewDocumentsAsync(Alice, other, [Spec("  ", "Drawing", withFile: false)], null);
+        Assert.False(none.IsOk);
+        var after = (await env.Parts.GetAsync(Alice, other, null, null)).Value!;
+        Assert.Null(after.Checkout);
+        Assert.Equal(versionBefore, after.Iteration.Label);
+    }
+
+    [Fact]
+    public async Task Several_documents_are_refused_for_a_released_part_before_any_is_created_and_join_the_draft_of_a_part_being_edited()
+    {
+        var env = await Setup();
+        var released = await NewPart(env, "Locked");
+        await env.Parts.SetStateAsync(Admin, released, "Released", "Test: release", true, null);
+        var before = (await env.Docs.SearchAsync(Alice, null, null, null, 50, 0, null)).Total;
+        var refused = await env.Flows.AddNewDocumentsAsync(Alice, released, [Spec("Late one"), Spec("Late two")], null);
+        Assert.False(refused.IsOk);
+        Assert.Empty(refused.Lines);
+        Assert.Equal(before, (await env.Docs.SearchAsync(Alice, null, null, null, 50, 0, null)).Total);
+
+        var draft = await NewPart(env, "Editing");
+        Assert.True((await env.Flows.BeginEditAsync(Alice, draft, null)).IsOk);
+        var joined = await env.Flows.AddNewDocumentsAsync(Alice, draft, [Spec("Into the draft")], null);
+        Assert.True(joined.IsOk, joined.Message);
+        Assert.False(joined.CheckedIn);
+        Assert.True((await env.Parts.GetAsync(Alice, draft, null, null)).Value!.Checkout!.IsMine); // still being edited: the save is the person's
+    }
+
     [Fact]
     public async Task The_part_picker_offers_only_readable_parts_and_marks_the_ones_that_cannot_take_a_document()
     {
