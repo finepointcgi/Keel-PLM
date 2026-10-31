@@ -48,9 +48,9 @@
                     {
                         <button type="button" class="secondary" disabled="@busy" data-action="add-document" @onclick="() => OpenAddDocument(false)">@P["Part.AddDocument"]</button>
                     }
-                    @foreach (var t in p.Transitions)
+                    @foreach (var t in p.Transitions.Where(t => t.Allowed))
                     {
-                        <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
+                        <button type="button" class="secondary" disabled="@busy"
                                 @onclick='() => Run(s => Parts.SetStateAsync(s, Number, t.To, null, false, Corr()), P["Part.Moved", t.Label].Value)'>@P["Part.MoveTo", t.Label]</button>
                     }
                     @if (p.Revision.State == "Released" && p.Permissions.CanModify)
@@ -102,9 +102,15 @@
             {
                 <p class="muted">@P["Part.ReadOnly", string.Join(" ", p.Permissions.ModifyDeniedReasons.Select(r => UiText.Reason(r, C)))]</p>
             }
-            @foreach (var t in p.Transitions.Where(t => !t.Allowed && t.Reason is not null))
+            @if (p.Transitions.Any(t => !t.Allowed && t.Reason is not null))
             {
-                <p class="muted small">@t.Label: @t.Reason</p>
+                <details class="more-details" data-why-not>
+                    <summary>@P["Part.WhyNotMove"]</summary>
+                    @foreach (var t in p.Transitions.Where(t => !t.Allowed && t.Reason is not null))
+                    {
+                        <p class="muted small">@t.Label: @t.Reason</p>
+                    }
+                </details>
             }
 
             <TabSet Tabs="@AwarenessTabs.Append(VisibleTabs, commentCount, TrailTitle)" Active="@tab" ActiveChanged="OnTabChanged" Label="@P["Part.Sections"]">

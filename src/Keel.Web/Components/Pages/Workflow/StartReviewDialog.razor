@@ -29,7 +29,7 @@
                         @foreach (var u in found.Where(f => picked.All(p => p.Sub != f.Sub)))
                         {
                             <li>
-                                @u.DisplayName (@u.Username) <span class="muted">@string.Join(", ", u.Roles)</span>
+                                @u.DisplayName (@u.Username) <span class="muted">@string.Join(", ", u.Roles.Select(r => r.StartsWith("plm-", StringComparison.Ordinal) ? r[4..] : r))</span>
                                 <button type="button" class="secondary" disabled="@(picked.Count >= slot.Max)" @onclick="() => Add(slot.Name, u)" aria-label="Add @u.Username">Add</button>
                             </li>
                         }
@@ -62,6 +62,14 @@
     private readonly Dictionary<string, string> queries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IReadOnlyList<DirectoryUserView>> results = new(StringComparer.Ordinal);
     private string comment = "";
+
+    // The people who may take part are listed straight away (typing narrows them), so nobody has to press Find with an empty box first.
+    protected override async Task OnInitializedAsync()
+    {
+        // The lists a group needs exist before the first await: the component renders while the searches run.
+        foreach (var slot in Template.Slots) { selected.TryAdd(slot.Name, []); queries.TryAdd(slot.Name, ""); }
+        foreach (var slot in Template.Slots) results[slot.Name] = await Search(slot, "");
+    }
 
     protected override void OnParametersSet()
     {

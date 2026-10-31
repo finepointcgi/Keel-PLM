@@ -209,9 +209,11 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
     {
         foreach (var (slotLabel, user) in slotToUser)
         {
-            await FillAsync(page.GetByLabel($"Find {slotLabel}"), user);
-            await ClickAsync(page, $"Search {slotLabel}");
-            await ClickAsync(page, $"Add {user}");
+            // The people who may take part are listed when the dialog opens, and the same person can be offered in two groups: work inside the group.
+            var slot = page.Locator("fieldset.slot").Filter(new LocatorFilterOptions { HasText = slotLabel });
+            await FillAsync(slot.GetByLabel($"Find {slotLabel}"), user);
+            await slot.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = $"Search {slotLabel}" }).ClickAsync();
+            await slot.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = $"Add {user}" }).ClickAsync();
         }
     }
 

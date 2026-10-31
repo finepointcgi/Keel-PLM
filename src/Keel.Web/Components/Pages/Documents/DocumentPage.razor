@@ -42,9 +42,9 @@
                     {
                         <button type="button" class="secondary" disabled="@busy" @onclick="() => confirmUndo = true">Undo check-out</button>
                     }
-                    @foreach (var t in d.Transitions)
+                    @foreach (var t in d.Transitions.Where(t => t.Allowed))
                     {
-                        <button type="button" class="secondary" disabled="@(!t.Allowed || busy)" title="@t.Reason"
+                        <button type="button" class="secondary" disabled="@busy"
                                 @onclick='() => Run(s => Docs.SetStateAsync(s, Number, t.To, null, false, Corr()), $"Moved to {t.Label}.")'>Move to @t.Label</button>
                     }
                 }
@@ -59,9 +59,15 @@
             {
                 <p class="muted">Read only: @string.Join(" ", d.Permissions.ModifyDeniedReasons.Select(UiText.Reason))</p>
             }
-            @foreach (var t in d.Transitions.Where(t => !t.Allowed && t.Reason is not null))
+            @if (d.Transitions.Any(t => !t.Allowed && t.Reason is not null))
             {
-                <p class="muted small">@t.Label: @t.Reason</p>
+                <details class="more-details" data-why-not>
+                    <summary>Why can't I move it to another state?</summary>
+                    @foreach (var t in d.Transitions.Where(t => !t.Allowed && t.Reason is not null))
+                    {
+                        <p class="muted small">@t.Label: @t.Reason</p>
+                    }
+                </details>
             }
 
             <TabSet Tabs="@AwarenessTabs.Append(VisibleTabs(d), commentCount, TrailGroup)" Active="@tab" ActiveChanged="id => { tab = id; timelineBanner = null; cadBanner = null; compareBanner = null; viewerBanner = null; }" Label="Document sections">

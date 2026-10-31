@@ -283,4 +283,5 @@
   <data name="Tasks.Open" xml:space="preserve"><value>Review and decide</value></data>
   <data name="Tasks.OpenAria" xml:space="preserve"><value>Review and decide: {0}, {1}</value></data>
   <data name="Tasks.StartedByLine" xml:space="preserve"><value>Started by {0}</value></data>
+  <data name="Part.WhyNotMove" xml:space="preserve"><value>Why can't I move it to another state?</value></data>
 </root>

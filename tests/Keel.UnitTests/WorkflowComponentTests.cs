@@ -138,7 +138,8 @@ public sealed class WorkflowComponentTests : BunitContext
         Pick(cut, "Approvers", "bob");
         Pick(cut, "Approvers", "ann");
         Assert.False(start().HasAttribute("disabled"));
-        Assert.Equal(["reviewer:ri", "approvers:x", "approvers:x"], searches);
+        // The eligible people of each group are listed when the dialog opens (an empty search), then the typed searches.
+        Assert.Equal(["reviewer:", "approvers:", "reviewer:ri", "approvers:x", "approvers:x"], searches);
 
         cut.Find("textarea").Change("Please check the tolerances");
         start().Click();

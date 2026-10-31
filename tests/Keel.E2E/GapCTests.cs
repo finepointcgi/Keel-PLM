@@ -32,8 +32,8 @@ public sealed partial class GapCTests(E2EFixture fx)
             await page.WaitForURLAsync(DocumentUrl(), new PageWaitForURLOptions { Timeout = 60_000 });
             var document = page.Url[(page.Url.LastIndexOf('/') + 1)..];
 
-            // The manual "Move to Under Review" button is gone: review is entered through the workflow tab.
-            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Move to Under Review" })).ToBeDisabledAsync();
+            // There is no manual "Move to Under Review" button: review is entered with the Submit for review button in the header.
+            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Move to Under Review" })).ToHaveCountAsync(0);
             await BrowserSession.OpenTabAsync(page, "Review & release");
             await Expect(page.GetByText("This document has not been submitted for review.")).ToBeVisibleAsync();
             await BrowserSession.ClickAsync(page, "Submit for review");
