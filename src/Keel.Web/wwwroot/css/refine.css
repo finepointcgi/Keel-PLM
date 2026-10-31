@@ -104,3 +104,8 @@ a.tile:hover { border-color: var(--c-accent); }
 .file-row label { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); font-weight: 600; min-width: 0; }
 .file-row .file-name { overflow-wrap: anywhere; align-self: center; font-weight: 600; }
 @media (max-width: 700px) { .file-row { grid-template-columns: 1fr; align-items: stretch; } }
+
+/* ---- review and release in the header: one line of status and the one button that moves the item on */
+.review-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding: var(--sp-2) var(--sp-3); background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--radius-2); }
+.review-strip .spacer { flex: 1 1 auto; }
+.review-strip-note { flex: 1 1 100%; margin: 0; }

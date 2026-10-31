@@ -160,8 +160,7 @@
                         break;
                     case "review":
                         <div class="stack">
-                            <PartReviewPanel Number="@p.Number" State="@p.Revision.State" Latest="@p.Revision.IsLatest" CheckedOut="@(p.Checkout is not null)"
-                                             CanModify="@p.Permissions.CanModify" OnChanged="Refresh" />
+                            <PartReviewPanel Number="@p.Number" State="@p.Revision.State" />
                             <TdpExportPanel ObjectType="part" Number="@p.Number" Revision="@p.Revision.Revision" OnBanner="b => tdpBanner = b" />
                         </div>
                         break;
@@ -351,6 +350,8 @@
             {
                 <Stepper States="lifecycle.States" Current="@p.Revision.State" Reachable="@(p.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="@P["Part.Lifecycle"]" />
             }
+            <ReviewStrip ObjectType="part" Number="@p.Number" State="@p.Revision.State" Latest="@p.Revision.IsLatest" CheckedOut="@(p.Checkout is not null)"
+                         CanModify="@p.Permissions.CanModify" OnChanged="Refresh" />
         </Steps>
         <ChildContent>
             @if (p.Revisions.Count > 1)

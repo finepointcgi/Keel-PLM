@@ -159,8 +159,7 @@
                         break;
                     case "review":
                         @* 7.6 (ADR-0033): review, e-signature and release through the workflow engine, exactly as for parts. *@
-                        <DocumentReviewPanel Number="@d.Number" State="@d.Revision.State" Latest="@d.Revision.IsLatest" CheckedOut="@(d.Checkout is not null)"
-                                             CanModify="@d.Permissions.CanModify" HasPrimary="@d.Iteration.Files.Any(f => f.Role == FileRoles.Primary)" OnChanged="Reload" />
+                        <DocumentReviewPanel Number="@d.Number" State="@d.Revision.State" />
                         break;
                     case "trace":
                         <Keel.Web.Components.Pages.Requirements.ObjectTracePanel Kind="document" Key="@d.Number" OnBanner="b => traceBanner = b" />
@@ -306,6 +305,8 @@
         </Badges>
         <Steps>
             <Stepper States="lifecycleStates" Current="@d.Revision.State" Reachable="@(d.Transitions.Where(t => t.Allowed).Select(t => t.To).ToHashSet())" Label="Document lifecycle" />
+            <ReviewStrip ObjectType="document" Number="@d.Number" State="@d.Revision.State" Latest="@d.Revision.IsLatest" CheckedOut="@(d.Checkout is not null)"
+                         CanModify="@d.Permissions.CanModify" HasPrimary="@d.Iteration.Files.Any(f => f.Role == FileRoles.Primary)" OnChanged="Reload" />
         </Steps>
         <ChildContent>
             @if (d.Revisions.Count > 1)

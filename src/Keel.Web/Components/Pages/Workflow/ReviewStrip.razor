@@ -1,0 +1,157 @@
+@inject CurrentUser Users
+@inject WorkflowService Flow
+
+@* The review step in the header of a part or document: one line saying where the item is (ready, waiting for someone, rejected, released) and the one button that moves it on
+   (Submit for review, or Review and sign for the person the task is assigned to). It uses the same workflow calls as the Review & release tab, so separation of duties, role and
+   markings checks, locking and audit are unchanged; the tab keeps the progress map and the release history. *@
+@if (status is not null && Visible)
+{
+    <div class="review-strip" role="group" aria-label="Review and release" data-review-strip>
+        @if (status.Active is { } active)
+        {
+            var mine = active.Tasks.FirstOrDefault(t => t.Status == "Open" && t.AssigneeSub == me);
+            var waiting = active.Tasks.Where(t => t.Status == "Open").Select(t => t.AssigneeName ?? WorkflowText.Role(t.RequiredRole)).Distinct().ToList();
+            <span class="badge state-underreview">Review in progress</span>
+            <span class="muted">@(waiting.Count == 0 ? "Waiting for the last step." : "Waiting for " + string.Join(", ", waiting))</span>
+            <span class="spacer"></span>
+            @if (mine is not null)
+            {
+                <a class="button" href="tasks/@mine.Id">Review and sign</a>
+            }
+            <a class="button secondary" href="workflows/@active.Id">Progress</a>
+            @if (active.CanCancel)
+            {
+                <button type="button" class="secondary" disabled="@busy" @onclick="() => cancelling = !cancelling" aria-expanded="@cancelling">Cancel review</button>
+            }
+        }
+        else
+        {
+            @if (status.Last is { } last && last.Status == InstanceStatus.Rejected)
+            {
+                <span class="badge">Review rejected</span>
+                <span class="muted">@(last.Rejections.FirstOrDefault() is { } r ? $"{r.By}: {r.Comment}" : "Fix what was asked, then submit again.")</span>
+            }
+            else if (State == "InWork")
+            {
+                <span class="muted">@(CanStart ? "Ready to go to review?" : Why)</span>
+            }
+            else if (status.Releases.Count > 0 && status.Releases[0] is { } rel)
+            {
+                <span class="badge state-released">Released</span>
+                <span class="muted">Revision @rel.Revision, @WorkflowText.Utc(rel.ReleasedAt)</span>
+            }
+            <span class="spacer"></span>
+            @if (CanStart)
+            {
+                <button type="button" disabled="@busy" data-action="submit-review" @onclick="BeginStart">@(status.Last?.Status == InstanceStatus.Rejected ? "Submit again" : "Submit for review")</button>
+            }
+        }
+        @if (error is not null) { <p class="error review-strip-note" role="alert">@error</p> }
+        @if (cancelling && status.Active is not null && status.Active.CanCancel)
+        {
+            <div class="toolbar review-strip-note">
+                <input aria-label="Reason for cancelling" placeholder="Reason for cancelling (required)" class="grow" @bind="cancelReason" />
+                <button type="button" class="secondary" disabled="@busy" @onclick="Cancel">Cancel review</button>
+            </div>
+        }
+    </div>
+
+    @if (starting && template is not null)
+    {
+        <div class="dialog-backdrop">
+            <div class="dialog wide" role="dialog" aria-modal="true" aria-label="Submit for review" tabindex="-1">
+                <div class="dialog-body">
+                    <StartReviewDialog Template="template" Search="SearchUsers" OnStart="Start" OnCancel="EndStart" Busy="busy" Error="@startError" />
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    /// <summary>"part" or "document": the object type the review is for.</summary>
+    [Parameter, EditorRequired] public required string ObjectType { get; set; }
+    [Parameter, EditorRequired] public required string Number { get; set; }
+    /// <summary>Lifecycle state key of the revision shown.</summary>
+    [Parameter, EditorRequired] public required string State { get; set; }
+    [Parameter] public bool Latest { get; set; }
+    [Parameter] public bool CheckedOut { get; set; }
+    [Parameter] public bool CanModify { get; set; }
+    /// <summary>A document is reviewed for its content: it needs a primary file first (A24). Parts have no such need.</summary>
+    [Parameter] public bool HasPrimary { get; set; } = true;
+    /// <summary>Raised after the review started or was cancelled, so the host page can reload.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private ObjectWorkflowStatus? status;
+    private TemplateView? template;
+    private bool starting, busy, cancelling;
+    private string? error, startError, me;
+    private string cancelReason = "";
+
+    private bool CanStart => Latest && State == "InWork" && !CheckedOut && CanModify && HasPrimary;
+
+    // Nothing to say for a revision that is neither being reviewed, nor ready for it, nor released, so the strip stays out of the way.
+    private bool Visible => status is { Active: not null } || State == "InWork" || status?.Releases.Count > 0;
+
+    private string Why => CheckedOut ? "Save or discard your edit before submitting for review."
+        : !HasPrimary ? "Add a primary file before submitting for review."
+        : !Latest ? "Only the latest revision can be submitted."
+        : "You may not submit this for review.";
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var subject = await Users.GetAsync();
+        me = subject.Id;
+        var outcome = await Flow.StatusForObjectAsync(subject, ObjectType, Number, CurrentUser.NewCorrelationId());
+        status = outcome.IsOk ? outcome.Value : null;
+    }
+
+    private async Task BeginStart()
+    {
+        error = startError = null;
+        var templates = await Flow.ListTemplatesAsync(await Users.GetAsync(), activeOnly: true, CurrentUser.NewCorrelationId());
+        template = templates.FirstOrDefault(t => t.ObjectType == ObjectType);
+        if (template is null) { error = $"No workflow template is available for {ObjectType}s. Ask an administrator to upload one."; return; }
+        starting = true;
+    }
+
+    private Task EndStart()
+    {
+        starting = false;
+        return Task.CompletedTask;
+    }
+
+    private async Task<IReadOnlyList<DirectoryUserView>> SearchUsers(SlotView slot, string text)
+    {
+        var outcome = await Flow.SearchUsersAsync(await Users.GetAsync(), text, slot.Role, ObjectType, Number, 25, CurrentUser.NewCorrelationId());
+        return outcome.IsOk ? outcome.Value! : [];
+    }
+
+    private async Task Start(StartSelection selection)
+    {
+        busy = true;
+        startError = null;
+        var outcome = await Flow.StartAsync(await Users.GetAsync(),
+            new StartReviewCommand(ObjectType, Number, selection.Participants, selection.TemplateId, selection.Comment), CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { startError = WorkflowText.Message(outcome); return; }
+        starting = false;
+        await OnChanged.InvokeAsync();
+        await Load();
+    }
+
+    private async Task Cancel()
+    {
+        busy = true;
+        error = null;
+        var outcome = await Flow.CancelAsync(await Users.GetAsync(), status!.Active!.Id, cancelReason, CurrentUser.NewCorrelationId());
+        busy = false;
+        if (!outcome.IsOk) { error = WorkflowText.Message(outcome); return; }
+        cancelReason = "";
+        cancelling = false;
+        await OnChanged.InvokeAsync();
+        await Load();
+    }
+}
