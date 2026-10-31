@@ -105,6 +105,8 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
     public static async Task OpenTabAsync(IPage page, string name)
     {
         var tab = page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = name });
+        // On a cold first load the page shows its tabs a moment after the page loads: counting the groups before that would find none and never open one.
+        await Expect(page.GetByRole(AriaRole.Tab).First).ToBeVisibleAsync();
         // A tab that lives in a tab group shows its second row only while its group is open: open the groups one by one until it appears.
         if (await tab.CountAsync() == 0)
         {
