@@ -20,15 +20,17 @@
 
     @if (result is not null)
     {
-        <p class="muted">@P.Count("Parts.Count", result.Total)</p>
-        <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="@P["Parts.Title"]" OnServerSort="OnSort" ServerSort="sort">
-            <Empty>
-                <EmptyState Title="@(query.Length > 0 || state != "" ? P["Parts.NoMatch"] : P["Parts.None"])" IconName="part"
-                            ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="@P["Parts.Create"]">
-                    @(query.Length > 0 || state != "" ? P["Parts.NoMatchHelp"] : P["Parts.NoneHelp"])
-                </EmptyState>
-            </Empty>
-        </DataTable>
+        <section class="list-card">
+            <p class="list-title">@P.Count("Parts.Count", result.Total)</p>
+            <DataTable TItem="PartSummary" TableId="parts" Items="result.Items" Columns="Columns" Caption="@P["Parts.Title"]" OnServerSort="OnSort" ServerSort="sort">
+                <Empty>
+                    <EmptyState Title="@(query.Length > 0 || state != "" ? P["Parts.NoMatch"] : P["Parts.None"])" IconName="part"
+                                ActionHref="@(query.Length > 0 || state != "" ? null : "parts/new")" ActionText="@P["Parts.Create"]">
+                        @(query.Length > 0 || state != "" ? P["Parts.NoMatchHelp"] : P["Parts.NoneHelp"])
+                    </EmptyState>
+                </Empty>
+            </DataTable>
+        </section>
         <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
     }
     else

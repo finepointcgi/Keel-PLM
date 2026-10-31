@@ -7,6 +7,7 @@
 
 <PageFrame Banner="@PageBanner" Title="@P["Home.Title"]">
     <p class="muted">@P["Home.Intro"]</p>
+    <HomeTiles />
     <div class="cards">
         <AttentionCard OnBanner="SetBanner" />
         <ObjectCard Id="recent" Title="@P["Home.Card.recent"]" IconName="clock" Load="() => Reads.RecentAsync()" OnBanner="SetBanner" ShowDate="true"

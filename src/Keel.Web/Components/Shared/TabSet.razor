@@ -5,16 +5,41 @@
 
 <div class="tabs">
     <div class="tablist" role="tablist" aria-label="@Label">
-        @foreach (var tab in Tabs)
+        @foreach (var entry in Entries)
         {
-            var selected = tab.Id == Active;
-            <button type="button" role="tab" class="tab" id="@TabId(tab.Id)" aria-selected="@(selected ? "true" : "false")" aria-controls="@PanelId"
-                    tabindex="@(selected ? 0 : -1)" data-tab="@tab.Id" @onclick="() => SelectAsync(tab.Id, focus: false)" @onkeydown="e => OnKey(e, tab.Id)">
-                @tab.Title
-                @if (tab.Count is { } n) { <span class="count" aria-label="@(n) items">@n</span> }
-            </button>
+            var selected = entry.Members.Any(m => m.Id == Active);
+            var first = entry.Members[0];
+            if (!entry.IsGroup)
+            {
+                <button type="button" role="tab" class="tab" id="@TabId(first.Id)" aria-selected="@(selected ? "true" : "false")" aria-controls="@PanelId"
+                        tabindex="@(selected ? 0 : -1)" data-tab="@first.Id" @onclick="() => SelectAsync(first.Id, null)" @onkeydown="e => OnPrimaryKey(e, entry)">
+                    @first.Title
+                    @if (first.Count is { } n) { <span class="count" aria-label="@(n) items">@n</span> }
+                </button>
+            }
+            else
+            {
+                <button type="button" role="tab" class="tab group-tab" id="@entry.ElementId" aria-selected="@(selected ? "true" : "false")" aria-controls="@PanelId"
+                        tabindex="@(selected ? 0 : -1)" data-group="@entry.Key" @onclick="() => SelectAsync(Target(entry), null)" @onkeydown="e => OnPrimaryKey(e, entry)">
+                    @entry.Title
+                </button>
+            }
         }
     </div>
+    @if (ActiveGroup is { } group)
+    {
+        <div class="tablist subtabs" role="tablist" aria-label="@group.Title">
+            @foreach (var tab in group.Members)
+            {
+                var selected = tab.Id == Active;
+                <button type="button" role="tab" class="tab subtab" id="@TabId(tab.Id)" aria-selected="@(selected ? "true" : "false")" aria-controls="@PanelId"
+                        tabindex="@(selected ? 0 : -1)" data-tab="@tab.Id" @onclick="() => SelectAsync(tab.Id, null)" @onkeydown="e => OnSubKey(e, group, tab.Id)">
+                    @tab.Title
+                    @if (tab.Count is { } n) { <span class="count" aria-label="@(n) items">@n</span> }
+                </button>
+            }
+        </div>
+    }
     <div class="tabpanel" role="tabpanel" id="@PanelId" aria-labelledby="@TabId(Active)" tabindex="0">
         <h2 class="visually-hidden">@(Tabs.FirstOrDefault(t => t.Id == Active)?.Title)</h2>
         @ChildContent
@@ -23,6 +48,36 @@
 
 @code {
     private string? focusAfterRender;
+    private readonly Dictionary<string, string> lastMember = new(); // per group: the member the user was on last, so the group tab returns there
+
+    /// <summary>One shown tab: a plain tab, or a group of two or more members (a group with one member is shown as that member).</summary>
+    private sealed record Entry(string Key, string Title, IReadOnlyList<TabInfo> Members)
+    {
+        public bool IsGroup => Members.Count > 1;
+        public string ElementId => "tab-group-" + Key;
+    }
+
+    private IReadOnlyList<Entry> Entries
+    {
+        get
+        {
+            var result = new List<Entry>();
+            var seen = new HashSet<string>();
+            foreach (var tab in Tabs)
+            {
+                if (tab.Group is null) { result.Add(new Entry(tab.Id, tab.Title, [tab])); continue; }
+                if (!seen.Add(tab.Group)) continue;
+                var members = Tabs.Where(t => t.Group == tab.Group).ToList();
+                result.Add(new Entry(Slug(tab.Group), tab.Group, members));
+            }
+            return result;
+        }
+    }
+
+    private Entry? ActiveGroup => Entries.FirstOrDefault(e => e.IsGroup && e.Members.Any(m => m.Id == Active));
+
+    private static string Slug(string text) => new string([.. text.ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-')]).Trim('-');
+    private string Target(Entry entry) => lastMember.TryGetValue(entry.Key, out var id) && entry.Members.Any(m => m.Id == id) ? id : entry.Members[0].Id;
 
     private string PanelId => "tabpanel-" + Active;
     private static string TabId(string id) => "tab-" + id;
@@ -71,29 +126,40 @@
         return FromUri(uri, ids, current);
     }
 
-    private async Task SelectAsync(string id, bool focus)
+    private async Task SelectAsync(string id, string? focusElement)
     {
+        if (Tabs.FirstOrDefault(t => t.Id == id)?.Group is { } group) lastMember[Slug(group)] = id;
         if (id != Active)
         {
             Active = id;
             await ActiveChanged.InvokeAsync(id);
             await Shell.InvokeVoidAsync("setHash", id);
         }
-        if (focus) focusAfterRender = TabId(id);
+        if (focusElement is not null) focusAfterRender = focusElement;
     }
 
-    private async Task OnKey(KeyboardEventArgs e, string current)
+    private static int NextIndex(KeyboardEventArgs e, int index, int count) => e.Key switch
     {
-        var index = Tabs.ToList().FindIndex(t => t.Id == current);
-        var next = e.Key switch
-        {
-            "ArrowRight" => (index + 1) % Tabs.Count,
-            "ArrowLeft" => (index - 1 + Tabs.Count) % Tabs.Count,
-            "Home" => 0,
-            "End" => Tabs.Count - 1,
-            _ => -1,
-        };
-        if (next >= 0) await SelectAsync(Tabs[next].Id, focus: true);
+        "ArrowRight" => (index + 1) % count,
+        "ArrowLeft" => (index - 1 + count) % count,
+        "Home" => 0,
+        "End" => count - 1,
+        _ => -1,
+    };
+
+    private async Task OnPrimaryKey(KeyboardEventArgs e, Entry current)
+    {
+        var entries = Entries;
+        var next = NextIndex(e, entries.ToList().FindIndex(x => x.Key == current.Key), entries.Count);
+        if (next < 0) return;
+        var entry = entries[next];
+        await SelectAsync(Target(entry), entry.IsGroup ? entry.ElementId : TabId(entry.Members[0].Id));
+    }
+
+    private async Task OnSubKey(KeyboardEventArgs e, Entry group, string current)
+    {
+        var next = NextIndex(e, group.Members.ToList().FindIndex(t => t.Id == current), group.Members.Count);
+        if (next >= 0) await SelectAsync(group.Members[next].Id, TabId(group.Members[next].Id));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

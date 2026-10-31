@@ -84,11 +84,11 @@ public sealed partial class ModelViewerUiTests
     public void The_tab_is_offered_to_model_documents_and_to_parts_with_a_model_and_each_banner_joins_the_page()
     {
         var doc = Read("src", "Keel.Web", "Components", "Pages", "Documents", "DocumentPage.razor");
-        Assert.Contains("new(\"viewer\", \"Viewer\")", doc, StringComparison.Ordinal);
+        Assert.Contains("new(\"viewer\", \"Viewer\"", doc, StringComparison.Ordinal);
         Assert.Contains("t.Id is not (\"versions\" or \"viewer\")", doc, StringComparison.Ordinal);
         Assert.Contains("tab == \"viewer\" ? viewerBanner", doc, StringComparison.Ordinal);
         var part = Read("src", "Keel.Web", "Components", "Pages", "Parts", "PartPage.razor");
-        Assert.Contains("new(\"viewer\", \"Viewer\")", part, StringComparison.Ordinal);
+        Assert.Contains("new(\"viewer\", \"Viewer\"", part, StringComparison.Ordinal);
         Assert.Contains("hasModel ? Tabs", part, StringComparison.Ordinal);
         Assert.Contains("tab == \"viewer\" ? viewerBanner", part, StringComparison.Ordinal);
     }

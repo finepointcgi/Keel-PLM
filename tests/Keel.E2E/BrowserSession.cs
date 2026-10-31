@@ -105,6 +105,17 @@ public sealed partial class BrowserSession(E2EFixture fx, string testName) : IAs
     public static async Task OpenTabAsync(IPage page, string name)
     {
         var tab = page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = name });
+        // A tab that lives in a tab group shows its second row only while its group is open: open the groups one by one until it appears.
+        if (await tab.CountAsync() == 0)
+        {
+            var groups = page.Locator("[role=tab][data-group]");
+            for (var i = 0; i < await groups.CountAsync() && await tab.CountAsync() == 0; i++)
+            {
+                var group = groups.Nth(i);
+                await group.ClickAsync();
+                await Expect(group).ToHaveAttributeAsync("aria-selected", "true"); // the second row is rendered once the group is selected
+            }
+        }
         await tab.ClickAsync();
         await Expect(tab).ToHaveAttributeAsync("aria-selected", "true");
     }

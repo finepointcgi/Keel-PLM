@@ -186,7 +186,7 @@ public sealed class ModelViewerTests(E2EFixture fx)
             var step = await CreateStepDocumentAsync("E2E gimbal model");
             await AssociateAsync(step, fx.Manifest.GimbalAssembly);
             await session.GotoAsync(alice, "/parts/" + fx.Manifest.GimbalAssembly);
-            await page.GetByRole(AriaRole.Tab, new PageGetByRoleOptions { Name = "Viewer" }).ClickAsync();
+            await BrowserSession.OpenTabAsync(page, "Viewer");
             await Expect(page.GetByTestId("viewer-canvas")).ToHaveAttributeAsync("data-viewer-state", "ready", new LocatorAssertionsToHaveAttributeOptions { Timeout = 60_000 });
             await Expect(page.GetByTestId("viewer-node")).ToHaveCountAsync(24);
             await BrowserSession.AssertBannersAsync(page);

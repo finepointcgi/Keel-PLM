@@ -25,14 +25,16 @@
 
     @if (result is not null)
     {
-        <p class="muted">@P.Count("Documents.Count", result.Total)</p>
-        <DataTable TItem="DocumentSummary" TableId="documents" Items="result.Items" Columns="Columns" Caption="@P["Documents.Title"]" OnServerSort="OnSort" ServerSort="sort">
-            <Empty>
-                <EmptyState Title="@(Filtered ? P["Documents.NoMatch"] : P["Documents.None"])" IconName="document" ActionHref="@(Filtered ? null : "documents/new")" ActionText="@P["Documents.Create"]">
-                    @(Filtered ? P["Documents.NoMatchHelp"] : P["Documents.NoneHelp"])
-                </EmptyState>
-            </Empty>
-        </DataTable>
+        <section class="list-card">
+            <p class="list-title">@P.Count("Documents.Count", result.Total)</p>
+            <DataTable TItem="DocumentSummary" TableId="documents" Items="result.Items" Columns="Columns" Caption="@P["Documents.Title"]" OnServerSort="OnSort" ServerSort="sort">
+                <Empty>
+                    <EmptyState Title="@(Filtered ? P["Documents.NoMatch"] : P["Documents.None"])" IconName="document" ActionHref="@(Filtered ? null : "documents/new")" ActionText="@P["Documents.Create"]">
+                        @(Filtered ? P["Documents.NoMatchHelp"] : P["Documents.NoneHelp"])
+                    </EmptyState>
+                </Empty>
+            </DataTable>
+        </section>
         <Pager Total="result.Total" Offset="offset" PageSize="PageSize" OnPage="Search" />
     }
     else

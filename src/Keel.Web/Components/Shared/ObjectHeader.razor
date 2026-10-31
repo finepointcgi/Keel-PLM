@@ -11,6 +11,7 @@
             @Badges
         </div>
     </div>
+    @if (Facts is not null) { <dl class="key-facts">@Facts</dl> }
     @Steps
     @ChildContent
 </header>
@@ -21,6 +22,8 @@
     [Parameter] public string? Subtitle { get; set; }
     /// <summary>The object's own marking text (its chip).</summary>
     [Parameter] public string? Banner { get; set; }
+    /// <summary>Key facts as label and value pairs, each <c>&lt;div&gt;&lt;dt&gt;label&lt;/dt&gt;&lt;dd&gt;value&lt;/dd&gt;&lt;/div&gt;</c> (type, owner, unit): the quiet line under the title that replaces a sentence.</summary>
+    [Parameter] public RenderFragment? Facts { get; set; }
     [Parameter] public RenderFragment? Badges { get; set; }
     [Parameter] public RenderFragment? Steps { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }

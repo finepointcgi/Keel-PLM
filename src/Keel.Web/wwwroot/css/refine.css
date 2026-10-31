@@ -48,11 +48,45 @@ article.stack > p.muted.small { font-size: var(--fs-sm); margin: 0; }
 
 /* ---- sidebar: quieter group headings, tighter items, one line per link where it fits */
 .app:not(.rail-collapsed) .rail button.rail-group-header { min-height: 36px; margin-top: var(--sp-2); }
-.app:not(.rail-collapsed) .rail .rail-group-title { font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-muted); }
+.app:not(.rail-collapsed) .rail .rail-group-title { font-size: var(--fs-sm); font-weight: 600; color: var(--c-muted); }
 .app:not(.rail-collapsed) .rail .rail-link > a.mud-nav-link { min-height: 40px; padding-block: 2px; }
 .app:not(.rail-collapsed) .rail .rail-link > a.mud-nav-link .mud-nav-link-text { font-size: var(--fs-md); line-height: 1.2; }
 
 /* ---- tabs: a scrolling row that keeps scroll-snapped, with the edge softened so a cut-off tab reads as "more" */
 .tablist { scroll-snap-type: x proximity; scroll-padding-inline: var(--sp-4); }
 .tab { scroll-snap-align: start; }
-.tabs > .tablist { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-inline-end: 28px; }
+.tabs > .tablist:not(.subtabs) { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-inline-end: 28px; }
+
+/* ---- a tab group's second row: small pills under the main row */
+.tabs { gap: var(--sp-2); }
+.tablist.subtabs { border-bottom: 0; gap: var(--sp-1); padding: 0; mask-image: none; -webkit-mask-image: none; }
+.tab.subtab { min-height: 32px; padding: 2px 14px; margin: 0; border: 1px solid var(--c-border); border-radius: var(--radius-pill); font-size: var(--fs-sm); background: var(--c-surface); color: var(--c-text); }
+.tab.subtab:hover:not(:disabled) { background: var(--c-surface-2); }
+.tab.subtab[aria-selected="true"] { background: var(--c-accent-bg); border-color: var(--c-accent); color: var(--c-text); font-weight: 600; }
+.tab.group-tab::after { content: ""; width: 0; height: 0; margin-left: 6px; border-inline: 4px solid transparent; border-top: 5px solid currentColor; opacity: 0.7; }
+
+/* ---- cards: one shape for every surface (16 px corners, a hairline, a soft shadow) */
+:root { --radius-card: 16px; }
+.card, .panel, .page-header, .list-card, .tile { border-radius: var(--radius-card); }
+.card, .panel { border-color: var(--c-border); box-shadow: var(--shadow-1); }
+
+/* ---- object header: key facts as label and value pairs */
+.key-facts { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-6); margin: 0; padding: 0; }
+.key-facts > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.key-facts dt { font-size: var(--fs-sm); color: var(--c-muted); font-weight: 500; }
+.key-facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+/* ---- list report: a titled card holding the table */
+.list-card { background: var(--c-surface); border: 1px solid var(--c-border); box-shadow: var(--shadow-1); padding: var(--sp-3) var(--sp-4) var(--sp-2); margin-bottom: var(--sp-3); }
+.list-title { margin: 0 0 var(--sp-1); font-size: var(--fs-lg); font-weight: 650; }
+.list-card .dt-scroll { border: 0; box-shadow: none; border-radius: 0; background: transparent; }
+.list-card table.data { background: transparent; }
+
+/* ---- Home: a strip of figures */
+.tiles { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--sp-3); padding: 0; margin: var(--sp-3) 0; }
+.tile { display: flex; flex-direction: column; gap: 2px; height: 100%; padding: var(--sp-4); background: var(--c-surface); border: 1px solid var(--c-border); box-shadow: var(--shadow-1); color: var(--c-text); text-decoration: none; }
+a.tile:hover { border-color: var(--c-accent); }
+.tile-figure { font-size: 2rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile-label { color: var(--c-muted); }
+.tile-note { font-size: var(--fs-sm); font-weight: 600; }
+.tile-note.error { color: var(--c-danger); }

@@ -96,7 +96,7 @@
                 <p class="muted small">@t.Label: @t.Reason</p>
             }
 
-            <TabSet Tabs="@AwarenessTabs.Append(VisibleTabs, commentCount)" Active="@tab" ActiveChanged="OnTabChanged" Label="@P["Part.Sections"]">
+            <TabSet Tabs="@AwarenessTabs.Append(VisibleTabs, commentCount, TrailTitle)" Active="@tab" ActiveChanged="OnTabChanged" Label="@P["Part.Sections"]">
                 @switch (tab)
                 {
                     case "overview":
@@ -279,14 +279,21 @@
     private string? seenUri; // the address the tab was last taken from (GAP-A-4)
 
     private static readonly string[] TabIds = ["overview", "structure", "viewer", "documents", "changes", "review", "classification", "history", "timeline", "security", "sourcing", "quality", "compliance", "trace", .. AwarenessTabs.Ids];
+    // Fewer, calmer tabs (ADR-0062): the rarely used ones share a group tab with a second row. Ids and deep links are unchanged.
+    private const string TrailGroup = "Audit trail", DesignGroup = "Design", SupplyGroup = "Supply & checks";
     private static readonly IReadOnlyList<TabInfo> EnglishTabs =
     [
-        new("overview", "Overview"), new("structure", "Structure"), new("viewer", "Viewer"), new("documents", "Documents"), new("changes", "Changes"),
-        new("review", "Review & release"), new("classification", "Classification"), new("history", "History"), new("timeline", "Timeline"), new("security", "Security markings"), new("sourcing", "Sourcing"), new("quality", "Quality"), new("compliance", "Compliance"), new("trace", "Trace"),
+        new("overview", "Overview"), new("structure", "Structure"), new("documents", "Documents"),
+        new("changes", "Changes", Group: TrailGroup), new("history", "History", Group: TrailGroup), new("timeline", "Timeline", Group: TrailGroup),
+        new("review", "Review & release"), new("security", "Security markings"),
+        new("viewer", "Viewer", Group: DesignGroup), new("classification", "Classification", Group: DesignGroup),
+        new("sourcing", "Sourcing", Group: SupplyGroup), new("quality", "Quality", Group: SupplyGroup), new("compliance", "Compliance", Group: SupplyGroup), new("trace", "Trace", Group: SupplyGroup),
     ];
 
     // The tab ids are the identity (address bar, saved state); only the shown text is translated (resource keys Part.Tab.<id>).
-    private IReadOnlyList<TabInfo> Tabs => [.. EnglishTabs.Select(t => t with { Title = P.Or("Part.Tab." + t.Id, t.Title) })];
+    private IReadOnlyList<TabInfo> Tabs => [.. EnglishTabs.Select(t => t with { Title = P.Or("Part.Tab." + t.Id, t.Title), Group = t.Group is null ? null : P.Or("Part.TabGroup." + Slug(t.Group), t.Group) })];
+    private static string Slug(string g) => g.StartsWith("Audit", StringComparison.Ordinal) ? "trail" : g.StartsWith("Design", StringComparison.Ordinal) ? "design" : "supply";
+    private string TrailTitle => P.Or("Part.TabGroup.trail", TrailGroup);
 
     /// <summary>The Viewer tab is offered where a CAD model is attached to the part.</summary>
     private IReadOnlyList<TabInfo> VisibleTabs => hasModel ? Tabs : [.. Tabs.Where(t => t.Id != "viewer")];
@@ -324,8 +331,13 @@
     private bool IsDirty => part?.Checkout is { IsMine: true } co && workingAttributes is not null && defs is not null
         && (workingDescription != (co.Description ?? "") || workingAttributes.ToJson(defs).ToJsonString() != (co.Attributes?.ToJsonString() ?? "{}"));
 
-    private RenderFragment HeaderFragment(PartDetail p) => @<ObjectHeader Title="@PageTitle" Banner="@p.Banner"
-                  Subtitle="@P["Part.Subtitle", p.PartType, p.Source, UiLanguage.Unit(p.DefaultUnit, C), p.CreatedBy]">
+    private RenderFragment HeaderFragment(PartDetail p) => @<ObjectHeader Title="@PageTitle" Banner="@p.Banner">
+        <Facts>
+            <div><dt>@P["Part.Fact.Type"]</dt><dd>@p.PartType</dd></div>
+            <div><dt>@P["Part.Fact.Source"]</dt><dd>@p.Source</dd></div>
+            <div><dt>@P["Part.Fact.Unit"]</dt><dd>@UiLanguage.Unit(p.DefaultUnit, C)</dd></div>
+            <div><dt>@P["Part.Fact.CreatedBy"]</dt><dd>@p.CreatedBy</dd></div>
+        </Facts>
         <Badges>
             <span class="badge">@P["Part.Version", p.Iteration.Label]</span>
             <span class="badge state-@p.Revision.State.ToLowerInvariant()">@C.Or(LocalizationServices.Key("State", p.Revision.StateLabel), p.Revision.StateLabel)</span>

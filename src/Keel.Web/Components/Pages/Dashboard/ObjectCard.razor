@@ -28,7 +28,7 @@
                         <a href="@i.Href">@i.Number · @i.Name</a>
                         <span class="sub">@C.Or("Kind." + i.Kind, ObjectKinds.Label(i.Kind)) · @C.Or(LocalizationServices.Key("State", i.StateLabel), i.StateLabel)@(ShowDate ? " · " + Language.Utc(i.At) : "")</span>
                     </span>
-                    <MarkingChip Text="@i.Banner" />
+                    <MarkingChip Text="@i.Banner" Compact="true" />
                     @if (Removable)
                     {
                         <button type="button" class="secondary" aria-label="@P["Card.RemoveFavorite", i.Number]" @onclick="() => OnRemove.InvokeAsync(i)">@P["Card.Remove"]</button>

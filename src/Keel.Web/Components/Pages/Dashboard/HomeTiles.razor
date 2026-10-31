@@ -1,0 +1,32 @@
+@* The strip of figures at the top of Home: what needs the user's attention, their favorites and what was released lately. The figures come from the same reads the
+   cards below use (so only objects the user may read are counted); a card holds at most CardSize rows, so a full card shows "8+" rather than a made-up total. The first tile links to My tasks. *@
+@inject WorkspaceReads Reads
+@inject IStringLocalizer<PageStrings> P
+
+<ul class="tiles" aria-label="@P["Tiles.Label"]">
+    <li><a class="tile" href="tasks"><span class="tile-figure">@Figure(attention)</span><span class="tile-label">@P["Tiles.Tasks"]</span>@if (overdue > 0) { <span class="tile-note error">@P["Tiles.Overdue", overdue]</span> }</a></li>
+    <li><div class="tile"><span class="tile-figure">@Figure(favorites)</span><span class="tile-label">@P["Tiles.Favorites"]</span></div></li>
+    <li><div class="tile"><span class="tile-figure">@Figure(released)</span><span class="tile-label">@P["Tiles.Released"]</span></div></li>
+</ul>
+
+@code {
+    private int? attention, favorites, released;
+    private int overdue;
+
+    private string Figure(int? n) => n is null ? "–" : n >= WorkspaceReads.CardSize ? $"{WorkspaceReads.CardSize}+" : n.ToString()!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var a = await Reads.AttentionAsync();
+            (attention, overdue) = (a.Items.Count, a.Items.Count(i => i.Overdue));
+            favorites = (await Reads.FavoritesAsync()).Items.Count;
+            released = (await Reads.RecentlyReleasedAsync()).Items.Count;
+        }
+        catch (Exception e) when (e is InvalidOperationException or Npgsql.NpgsqlException)
+        {
+            // The cards below show the error; the tiles just stay empty.
+        }
+    }
+}

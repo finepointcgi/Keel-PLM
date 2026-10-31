@@ -127,6 +127,9 @@
   <data name="Part.Tab.classification" xml:space="preserve"><value>Clasificación</value></data>
   <data name="Part.Tab.compliance" xml:space="preserve"><value>Cumplimiento</value></data>
   <data name="Part.Tab.documents" xml:space="preserve"><value>Documentos</value></data>
+  <data name="Part.TabGroup.design" xml:space="preserve"><value>Diseño</value></data>
+  <data name="Part.TabGroup.supply" xml:space="preserve"><value>Suministro y verificaciones</value></data>
+  <data name="Part.TabGroup.trail" xml:space="preserve"><value>Registro de auditoría</value></data>
   <data name="Part.Tab.history" xml:space="preserve"><value>Historial</value></data>
   <data name="Part.Tab.overview" xml:space="preserve"><value>Resumen</value></data>
   <data name="Part.Tab.quality" xml:space="preserve"><value>Calidad</value></data>
@@ -240,4 +243,13 @@
   <data name="Tasks.Title" xml:space="preserve"><value>Mis tareas</value></data>
   <data name="Tasks.PhoneView" xml:space="preserve"><value>Vista de teléfono</value></data>
   <data name="Sign.Decision" xml:space="preserve"><value>Su decisión</value></data>
+  <data name="Tiles.Label" xml:space="preserve"><value>Resumen</value></data>
+  <data name="Tiles.Tasks" xml:space="preserve"><value>Requieren mi atención</value></data>
+  <data name="Tiles.Overdue" xml:space="preserve"><value>{0} vencidas</value></data>
+  <data name="Tiles.Favorites" xml:space="preserve"><value>Favoritos</value></data>
+  <data name="Tiles.Released" xml:space="preserve"><value>Liberados recientemente</value></data>
+  <data name="Part.Fact.Type" xml:space="preserve"><value>Tipo</value></data>
+  <data name="Part.Fact.Source" xml:space="preserve"><value>Origen</value></data>
+  <data name="Part.Fact.Unit" xml:space="preserve"><value>Unidad</value></data>
+  <data name="Part.Fact.CreatedBy" xml:space="preserve"><value>Creado por</value></data>
 </root>

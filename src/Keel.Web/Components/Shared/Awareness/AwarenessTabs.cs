@@ -9,6 +9,7 @@ public static class AwarenessTabs
     public static readonly string[] Ids = [Activity, Comments];
 
     /// <summary>The page's own tabs followed by Activity and Comments.</summary>
-    public static IReadOnlyList<TabInfo> Append(IReadOnlyList<TabInfo> own, int? commentCount) =>
-        [.. own, new TabInfo(Activity, "Activity"), new TabInfo(Comments, "Comments", commentCount)];
+    /// <param name="activityGroup">The shown title of the tab group Activity joins (the page's "Audit trail"), or null to keep it a tab of its own.</param>
+    public static IReadOnlyList<TabInfo> Append(IReadOnlyList<TabInfo> own, int? commentCount, string? activityGroup = null) =>
+        [.. own, new TabInfo(Activity, "Activity", Group: activityGroup), new TabInfo(Comments, "Comments", commentCount)];
 }
