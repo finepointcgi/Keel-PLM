@@ -90,7 +90,7 @@
                                 <section class="panel" aria-labelledby="work-heading">
                                     <h3 id="work-heading">Edit this document</h3>
                                     <p class="muted">You are editing this document. Changes stay private until you save.</p>
-                                    <label class="grid-form">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label>
+                                    <div class="grid-form"><label class="wide">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label></div>
                                     <h4>Working files</h4>
                                     <DocumentFileList Files="co.Files ?? []" OnRemove="RemoveFile" Busy="busy" Empty="The working copy has no files." />
                                     <div class="toolbar">
