@@ -219,7 +219,6 @@
   <data name="Task.SignedApproved" xml:space="preserve"><value>Firmado. Todas las aprobaciones están y {0} queda liberado.</value></data>
   <data name="Task.SignedInAgain" xml:space="preserve"><value>Volvió a iniciar sesión. Se conservó su comentario; elija la decisión con la que firmar.</value></data>
   <data name="Task.SignedRejected" xml:space="preserve"><value>Firmado. La revisión fue rechazada y {0} vuelve a En trabajo.</value></data>
-  <data name="Task.Signing" xml:space="preserve"><value>Lo que va a firmar</value></data>
   <data name="Task.StartedBy" xml:space="preserve"><value>iniciada por {0}</value></data>
   <data name="Task.StatusIs" xml:space="preserve"><value>Esta tarea está {0}.</value></data>
   <data name="Task.StatusIsDecision" xml:space="preserve"><value>Esta tarea está {0} ({1}).</value></data>

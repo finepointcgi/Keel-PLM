@@ -135,3 +135,11 @@ details.more-details[data-why-not] > summary { font-size: var(--fs-sm); font-wei
 .list-card ul.items li:first-child { border-top: 0; }
 .list-card ul.items .main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 200px; }
 .list-card ul.items .main .sub { color: var(--c-muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.history-table { min-width: 32rem; }
+
+/* Phone: the favorite star is icon only (its name stays in the aria-label and title) and the watch controls stay on one row, so the header leaves room for the page. */
+@media (max-width: 700px) {
+  [data-action="favorite"] .label { display: none; }
+  .watch-control { flex-wrap: nowrap; }
+  .watch-level { min-width: 0; max-width: 10rem; }
+}

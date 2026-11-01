@@ -219,7 +219,6 @@
   <data name="Task.SignedApproved" xml:space="preserve"><value>Signed. All approvals are in and the {0} is released.</value></data>
   <data name="Task.SignedInAgain" xml:space="preserve"><value>You signed in again. Your comment was kept; choose the decision to sign.</value></data>
   <data name="Task.SignedRejected" xml:space="preserve"><value>Signed. The review was rejected and the {0} is back In Work.</value></data>
-  <data name="Task.Signing" xml:space="preserve"><value>What you are signing</value></data>
   <data name="Task.StartedBy" xml:space="preserve"><value>started by {0}</value></data>
   <data name="Task.StatusIs" xml:space="preserve"><value>This task is {0}.</value></data>
   <data name="Task.StatusIsDecision" xml:space="preserve"><value>This task is {0} ({1}).</value></data>

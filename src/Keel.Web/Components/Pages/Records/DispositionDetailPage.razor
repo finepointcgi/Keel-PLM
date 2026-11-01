@@ -1,4 +1,5 @@
 @page "/records/disposition/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject DispositionService Disposition
 
@@ -60,8 +61,8 @@
 
         @if (view.Status is DispositionStatuses.Draft or DispositionStatuses.InReview or DispositionStatuses.Approved or DispositionStatuses.Rejected or DispositionStatuses.Executed)
         {
-            <SourcingReviewPanel ObjectType="disposition" Key="@view.Number" Noun="request" CanSubmit="@(canManage && view.Status == DispositionStatuses.Draft)"
-                                 SubmitHint="Approvers sign the list of records and their classes. You cannot approve your own request." OnChanged="Load" />
+            <ReviewStrip ObjectType="disposition" Number="@view.Number" Noun="request" CanStart="@(canManage && view.Status == DispositionStatuses.Draft)" Hint="Approvers sign the list of records and their classes. You cannot approve your own request." OnChanged="Load" />
+            <SourcingReviewPanel ObjectType="disposition" Key="@view.Number" Noun="request" Controls="false" />
         }
     }
 </PageFrame>

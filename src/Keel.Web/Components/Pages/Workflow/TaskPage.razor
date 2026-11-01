@@ -65,10 +65,6 @@
                         <dt>@P["Task.Fact.StartedBy"]</dt><dd>@d.Summary.StartedByName</dd>
                         <dt>@P["Task.Fact.Due"]</dt><dd class="@(d.Summary.Overdue ? "error" : null)">@WorkflowText.Due(d.Summary.DueAt, d.Summary.Overdue, C, Language)</dd>
                     </dl>
-                </section>
-
-                <section class="panel">
-                    <h3>@P["Task.Signing"]</h3>
                     <p>@(string.IsNullOrEmpty(d.Description) ? P["Task.NoDescription"] : d.Description)</p>
                     @if (d.Attributes is { Count: > 0 })
                     {
@@ -84,9 +80,23 @@
                     }
                 </section>
 
+                @if (d.Instance is { } note)
+                {
+                    <section class="panel"><h3>@P["Task.SubmitterComment"]</h3><p data-testid="rs-note">@(string.IsNullOrWhiteSpace(note.Comment) ? P["Task.NoNote"].Value : note.Comment)</p></section>
+                }
+
+                @if (d.Status == "Open")
+                {
+                    <SignPanel ReasonCodes="d.ReasonCodes" CanSign="d.CanSign" BlockedReasons="d.CannotSignReasons" StepUpRequired="d.StepUpRequired"
+                               StepUpMaxAgeSeconds="d.StepUpMaxAgeSeconds" Busy="busy" Error="@error" @bind-Comment="comment" OnSign="Sign" />
+                }
+                else
+                {
+                    <p class="muted">@(d.Decision is null ? P["Task.StatusIs", d.Status.ToLower(Language.Culture)] : P["Task.StatusIsDecision", d.Status.ToLower(Language.Culture), d.Decision])</p>
+                }
+
                 @if (d.Instance is { } inst)
                 {
-                    <section class="panel"><h3>@P["Task.SubmitterComment"]</h3><p data-testid="rs-note">@(string.IsNullOrWhiteSpace(inst.Comment) ? P["Task.NoNote"].Value : inst.Comment)</p></section>
                     <section class="panel">
                         <h3>@P["Task.Progress"]</h3>
                         <WorkflowMapPanel InstanceId="@inst.Id" Version="@($"{inst.Status}:{inst.Tasks.Count(t => t.Status != "Open")}")" />
@@ -100,7 +110,7 @@
                                 @foreach (var s in inst.Signatures) { <li>@s.Manifestation@(string.IsNullOrEmpty(s.Comment) ? "" : $": {s.Comment}")</li> }
                             </ul>
                         }
-                        <div class="table-wrap"><table class="data">
+                        <div class="table-wrap"><table class="data history-table">
                             <thead><tr><th scope="col">@P["Task.When"]</th><th scope="col">@P["Task.Who"]</th><th scope="col">@P["Task.What"]</th></tr></thead>
                             <tbody>
                                 @foreach (var e in inst.Events)
@@ -112,15 +122,6 @@
                     </section>
                 }
 
-                @if (d.Status == "Open")
-                {
-                    <SignPanel ReasonCodes="d.ReasonCodes" CanSign="d.CanSign" BlockedReasons="d.CannotSignReasons" StepUpRequired="d.StepUpRequired"
-                               StepUpMaxAgeSeconds="d.StepUpMaxAgeSeconds" Busy="busy" Error="@error" @bind-Comment="comment" OnSign="Sign" />
-                }
-                else
-                {
-                    <p class="muted">@(d.Decision is null ? P["Task.StatusIs", d.Status.ToLower(Language.Culture)] : P["Task.StatusIsDecision", d.Status.ToLower(Language.Culture), d.Decision])</p>
-                }
             </article>
         }
     }

@@ -1,4 +1,5 @@
 @page "/sourcing/entries/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject SourcingService Sourcing
 @inject SupplierService Suppliers
@@ -47,8 +48,8 @@
                 }
             </section>
 
-            <SourcingReviewPanel ObjectType="source_entry" Key="@e.Number" Noun="list entry" OnChanged="Load"
-                                 CanSubmit="@(canModify && e.ApprovalState == EntryApprovalStates.Draft)" />
+            <ReviewStrip ObjectType="source_entry" Number="@e.Number" Noun="list entry" CanStart="@(canModify && e.ApprovalState == EntryApprovalStates.Draft)" OnChanged="Load" />
+            <SourcingReviewPanel ObjectType="source_entry" Key="@e.Number" Noun="list entry" Controls="false" />
 
             @if (canModify && e.ApprovalState is EntryApprovalStates.Draft or EntryApprovalStates.Active)
             {

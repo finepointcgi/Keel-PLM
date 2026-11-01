@@ -40,7 +40,7 @@ There is one place for your decisions: **My tasks**. On a phone each waiting tas
 
 ![Approvals on a phone](images/mobile-approvals.png)
 
-The task page starts with a summary of exactly what you are about to sign: the kind of item, number and name, revision and version, state, the markings, who started the review, the submitter's note, the description and attributes, and the content hash (SHA-256) your signature will record. Below it are the comment box and the decision buttons. On a phone each button is full width and at least 56 px high, at the bottom of the page.
+The task page starts with a summary of exactly what you are about to sign: the kind of item, number and name, revision and version, state, the markings, who started the review, the submitter's note, the description and attributes, and the content hash (SHA-256) your signature will record. Right below it are the comment box and the decision buttons, so you can decide without scrolling past the history; on a phone each button is full width and at least 56 px high. The progress map and the workflow history come after, for reference.
 
 ![The review summary on a phone](images/mobile-approve-summary.png)
 ![The decision buttons on a phone](images/mobile-approve-decision.png)

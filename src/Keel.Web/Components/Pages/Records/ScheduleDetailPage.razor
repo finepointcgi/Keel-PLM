@@ -1,4 +1,5 @@
 @page "/records/schedules/{Version:int}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject ScheduleService Schedules
 @inject NavigationManager Nav
@@ -81,8 +82,8 @@
 
         @if (view.Status is ScheduleStatuses.Draft or ScheduleStatuses.InReview or ScheduleStatuses.Published or ScheduleStatuses.Superseded)
         {
-            <SourcingReviewPanel ObjectType="retention_schedule" Key="@($"v{view.Version}")" Noun="schedule" CanSubmit="@(canManage && view.Status == ScheduleStatuses.Draft && view.Classes.Count > 0)"
-                                 SubmitHint="Approvers sign the schedule and every class in it. You cannot approve your own submission." OnChanged="Load" />
+            <ReviewStrip ObjectType="retention_schedule" Number='@($"v{view.Version}")' Noun="schedule" CanStart="@(canManage && view.Status == ScheduleStatuses.Draft && view.Classes.Count > 0)" Hint="Approvers sign the schedule and every class in it. You cannot approve your own submission." OnChanged="Load" />
+            <SourcingReviewPanel ObjectType="retention_schedule" Key="@($"v{view.Version}")" Noun="schedule" Controls="false" />
         }
     }
 </PageFrame>

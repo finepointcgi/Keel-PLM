@@ -1,4 +1,5 @@
 @page "/compliance/lists/{Code}/versions/{Version:int}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject RegulatoryCatalogService Catalog
 @inject NavigationManager Nav
@@ -82,8 +83,8 @@
             </section>
         }
 
-        <Keel.Web.Components.Pages.Sourcing.SourcingReviewPanel ObjectType="reg_list_version" Key="@($"{Code}-{Version}")" Noun="list version"
-            CanSubmit="@(v.Status == VersionStates.Draft && v.Entries > 0)" SubmitHint="Publishing needs the signatures of the approvers you choose." OnChanged="Load" />
+        <ReviewStrip ObjectType="reg_list_version" Number='@($"{Code}-{Version}")' Noun="list version" CanStart="@(v.Status == VersionStates.Draft && v.Entries > 0)" Hint="Publishing needs the signatures of the approvers you choose." OnChanged="Load" />
+        <Keel.Web.Components.Pages.Sourcing.SourcingReviewPanel ObjectType="reg_list_version" Key="@($"{Code}-{Version}")" Noun="list version" Controls="false" />
 
         <AuthorizeView Roles="@Roles.Admin" Context="admin">
             @if (v.Status == VersionStates.Draft)

@@ -1,4 +1,5 @@
 @page "/records/holds/{Number}"
+@using Keel.Web.Components.Pages.Workflow
 @inject CurrentUser Users
 @inject HoldService Holds
 
@@ -44,8 +45,8 @@
 
         @if (hold.Status == "active")
         {
-            <SourcingReviewPanel ObjectType="legal_hold" Key="@hold.Number" Noun="hold" CanSubmit="@(canManage && !hold.InRelease)"
-                                 SubmitHint="Releasing a hold needs the signature of an approver. You cannot approve your own request." OnChanged="Load" />
+            <ReviewStrip ObjectType="legal_hold" Number="@hold.Number" Noun="hold" CanStart="@(canManage && !hold.InRelease)" Hint="Releasing a hold needs the signature of an approver. You cannot approve your own request." OnChanged="Load" />
+            <SourcingReviewPanel ObjectType="legal_hold" Key="@hold.Number" Noun="hold" Controls="false" />
         }
     }
 </PageFrame>
