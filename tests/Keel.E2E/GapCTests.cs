@@ -41,7 +41,7 @@ public sealed partial class GapCTests(E2EFixture fx)
             await BrowserSession.ClickAsync(page, "Start review");
             await Expect(page.GetByText("Review in progress")).ToBeVisibleAsync();
             await Expect(page.Locator(".badges")).ToContainTextAsync("Under Review");
-            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Check out", Exact = true })).ToHaveCountAsync(0);
+            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Edit", Exact = true })).ToHaveCountAsync(0);
             await BrowserSession.AssertBannersAsync(page);
 
             // The task points back at the document, and both signatures need a step-up.

@@ -28,19 +28,19 @@
             <div class="action-bar" role="toolbar" aria-label="Document actions">
                 @if (d.Revision.IsLatest)
                 {
+                    @* Simple path (as on parts): Edit starts a working copy, Save stores it and checks in, Discard undoes it. Saving only the draft sits under More. *@
                     @if (co is null && d.Permissions.CanModify && !d.Revision.IsLocked)
                     {
-                        <button type="button" disabled="@busy" @onclick='() => Run(s => Docs.CheckOutAsync(s, Number, Corr()), "Checked out. Your changes stay private until you check in.")'>Check out</button>
+                        <button type="button" disabled="@busy" data-action="edit" @onclick='() => Run(s => Docs.CheckOutAsync(s, Number, Corr()), "You can edit now. Your changes stay private until you save.")'>Edit</button>
                     }
                     @if (co?.IsMine == true)
                     {
-                        <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save working copy</button>
-                        <input aria-label="Check-in comment" placeholder="Check-in comment" class="grow" @bind="comment" />
-                        <button type="button" disabled="@busy" @onclick="CheckIn">Check in</button>
+                        <input aria-label="Change note" placeholder="Change note (optional)" class="grow" maxlength="1000" data-change-note @bind="comment" />
+                        <button type="button" disabled="@busy" data-action="save" @onclick="CheckIn">Save</button>
                     }
                     @if (co is not null && (co.IsMine || d.Permissions.CanAdminister))
                     {
-                        <button type="button" class="secondary" disabled="@busy" @onclick="() => confirmUndo = true">Undo check-out</button>
+                        <button type="button" class="secondary" disabled="@busy" data-action="discard" @onclick="() => confirmUndo = true">Discard changes</button>
                     }
                     @foreach (var t in d.Transitions.Where(t => t.Allowed))
                     {
@@ -48,12 +48,22 @@
                                 @onclick='() => Run(s => Docs.SetStateAsync(s, Number, t.To, null, false, Corr()), $"Moved to {t.Label}.")'>Move to @t.Label</button>
                     }
                 }
+                @if (d.Revision.IsLatest && co?.IsMine == true)
+                {
+                    <details class="more-menu" data-more-menu>
+                        <summary>More</summary>
+                        <div class="more-panel" role="group" aria-label="Keep a draft">
+                            <p class="muted small">Keep what you have so far without making a new version.</p>
+                            <button type="button" class="secondary" disabled="@busy" @onclick="SaveWorkingCopy">Save draft</button>
+                        </div>
+                    </details>
+                }
             </div>
 
             @if (error is not null) { <p class="error" role="alert">@error</p> }
             @if (co is not null && !co.IsMine)
             {
-                <p class="notice">Checked out by @(co.UserName ?? co.UserId) since @UiText.Utc(co.CheckedOutAt).</p>
+                <p class="notice">Being edited by @(co.UserName ?? co.UserId) since @UiText.Utc(co.CheckedOutAt).</p>
             }
             @if (!d.Permissions.CanModify)
             {
@@ -78,8 +88,8 @@
                             @if (co?.IsMine == true)
                             {
                                 <section class="panel" aria-labelledby="work-heading">
-                                    <h3 id="work-heading">Edit working copy</h3>
-                                    <p class="muted">You have this document checked out. Changes stay private until you check in.</p>
+                                    <h3 id="work-heading">Edit this document</h3>
+                                    <p class="muted">You are editing this document. Changes stay private until you save.</p>
                                     <label class="grid-form">Description <textarea rows="3" maxlength="4000" @bind="workingDescription"></textarea></label>
                                     <h4>Working files</h4>
                                     <DocumentFileList Files="co.Files ?? []" OnRemove="RemoveFile" Busy="busy" Empty="The working copy has no files." />
@@ -249,8 +259,8 @@
             </TabSet>
         </article>
 
-        <ConfirmDialog @bind-Open="confirmUndo" Title="Undo check-out?" Destructive="true" ConfirmText="Undo check-out" OnConfirm='_ => Run(s => Docs.UndoCheckOutAsync(s, Number, Corr()), "Check-out undone. Unsaved changes were discarded.")'>
-            <p>The working copy of @d.Number is discarded: edits and files you have not checked in are lost. The last checked-in version stays as it is.</p>
+        <ConfirmDialog @bind-Open="confirmUndo" Title="Discard your changes?" Destructive="true" ConfirmText="Discard changes" OnConfirm='_ => Run(s => Docs.UndoCheckOutAsync(s, Number, Corr()), "Changes discarded. The document is as it was before you started.")'>
+            <p>Your unsaved edits and files for @d.Number are thrown away. The last saved version stays as it is.</p>
         </ConfirmDialog>
         <ConfirmDialog @bind-Open="confirmOverride" Title="@($"Set the state to {lifecycleStates.FirstOrDefault(s => s.State == overrideState)?.Label ?? overrideState}?")" Destructive="true" ConfirmText="Set state"
                        ReasonLabel="Reason for this override" ReasonRequired="true"
@@ -386,7 +396,7 @@
 
     private Task RemoveFile(Guid fileId) => Run(s => Docs.RemoveFileAsync(s, Number, fileId, Corr()));
 
-    private Task SaveWorkingCopy() => Run(s => Docs.UpdateWorkingCopyAsync(s, Number, workingDescription, Corr()), "Working copy saved.");
+    private Task SaveWorkingCopy() => Run(s => Docs.UpdateWorkingCopyAsync(s, Number, workingDescription, Corr()), "Draft saved.");
 
     // Check-in saves the open working copy first so unsaved edits are never silently dropped.
     private async Task CheckIn()
@@ -394,7 +404,7 @@
         if (await Run(s => Docs.UpdateWorkingCopyAsync(s, Number, workingDescription, Corr())))
         {
             var c = comment;
-            if (await Run(s => Docs.CheckInAsync(s, Number, c, Corr()), "Checked in.")) comment = "";
+            if (await Run(s => Docs.CheckInAsync(s, Number, c, Corr()), "Saved as a new version.")) comment = "";
         }
     }
 

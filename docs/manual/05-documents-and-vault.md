@@ -21,9 +21,11 @@ Tabs: **Overview** (files, type badges, linked parts), **Versions**, **Used by**
 
 ### Work on files
 
-1. **Check out**, then upload files. The primary file replaces the primary; other files are attachments. File names are unique within a document, ignoring case.
-2. **Check in** creates the next iteration. Bytes are not copied: iterations point to the same vault objects.
-3. **Undo check-out** discards your changes.
+1. **Edit** starts a private working copy. Change the description and upload files: the primary file replaces the primary; other files are attachments. File names are unique within a document, ignoring case.
+2. **Save** (with an optional change note) makes the next version. Bytes are not copied: versions point to the same vault objects. Under **More**, **Save draft** keeps what you have so far without making a version.
+3. **Discard changes** asks first, then throws your edits away and returns to the last saved version.
+
+Behind the buttons this is still check-out, check-in and undo check-out, with the same locks, history and audit; the API and the CAD connector use those names.
 
 ### View a file in the browser
 

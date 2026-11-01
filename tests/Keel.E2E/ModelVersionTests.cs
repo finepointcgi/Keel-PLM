@@ -180,10 +180,10 @@ public sealed class ModelVersionTests(E2EFixture fx)
             await Expect(page.Locator("tr[data-version='A.2']")).ToContainTextAsync("triangles");
             await BrowserSession.AssertBannersAsync(page);
 
-            // --- no stray check-out: the Overview tab offers "Check out" (it would say "Checked out by" otherwise)
+            // --- no stray edit: the page offers Edit (it would say "Being edited by" otherwise)
             await session.GotoAsync(alice, $"/documents/{number}");
-            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Check out" })).ToBeVisibleAsync();
-            await Expect(page.GetByText("Checked out by")).ToHaveCountAsync(0);
+            await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Edit", Exact = true })).ToBeVisibleAsync();
+            await Expect(page.GetByText("Being edited by")).ToHaveCountAsync(0);
 
             // --- the same content again is refused with a clear message and creates nothing
             await OpenVersionsAsync(session, alice, number);

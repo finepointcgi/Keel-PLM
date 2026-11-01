@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Keel.Seed;
 using Keel.TestSupport;
 using Microsoft.Playwright;
 using Npgsql;
@@ -139,6 +140,46 @@ public sealed class SimplifyFlowsTests(E2EFixture fx)
             await BrowserSession.OpenMoreAsync(page);
             await Expect(page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Check out", Exact = true })).ToBeVisibleAsync();
             Assert.False(string.IsNullOrEmpty(part));
+        });
+    }
+
+    [E2EFact]
+    public async Task A_document_is_edited_with_Edit_then_Save_and_Discard_undoes_it()
+    {
+        await using var session = new BrowserSession(fx, nameof(A_document_is_edited_with_Edit_then_Save_and_Discard_undoes_it));
+        await session.RunAsync(async () =>
+        {
+            var alice = await session.SignInAsync("alice");
+            var page = alice.Page;
+            var suffix = Guid.NewGuid().ToString("N")[..6];
+            await session.GotoAsync(alice, "/documents/new");
+            await BrowserSession.FillAsync(page.GetByLabel("Name *"), $"E2E simple doc {suffix}");
+            var pdf = Path.Combine(Path.GetTempPath(), $"e2e-simple-{suffix}.pdf");
+            await File.WriteAllBytesAsync(pdf, SyntheticPdf.Create("E2E simple doc", ["Synthetic."]));
+            await page.Locator("input[type=file]").SetInputFilesAsync(pdf);
+            await BrowserSession.ClickAsync(page, "Create document");
+            await page.WaitForURLAsync(DocumentUrl, new PageWaitForURLOptions { Timeout = 60_000 });
+
+            // Edit, change the description, Save: a new version, no check-out wording.
+            await BrowserSession.ClickAsync(page, "Edit", exact: true);
+            await Expect(page.GetByText("You are editing this document")).ToBeVisibleAsync();
+            await BrowserSession.FillAsync(page.GetByLabel("Description"), "Sheet 2 added.");
+            await BrowserSession.FillAsync(page.GetByLabel("Change note"), "Added sheet 2");
+            await BrowserSession.ClickAsync(page, "Save", exact: true);
+            await Expect(page.Locator("[data-toast=success]").Last).ToContainTextAsync("Saved as a new version");
+            await Expect(page.GetByText("Sheet 2 added.")).ToBeVisibleAsync();
+            await Expect(page.GetByText("You are editing this document")).ToHaveCountAsync(0);
+
+            // Discard asks first, then returns to the last saved version.
+            await BrowserSession.ClickAsync(page, "Edit", exact: true);
+            await BrowserSession.FillAsync(page.GetByLabel("Description"), "Throw this away.");
+            await BrowserSession.ClickAsync(page, "Discard changes", exact: true);
+            var dialog = page.GetByRole(AriaRole.Dialog, new PageGetByRoleOptions { Name = "Discard your changes?" });
+            await Expect(dialog).ToBeVisibleAsync();
+            await dialog.GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Discard changes" }).ClickAsync();
+            await Expect(page.Locator("[data-toast=success]").Last).ToContainTextAsync("Changes discarded");
+            await Expect(page.GetByText("Throw this away.")).ToHaveCountAsync(0);
+            await Expect(page.GetByText("Sheet 2 added.")).ToBeVisibleAsync();
         });
     }
 
