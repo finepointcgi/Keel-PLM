@@ -55,7 +55,9 @@ LABEL org.opencontainers.image.title="Keel PLM API and UI" \
       org.opencontainers.image.version="${KEEL_VERSION}" \
       org.opencontainers.image.revision="${KEEL_REVISION}" \
       org.opencontainers.image.created="${KEEL_CREATED}" \
-      org.opencontainers.image.documentation="docs/ops/configuration.md" \
+      org.opencontainers.image.documentation="https://finepointcgi.github.io/Keel-PLM/" \
+      org.opencontainers.image.source="https://github.com/finepointcgi/Keel-PLM" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.base.name="${RUNTIME_IMAGE}"
 
 USER 0
@@ -114,6 +116,8 @@ ARG KEEL_REVISION=unknown
 LABEL org.opencontainers.image.title="Keel PLM demo" \
       org.opencontainers.image.description="Keel PLM demonstration: synthetic data, demo sign-in, in-container PostgreSQL and S3 vault. Never for real data." \
       org.opencontainers.image.version="${KEEL_VERSION}" \
+      org.opencontainers.image.source="https://github.com/finepointcgi/Keel-PLM" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.revision="${KEEL_REVISION}"
 USER root
 RUN apt-get update \

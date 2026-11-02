@@ -93,6 +93,11 @@ docs/                ADRs, assumptions, setup, this file
 ## How to run
 See [setup.md](setup.md).
 
+## License, releases and the docs site
+- The code is **AGPL-3.0-only** (`LICENSE`); the images carry `org.opencontainers.image.licenses`. Never describe the software as CMMC or ITAR certified.
+- **Release:** push a tag `vX.Y.Z` (a suffix such as `-rc1` makes a pre-release). `.github/workflows/release.yml` builds the production image (`ghcr.io/finepointcgi/keel-plm`) and the one-container demo (`ghcr.io/finepointcgi/keel-plm-demo`), pushes both and creates the GitHub release. Tag only a commit that `main.yml` has passed.
+- **Docs site:** `.github/workflows/pages.yml` runs `scripts/build-docs-site.py` (needs `pip install markdown`) on pushes to main that touch `site/`, `docs/manual`, `docs/ops` or `docs/setup.md`. The manual is the source of truth; edit the markdown, not the HTML. Run the script locally with an output directory to check links before pushing.
+
 ## Increment log
 
 ### 1.1 Foundations (2026-10-27)

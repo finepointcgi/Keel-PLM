@@ -1,0 +1,71 @@
+/* Keel PLM documentation site. Tokens match the product (violet from the logo); dark mode follows the visitor's system. */
+:root {
+  --bg: #f7f6fb; --surface: #ffffff; --text: #1b1830; --muted: #58546f; --border: #ddd9ec;
+  --brand: #5a0fd6; --brand-text: #ffffff; --brand-bg: #f1e9ff; --link: #5200c4; --code-bg: #f0eef8; --shadow: 0 8px 24px rgba(40, 10, 100, 0.10);
+  --side-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #100e1a; --surface: #181527; --text: #ece9f7; --muted: #aaa5c4; --border: #2c2845; --brand: #c08bff; --brand-text: #1a0640; --brand-bg: #2b1856; --link: #d3adff; --code-bg: #211d36; --shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16.5px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--link); }
+.skip { position: absolute; left: -999px; top: 8px; background: var(--brand); color: var(--brand-text); padding: 8px 12px; border-radius: 8px; z-index: 50; }
+.skip:focus { left: 8px; }
+.top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 18px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.2rem; color: var(--text); text-decoration: none; }
+.top-links { display: flex; gap: 6px; margin-left: 8px; }
+.top-links a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px; font-size: 0.95rem; }
+.top-links a:hover { color: var(--text); background: var(--brand-bg); }
+.top-links a[aria-current] { color: var(--brand); background: var(--brand-bg); font-weight: 600; }
+.menu { display: none; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 6px 12px; font: inherit; cursor: pointer; }
+.search { position: relative; margin-left: auto; width: min(320px, 100%); }
+.search input { width: 100%; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+.search input:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+#results { position: absolute; right: 0; top: 46px; width: min(440px, 92vw); max-height: 70vh; overflow: auto; margin: 0; padding: 6px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+#results a { display: block; padding: 8px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
+#results a:hover, #results a:focus { background: var(--brand-bg); }
+#results small { display: block; color: var(--muted); font-size: 0.82rem; }
+.layout { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); max-width: 1320px; margin: 0 auto; }
+.side { position: sticky; top: 58px; align-self: start; height: calc(100vh - 58px); overflow: auto; padding: 18px 12px 40px 20px; border-right: 1px solid var(--border); font-size: 0.93rem; }
+.nav-section { margin: 16px 0 6px; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.nav-group { margin: 2px 0; }
+.nav-group summary { cursor: pointer; padding: 5px 8px; border-radius: 8px; font-weight: 600; }
+.nav-group summary:hover { background: var(--brand-bg); }
+.nav-group ul { list-style: none; margin: 2px 0 6px 10px; padding: 0 0 0 8px; border-left: 2px solid var(--border); }
+.nav-group li a { display: block; padding: 4px 8px; border-radius: 8px; color: var(--muted); text-decoration: none; }
+.nav-group li a:hover { color: var(--text); background: var(--brand-bg); }
+.nav-group li a.current { color: var(--brand); background: var(--brand-bg); font-weight: 700; }
+.content { padding: 28px clamp(18px, 4vw, 56px) 40px; min-width: 0; }
+.doc { max-width: 860px; }
+.doc h1 { font-size: clamp(1.9rem, 4vw, 2.5rem); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 18px; }
+.doc h2 { font-size: 1.55rem; margin: 2.2em 0 0.5em; padding-top: 0.4em; border-top: 1px solid var(--border); letter-spacing: -0.01em; }
+.doc h3 { font-size: 1.15rem; margin: 1.7em 0 0.4em; }
+.doc .headerlink { margin-left: 8px; opacity: 0; text-decoration: none; color: var(--muted); font-weight: 400; }
+.doc :is(h1, h2, h3):hover .headerlink, .doc .headerlink:focus { opacity: 1; }
+.doc img { max-width: 100%; height: auto; display: block; margin: 18px 0; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow); background: var(--surface); }
+.doc table { border-collapse: collapse; display: block; overflow-x: auto; max-width: 100%; margin: 16px 0; font-size: 0.94rem; }
+.doc th, .doc td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+.doc th { background: var(--brand-bg); }
+.doc code { background: var(--code-bg); padding: 2px 6px; border-radius: 6px; font-size: 0.9em; }
+.doc pre { background: var(--code-bg); padding: 14px 16px; border-radius: 12px; overflow-x: auto; border: 1px solid var(--border); line-height: 1.5; }
+.doc pre code { background: none; padding: 0; }
+.doc blockquote { margin: 18px 0; padding: 10px 18px; border-left: 4px solid var(--brand); background: var(--brand-bg); border-radius: 0 12px 12px 0; }
+.doc blockquote p { margin: 6px 0; }
+.doc kbd { background: var(--code-bg); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; font-size: 0.88em; }
+.pager { display: flex; justify-content: space-between; gap: 14px; max-width: 860px; margin-top: 44px; }
+.pager a { display: block; flex: 1; padding: 14px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); text-decoration: none; color: var(--text); font-weight: 600; }
+.pager a:hover { border-color: var(--brand); }
+.pager small { display: block; color: var(--muted); font-weight: 400; }
+.pager .next { text-align: right; }
+.edit { max-width: 860px; font-size: 0.9rem; color: var(--muted); }
+.foot { max-width: 1320px; margin: 0 auto; padding: 26px 20px 50px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .menu { display: inline-block; }
+  .side { display: none; position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); padding-left: 16px; }
+  .side.open { display: block; }
+  .search { margin-left: 0; width: 100%; order: 5; }
+  .top-links { margin-left: 0; }
+}

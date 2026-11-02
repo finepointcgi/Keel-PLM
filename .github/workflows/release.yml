@@ -1,0 +1,78 @@
+# Cuts a release when a version tag (v1.2.3) is pushed: builds the production image (--target runtime, pins from deploy/images.env) and the one-container
+# demo image (--target demo), pushes both to GitHub Container Registry and creates the GitHub release. Only plain `docker` commands are used, so no
+# third-party action runs with the registry token. The release does not re-run the test suites: tag a commit that main.yml has already passed.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  images:
+    name: Build and publish the images, create the release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Work out names and versions
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          version="${GITHUB_REF_NAME#v}"
+          echo "OWNER=$owner" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "APP=ghcr.io/$owner/keel-plm" >> "$GITHUB_ENV"
+          echo "DEMO=ghcr.io/$owner/keel-plm-demo" >> "$GITHUB_ENV"
+          # A tag with a suffix (v1.0.0-rc1) is a pre-release and never moves "latest".
+          if [[ "$version" == *-* ]]; then echo "PRERELEASE=true" >> "$GITHUB_ENV"; else echo "PRERELEASE=false" >> "$GITHUB_ENV"; fi
+      - name: Build the production image from the pinned bases
+        run: |
+          set -a; source deploy/images.env; set +a
+          docker build --target runtime -t "$APP:$VERSION" \
+            --build-arg SDK_IMAGE="$SDK_IMAGE" --build-arg RUNTIME_IMAGE="$RUNTIME_IMAGE" \
+            --build-arg KEEL_VERSION="$VERSION" --build-arg KEEL_REVISION="$GITHUB_SHA" \
+            --build-arg KEEL_CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+      - name: Build the demo image
+        run: |
+          set -a; source deploy/images.env; set +a
+          docker build --target demo -t "$DEMO:$VERSION" \
+            --build-arg SDK_IMAGE="$SDK_IMAGE" \
+            --build-arg KEEL_VERSION="$VERSION" --build-arg KEEL_REVISION="$GITHUB_SHA" .
+      - name: Push to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for image in "$APP" "$DEMO"; do
+            docker push "$image:$VERSION"
+            if [[ "$PRERELEASE" == "false" ]]; then
+              docker tag "$image:$VERSION" "$image:latest"
+              docker push "$image:latest"
+            fi
+          done
+          docker logout ghcr.io
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > notes.md <<EOF
+          ## Run it
+
+          Try the demo (synthetic data, one container, never for real data):
+
+          \`\`\`bash
+          docker run --rm -p 8080:8080 $DEMO:$VERSION
+          \`\`\`
+
+          Then open <http://localhost:8080>. The sign-in accounts are listed in the [getting started chapter](https://${OWNER}.github.io/Keel-PLM/manual/01-getting-started.html).
+
+          Production image: \`$APP:$VERSION\`. Install guide: <https://${OWNER}.github.io/Keel-PLM/manual/24-administrator-and-operator-guide.html>.
+
+          Keel PLM is licensed under AGPL-3.0-only. It is built to support export-control and CMMC work; the software itself is not certified.
+          EOF
+          flags=(--generate-notes --notes-file notes.md)
+          if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --title "Keel PLM $VERSION" "${flags[@]}"

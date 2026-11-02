@@ -46,3 +46,5 @@ footer { border-top: 1px solid var(--border); padding: 28px 0 48px; color: var(-
 .split + .split { margin-top: 40px; } .shot img.phone { max-width: 340px; margin: auto; } .hero-shot img { max-height: none; }
 .logo img { width: 34px; height: 34px; }
 .hero { background: radial-gradient(60% 60% at 85% 0%, rgba(160, 48, 255, 0.14), transparent 70%); }
+.hero .note { margin-top: 16px; }
+.hero .note code { background: var(--border); padding: 2px 8px; border-radius: 8px; word-break: break-all; }

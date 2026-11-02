@@ -26,10 +26,8 @@ This manual is written from the user's point of view, with task-oriented steps. 
 | 14 | [Requirements and traceability](14-requirements.md) | Specifications, links, suspect links, verification |
 | 15 | [Product compliance](15-compliance.md) | Substances, lists, declarations, roll-up |
 | 16 | [Records management](16-records.md) | Retention, legal holds, disposition, archives |
-| 17 | [Programs](17-programs.md) | Schedules, dependencies, deliverables, gates |
-| 18 | [Reports and output](18-reports-and-output.md) | Report builder, signed release package PDFs and verifying them, Excel BOM, mass change |
 | 17 | [Programs](17-programs.md) | Schedules, dependencies, deliverables, gates, resources, load and cost |
-| 18 | [Reports and output](18-reports-and-output.md) | Report builder, release package PDFs, Excel BOM, mass change |
+| 18 | [Reports and output](18-reports-and-output.md) | Report builder, signed release package PDFs and verifying them, Excel BOM, mass change |
 | 19 | [Notifications and activity](19-notifications-and-activity.md) | The bell, watching, comments, activity |
 | 20 | [Audit and integrity verification](20-audit-and-integrity.md) | Reading and verifying the audit log |
 | 21 | [Integration, ERP events and TDP](21-integration-and-tdp.md) | Outbox, sinks, pull API, technical data packages |

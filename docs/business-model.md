@@ -8,7 +8,7 @@ The software is free to download, run and use, with every feature and no per-sea
 
 ## Decide first: the license
 
-The repository has no `LICENSE` file yet. Until it has one, nobody has a clear right to use it, so this comes before any website or price. Options, from most to least open:
+**Decided:** the repository is licensed under AGPL-3.0-only (see `LICENSE`), with a commercial license to be offered to companies that cannot use AGPL. The options that were weighed, from most to least open:
 
 | Option | Free to run | Stops a cloud company reselling it | Notes |
 |---|---|---|---|
@@ -35,7 +35,7 @@ Small and mid-size defense suppliers who need PLM and compliance but cannot affo
 
 ## First steps
 
-1. Choose and add the license.
+1. ~~Choose and add the license.~~ Done: AGPL-3.0-only.
 2. Put the site (`site/`) on GitHub Pages or any static host, and turn on GitHub Discussions as the place to say "I would pay for this".
 3. Offer setup and support to the first few teams at a discount in return for a case study.
 4. Price only after talking to three to five real buyers.
