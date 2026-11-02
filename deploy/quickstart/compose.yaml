@@ -1,0 +1,92 @@
+# Keel PLM quickstart: the published image plus PostgreSQL, a SeaweedFS vault and a Keycloak sign-in, on one machine.
+# For evaluation and small trials. The sign-in is the development Keycloak realm with synthetic users and fixed dev passwords, so do not put real
+# data in it; for real use follow docs/ops/compose-example.md and connect your own identity provider.
+#
+#   docker compose up -d         then open http://localhost:8080  (first start takes about a minute; sign in as alice)
+#
+# If port 8080 is taken: set KEEL_PORT and point KEEL_REALM_FILE at a copy of keel-realm.json with that port in the keel-web client's redirect addresses.
+# KEEL_IMAGE picks a release (default: the latest). The host name keel.localhost reaches this machine from a browser, and from the app container via
+# the extra_hosts entry, so the browser and the app see the same sign-in address.
+name: keel-quickstart
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: { POSTGRES_PASSWORD: keel_superuser_quickstart }
+    command: ["-c", "max_connections=200"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./00-roles.sql:/docker-entrypoint-initdb.d/00-roles.sql:ro
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d keel"], interval: 5s, retries: 30 }
+    restart: unless-stopped
+
+  vault:
+    image: chrislusf/seaweedfs:4.47
+    command: ["mini", "-dir=/data", "-s3.config=/etc/seaweedfs/s3.json", "-bucket=keel-vault", "-admin.ui=false",
+              "-master.volumeSizeLimitMB=256", "-master.telemetry=false"]
+    volumes:
+      - vaultdata:/data
+      - ./s3.json:/etc/seaweedfs/s3.json:ro
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: keel_kc_admin_quickstart
+      KC_HOSTNAME: http://keel.localhost:${KEEL_IDP_PORT:-18080}
+      KC_HEALTH_ENABLED: "true"
+    ports: ["${KEEL_IDP_PORT:-18080}:8080"]
+    volumes:
+      - ${KEEL_REALM_FILE:-./keel-realm.json}:/opt/keycloak/data/import/keel-realm.json:ro
+    restart: unless-stopped
+
+  # One-shot: a fresh audit-checkpoint signing key on first start, kept in a volume.
+  keys:
+    image: alpine/openssl:latest
+    entrypoint: ["/bin/sh", "-c", "test -f /keys/checkpoint-signing.pem || openssl ecparam -name prime256v1 -genkey -noout -out /keys/checkpoint-signing.pem; chmod 0644 /keys/checkpoint-signing.pem"]
+    volumes: [keys:/keys]
+
+  # One-shot: applies the database migrations, then exits.
+  migrate:
+    image: &keel ${KEEL_IMAGE:-ghcr.io/finepointcgi/keel-plm:latest}
+    command: ["--migrate"]
+    environment:
+      Keel__Database__MigratorConnectionString: Host=postgres;Database=keel;Username=keel_migrator;Password=keel_migrator_dev
+      Keel__Database__AppConnectionString: Host=postgres;Database=keel;Username=keel_app;Password=keel_app_dev
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+
+  keel:
+    image: *keel
+    ports: ["${KEEL_PORT:-8080}:8080"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Keel__Database__AppConnectionString: Host=postgres;Database=keel;Username=keel_app;Password=keel_app_dev;Maximum Pool Size=40
+      Keel__Auth__Authority: http://keel.localhost:${KEEL_IDP_PORT:-18080}/realms/keel
+      Keel__Auth__RequireHttpsMetadata: "false"
+      Keel__Auth__WebClientSecret: keel-web-dev-secret
+      Keel__Security__RequireFips: "false"
+      Keel__Vault__ServiceUrl: http://vault:8333
+      Keel__Vault__AccessKey: keel_vault_dev
+      Keel__Vault__SecretKey: keel_vault_dev_secret
+      Keel__Vault__Bucket: keel-vault
+      Keel__Vault__ServerSideEncryption: "false"
+      Keel__Vault__Scanning__Mode: Disabled
+      Keel__Vault__Scanning__AcknowledgeUnscannedUploads: "true"
+      Keel__Audit__CheckpointPrivateKeyPath: /keys/checkpoint-signing.pem
+      Keel__Audit__CheckpointInterval: "00:05:00"
+    extra_hosts: ["keel.localhost:host-gateway"]
+    volumes: [keys:/keys:ro]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      keys: { condition: service_completed_successfully }
+      vault: { condition: service_started }
+      keycloak: { condition: service_started }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  vaultdata:
+  keys:
