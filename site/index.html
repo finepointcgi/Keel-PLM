@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keel PLM: free product lifecycle management you run yourself</title>
+<meta name="description" content="Keel PLM is free, self-hosted product lifecycle management for teams that handle export-controlled engineering data. Parts, documents, BOMs, change control, e-signatures and a tamper-evident audit trail, on your own servers.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="logo" href="#">Keel PLM</a>
+    <nav aria-label="Main">
+      <a href="#what">What it does</a>
+      <a href="#screens">Screenshots</a>
+      <a href="#free">Free, and how it stays free</a>
+      <a href="#faq">Questions</a>
+      <a href="https://github.com/finepointcgi/Keel-PLM">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <h1>Product lifecycle management you can run yourself, for free.</h1>
+      <p class="lead">Parts, documents, bills of materials, change control and e-signatures, built for teams whose data cannot leave the building. Runs on your own servers, with no internet connection needed.</p>
+      <div class="btns">
+        <a class="btn" href="https://github.com/finepointcgi/Keel-PLM">Get it on GitHub</a>
+        <a class="btn alt" href="#what">See what it does</a>
+      </div>
+      <div class="hero-shot shot"><img src="images/parts-overview.png" alt="A part page in Keel PLM showing its markings, lifecycle, review step and tabs." width="1400" height="900"></div>
+    </div>
+
+    <section id="what">
+      <h2>Everything a product team needs, nothing it has to send out</h2>
+      <p class="sub">Keel is designed for organizations that work with ITAR, EAR and CUI data and have to meet NIST SP 800-171 and CMMC Level 2 expectations. It is built to support that work. It is not itself a certification.</p>
+      <div class="grid">
+        <div class="card"><h3>Parts and BOMs</h3><p>Revisions, versions, engineering and manufacturing BOMs, variants, effectivity and baselines.</p></div>
+        <div class="card"><h3>Documents and a secure vault</h3><p>Files stored in your own object storage, stamped on download, with 3D viewing and visual comparison.</p></div>
+        <div class="card"><h3>Change control</h3><p>Change requests and notices, impact analysis, board review and a timeline of what changed and why.</p></div>
+        <div class="card"><h3>Review in one click</h3><p>Submit from the page header. Reviewers sign from a phone with a summary of exactly what they are signing.</p></div>
+        <div class="card"><h3>Access by marking</h3><p>Who can see what depends on markings, citizenship, programs and export authorizations, checked on every request.</p></div>
+        <div class="card"><h3>Tamper-evident audit</h3><p>Every action is written to a hash-chained log that an auditor can verify end to end.</p></div>
+        <div class="card"><h3>Quality and suppliers</h3><p>Nonconformances, corrective actions, deviations, supplier portal and sourcing lists.</p></div>
+        <div class="card"><h3>CAD and migration</h3><p>A FreeCAD connector with package check-out, and importers to move data in from other systems.</p></div>
+      </div>
+    </section>
+
+    <section id="screens">
+      <h2>Made to be easy to use</h2>
+      <p class="sub">Review and release live in the page header, approvals work on a phone, and forms show only what you need first.</p>
+      <div class="split">
+        <div><h3>One review step, right where you are</h3><p>Every part, document and change shows where it stands and the one button that moves it on. Pick the people, add a note, and the reviewers are listed for you.</p></div>
+        <div class="shot"><img src="images/workflow-submit-dialog.png" alt="The Submit for review dialog listing eligible reviewers and approvers." loading="lazy" width="1400" height="900"></div>
+      </div>
+      <div class="split flip">
+        <div><h3>Approve from your phone</h3><p>My tasks collects everything waiting on you. Open one, read what you are signing, and decide with large buttons. Your signature records exactly what you saw.</p></div>
+        <div class="shot"><img src="images/mobile-part.png" class="phone" alt="A part page on a phone." loading="lazy" width="375" height="750"></div>
+      </div>
+      <div class="split">
+        <div><h3>Access you can explain</h3><p>Ask the system why someone can or cannot see an item, and it answers in plain words: the marking, the rule, the reason.</p></div>
+        <div class="shot"><img src="images/markings-access-check.png" alt="The access check page explaining why a person is denied an export-controlled item." loading="lazy" width="1400" height="900"></div>
+      </div>
+      <div class="split flip">
+        <div><h3>An audit trail you can prove</h3><p>Verify the whole chain with one button. If anyone changed or removed a record, the check says exactly where.</p></div>
+        <div class="shot"><img src="images/audit-verify-chain.png" alt="The audit log chain verification result." loading="lazy" width="1400" height="900"></div>
+      </div>
+    </section>
+
+    <section id="free">
+      <h2>Free to use, and a plan for keeping it that way</h2>
+      <p class="sub">Keel is free to download and run on your own servers. The money to keep building it comes from people who want help, not from locking the product.</p>
+      <div class="price">
+        <div class="card main"><span class="tag">Always free</span><h3>Self-hosted Keel</h3>
+          <p>The whole product, every feature, on your own hardware.</p>
+          <ul><li>No per-seat fees</li><li>No feature paywalls</li><li>Full documentation and manual</li><li>Community help on GitHub</li></ul></div>
+        <div class="card"><span class="tag">Planned, paid</span><h3>Support and updates</h3>
+          <p>A named contact, response times, upgrade help and security-fix notices.</p>
+          <ul><li>For teams that cannot be without it</li><li>Annual plan</li></ul></div>
+        <div class="card"><span class="tag">Planned, paid</span><h3>Setup and migration</h3>
+          <p>We install it in your environment and move your parts, documents and history across.</p>
+          <ul><li>One-time project</li><li>Includes training</li></ul></div>
+        <div class="card"><span class="tag">Planned, paid</span><h3>Compliance help</h3>
+          <p>Evidence packs and configuration guidance for audits against NIST SP 800-171 and CMMC.</p>
+          <ul><li>Mapped to your controls</li></ul></div>
+      </div>
+      <p class="note" style="margin-top:16px">The paid options are plans, not products on sale yet. Prices are not set. To say you are interested, open a discussion on GitHub.</p>
+    </section>
+
+    <section id="faq">
+      <h2>Questions</h2>
+      <details><summary>Does it really cost nothing?</summary><p>Yes. You run it on your own servers and pay nothing to us. You pay for your own hardware and for the identity provider and storage it uses.</p></details>
+      <details><summary>Why would I ever pay?</summary><p>Only if you want a person to help: install it, move your data, answer questions quickly, or prepare for an audit. The software itself is the same.</p></details>
+      <details><summary>Does it need the internet?</summary><p>No. It is designed to run air-gapped, and it ships with an offline install bundle.</p></details>
+      <details><summary>What does it run on?</summary><p>A .NET application with PostgreSQL, S3-compatible object storage and Keycloak for sign-in, packaged as a container image with a Helm chart.</p></details>
+      <details><summary>Is it certified for CMMC or ITAR?</summary><p>No. Software is not certified for those on its own. Keel is built to support the controls you must meet, and your organization's setup and practices decide the outcome.</p></details>
+      <details><summary>Is this a finished product?</summary><p>It is under active development. Try it with demo data first, and read the status notes in the repository before relying on it for real work.</p></details>
+    </section>
+  </main>
+
+  <footer>
+    <p>Keel PLM. Screenshots show synthetic demonstration data. <a href="https://github.com/finepointcgi/Keel-PLM">Source and documentation on GitHub</a>.</p>
+  </footer>
+</div>
+</body>
+</html>
