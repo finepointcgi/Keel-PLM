@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Keel PLM">
+  <defs>
+    <linearGradient id="band" gradientUnits="userSpaceOnUse" x1="70" y1="230" x2="450" y2="60">
+      <stop offset="0" stop-color="#7000ff"/>
+      <stop offset="0.6" stop-color="#a52cff"/>
+      <stop offset="1" stop-color="#c84dff"/>
+    </linearGradient>
+    <linearGradient id="head" gradientUnits="userSpaceOnUse" x1="455" y1="125" x2="445" y2="240">
+      <stop offset="0" stop-color="#a030ff"/>
+      <stop offset="1" stop-color="#5a02ee"/>
+    </linearGradient>
+    <linearGradient id="shade" gradientUnits="userSpaceOnUse" x1="90" y1="232" x2="190" y2="120">
+      <stop offset="0" stop-color="#1c0066" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#1c0066" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="top" gradientUnits="userSpaceOnUse" x1="190" y1="170" x2="320" y2="240">
+      <stop offset="0" stop-color="#d04fff"/>
+      <stop offset="1" stop-color="#a02cf8"/>
+    </linearGradient>
+    <linearGradient id="left" gradientUnits="userSpaceOnUse" x1="176" y1="200" x2="256" y2="334">
+      <stop offset="0" stop-color="#8a0cff"/>
+      <stop offset="1" stop-color="#5604ea"/>
+    </linearGradient>
+    <linearGradient id="right" gradientUnits="userSpaceOnUse" x1="256" y1="240" x2="338" y2="320">
+      <stop offset="0" stop-color="#4a00c8"/>
+      <stop offset="1" stop-color="#2a0090"/>
+    </linearGradient>
+    <path id="arrow" d="M55 229A203 203 0 0 1 426 145L460 123L452 242L340 202L373 180A140 140 0 0 0 118 229Z"/>
+  </defs>
+  <g stroke-linejoin="round" stroke-width="10">
+    <use href="#arrow" fill="url(#band)" stroke="url(#band)"/>
+    <path d="M426 145L460 123L452 242L340 202L373 180Z" fill="url(#head)" stroke="url(#head)"/>
+    <use href="#arrow" fill="url(#shade)" stroke="none"/>
+    <g transform="rotate(180 256 256)">
+      <use href="#arrow" fill="url(#band)" stroke="url(#band)"/>
+      <path d="M426 145L460 123L452 242L340 202L373 180Z" fill="url(#head)" stroke="url(#head)"/>
+      <use href="#arrow" fill="url(#shade)" stroke="none"/>
+    </g>
+    <path d="M256 150L338 194L256 238L174 194Z" fill="url(#top)" stroke="url(#top)"/>
+    <path d="M174 194L256 238V334L174 290Z" fill="url(#left)" stroke="url(#left)"/>
+    <path d="M256 238L338 194V290L256 334Z" fill="url(#right)" stroke="url(#right)"/>
+  </g>
+</svg>

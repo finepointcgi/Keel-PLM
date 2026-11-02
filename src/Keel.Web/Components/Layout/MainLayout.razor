@@ -20,7 +20,7 @@
         {
             <button type="button" class="icon-button menu-button" aria-label="@S["Menu"]" aria-expanded="@(railOpen ? "true" : "false")" aria-controls="main-nav" @onclick="ToggleRail"><Icon Name="menu" /></button>
         }
-        <a class="brand" href=""><Icon Name="part" /><span class="brand-text">Keel PLM</span></a>
+        <a class="brand" href=""><img class="brand-logo" src="_content/Keel.Web/logo.svg" alt="" width="28" height="28" /><span class="brand-text">Keel PLM</span></a>
         @if (!locked && ready && !supplier)
         {
             <button type="button" class="search-trigger" aria-label="@S["Search.Trigger"]" aria-keyshortcuts="Control+K Meta+K" data-action="open-palette" @onclick="Palette.Open">

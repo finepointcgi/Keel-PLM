@@ -149,3 +149,4 @@ nav.breadcrumbs li[aria-current="page"] { color: var(--c-muted); overflow-wrap: 
 @media (max-width: 480px) {
   .user-menu-panel { position: fixed; left: var(--sp-3); right: var(--sp-3); top: calc(var(--banner-h) + 52px); width: auto; max-width: none; }
 }
+.brand .brand-logo { width: 28px; height: 28px; flex: none; }
