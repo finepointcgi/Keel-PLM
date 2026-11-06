@@ -77,6 +77,8 @@ function meshFromTriangles(positions) {
 }
 
 export async function init(host, payload, dotnet) {
+  // The panel can be gone again (the person switched tab) by the time the module loads: nothing to draw into, and not an error for the page.
+  if (!host?.isConnected) return;
   dispose(host);
   const canvas = host.querySelector('canvas');
   const stage = host.closest('.mv-stage') ?? host.parentElement;

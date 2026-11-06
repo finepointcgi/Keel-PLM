@@ -473,6 +473,9 @@ public sealed class AccessibilityTests(E2EFixture fx)
     {
         // Evaluated through the protocol: injecting a <script> element would be (rightly) refused by the strict CSP.
         await page.EvaluateAsync(axe);
+        // The marking banners are sticky and cover whatever scrolls under them; axe would then measure that text against the banner colour. They are checked for
+        // presence and text elsewhere, so for the contrast audit they take their place in the flow (set through the style object, which the strict CSP allows).
+        await page.EvaluateAsync("() => document.querySelectorAll('.marking-banner').forEach(b => { b.style.position = 'static'; })");
         var tags = JsonSerializer.Serialize(Tags);
         var json = await page.EvaluateAsync<JsonElement>($$"""
             async () => {
@@ -480,6 +483,7 @@ public sealed class AccessibilityTests(E2EFixture fx)
               return r.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 4).map(n => ({ target: n.target.join(' '), html: n.html.slice(0, 160), why: (n.failureSummary || '').split('\n').slice(0, 3).join(' ') })) }));
             }
             """);
+        await page.EvaluateAsync("() => document.querySelectorAll('.marking-banner').forEach(b => { b.style.position = ''; })");
         foreach (var v in json.EnumerateArray())
         {
             var sb = new StringBuilder();
