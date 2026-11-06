@@ -130,7 +130,7 @@ public sealed class ClamdScannerTests
             for (long sent = 0; sent < total; sent += block.Length)
             {
                 await scan.WriteAsync(block);
-                if ((sent / block.Length) % 16 == 0) peak = Math.Max(peak, GC.GetTotalMemory(false));
+                if ((sent / block.Length) % 16 == 0) peak = Math.Max(peak, GC.GetTotalMemory(true));   // collected first: this measures what is retained, not garbage the GC has not got to yet
             }
             Assert.Equal(ScanVerdict.Clean, (await scan.FinishAsync()).Verdict);
         }
