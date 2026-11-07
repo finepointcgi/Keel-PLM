@@ -107,6 +107,8 @@ table.data td:first-child { white-space: nowrap; }
 table.data td .chip { vertical-align: middle; }
 /* A column that holds marking chips never collapses: the table scrolls inside its wrapper instead. */
 table.data td:has(.chip) { min-width: 15rem; }
+/* The schedule's first cell holds a long title and a marking chip: it wraps, so the chip never spills over the next column. */
+table.data[data-table="schedule"] td:first-child { white-space: normal; }
 table.data tr.restricted td, table.data .muted-row td { color: var(--c-muted); }
 table.data th button.sort { background: transparent; color: inherit; border: 0; padding: 0; min-height: 24px; font-weight: 700; font-size: inherit; display: inline-flex; gap: 4px; align-items: center; text-align: left; box-shadow: none; }
 table.data th button.sort:hover { text-decoration: underline; filter: none; }
