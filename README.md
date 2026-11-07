@@ -75,7 +75,7 @@ Also included: quality (NCR, CAPA, deviations), suppliers and RFQs with a suppli
 | You are | Start here |
 |---|---|
 | Evaluating on your laptop | The one-line demo above |
-| Trying it on one machine | [Quickstart](docs/ops/quickstart.md): `docker compose up -d` in `deploy/quickstart` |
+| Trying it on one machine | [Quickstart](docs/ops/quickstart.md): `./setup.sh` then `docker compose up -d` in `deploy/quickstart` |
 | A small site with one server | [Docker Compose production bundle](docs/ops/compose-example.md) |
 | A Kubernetes site | [Helm chart](docs/ops/kubernetes.md) (`deploy/helm/keel`) |
 | On a closed network | [Offline install](docs/ops/offline-install.md): a signed bundle with the images, sources and SBOMs |

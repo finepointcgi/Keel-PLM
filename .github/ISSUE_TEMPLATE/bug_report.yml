@@ -1,0 +1,25 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not include real export-controlled or controlled data. For a security problem, do not file an issue: see SECURITY.md.
+  - type: input
+    id: version
+    attributes: { label: Version, description: "Image tag or commit, for example 0.1.0", placeholder: "0.1.0" }
+    validations: { required: true }
+  - type: dropdown
+    id: how
+    attributes:
+      label: How are you running it?
+      options: [Quickstart (Docker Compose), Demo image, Production Compose, Helm chart, From source, Other]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: "What you did, what you expected and what you saw. Screenshots help." }
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes: { label: Relevant log lines, render: text }

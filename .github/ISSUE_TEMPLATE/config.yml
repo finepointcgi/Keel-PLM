@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/finepointcgi/Keel-PLM/security/advisories/new
+    about: Please report vulnerabilities privately, not as an issue.
+  - name: User and administrator guide
+    url: https://finepointcgi.github.io/Keel-PLM/manual/index.html
+    about: The guide answers most how-do-I questions.

@@ -14,3 +14,7 @@ deploy/offline/out/
 __pycache__/
 .pytest_cache/
 .venv-addons/
+
+# Quickstart: secrets and files that setup.sh writes
+deploy/quickstart/.env
+deploy/quickstart/generated/
