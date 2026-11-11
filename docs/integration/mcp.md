@@ -1,11 +1,13 @@
 # AI assistants (MCP)
 
 Keel runs a [Model Context Protocol](https://modelcontextprotocol.io) server at `/api/v1/mcp`, so an AI assistant inside the
-enclave can answer questions about parts, BOMs, documents, changes, requirements and programs. Design and rationale:
+enclave can answer questions about parts, BOMs, documents, changes, requirements and programs, and do routine work on them. Design and rationale:
 [ADR-0064](../adr/0064-mcp-server-for-ai-assistants.md).
 
-**Every tool only reads.** Each one calls the same service as the REST API, as the signed-in person, so the export-control and
-CUI read rule, redaction and auditing are exactly those of the rest of Keel.
+Each tool calls the same service as the REST API, as the signed-in person, so roles, the export-control and CUI read rule,
+redaction, check-out locks and auditing are exactly those of the rest of Keel. Read tools look things up; write tools create and
+edit work in progress. **Releasing, approving, signing, changing state or markings, ECNs and change tasks are not available**:
+they stay with people in Keel.
 
 | Tool | What it returns |
 | --- | --- |
@@ -15,6 +17,16 @@ CUI read rule, redaction and auditing are exactly those of the rest of Keel.
 | `search_changes`, `get_change`, `get_change_impact` | PRs, ECRs, ECNs and change tasks, one change, and its impact analysis |
 | `search_specifications`, `get_specification`, `get_requirement_coverage`, `get_requirement_trace` | Requirement specifications, requirements, coverage and trace links |
 | `search_programs`, `get_program_dashboard` | Programs and one program's dashboard |
+| `create_part` | **Write.** A new part (revision A, In Work) with the markings stated in the call |
+| `check_out_part`, `update_part_working_copy`, `check_in_part`, `undo_check_out` | **Write.** Edit a part's description and attributes through check-out and check-in |
+| `add_bom_line`, `remove_bom_line` | **Write.** Change the BOM of a part you have checked out |
+| `create_document` | **Write.** A document record (metadata only; upload files in Keel, where they are scanned) |
+| `create_change` | **Write.** A problem report (PR) or engineering change request (ECR) |
+| `add_comment` | **Write.** A comment on a part, document, change, specification or program |
+
+Write tools are marked as not read-only, so MCP clients such as Hearth ask the person before each one runs. New objects need
+their markings in the call (`markings`: `export_jurisdiction`, `distribution_statement`, `owning_org`, and `usml_category`,
+`eccn`, `cui_categories`… as the rules require); Keel refuses incomplete markings and never defaults them.
 
 ## Before you connect an assistant
 
