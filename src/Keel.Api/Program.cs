@@ -245,6 +245,18 @@ builder.Services
         o.TokenValidationParameters.ClockSkew = TimeSpan.FromSeconds(60);
         o.TokenValidationParameters.NameClaimType = "sub";
         o.TokenValidationParameters.RoleClaimType = "roles";
+        // MCP authorization (ADR-0064): a 401 on /api/v1/mcp tells the client where the protected resource metadata is.
+        o.Events = new JwtBearerEvents
+        {
+            OnChallenge = ctx =>
+            {
+                if (!ctx.Request.Path.StartsWithSegments(Keel.Api.Endpoints.McpEndpoints.Path)) return Task.CompletedTask;
+                ctx.HandleResponse();
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                ctx.Response.Headers.WWWAuthenticate = Keel.Api.Endpoints.McpEndpoints.Challenge(ctx.HttpContext);
+                return Task.CompletedTask;
+            },
+        };
     });
 
 builder.Services.AddAuthorizationBuilder()
@@ -314,6 +326,7 @@ app.MapQualityEndpoints(); // 8.1 quality records
 app.MapProgramEndpoints(); // 8.8 programs
 app.MapProductComplianceEndpoints(); // 8.5 substances, regulatory lists, declarations, roll-up and exports
 app.MapRequirementEndpoints(); // 8.3 requirements and traceability
+app.MapMcpEndpoints(); // MCP for AI clients inside the enclave, read only (ADR-0064)
 app.MapReportsEndpoints(); // 8.9 output and bulk work
 app.MapOpenApi("/openapi/{documentName}.json");
 if (demo) app.MapKeelDemo(); // 9.0 demo sign-in page; never mapped unless demo mode was proven above
