@@ -10,4 +10,6 @@ How an ERP (or any on-premises system) receives data from Keel PLM and reconcile
 
 CAD connectors: [cad-connector.md](cad-connector.md) (protocol), [freecad-addon.md](freecad-addon.md), [watch-folder-recipes.md](watch-folder-recipes.md), [cad-plugins.md](cad-plugins.md) (commercial vendors, nothing built).
 
+AI assistants inside the enclave: [mcp.md](mcp.md) (read-only MCP server, ADR-0064).
+
 Design background: [ADR-0025](../adr/0025-integration-outbox-erp-tdp.md). Operations: [../ops/integration.md](../ops/integration.md).
