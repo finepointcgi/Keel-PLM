@@ -1,11 +1,11 @@
-# ADR-0064: Read-only MCP server for AI assistants inside the enclave
+# ADR-0064: MCP server for AI assistants inside the enclave
 
 **Status:** Accepted · 2026-11-10
 
 ## Context
-Engineers want to ask an AI assistant questions that span Keel and the systems around it: "what does ECN-000042 affect?", "which
+Engineers want to ask an AI assistant questions, and have it do routine work, that span Keel and the systems around it: "what does ECN-000042 affect?", "which
 requirements in SPEC-0003 are not verified?", "where is P-000123 used?". Assistants such as Hearth (a local-model chat app) and
-Claude Code speak the Model Context Protocol (MCP). Workbench and Meridian already offer read-only MCP servers.
+Claude Code speak the Model Context Protocol (MCP). Workbench and Meridian already offer MCP servers.
 
 Keel holds export-controlled data. Anything an assistant reads must pass the same read rule as the UI (ADR-0004), carry its
 markings, and leave an audit trail (ADR-0005). The model the assistant uses must run inside the enclave: a hosted model would
@@ -15,12 +15,19 @@ take marked data outside it.
 - **Endpoint.** `POST /api/v1/mcp`: the MCP streamable HTTP transport, stateless, one JSON response per request; no sessions and
   no server-sent events (`GET`/`DELETE` → 405). Methods `initialize`, `ping`, `tools/list`, `tools/call`. Requests carrying a
   browser `Origin` are refused.
-- **Read-only tools only**, each a thin call to the module service its REST endpoint uses: `search_parts`, `get_part`,
-  `get_bom`, `where_used`, `search_documents`, `get_document` (metadata and file list, never file contents), `search_changes`,
-  `get_change`, `get_change_impact`, `search_specifications`, `get_specification`, `get_requirement_coverage`,
-  `get_requirement_trace`, `search_programs`, `get_program_dashboard`. There are no write tools.
-- **Same access path.** Tools run as the caller's `Subject`, so `AccessPolicy` filtering, redaction (A4) and the services' own
-  read and denial audit events apply unchanged. Not found and not permitted give the same answer.
+- **Read tools**, each a thin call to the module service its REST endpoint uses: `search_parts`, `get_part`, `get_bom`,
+  `where_used`, `search_documents`, `get_document` (metadata and file list, never file contents), `search_changes`, `get_change`,
+  `get_change_impact`, `search_specifications`, `get_specification`, `get_requirement_coverage`, `get_requirement_trace`,
+  `search_programs`, `get_program_dashboard`.
+- **Write tools**, the same way: `create_part`, `check_out_part`, `update_part_working_copy`, `check_in_part`, `undo_check_out`,
+  `add_bom_line`, `remove_bom_line` (on a part the person has checked out), `create_document` (metadata only; files are uploaded
+  in Keel, where they are scanned), `create_change` (PR or ECR only), `add_comment`. New objects need their markings stated in
+  the call; nothing defaults them. MCP annotations mark them as not read-only (and destructive where they discard or replace),
+  so clients ask the person before each one.
+- **Never through MCP:** release, approval, e-signatures (they need a step-up sign-in, ADR-0007), lifecycle state changes,
+  marking changes, obsoleting, ECNs and change tasks. These stay with people in Keel.
+- **Same access path.** Tools run as the caller's `Subject`, so roles, `AccessPolicy` filtering, redaction (A4), check-out
+  locks and the services' own audit events (in the same transaction as each change) apply unchanged. Not found and not permitted give the same answer.
 - **Markings on every result.** Each result starts with `MARKINGS: <banner>` (the page banner, or the distinct object banners
   it contains) and "Handle this data as marked." The server's instructions tell the client to keep markings with anything it
   quotes and not to send the data to systems that are not cleared for it.
@@ -36,7 +43,8 @@ take marked data outside it.
 - Operators must make sure the assistant's model runs inside the enclave. Keel cannot enforce where the client sends results;
   the markings and instructions make the obligation explicit. Deploying an MCP client is a security-reviewed change like any
   other integration.
-- Write tools (proposing changes) would need e-signature and step-up semantics and are not planned.
+- An assistant can create and edit work in progress, but nothing it does is released or signed: a person still reviews and
+  releases through workflow, so configuration control is unchanged.
 
 ## Alternatives
 - **API keys or a service account** (as Workbench uses): simpler for clients, but the actor would be a shared account whose

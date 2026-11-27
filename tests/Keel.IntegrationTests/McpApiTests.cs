@@ -52,7 +52,10 @@ public sealed class McpApiTests(PostgresFixture pg)
         var us = api.ClientFor(UsViewer);
         var tools = (await Rpc(us, "tools/list"))["result"]!["tools"]!.AsArray().Select(t => t!["name"]!.ToString()).ToList();
         Assert.Contains("get_bom", tools);
-        Assert.All((await Rpc(us, "tools/list"))["result"]!["tools"]!.AsArray(), t => Assert.True(t!["annotations"]!["readOnlyHint"]!.GetValue<bool>()));
+        var listed = (await Rpc(us, "tools/list"))["result"]!["tools"]!.AsArray();
+        Assert.True(listed.Single(t => t!["name"]!.ToString() == "get_part")!["annotations"]!["readOnlyHint"]!.GetValue<bool>());
+        Assert.False(listed.Single(t => t!["name"]!.ToString() == "create_part")!["annotations"]!["readOnlyHint"]!.GetValue<bool>());
+        Assert.DoesNotContain(listed, t => t!["name"]!.ToString() is "release_part" or "set_state" or "change_markings" or "sign");
 
         // A U.S. person reads the ITAR part, and the result leads with its banner.
         var (usText, usError) = await Call(us, "get_part", new JsonObject { ["number"] = itar });
@@ -72,13 +75,62 @@ public sealed class McpApiTests(PostgresFixture pg)
 
         // Bad arguments and unknown tools.
         Assert.True((await Call(us, "get_part", new JsonObject { ["nope"] = 1, ["number"] = open })).IsError);
-        Assert.Equal(-32602, (await Rpc(us, "tools/call", new JsonObject { ["name"] = "create_part" }))["error"]!["code"]!.GetValue<int>());
+        Assert.Equal(-32602, (await Rpc(us, "tools/call", new JsonObject { ["name"] = "release_part" }))["error"]!["code"]!.GetValue<int>());
 
         // Each call is audited, alongside the service's own read events (the denial included).
         await using var ds = api.Database.AppDataSource();
         var events = await new AuditQueries(ds).ListAsync(new AuditQuery(Limit: 1000));
         Assert.Contains(events, e => e.Action == "mcp.tool_call" && e.ObjectId == "get_part" && e.Actor == "u-fritz");
         Assert.Contains(events, e => e.Action == "part.read" && e.ObjectId == itar && e.Outcome == AuditOutcome.Denied && e.Actor == "u-fritz");
+    }
+
+    [Fact]
+    public async Task Authors_create_and_edit_through_the_same_services_and_viewers_cannot()
+    {
+        await using var api = await ApiFactory.CreateAsync(pg);
+        var author = api.ClientFor(Author);
+        var open = new JsonObject { ["export_jurisdiction"] = "None", ["distribution_statement"] = "A", ["owning_org"] = "ENG" };
+
+        var (created, createdError) = await Call(author, "create_part", new JsonObject
+        {
+            ["name"] = "Bracket from an assistant", ["part_type"] = "Assembly", ["default_unit"] = "EA", ["source"] = "Make", ["markings"] = open.DeepClone(),
+        });
+        Assert.False(createdError, created);
+        var parent = JsonNode.Parse(created[(created.IndexOf('\n', created.IndexOf('\n') + 1) + 1)..])!["number"]!.ToString();
+        var (child, _) = await Call(author, "create_part", new JsonObject { ["name"] = "Pin", ["part_type"] = "Component", ["default_unit"] = "EA", ["source"] = "Buy", ["markings"] = open.DeepClone() });
+        var childNumber = JsonNode.Parse(child[(child.IndexOf('\n', child.IndexOf('\n') + 1) + 1)..])!["number"]!.ToString();
+
+        // Markings must be stated; a missing or invalid set is refused before anything is created.
+        Assert.True((await Call(author, "create_part", new JsonObject { ["name"] = "x", ["part_type"] = "Component", ["default_unit"] = "EA", ["source"] = "Make" })).IsError);
+        Assert.True((await Call(author, "create_part", new JsonObject { ["name"] = "x", ["part_type"] = "Component", ["default_unit"] = "EA", ["source"] = "Make",
+            ["markings"] = new JsonObject { ["export_jurisdiction"] = "Itar", ["distribution_statement"] = "D", ["owning_org"] = "ENG" } })).IsError);   // ITAR needs a USML category
+
+        // Check out, add a BOM line, edit, check in.
+        Assert.False((await Call(author, "check_out_part", new JsonObject { ["number"] = parent })).IsError);
+        var (line, lineError) = await Call(author, "add_bom_line", new JsonObject { ["number"] = parent, ["child_number"] = childNumber, ["quantity"] = 4 });
+        Assert.False(lineError, line);
+        Assert.False((await Call(author, "update_part_working_copy", new JsonObject { ["number"] = parent, ["description"] = "Holds the panel" })).IsError);
+        var (checkedIn, checkInError) = await Call(author, "check_in_part", new JsonObject { ["number"] = parent, ["comment"] = "Structure from the assistant" });
+        Assert.False(checkInError, checkedIn);
+        var (bom, _) = await Call(author, "get_bom", new JsonObject { ["number"] = parent });
+        Assert.Contains(childNumber, bom, StringComparison.Ordinal);
+
+        // A problem report and a comment; an ECN is refused (created in Keel).
+        var (pr, prError) = await Call(author, "create_change", new JsonObject { ["type"] = "PR", ["title"] = "Bracket cracks at the bend", ["priority"] = "High", ["markings"] = open.DeepClone() });
+        Assert.False(prError, pr);
+        Assert.True((await Call(author, "create_change", new JsonObject { ["type"] = "ECN", ["title"] = "x", ["priority"] = "Low", ["markings"] = open.DeepClone() })).IsError);
+        Assert.False((await Call(author, "add_comment", new JsonObject { ["kind"] = "part", ["number"] = parent, ["text"] = "Checked the pin count." })).IsError);
+
+        // A viewer reads but can't change anything.
+        var viewer = api.ClientFor(UsViewer);
+        Assert.False((await Call(viewer, "get_part", new JsonObject { ["number"] = parent })).IsError);
+        Assert.True((await Call(viewer, "check_out_part", new JsonObject { ["number"] = parent })).IsError);
+        Assert.True((await Call(viewer, "create_part", new JsonObject { ["name"] = "x", ["part_type"] = "Component", ["default_unit"] = "EA", ["source"] = "Make", ["markings"] = open.DeepClone() })).IsError);
+
+        await using var ds = api.Database.AppDataSource();
+        var events = await new AuditQueries(ds).ListAsync(new AuditQuery(Limit: 2000));
+        Assert.Contains(events, e => e.Action == "mcp.tool_call" && e.ObjectId == "check_in_part" && e.Actor == "u-alice" && e.Outcome == AuditOutcome.Success);
+        Assert.Contains(events, e => e.Action == "part.checkin" && e.ObjectId == parent);
     }
 
     [Fact]
